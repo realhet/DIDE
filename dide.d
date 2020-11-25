@@ -6,13 +6,11 @@
 ///@debug
 
 ///@run $ c:\d\libs\het\test\syntaxTestText.d
-///@run $ dide.d
+//@run $ dide.d
 ///@run $ c:\D\ldc2\import\std\datetime\systime.d
 ///@run $ c:\D\libs\het\math.d
 ///@run $ c:\D\libs\het\opengl.d
-//@run $ c:\D\libs\het\draw3d.d
-
-
+///@run $ c:\D\libs\het\draw3d.d
 
 import het, het.ui, het.tokenizer, het.keywords;
 
@@ -211,7 +209,7 @@ struct CodeMarker{
   }
 } */
 
-class CodeBlock2 : Row{
+class CodeBlock : Row{
   SourceCode sourceCode;
 
   this(SourceCode sourceCode){
@@ -240,9 +238,11 @@ class CodeBlock2 : Row{
     this(new SourceCode(sourceText));
   }
 
+  // cached measuring
   private bool measured;
   override void measure(){ if(measured.chkSet) super.measure; }
 
+  // cached drawing   Problem: it's not moveable.
   private Drawing cachedDrawing;
   override void draw(Drawing dr){
     if(!cachedDrawing){
@@ -260,6 +260,8 @@ class CodeModule : Column { //CodeModule /////////////////////////////////////
   SourceCode sourceCode;
   Drawing cachedDrawing;
 
+  //todo: header:  for module it's the module name.
+
   this(SourceCode sourceCode){
     this.sourceCode = sourceCode;
     auto ts = tsNormal;  ts.applySyntax(0);
@@ -268,9 +270,14 @@ class CodeModule : Column { //CodeModule /////////////////////////////////////
     flags.columnElasticTabs = false; // every row will hav its own elastic tab processing.
 
     foreach(tokens; splitDeclarations(sourceCode.tokens, 0)){
-      auto blockText = tokensToStr(tokens, sourceCode.text);
-      auto codeBlock = new CodeBlock2(new SourceCode(blockText));
-      append(codeBlock);
+      if(!tokens[$-1].isOperator(opcurlyBracketClose)){
+//        print(tokens[0]);
+        //todo: find opening bracket and get the header, parse recursively the aggregate
+      }else{
+        auto blockText = tokensToStr(tokens, sourceCode.text);
+        auto codeBlock = new CodeBlock(new SourceCode(blockText));
+        append(codeBlock);
+      }
     }
   }
 
@@ -359,6 +366,7 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
 
   override void onUpdate(){
     invalidate; //opt
+
     //view.navigate(!im.wantKeys, !im.wantMouse);
     view.navigate(1, 1);
 
@@ -366,25 +374,85 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
       auto fn = application.args(1);
       auto src = new SourceCode(File(fn).readText.transformLeadingSpacesToTabs);
       codeModule = new CodeModule(src);
-      codeModule.append(new CodeBlock2(File(`c:\dl\a.a`).readText));
+
+      //codeModule.append(new CodeBlock2(File(`c:\dl\a.a`).readText));
     }
 
-    with(im) Panel({
-      //width = clientWidth;
-      //vScroll;
+    static str = "abcd";
 
-      //style.applySyntax(0);
-      //Row({ style.fontHeight=50; Text("FUCK"); });
+    with(im) Panel({
+      flags.targetSurface = 0;
       actContainer.append(codeModule);
+      Btn("Press me!"); Edit(str);
+    });
+
+    with(im) Panel({
+      width = clientWidth;
+      Row({
+        Text("Hello World  ");
+        Btn("Press me!"); Edit(str);
+      });
+
+      static expr = "a == 42", onTrue = "write(`hello`);\nwriteln(`one more line`);\n//many lines on a block", onFalse = "beep;";
+
+      Row({
+        flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+
+        Text("\nOne line\t");
+        Row({
+          margin = "4"; border = "normal"; padding = "4";
+          Text(bold("if")); Edit(expr); Text(" "); Edit(onTrue); Text(bold("else")); Edit(onFalse);
+        });
+
+        Text("\nTwo lines / 1\t");
+        Row({
+          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+          margin = "4"; border = "normal"; padding = "4";
+          Text(bold("if")); Edit(expr); Text("\t"); Edit(onTrue);
+          Text("\n", bold("else"), "\t"); Edit(onFalse);
+        });
+
+        Text("\nTwo lines / 2\t");
+        Row({
+          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+          margin = "4"; border = "normal"; padding = "4";
+          Text(bold("if")); Edit(expr);
+          Text("\n"); Edit(onTrue); Text(bold("else")); Edit(onFalse);
+        });
+
+        Text("\nThree lines\t");
+        Row({
+          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+          margin = "4"; border = "normal"; padding = "4";
+          Text(bold("if")); Edit(expr);
+          style.fontColor = clSilver; Text(bold("\nthen\t")); style.fontColor = clBlack; Edit(onTrue);
+          Text("\n", bold("else"), "\t"); //Edit(onFalse);
+          Row({
+            flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+            margin = "4"; border = "normal"; padding = "4";
+            Text(bold("if")); Edit(expr); Text(" "); Edit(onTrue);
+          });
+
+        });
+      });
+
     });
   }
 
   override void onPaint(){
     dr.clear(clBlack);
     drGUI.clear;
-    im.draw(dr);
 
-    drawFPS(drGUI);
+    im.draw;
+
+    //drawFPS(drGUI);
+
+/*    drGUI.textOut(0,  60, "view: "~view.text);
+    drGUI.textOut(0,  80, "mouse in view: "~view.mousePos.text);
+    drGUI.textOut(0, 100, "viewGUI: "~viewGUI.text);
+    drGUI.textOut(0, 120, "mouse in viewGUI: "~viewGUI.mousePos.text);*/
+
+//    caption = view.text ~ view.trans(g_currentMouse) ~ viewGUI.text;
   }
 }
 
