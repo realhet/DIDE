@@ -6,8 +6,9 @@
 ///@debug
 
 ///@run $ c:\d\libs\het\test\syntaxTestText.d
-//@run $ dide.d
-///@run $ c:\D\ldc2\import\std\datetime\systime.d
+///@run $ dide.d
+//@run $ c:\D\ldc2\import\std\datetime\systime.d
+///@run $ c:\D\libs\het\utils.d
 ///@run $ c:\D\libs\het\math.d
 ///@run $ c:\D\libs\het\opengl.d
 ///@run $ c:\D\libs\het\draw3d.d
@@ -31,6 +32,52 @@ string transformLeadingSpacesToTabs(string original, int spacesPerTab=2){
   }
 
   return original.split('\n').map!(s => process(s)).join('\n'); //todo: this is bad for strings
+}
+
+auto splitDeclarations(Token[] tokens){
+  Token[][] res;
+
+  const level = tokens.baseLevel;
+
+  while(tokens.length){
+
+    //collect the comments first
+    if(tokens[0].isComment){
+      res ~= [tokens.front];
+      tokens.popFront;
+      continue;
+    }
+
+    //search for the end of the declaration
+    auto findDeclarationEnd(){
+      bool isAssignExpr;
+      foreach(i, ref t; tokens){
+        if(t.level == level){
+          if(t.isOperator(opsemiColon)) return i;  // ';' is always an end marker
+          else if(t.isOperator(opassign)) isAssignExpr = true;  // detect '=' assign expression. Possible struct initializer.
+        }else if(t.level == level+1){
+          if(t.isOperator(opcurlyBracketClose))
+            if(!isAssignExpr) return i; // '}' means end if unless it's an assign expression.
+        }
+      }
+      //raise("Unable to find end of declaration."); it's not an error in enum
+      return tokens.length-1;
+    }
+
+    auto lastIdx = findDeclarationEnd;
+    res ~= tokens[0..lastIdx+1];
+    tokens = tokens[lastIdx+1..$];
+
+    // note:
+    // if the first nonComment is 'else', the it must be concatenated with the last tokens
+    /*const appendToLast = getNonComment(act, 0).isKeyword(kwelse) && res.length;
+    if(appendToLast) res[$-1] = res[$-1] ~ act;
+                else res ~= act;*/
+
+    //the loop failed to identify the end. But instead of throwing an error, append the last set of tokens.
+  }
+
+  return res;
 }
 
 // Syntax highlight styles ///////////////////////////////////////////////////////
@@ -99,6 +146,22 @@ in(syntax<syntaxTable.length)
 void applySyntax(ref TextStyle ts, uint syntax){
   applySyntax(ts, syntax, defaultSyntaxPreset);
 }
+
+void emitStyle(string syntax){
+  applySyntax(im.style, syntax.to!SyntaxKind.to!int, defaultSyntaxPreset);
+  im.bkColor = im.style.bkColor;
+}
+
+void emitStyle_fontOnly(string syntax){
+  const oldBkColor = im.bkColor;
+  emitStyle(syntax);
+  im.bkColor = oldBkColor;
+  im.style.bkColor = oldBkColor;
+}
+
+//todo: slow, needs a color theme struct
+auto syntaxFontColor(string syntax){ return syntaxTable[syntax.to!SyntaxKind.to!int].formats[defaultSyntaxPreset].fontColor; }
+auto syntaxBkColor  (string syntax){ return syntaxTable[syntax.to!SyntaxKind.to!int].formats[defaultSyntaxPreset].bkColor  ; }
 
 /*class CodeRow: Row{ //CodeRow //////////////////////////////////////
   SourceCode code;
@@ -209,33 +272,102 @@ struct CodeMarker{
   }
 } */
 
+// CodeBlock //////////////////////////////////////////////
+
+
+/+
+
+// comment
+writeln("123");
+if(a) b += 1; else { writeln("aaa"); }
+
+Block(
+  Comment("// comment"), "\n",
+  If(Expr("a"), Statememnt("b += 1;"), Statement(writeln("aaa"))), "\n"
+);
+
++/
+
+//todo: slow, needs a color theme struct
+auto clCodeBorder(){ return mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .2f); }
+auto clEmptyLine(){ return mix(syntaxBkColor("Whitespace"), syntaxBkColor("Whitespace").l>0x80 ? clWhite : clBlack, 0.0625f); }
+
+enum SplitOperation { none, declarations, statements }
+
 class CodeBlock : Row{
-  SourceCode sourceCode;
 
-  this(SourceCode sourceCode){
-    this.sourceCode = sourceCode;
-    auto ts = tsNormal;  ts.applySyntax(0);
-    super(ts); //this overwrites bkColor
-
-    padding = "4";
-    margin = "4";
-    border = "1 normal white";
+  this(){
+    auto ts = tsNormal;  ts.applySyntax(0);  super(ts); //this overwrites bkColor
+    margin = "1 1";
+    border = "normal"; border.color = clCodeBorder;
+    padding = "1 1";
 
     flags.canWrap = false;
     flags.dontHideSpaces = true;
     flags.rowElasticTabs = true;
+  }
 
-    this.appendCode(sourceCode.text, sourceCode.syntax, s => ts.applySyntax(s), ts);
+  void appendLeaf(Token[] tokens, SourceCode sourceCode){
+    if(tokens.length){
+      auto st = tokens[0].pos, en = tokens[$-1].endPos;
+      auto ts = tsNormal;  ts.applySyntax(0);
+      this.appendCode(sourceCode.text[st..en], sourceCode.syntax[st..en], s => ts.applySyntax(s), ts);
+    }
+  }
 
-    //empty row height is half
-    if(subCells.empty) {
-      innerHeight = ts.fontHeight*0.5;
-      bkColor = mix(bkColor, bkColor.l>0x80 ? clWhite : clBlack, 0.0625f);
+  void appendBranch(Token[] tokens, SourceCode sourceCode){
+    auto blocks = splitDeclarations(tokens);
+    if(blocks.length){
+      auto tsWhitespace = tsNormal;  tsWhitespace.applySyntax(0); //textStyle for whitespace
+
+      void appendWhitespace(int p0, int p1){
+        if(p0 < p1)
+          sourceCode.text[p0..p1].byDchar.each!(ch => appendg(ch, tsWhitespace));
+      }
+
+      auto lastPos = blocks[0][0].pos;
+      foreach(tokenBlock; blocks){
+        appendWhitespace(lastPos, tokenBlock[0].pos);
+
+        append(new CodeBlock(tokenBlock, sourceCode));
+
+        //advance
+        lastPos = tokenBlock[$-1].endPos;
+      }
+    }
+  }
+
+
+  /// create
+  this(Token[] tokens, SourceCode sourceCode, bool isModule=false){
+    this();
+
+    if(tokens.empty){
+      innerHeight = NormalFontHeight*.5f;
+      bkColor = clEmptyLine;
+    }else{
+      if(isModule){
+        appendBranch(tokens, sourceCode);
+      }else{
+        if(tokens.length && tokens[$-1].source=="}"){
+          const level = tokens.baseLevel;
+          auto st = tokens.countUntil!(t => t.level==level+1 && t.source=="{");
+          auto header = tokens[0..st];
+          auto block = tokens[st+1..$-1];
+
+          appendLeaf(header, sourceCode);
+          appendBranch(block, sourceCode);
+        }else{
+          appendLeaf  (tokens, sourceCode);
+          enableCachedDrawing = true;
+        }
+      }
     }
   }
 
   this(string sourceText){
-    this(new SourceCode(sourceText));
+    auto sourceCode = new SourceCode(sourceText);
+    this(sourceCode.tokens, sourceCode);
   }
 
   // cached measuring
@@ -243,34 +375,47 @@ class CodeBlock : Row{
   override void measure(){ if(measured.chkSet) super.measure; }
 
   // cached drawing   Problem: it's not moveable.
+  private bool enableCachedDrawing = false;
   private Drawing cachedDrawing;
   override void draw(Drawing dr){
-    if(!cachedDrawing){
-      cachedDrawing = dr.clone;
-      super.draw(cachedDrawing);
+    if(enableCachedDrawing){
+      if(!cachedDrawing){
+        cachedDrawing = dr.clone;
+        super.draw(cachedDrawing);
+      }
+      dr.subDraw(cachedDrawing);
+    }else{
+      super.draw(dr);
     }
-    dr.subDraw(cachedDrawing);
   }
 
 }
 
 
 /// A block of codeRows or codeBlocks aligned like a Column
-class CodeModule : Column { //CodeModule /////////////////////////////////////
+/+class CodeModule : Column { //CodeModule /////////////////////////////////////
   SourceCode sourceCode;
   Drawing cachedDrawing;
 
   //todo: header:  for module it's the module name.
+
+  this(string sourceText){
+    this(new SourceCode(sourceText)); //todo: unoptimal
+  }
 
   this(SourceCode sourceCode){
     this.sourceCode = sourceCode;
     auto ts = tsNormal;  ts.applySyntax(0);
     super(ts); //this overwrites bkColor
 
-    flags.columnElasticTabs = false; // every row will hav its own elastic tab processing.
+    flags.columnElasticTabs = false; // every row will have its own elastic tab processing.
 
     foreach(tokens; splitDeclarations(sourceCode.tokens, 0)){
       if(!tokens[$-1].isOperator(opcurlyBracketClose)){
+        auto blockText = tokensToStr(tokens, sourceCode.text);
+        auto codeBlock = new CodeBlock(new SourceCode(blockText));
+        append(codeBlock);
+
 //        print(tokens[0]);
         //todo: find opening bracket and get the header, parse recursively the aggregate
       }else{
@@ -288,7 +433,7 @@ class CodeModule : Column { //CodeModule /////////////////////////////////////
   override void draw(Drawing dr){
     super.draw(dr);
   }
-}
+} +/
 
 
 /// creates a code block from source text
@@ -323,43 +468,9 @@ class CodeModule : Column { //CodeModule /////////////////////////////////////
   return codeBlock;
 }+/
 
-
-auto splitDeclarations(Token[] tokens, int level){
-  Token[][] res;
-
-  re: while(tokens.length){
-
-    void append(size_t lastIdx){
-      auto act = tokens[0..lastIdx+1];
-      tokens = tokens[lastIdx+1..$];
-
-      // if the first nonComment is 'else', the it must be concatenated with the last tokens
-      const appendToLast = getNonComment(act, 0).isKeyword(kwelse) && res.length;
-      if(appendToLast) res[$-1] = res[$-1] ~ act;
-                  else res ~= act;
-    }
-
-    bool isAssignExpr;
-    foreach(i, ref t; tokens){
-      if(t.level == level){
-        if(t.isOperator(opsemiColon)){ append(i); continue re; }  // ';' is always an end marker
-        else if(t.isOperator(opassign)) isAssignExpr = true;  // detect '=' assign expression. Possible struct initializer.
-      }else if(t.level == level+1){
-        if(t.isOperator(opcurlyBracketClose)){ if(!isAssignExpr) { append(i); continue re; } } // '}' means end if it is not an assign expression.
-      }
-    }
-
-    //the loop failed to identify the end. But instead of throwing an error, append the last set of tokens.
-    res ~= tokens;
-    break;
-  }
-
-  return res;
-}
-
 class FrmMain: GLWindow { mixin autoCreate; // FrmMain ////////////////////////////
 
-  CodeModule codeModule;
+  CodeBlock rootBlock;
 
   override void onCreate(){
   }
@@ -370,20 +481,17 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
     //view.navigate(!im.wantKeys, !im.wantMouse);
     view.navigate(1, 1);
 
-    if(!codeModule){
+    if(!rootBlock){
       auto fn = application.args(1);
       auto src = new SourceCode(File(fn).readText.transformLeadingSpacesToTabs);
-      codeModule = new CodeModule(src);
-
-      //codeModule.append(new CodeBlock2(File(`c:\dl\a.a`).readText));
+      rootBlock = new CodeBlock(src.tokens, src, true);
     }
 
     static str = "abcd";
 
     with(im) Panel({
-      flags.targetSurface = 0;
-      actContainer.append(codeModule);
-      Btn("Press me!"); Edit(str);
+      flags.targetSurface = 0; //it's on the zoomable surface
+      actContainer.append(rootBlock);
     });
 
     with(im) Panel({
@@ -395,44 +503,125 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
 
       static expr = "a == 42", onTrue = "write(`hello`);\nwriteln(`one more line`);\n//many lines on a block", onFalse = "beep;";
 
-      Row({
-        flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
+/*      static void ui_If(string expr, string then, string else_=""){
 
-        Text("\nOne line\t");
+        bool extractFirstNewLine(ref string s){
+          const res = s.startsWith(newLine);
+          if(res) s = s[1..$];
+          return res;
+        }
+
+        const hasElse = (!else_.strip.empty); //this should be a flag!
+        const nl_then = extractFirstNewLine(then );
+        const nl_else = extractFirstNewLine(else_) && hasElse;
+        const nl_code = (nl_then ? 2 : 0)
+                      + (nl_else ? 1 : 0);
+
+        void setupFrame(){
+          flags.rowElasticTabs = true;
+          margin = "2";
+          border = "normal";
+          padding = "2";
+
+
+        }
+
+        final switch(nl_code){
+          0:{
+            Row({ setupFrame;
+              Text(bold("if"), "\t"); Edit(expr); Text("\t"); Edit(then); if(hasElse){ Text(bold("else")); Edit(else_); }
+            });
+          } break;
+          1:{
+
+          }
+        }
+      }        */
+
+      static GroupFrame(void delegate() content){
         Row({
-          margin = "4"; border = "normal"; padding = "4";
-          Text(bold("if")); Edit(expr); Text(" "); Edit(onTrue); Text(bold("else")); Edit(onFalse);
+          style.bkColor = mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .1f);
+          bkColor = style.bkColor;
+          //flags.yAlign = YAlign.top;
+
+          flags.columnElasticTabs = false;
+          flags.rowElasticTabs = true;
+          margin = "2 4";
+          border = "normal";
+          border.color = mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .2f);
+          padding = "2 0 2 4";
+
+          content();
+        });
+      }
+
+      static Edit(string expr){
+        auto a = new CodeBlock(expr);
+        with(a){
+          margin = "2 4";
+          border = "normal"; border.color = mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .2f);
+          padding = "0 4";
+        }
+        im.actContainer.append(a);
+
+        /*Row({
+          emitStyle("Whitespace");
+          Text(expr);
+          margin = "2 4";
+          border = "normal"; border.color = mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .2f);
+          padding = "0 4";
+          bkColor = style.bkColor;
+        });*/
+      }
+
+      static IfExpr(string expr, string afterIf=""){
+        emitStyle_fontOnly("Keyword"); Text("if"); emitStyle_fontOnly("Symbol"); Text("(");
+        Edit(expr);
+        Text(")"~afterIf);
+      }
+
+      static ThenBlock(string statements){
+        Edit(statements);
+      }
+
+      static ElseBlock(string statements, string afterElse=""){
+        emitStyle_fontOnly("Keyword");
+        Text("else"~afterElse);
+        ThenBlock(statements);
+      }
+
+      static SkipElse(){ //skips the same size as the "else" text
+        emitStyle_fontOnly("Keyword");
+        style.fontColor = style.bkColor;
+        Text("else\t");
+      }
+
+      if(0) Row({
+        emitStyle("Whitespace");
+
+        flags.rowElasticTabs = true;
+        Text("\n0: One line\t");
+        GroupFrame({
+          IfExpr(expr); Text(" "); ThenBlock(onTrue); ElseBlock(onFalse);
         });
 
-        Text("\nTwo lines / 1\t");
-        Row({
-          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
-          margin = "4"; border = "normal"; padding = "4";
-          Text(bold("if")); Edit(expr); Text("\t"); Edit(onTrue);
-          Text("\n", bold("else"), "\t"); Edit(onFalse);
+        Text("\n1: Two lines / 1\t");
+        GroupFrame({
+          IfExpr(expr, "\t"); ThenBlock(onTrue);
+          Text("\n"); ElseBlock(onFalse, "\t");
         });
 
-        Text("\nTwo lines / 2\t");
-        Row({
-          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
-          margin = "4"; border = "normal"; padding = "4";
-          Text(bold("if")); Edit(expr);
-          Text("\n"); Edit(onTrue); Text(bold("else")); Edit(onFalse);
+        Text("\n2: Two lines / 2\t");
+        GroupFrame({
+          IfExpr(expr, "\n");
+          SkipElse; ThenBlock(onTrue); ElseBlock(onFalse);
         });
 
-        Text("\nThree lines\t");
-        Row({
-          flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
-          margin = "4"; border = "normal"; padding = "4";
-          Text(bold("if")); Edit(expr);
-          style.fontColor = clSilver; Text(bold("\nthen\t")); style.fontColor = clBlack; Edit(onTrue);
-          Text("\n", bold("else"), "\t"); //Edit(onFalse);
-          Row({
-            flags.rowElasticTabs = true;  flags.columnElasticTabs = false;
-            margin = "4"; border = "normal"; padding = "4";
-            Text(bold("if")); Edit(expr); Text(" "); Edit(onTrue);
-          });
-
+        Text("\n3: Three lines\t");
+        GroupFrame({
+          IfExpr(expr); Text("\n\t");
+          ThenBlock(onTrue); Text("\n");
+          ElseBlock(onFalse, "\t");
         });
       });
 
