@@ -2,12 +2,12 @@
 //@import c:\d\libs
 //@ldc
 //@compile -m64 -mcpu=athlon64-sse3 -mattr=+ssse3
-//@release
-///@debug
+///@release
+//@debug
 
 ///@run $ c:\d\libs\het\test\syntaxTestText.d
-///@run $ dide.d
-//@run $ c:\D\ldc2\import\std\datetime\systime.d
+//@run $ dide.d
+///@run $ c:\D\ldc2\import\std\datetime\systime.d
 ///@run $ c:\D\libs\het\utils.d
 ///@run $ c:\D\libs\het\math.d
 ///@run $ c:\D\libs\het\opengl.d
@@ -15,9 +15,18 @@
 
 import het, het.ui, het.tokenizer, het.keywords;
 
+/*comment1*/@safe void testFunction()(/*comment3*/) /*comment4*/ { //comment2
+  if(a) b;
+}
+
 // Utility stuff ///////////////////////////////////////////////////////////////////
 
-string transformLeadingSpacesToTabs(string original, int spacesPerTab=2){
+//todo: detectTabs
+
+string transformLeadingSpacesToTabs(string original, int spacesPerTab=2)
+in(original != "", "This is here to test a multiline header with a contract.")
+//out{ assert(1, "ouch"); }
+/*do*/ {
 
   string process(string s){
     s = stripRight(s);
@@ -31,7 +40,11 @@ string transformLeadingSpacesToTabs(string original, int spacesPerTab=2){
     return s;
   }
 
-  return original.split('\n').map!(s => process(s)).join('\n'); //todo: this is bad for strings
+  return original.splitter('\n').map!(s => process(s)).join('\n'); //todo: this is bad for strings
+}
+
+string stripAllLines(string original){
+  return original.splitter('\n').map!strip.join('\n');
 }
 
 auto splitDeclarations(Token[] tokens){
@@ -78,6 +91,15 @@ auto splitDeclarations(Token[] tokens){
   }
 
   return res;
+}
+
+
+auto splitHeaderBlock(Token[] tokens){
+  const level = tokens.baseLevel;
+  auto st = tokens.countUntil!(t => t.level==level+1 && t.source=="{");
+  enforce(st>=0, "No {} block found");
+  struct Res{ Token[] header, block; }
+  return Res(tokens[0..st], tokens[st+1..$-1]);
 }
 
 // Syntax highlight styles ///////////////////////////////////////////////////////
@@ -289,22 +311,37 @@ Block(
 +/
 
 //todo: slow, needs a color theme struct
-auto clCodeBorder(){ return mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .2f); }
-auto clEmptyLine(){ return mix(syntaxBkColor("Whitespace"), syntaxBkColor("Whitespace").l>0x80 ? clWhite : clBlack, 0.0625f); }
+deprecated auto clEmptyLine(){ return mix(syntaxBkColor("Whitespace"), syntaxBkColor("Whitespace").l>0x80 ? clWhite : clBlack, 0.0625f); }
+
+auto clCodeBackground (){ return syntaxBkColor("Whitespace"); }
+auto clCodeBorder     (){ return mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .4f); }
+auto clGroupBackground(){ return mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .1f); }
+auto clGroupBorder    (){ return mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .4f); }
 
 enum SplitOperation { none, declarations, statements }
 
+enum CodeFrameType { statement, groupFrame, groupInner }
+
 class CodeBlock : Row{
 
-  this(){
-    auto ts = tsNormal;  ts.applySyntax(0);  super(ts); //this overwrites bkColor
-    margin = "1 1";
-    border = "normal"; border.color = clCodeBorder;
-    padding = "1 1";
+  this(CodeFrameType cft){
 
+    // general flags
     flags.canWrap = false;
     flags.dontHideSpaces = true;
     flags.rowElasticTabs = true;
+
+    // bkColor
+    auto ts = tsNormal;  ts.applySyntax(0);
+    if(cft == CodeFrameType.groupFrame) ts.bkColor = clGroupBackground;
+    super(ts); //this overwrites bkColor
+
+    // margin, border, padding
+    final switch(cft){
+      case CodeFrameType.statement : margin = "1"; border = "normal"; border.color = clCodeBorder ; padding = "0 2"; break;
+      case CodeFrameType.groupFrame: margin = "1"; border = "normal"; border.color = clGroupBorder; padding = "2"; break;
+      case CodeFrameType.groupInner: margin = "2";                                                  padding = "0"; break;
+    }
   }
 
   void appendLeaf(Token[] tokens, SourceCode sourceCode){
@@ -340,24 +377,32 @@ class CodeBlock : Row{
 
   /// create
   this(Token[] tokens, SourceCode sourceCode, bool isModule=false){
-    this();
-
     if(tokens.empty){
+      this(CodeFrameType.statement);
       innerHeight = NormalFontHeight*.5f;
       bkColor = clEmptyLine;
     }else{
       if(isModule){
-        appendBranch(tokens, sourceCode);
+        this(CodeFrameType.groupFrame);
+        auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
+        foreach(ch; "module\n\t") appendg(ch, ts);
+        auto inner = new CodeBlock(CodeFrameType.groupInner); append(inner);
+        inner.appendBranch(tokens, sourceCode);
       }else{
         if(tokens.length && tokens[$-1].source=="}"){
-          const level = tokens.baseLevel;
-          auto st = tokens.countUntil!(t => t.level==level+1 && t.source=="{");
-          auto header = tokens[0..st];
-          auto block = tokens[st+1..$-1];
+          this(CodeFrameType.groupFrame);
+          with(splitHeaderBlock(tokens)){
+            auto h = new CodeBlock(CodeFrameType.groupInner); append(h);
+            h.appendLeaf(header, sourceCode);
+            h.enableCachedDrawing = true;
 
-          appendLeaf(header, sourceCode);
-          appendBranch(block, sourceCode);
+            auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
+            foreach(ch; "\n\t") appendg(ch, ts);
+            auto inner = new CodeBlock(CodeFrameType.groupInner); append(inner);
+            inner.appendBranch(block, sourceCode);
+          }
         }else{
+          this(CodeFrameType.statement);
           appendLeaf  (tokens, sourceCode);
           enableCachedDrawing = true;
         }
@@ -365,9 +410,9 @@ class CodeBlock : Row{
     }
   }
 
-  this(string sourceText){
+  this(string sourceText, bool isDeclaration=false){
     auto sourceCode = new SourceCode(sourceText);
-    this(sourceCode.tokens, sourceCode);
+    this(sourceCode.tokens, sourceCode, isDeclaration);
   }
 
   // cached measuring
@@ -483,7 +528,10 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
 
     if(!rootBlock){
       auto fn = application.args(1);
-      auto src = new SourceCode(File(fn).readText.transformLeadingSpacesToTabs);
+      auto src = new SourceCode(File(fn).readText
+        //.transformLeadingSpacesToTabs
+        .stripAllLines
+      );
       rootBlock = new CodeBlock(src.tokens, src, true);
     }
 
@@ -491,6 +539,11 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
 
     with(im) Panel({
       flags.targetSurface = 0; //it's on the zoomable surface
+      bkColor = clBlack;
+      border = "none";
+      padding = "0";
+      margin = "0";
+
       actContainer.append(rootBlock);
     });
 
