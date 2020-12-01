@@ -19,7 +19,7 @@ import het, het.ui, het.tokenizer, het.keywords;
   if(a) b;
 }
 
-// Utility stuff ///////////////////////////////////////////////////////////////////
+public{// Utility stuff ///////////////////////////////////////////////////////////////////
 
 //todo: detectTabs
 
@@ -102,7 +102,7 @@ auto splitHeaderBlock(Token[] tokens){
   return Res(tokens[0..st], tokens[st+1..$-1]);
 }
 
-// Syntax highlight styles ///////////////////////////////////////////////////////
+}public{// Syntax highlight styles ///////////////////////////////////////////////////////
 
 struct SyntaxStyle{
   RGB fontColor, bkColor;
@@ -150,7 +150,7 @@ mixin(format!"enum SyntaxPreset {%s}"(syntaxPresetNames.join(',')));
 __gshared defaultSyntaxPreset = SyntaxPreset.Dark;
 
 
-// UI - Code integration ///////////////////////////////////////////////////
+}public{// UI - Code integration ///////////////////////////////////////////////////
 
 /// Lookup a syntax style and apply it to a TextStyle reference
 void applySyntax(ref TextStyle ts, uint syntax, SyntaxPreset preset)
@@ -294,7 +294,7 @@ struct CodeMarker{
   }
 } */
 
-// CodeBlock //////////////////////////////////////////////
+}public{// Code classes //////////////////////////////////////////////
 
 
 /+
@@ -322,37 +322,110 @@ enum SplitOperation { none, declarations, statements }
 
 enum CodeFrameType { statement, groupFrame, groupInner }
 
-class CodeBlock : Row{
 
-  this(CodeFrameType cft){
+void appendCode(Row row, Token[] tokens, SourceCode sourceCode){
+  if(tokens.length){
+    auto st = tokens[0].pos, en = tokens[$-1].endPos;
+    auto ts = tsNormal;  ts.applySyntax(0);
+    het.uibase.appendCode(row, sourceCode.text[st..en], sourceCode.syntax[st..en], s => ts.applySyntax(s), ts);
+  }
+}
+
+
+/// Adds the header of a frame. Usually an expression, but can be a function header too
+/*void appendInnerExpression(Row row, Token[] tokens, SourceCode sourceCode){
+  auto h = new CodeExpression();
+  row.append(h);
+  h.appendCode(tokens, sourceCode);
+  h.enableCachedDrawing = true;
+}  */
+
+/*void appendBranch(Row row, Token[] tokens, SourceCode sourceCode){ with(row){
+  auto blocks = splitDeclarations(tokens);
+  if(blocks.length){
+    auto tsWhitespace = tsNormal;  tsWhitespace.applySyntax(0); //textStyle for whitespace
+
+    void appendWhitespace(int p0, int p1){
+      if(p0 < p1)
+        sourceCode.text[p0..p1].byDchar.each!(ch => appendg(ch, tsWhitespace));
+    }
+
+    auto lastPos = blocks[0][0].pos;
+    foreach(tokenBlock; blocks){
+      appendWhitespace(lastPos, tokenBlock[0].pos);
+
+      append(new CodeBlock(tokenBlock, sourceCode));
+
+      //advance
+      lastPos = tokenBlock[$-1].endPos;
+    }
+  }
+}}*/
+
+/// Base class for everything that is Code related.
+class CodeBase : Row{
+protected:
+
+  // cached measuring
+  bool measured;
+  override void measure(){ if(measured.chkSet) super.measure; }
+
+  // cached drawing   Problem: it's not moveable.
+  bool enableCachedDrawing = false;
+  Drawing cachedDrawing;
+
+  override void draw(Drawing dr){
+    if(enableCachedDrawing){
+      if(!cachedDrawing){
+        cachedDrawing = dr.clone;
+        super.draw(cachedDrawing);
+      }
+      dr.subDraw(cachedDrawing);
+    }else{
+      super.draw(dr);
+    }
+  }
+
+public:
+
+  this(){
+    super(tsNormal);
 
     // general flags
     flags.canWrap = false;
     flags.dontHideSpaces = true;
     flags.rowElasticTabs = true;
-
-    // bkColor
-    auto ts = tsNormal;  ts.applySyntax(0);
-    if(cft == CodeFrameType.groupFrame) ts.bkColor = clGroupBackground;
-    super(ts); //this overwrites bkColor
-
-    // margin, border, padding
-    final switch(cft){
-      case CodeFrameType.statement : margin = "1"; border = "normal"; border.color = clCodeBorder ; padding = "0 2"; break;
-      case CodeFrameType.groupFrame: margin = "1"; border = "normal"; border.color = clGroupBorder; padding = "2"; break;
-      case CodeFrameType.groupInner: margin = "2";                                                  padding = "0"; break;
-    }
   }
+}
 
-  void appendLeaf(Token[] tokens, SourceCode sourceCode){
-    if(tokens.length){
-      auto st = tokens[0].pos, en = tokens[$-1].endPos;
-      auto ts = tsNormal;  ts.applySyntax(0);
-      this.appendCode(sourceCode.text[st..en], sourceCode.syntax[st..en], s => ts.applySyntax(s), ts);
-    }
+/// 'Statement' here is a thing that can't be structured more. Has a border. It can be a declaration too.
+class CodeStatement : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    bkColor = clCodeBackground;
+    margin = "1";
+    border = "normal"; border.color = clCodeBorder ;
+    padding = "0 2";
+    this.appendCode(tokens, sourceCode);
+    enableCachedDrawing = true;
   }
+}
 
-  void appendBranch(Token[] tokens, SourceCode sourceCode){
+/// 'Expression' is an embeded thing in a frame. Can be a function header for example. Has no border.
+class CodeExpression : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    bkColor = clCodeBackground;
+    padding = "0 2";
+    this.appendCode(tokens, sourceCode);
+    enableCachedDrawing = true;
+  }
+}
+
+/// 'Block' is an array of things
+class CodeBlock : CodeBase {
+  this(Token[] tokens, SourceCode sourceCode){
+    flags.yAlign = YAlign.top;
+    bkColor = clCodeBackground;
+
     auto blocks = splitDeclarations(tokens);
     if(blocks.length){
       auto tsWhitespace = tsNormal;  tsWhitespace.applySyntax(0); //textStyle for whitespace
@@ -366,75 +439,119 @@ class CodeBlock : Row{
       foreach(tokenBlock; blocks){
         appendWhitespace(lastPos, tokenBlock[0].pos);
 
-        append(new CodeBlock(tokenBlock, sourceCode));
+        if(tokenBlock.length && tokenBlock[$-1].source=="}"){
+          append(new CodeAggregate(tokenBlock, sourceCode));
+        }else{
+          append(new CodeStatement(tokenBlock, sourceCode));
+        }
 
         //advance
         lastPos = tokenBlock[$-1].endPos;
       }
+    }else{
+      innerWidth = 10;
+      innerHeight = 10;
     }
   }
+}
 
+/// 'Aggregate' is a header plus an array of things. Example: struct{}
+class CodeAggregate : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    //this is something like a module!!!
+    bkColor = clGroupBackground;
+    margin = "1"; border = "normal"; border.color = clGroupBorder; padding = "2";
+
+    with(splitHeaderBlock(tokens)){ //this is not a module!!!
+      append(new CodeExpression(header, sourceCode));
+
+      auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
+      foreach(ch; "\n\t") appendg(ch, ts);
+
+      append(new CodeBlock(block, sourceCode));
+    }
+  }
+}
+
+class CodeModule : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    bkColor = clGroupBackground;
+    margin = "1"; border = "normal"; border.color = clGroupBorder; padding = "2";
+
+    auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
+    foreach(ch; "module\n\t") appendg(ch, ts);
+
+    append(new CodeBlock(tokens, sourceCode));
+  }
+}
+
+/+
+  auto blocks = splitDeclarations(tokens);
+  if(blocks.length){
+    auto tsWhitespace = tsNormal;  tsWhitespace.applySyntax(0); //textStyle for whitespace
+
+    void appendWhitespace(int p0, int p1){
+      if(p0 < p1)
+        sourceCode.text[p0..p1].byDchar.each!(ch => appendg(ch, tsWhitespace));
+    }
+
+    auto lastPos = blocks[0][0].pos;
+    foreach(tokenBlock; blocks){
+      appendWhitespace(lastPos, tokenBlock[0].pos);
+
+      append(new CodeBlock(tokenBlock, sourceCode));
+
+      //advance
+      lastPos = tokenBlock[$-1].endPos;
+    }
+  }
++/
+
+/+class CodeBlock : CodeBase{
+
+  this(Token[] tokens, SourceCode sourceCode){
+    bkColor = clCodeBackground;
+    margin = "2"; padding = "0";
+
+    if(tokens.empty){
+      innerHeight = NormalFontHeight;
+      innerWidth  = NormalFontHeight;
+    }else{
+      inner.appendBranch(tokens, sourceCode);
+    }
+  }
 
   /// create
-  this(Token[] tokens, SourceCode sourceCode, bool isModule=false){
+/*  this(Token[] tokens, SourceCode sourceCode){
     if(tokens.empty){
-      this(CodeFrameType.statement);
+      this(CodeFrameType.groupInner);
       innerHeight = NormalFontHeight*.5f;
-      bkColor = clEmptyLine;
     }else{
-      if(isModule){
+      if(tokens.length && tokens[$-1].source=="}"){
         this(CodeFrameType.groupFrame);
-        auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
-        foreach(ch; "module\n\t") appendg(ch, ts);
-        auto inner = new CodeBlock(CodeFrameType.groupInner); append(inner);
-        inner.appendBranch(tokens, sourceCode);
-      }else{
-        if(tokens.length && tokens[$-1].source=="}"){
-          this(CodeFrameType.groupFrame);
-          with(splitHeaderBlock(tokens)){
-            auto h = new CodeBlock(CodeFrameType.groupInner); append(h);
-            h.appendLeaf(header, sourceCode);
-            h.enableCachedDrawing = true;
+        with(splitHeaderBlock(tokens)){
 
-            auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
-            foreach(ch; "\n\t") appendg(ch, ts);
-            auto inner = new CodeBlock(CodeFrameType.groupInner); append(inner);
-            inner.appendBranch(block, sourceCode);
-          }
-        }else{
-          this(CodeFrameType.statement);
-          appendLeaf  (tokens, sourceCode);
-          enableCachedDrawing = true;
+          this.appendInnerExpression(header, sourceCode);
+
+          auto ts = tsNormal;  ts.applySyntax(SyntaxKind.Keyword); ts.bkColor = bkColor;
+          foreach(ch; "\n\t") appendg(ch, ts);
+          auto inner = new CodeBlock(CodeFrameType.groupInner); append(inner);
+          inner.appendBranch(block, sourceCode);
         }
+      }else{
+        this(CodeFrameType.statement);
+        this.appendCode(tokens, sourceCode);
+        enableCachedDrawing = true;
       }
     }
-  }
+  }*/
 
-  this(string sourceText, bool isDeclaration=false){
+/*  this(string sourceText, bool isDeclaration=false){
     auto sourceCode = new SourceCode(sourceText);
     this(sourceCode.tokens, sourceCode, isDeclaration);
-  }
+  }*/
 
-  // cached measuring
-  private bool measured;
-  override void measure(){ if(measured.chkSet) super.measure; }
-
-  // cached drawing   Problem: it's not moveable.
-  private bool enableCachedDrawing = false;
-  private Drawing cachedDrawing;
-  override void draw(Drawing dr){
-    if(enableCachedDrawing){
-      if(!cachedDrawing){
-        cachedDrawing = dr.clone;
-        super.draw(cachedDrawing);
-      }
-      dr.subDraw(cachedDrawing);
-    }else{
-      super.draw(dr);
-    }
-  }
-
-}
+} +/
 
 
 /// A block of codeRows or codeBlocks aligned like a Column
@@ -512,10 +629,10 @@ class CodeBlock : Row{
 
   return codeBlock;
 }+/
+}public{ // FrmMain ////////////////////////////
+class FrmMain: GLWindow { mixin autoCreate;
 
-class FrmMain: GLWindow { mixin autoCreate; // FrmMain ////////////////////////////
-
-  CodeBlock rootBlock;
+  CodeModule codeModule;
 
   override void onCreate(){
   }
@@ -526,13 +643,13 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
     //view.navigate(!im.wantKeys, !im.wantMouse);
     view.navigate(1, 1);
 
-    if(!rootBlock){
+    if(!codeModule){
       auto fn = application.args(1);
       auto src = new SourceCode(File(fn).readText
         //.transformLeadingSpacesToTabs
         .stripAllLines
       );
-      rootBlock = new CodeBlock(src.tokens, src, true);
+      codeModule = new CodeModule(src.tokens, src);
     }
 
     static str = "abcd";
@@ -544,7 +661,7 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
       padding = "0";
       margin = "0";
 
-      actContainer.append(rootBlock);
+      actContainer.append(codeModule);
     });
 
     with(im) Panel({
@@ -590,7 +707,7 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
           }
         }
       }        */
-
+/+
       static GroupFrame(void delegate() content){
         Row({
           style.bkColor = mix(syntaxBkColor("Whitespace"), syntaxFontColor("Whitespace"), .1f);
@@ -676,7 +793,7 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
           ThenBlock(onTrue); Text("\n");
           ElseBlock(onFalse, "\t");
         });
-      });
+      }); +/
 
     });
   }
@@ -698,3 +815,4 @@ class FrmMain: GLWindow { mixin autoCreate; // FrmMain /////////////////////////
   }
 }
 
+} //region
