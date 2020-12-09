@@ -7,10 +7,58 @@
 
 import het, het.ui, het.tokenizer, het.keywords;
 
-bool isSyntaxLabel(in Token t){
-  return (t.isKeyword || t.isIdentifier) && !t.source.among("Identifier", "IntegerLiteral", "FloatLiteral", "StringLiteral", "CharacterLiteral", "AsmExp", "functionAttributes", "StringLiteralList");
+SyntaxGraph[] parseGrammar_official(string text){
+  // text is copied from glang.org/grammar.
+  // Sections are marked with an identifier on the start of line:                   |Modules
+  // Definitions are starting with an identifier on the start of line and a colon:  |Module:
+  // Rules are placed after more than 1 spaces:                                     |   ModuleDeclaration DeclDefs
+  // empty lines are ignored
+
+  SyntaxGraph[] res;
+
+  static bool isSection   (string s){ return s.isIdentifier; }
+  static bool isDefinition(string s){ return s.endsWith(':') && s[0..$-1].isIdentifier; }
+
+  string actSection;
+  string[] actDefinition;
+
+  void flush(){
+    if(actDefinition.length){
+      enforce(actSection.length, "Undefined section");
+      enforce(actDefinition.length>=2, "Invalid definition. Must be at least 2 lines");
+
+      //add new graph
+      if(res.empty || res[$-1].name != actSection)
+        res ~= new SyntaxGraph(actSection);
+
+      auto definitionStr = actDefinition.join('\n');
+      //print(actSection, "/", definitionStr);
+      res[$-1].appendDefinition_official(definitionStr);
+
+      actDefinition = [];
+    }
+  }
+
+  //Imput conditioning split lines, strip from right, drop empty lines
+  foreach(line; text.split('\n').map!stripRight.filter!"a.length"){
+    if(isSection(line)){
+      flush;
+      actSection = line;
+    }else{
+      if(isDefinition(line)) flush;
+      actDefinition ~= line;
+    }
+  }
+  flush;
+
+  return res;
 }
 
+
+
+bool isSyntaxLabel(in Token t){
+  return (t.isIdentifier) && !t.source.among("Identifier", "IntegerLiteral", "FloatLiteral", "StringLiteral", "CharacterLiteral");
+}
 
 class SyntaxLabel : Row { // SyntaxLabel /////////////////////////////
   SyntaxDeclaration parent;
@@ -47,8 +95,8 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
   mixin CachedDrawing;
 
   SyntaxGraph parent;
-  string name;
-  SyntaxLabel title;
+  SyntaxLabel titleLabel;
+  string title() const { return titleLabel.name; }
 
   bool isHovered() const{ return this is parent.hoveredDeclaration; }
   bool isSelected;
@@ -61,7 +109,6 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
     enforce(tokens.length>=3, "Invalid length");
     enforce(tokens[0].isSyntaxLabel, "Syntax label expected instead of: "~tokens[0].text);
     enforce(tokens[1].isOperator(opcolon));
-    enforce(tokens[$-1].isOperator(opsemiColon));
 
     tokens.popBack; // remove ';'
 
@@ -79,7 +126,7 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
         auto l = new SyntaxLabel(this, isLink, t.source, ts);
         append(l);
         if(!isLink){
-          title = l;
+          titleLabel = l;
           parent.declarationByName[t.source] = this;
         }
       }else{
@@ -90,7 +137,7 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
       lastIdx = t.endPos;
     }
 
-    enforce(title, "No title syntaxLabel found");
+    enforce(titleLabel, "No title syntaxLabel found");
 
     measure;
   }
@@ -102,14 +149,29 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
   auto absInnerPos   () const{ return innerPos    + parent.innerPos; };
 }
 
+vec2 importCursor;
+
 
 class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
+  string name;
+
   float viewScale = 1;
 
-  this(string text){
-    // grammar graph source: https://libdparse.dlang.io/grammar.html
+  void appendDefinition_official(string def){
+    print("IMPORTING", def);
 
-    bkColor = clBlack;
+    auto src = new SourceCode(def);
+    auto a = new SyntaxDeclaration(this, src.tokens, src);
+    append(a);
+
+    a.measure;
+
+    a.outerPos = importCursor;
+    importCursor.y += a.innerHeight + 10;
+  }
+
+/*  void import_dparser(string text){
+    // grammar graph source: https://libdparse.dlang.io/grammar.html
 
     //patch some bugs
     void patch(string old, string new_){
@@ -133,6 +195,11 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
 
       n.outerPos = vec2(-5000, 0).rotate(idx* PIf*2/declarations.length);
     }
+  }*/
+
+  this(string name){
+    this.name = name;
+    bkColor = clBlack;
   }
 
   auto declarations(){ return subCells.map!(a => cast(SyntaxDeclaration)a); }
@@ -203,7 +270,7 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
         if(h1 && !h2) markLine(clYellow);
         else if(h2 && !h1) markLine(clLime  );
 
-        line2(ArrowStyle.arrow, link.from.absOutputPos, link.to.title.absInputPos);
+        line2(ArrowStyle.arrow, link.from.absOutputPos, link.to.titleLabel.absInputPos);
       }
 
       color = clBlue;
@@ -226,30 +293,46 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
 
 class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ////////////////////////////////////////////
 
-  SyntaxGraph syntaxGraph;
+  SyntaxGraph[] graphs;
 
   override void onCreate(){
   }
 
-  void updateSyntaxGraph(){
-    if(!syntaxGraph){
-      syntaxGraph = new SyntaxGraph(File(appPath, `Dlang grammar.txt`).readText(true));
+  void updateGraphs(){
+
+    // load graphs
+    if(graphs.empty){
+      auto text = File(appPath, `Dlang grammar official.txt`).readText;
+
+      //patch some bugs
+      void patch(string old, string new_){
+        enforce(text.indexOf(old)>=0, "Unable to do syntax patch "~old.quoted~" -> "~new_.quoted);
+        text = text.replace(old, new_);
+      }
+
+      patch("\r\nForeachTypeAttributes\r\n", "\r\nForeachTypeAttributes:\r\n"); //forgot :
+      patch("\r\nParamClose\r\n", "\r\nParamClose:\r\n");                       //forgot :
+
+      graphs = parseGrammar_official(text);
     }
 
     with(im) Panel({
       flags.targetSurface = 0; //it's on the zoomable surface
       bkColor = clBlack; margin = "0"; border = "none"; padding = "0";
 
-      actContainer.append(syntaxGraph);
-      syntaxGraph.update(view);
+      foreach(g; graphs){
+        actContainer.append(g);
+        g.update(view);
+      }
     });
   }
 
   override void onUpdate(){
-    invalidate; //opt
+    updateGraphs;
 
-    //view.navigate(!im.wantKeys, !im.wantMouse);
-    view.navigate(1, 1);
+    view.navigate(!im.wantKeys, !im.wantMouse);
+
+    invalidate; //opt
 
     static actMode = 1;
 
@@ -257,13 +340,30 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
       width = 300;
       vScroll;
 
-//      ListBox(syntaxGraph.)
-      Row({
-        Btn("Hello!");
-      });
-    });
+      // WildCard filter
+      static filterStr = "";
+      Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
 
-    updateSyntaxGraph;
+      //filtered data source
+      auto table = graphs[0].declarations.filter!(a => a.title.isWild(filterStr~"*"));
+
+      //scroller state
+      static topIndex = 0;
+      const pageSize = 10;
+
+      //scrolled visible data view
+      auto view = table.take(topIndex+pageSize).tail(pageSize).array;
+
+      //focused item
+      static SyntaxDeclaration actSyntaxDeclaration;
+      Row({
+        ListBox(actSyntaxDeclaration, view, (in SyntaxDeclaration sd){ Text(sd.title); }, { width = 270; });
+        Spacer;
+        Slider(topIndex, range(max(0, table.walkLength.to!int-pageSize), 0), "width=1x height=12x");
+      });
+
+
+    });
 
   }
 
