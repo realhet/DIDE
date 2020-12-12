@@ -8,6 +8,8 @@
 import het, het.ui, het.tokenizer, het.keywords, het.stream;
 
 
+// ScrollListBox ///////////////////////////////////////////////
+
 static void ScrollListBox(T, U, string file=__FILE__ , int line=__LINE__)(ref T focusedItem, U items, void delegate(in T) cellFun, int pageSize, ref int topIndex)
 if(isInputRange!U && is(ElementType!U == T))
 {with(im){
@@ -19,7 +21,9 @@ if(isInputRange!U && is(ElementType!U == T))
   });
 }}
 
-class SelectionManager(T){ //T should have selected and hovered properties
+
+class SelectionManager(T){ // SelectionManager ///////////////////////////////////////////////
+  //T should have selected and hovered properties
   vec2 mouseLast;
   T hoveredItem;
 
@@ -125,11 +129,11 @@ bool isSyntaxLabel(in Token t){
 }
 
 class SyntaxLabel : Row { // SyntaxLabel /////////////////////////////
-  SyntaxDeclaration parent;
-  bool isLink; // a non reference is the caption of the declaration
+  SyntaxDefinition parent;
+  bool isLink; // a non reference is the caption of the definition
   string name;
 
-  this(SyntaxDeclaration parent, bool isLink, string text, in TextStyle ts){
+  this(SyntaxDefinition parent, bool isLink, string text, in TextStyle ts){
     this.name = text;
     this.parent = parent;
     this.isLink = isLink;
@@ -142,7 +146,7 @@ class SyntaxLabel : Row { // SyntaxLabel /////////////////////////////
   auto absInputPos () const{ return absOuterBounds.leftCenter ; }
 
   auto referencedLabel(){
-    if(auto a = name in parent.parent.declarationByName){
+    if(auto a = name in parent.parent.definitionByName){
       return *a;
     }else{
 //      ERR(name);
@@ -152,19 +156,21 @@ class SyntaxLabel : Row { // SyntaxLabel /////////////////////////////
 }
 
 
-class SyntaxDeclaration : Row { // SyntaxDeclaration /////////////////////////////
+class SyntaxDefinition : Row { // SyntaxDefinition /////////////////////////////
   mixin CachedMeasuring;
   mixin CachedDrawing;
 
-  string group;
+  string groupName_original;
+  string groupName_override;
+  string groupName() const { return groupName_override.length ? groupName_override : groupName_original; }
 
   SyntaxGraph parent;
   SyntaxLabel nameLabel;
   string name() const { return nameLabel.name; }
 
-  string fullName() const { return group ~ "/" ~ name; }
+  string fullName() const { return groupName ~ "/" ~ name; }
 
-  bool isHovered() { return this is parent.hoveredDeclaration; }
+  bool isHovered() { return this is parent.hoveredDefinition; }
   bool isSelected, oldSelected;
 
   this(SyntaxGraph parent, Token[] tokens, SourceCode src){
@@ -195,8 +201,8 @@ class SyntaxDeclaration : Row { // SyntaxDeclaration ///////////////////////////
         append(l);
         if(!isLink){
           nameLabel = l;
-          if(t.source in parent.declarationByName) WARN(t.source, "already exists");
-          parent.declarationByName[t.source] = this;
+          if(t.source in parent.definitionByName) ERR("Definition already exists:", t.source);
+          parent.definitionByName[t.source] = this;
         }
       }else{
         ts.applySyntax(src.syntax[t.pos]);
@@ -236,28 +242,40 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
       text = fun(text, old, new_);
     }
 
+    void patch_removeDuplicate(string head, string contents, string remaining){
+      patch(head~contents, remaining);
+      enforce(text.canFind(head), "patch_removeDuplicate failed: "~quoted(head));
+    }
+
     patch("\r\nForeachTypeAttributes\r\n", "\r\nForeachTypeAttributes:\r\n"); //forgot :
     patch("\r\nParamClose\r\n", "\r\nParamClose:\r\n");                       //forgot :
 
-    //there are 2 declarations of FunctionLiteralBody. The first one is seems outdated.
-    patch("\r\nFunctionLiteralBody:\r\n    BlockStatement\r\n    FunctionContractsopt BodyStatement\r\n", "\r\n");
-    enforce(text.indexOf("\r\nFunctionLiteralBody:\r\n")>=0, "FunctionLiteralBody patch failed.");
+    //there are 2 definitions of FunctionLiteralBody. The first one is seems outdated.
+    patch_removeDuplicate("\r\nFunctionLiteralBody:\r\n", "    BlockStatement\r\n    FunctionContractsopt BodyStatement\r\n", "\r\n");
 
     // this part is redundant, also it has bad indentation
     patch(["AsmStatement:", "    asm FunctionAttributesopt { AsmInstructionListopt }", "",
           "    AsmInstructionList:", "        AsmInstruction ;", "        AsmInstruction ; AsmInstructionList"].join("\r\n"), "");
 
-    //Application Binary Interface patches
-    //Type -> Type_
-    //Parameter -> Parameter_
-    //Parameters -> Parameters_
+    // this garbage is at the end of the Classes section
+    patch(["class Identifier : SuperClass Interfaces AggregateBody", "// ...", "new AllocatorArguments Identifier ConstructorArgs"].join("\r\n"), "");
 
-    auto abiPos = text.indexOf("Application Binary Interface\r\n");
-    enforce(abiPos>=0, "Cant fint `Application Binary Interfac` part.");
-    //text = text.replaceWords(
+    if(1){ //Application Binary Interface patches
+      auto abiPos = text.indexOf("Application Binary Interface\r\n");
+      enforce(abiPos>=0, "Cant fint `Application Binary Interfac` part.");
+
+      auto temp = text[abiPos..$];
+      foreach(s; ["Type", "Parameter", "Parameters"]){ //these are duplicated identifiers. Must rename them to be placed on the same graph.
+        auto to = s~"_";
+        temp = temp.replaceWords(s, to);
+        enforce(temp.canFind(to), "ABI patch failed: "~quoted(s));
+      }
+
+      text = text[0..abiPos] ~ temp;
+    }
   }
 
-  void appendDefinition_official(string def, string group){
+  void appendDefinition_official(string def, string groupName){
     //print("IMPORTING", def);
 
     const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
@@ -265,8 +283,8 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
     def = def.replace("opt", "?");
 
     auto src = new SourceCode(def);
-    auto a = new SyntaxDeclaration(this, src.tokens, src);
-    a.group = group;
+    auto a = new SyntaxDefinition(this, src.tokens, src);
+    a.groupName_original = groupName;
     a.outerPos = nextPos;
     append(a);
   }
@@ -275,16 +293,18 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
     // text is copied from glang.org/grammar.
     // Sections are marked with an identifier on the start of line:                   |Modules
     // Definitions are starting with an identifier on the start of line and a colon:  |Module:
-    // Rules are placed after more than 1 spaces:                                     |   ModuleDeclaration DeclDefs
+    // Rules are placed after more than 1 spaces:                                     |   ModuleDefinition DeclDefs
     // empty lines are ignored
 
     patch_official(text);
 
-    static bool isSection   (string s){ return s.isIdentifier; }
+    static bool isSection   (string s){ return isWordChar(s[0]) && s.map!(ch => isWordChar(ch) || ch==' ').all; }
     static bool isDefinition(string s){ return s.endsWith(':') && s[0..$-1].isIdentifier; }
 
     string actSection;
     string[] actDefinition;
+
+    enum logDefinitions = false;
 
     void flush(){
       if(actDefinition.length){
@@ -292,7 +312,7 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
         enforce(actDefinition.length>=2, "Invalid definition. Must be at least 2 lines");
 
         auto definitionStr = actDefinition.join('\n');
-        //print(actSection, "/", definitionStr);
+        if(logDefinitions) print(actSection, " / ", actDefinition[0]);
         appendDefinition_official(definitionStr, actSection);
 
         actDefinition = [];
@@ -313,33 +333,33 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
   }
 
 
-  auto declarations(){ return subCells.map!(a => cast(SyntaxDeclaration)a); }
+  auto definitions(){ return subCells.map!(a => cast(SyntaxDefinition)a); }
 
-  SyntaxDeclaration[string] declarationByName;
+  SyntaxDefinition[string] definitionByName;
 
-  struct Link{ SyntaxLabel from; SyntaxDeclaration to; }
+  struct Link{ SyntaxLabel from; SyntaxDefinition to; }
   Link[] _links;
 
   auto links(){
     if(_links.empty)
-      foreach(d; declarations)
+      foreach(d; definitions)
         foreach(l; d.labels)
           if(l.isLink) if(auto rl = l.referencedLabel)
             _links ~= Link(l, rl);
     return _links;
   }
 
-  SelectionManager!SyntaxDeclaration selection;
+  SelectionManager!SyntaxDefinition selection;
 
-  auto selectedDeclarations(){ return declarations.filter!(a => a.isSelected); }
-  auto hoveredDeclaration  (){ return selection.hoveredItem; }
+  auto selectedDefinitions(){ return definitions.filter!(a => a.isSelected); }
+  auto hoveredDefinition  (){ return selection.hoveredItem; }
 
   void update(View2D view){
     viewScale = view.scale;
 
     if(!selection) selection = new typeof(selection);
 
-    selection.update(!im.wantMouse, view, declarations.array);
+    selection.update(!im.wantMouse, view, definitions.array);
   }
 
   override void draw(Drawing dr){
@@ -368,7 +388,7 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
 
       //draw arrows
       alpha = 0.5;
-      foreach(link; links) if(link.from.parent.group == link.to.group){
+      foreach(link; links) if(link.from.parent.groupName == link.to.groupName){
         const h1 = link.from.parent.isHovered, h2 = link.to.isHovered;
 
         color  = h1 && !h2 ? clYellow
@@ -380,8 +400,8 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
       }
       alpha = 1;
 
-      foreach(decl; declarations) if(decl.isSelected) fillRect2(decl.outerBounds, clAccent, 0.25);
-      foreach(decl; declarations) if(decl.isHovered ) fillRect2(decl.outerBounds, clWhite , 0.2);
+      foreach(decl; definitions) if(decl.isSelected) fillRect2(decl.outerBounds, clAccent, 0.25);
+      foreach(decl; definitions) if(decl.isHovered ) fillRect2(decl.outerBounds, clWhite , 0.2);
 
       if(auto bnd = selection.selectionBounds){
         dbounds2 db;
@@ -391,8 +411,9 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
         drawRect(bnd);
       }
 
-      foreach(grp; declarations.array.sort!((a, b) => a.group < b.group).groupBy){
-        auto bnd = bounds2(grp.map!(a => a.outerBounds).array);
+      foreach(grp; definitions.array.sort!((a, b) => a.groupName < b.groupName).groupBy){
+        bounds2 bnd;
+        foreach(a; grp.map!(a => a.outerBounds)) bnd |= a;
 
         color = clSilver;
         lineWidth = -1;
@@ -412,34 +433,31 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
   override void onCreate(){
   }
 
-  auto positionFile(){ return File(appPath, "DLang grammar positions.txt"); }
-  auto groupFile   (){ return File(appPath, "DLang grammar groups.txt"); }
+  auto extraFile   (){ return File(appPath, "DLang grammar extra data.txt"); }
+
+  struct ExtraData{ //todo: exportFields, importFields  between aggregates
+    vec2 outerPos;
+    string groupName_override;
+  }
 
   void loadGraph(){
     if(graph) return;
 
     graph = new SyntaxGraph(File(appPath, `Dlang grammar official.txt`));
 
-    { //load associated positions
-      vec2[string] tmp;
-      tmp.fromJson(positionFile.readText(false));
-      foreach(name, pos; tmp)
-        if(auto a = name in graph.declarationByName)
-          (*a).outerPos = pos;
-    }
-
-    { //load associated groupNames
-      string[string] tmp;
-      tmp.fromJson(groupFile.readText(false));
-      foreach(name, group; tmp)
-        if(auto a = name in graph.declarationByName)
-          (*a).group =group;
+    ExtraData[string] tmp;
+    tmp.fromJson(extraFile.readText(false));
+    foreach(name, data; tmp){
+      if(auto a = name in graph.definitionByName){
+        static foreach(field; FieldNameTuple!(typeof(data))){
+          mixin("(*a).$ = data.$;".replace("$", field));
+        }
+      }
     }
   }
 
   void saveExtraData(){
-    graph.declarations.map!(d => tuple(d.name, d.outerPos)).assocArray.toJson.saveTo(positionFile);
-    graph.declarations.map!(d => tuple(d.name, d.group   )).assocArray.toJson.saveTo(groupFile   );
+    graph.definitions.map!(d => tuple(d.name, ExtraData(d.outerPos, d.groupName_override))).assocArray.toJson.saveTo(extraFile);
   }
 
   void updateGraphs(){
@@ -464,43 +482,48 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
       vScroll;
 
       // WildCard filter
+      static hideUI = false;
       static filterStr = "";
-      Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
+      Row({ ChkBox(hideUI, "Hide UI "); Text("Filter "); Edit(filterStr, { flex = 1; }); });
 
-      //filtered data source
-      auto filteredDeclarations = graph.declarations.filter!(a => a.name.isWild(filterStr~"*"));
+      if(!hideUI){
 
-      //scroller state
-      static SyntaxDeclaration actSyntaxDeclaration; //state
-      static topIndex = 0; //state
-      const pageSize = 10;
+        //filtered data source
+        auto filteredDefinitions = graph.definitions.filter!(a => a.name.isWild(filterStr~"*"));
 
-      ScrollListBox!SyntaxDeclaration(actSyntaxDeclaration, filteredDeclarations, (in SyntaxDeclaration sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
+        //scroller state
+        static SyntaxDefinition actSyntaxDefinition; //state
+        static topIndex = 0; //state
+        const pageSize = 10;
 
-      Spacer;
-      Row({
-        auto selected = graph.selectedDeclarations.array;
-        Row({ Text("Selected items: "), Static(selected.length), Text("  Total: "), Static(graph.declarations.length); });
-
-        const selectedGroupNames = selected.map!(a => a.group).array.sort.uniq.array;
-        static string editedGroupName;
-        Row({
-          Text("Selected groups: ");
-          foreach(i, name; selectedGroupNames)
-            if(Btn(name, id(cast(int)i))) editedGroupName = name;
-        });
+        ScrollListBox!SyntaxDefinition(actSyntaxDefinition, filteredDefinitions, (in SyntaxDefinition sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
 
         Spacer;
         Row({
-          Text("Group name os felected items: \n");
-          Edit(editedGroupName, { width = 200; });
-          if(Btn("Set", enable(selected.length>0))) foreach(a; selected) a.group = editedGroupName;
+          auto selected = graph.selectedDefinitions.array;
+          Row({ Text("Selected items: "), Static(selected.length), Text("  Total: "), Static(graph.definitions.length); });
+
+          const selectedGroupNames = selected.map!(a => a.groupName).array.sort.uniq.array;
+          static string editedGroupName;
+          Row({
+            Text("Selected groups: ");
+            foreach(i, name; selectedGroupNames)
+              if(Btn(name, id(cast(int)i))) editedGroupName = name;
+          });
+
+          Spacer;
+          Row({
+            Text("Group name os felected items: \n");
+            Edit(editedGroupName, { width = 200; });
+            if(Btn("Set", enable(selected.length>0))) foreach(a; selected) a.groupName_override = editedGroupName;
+          });
+
         });
 
-      });
+        Spacer;
+        if(Btn("test")){
+        }
 
-      Spacer;
-      if(Btn("test")){
       }
 
     });
@@ -519,7 +542,3 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
     saveExtraData;
   }
 }
-
-
-
-

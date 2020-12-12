@@ -5,6 +5,8 @@
 !.gitignore
 !README.md
 !*.d
+!Dlang grammar official.txt
+!DLang grammar extra data.txt
 
 #included subdirectories
 #!Directory/
