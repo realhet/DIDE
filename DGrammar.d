@@ -2,22 +2,117 @@
 //@import c:\d\libs
 //@ldc
 //@compile -m64 -mcpu=athlon64-sse3 -mattr=+ssse3
-//@release
-///@debug
+///@release
+//@debug
 
 import het, het.ui, het.tokenizer, het.keywords, het.stream;
 
+struct SearchRec{
+  dstring searchText;
+  vec2 absInnerPos;
+  Cell[] cellPath;
+
+  struct Match{
+    Cell cell;
+    vec2 absInnerPos;
+    int startIdx, len;
+
+    auto extractBounds(){
+      return cell.subCells[startIdx..startIdx+len].map!(c => c.outerBounds + absInnerPos).array; //todo: combineBounds
+    }
+  }
+  Match[] matches;
+  int maxMatches = 9999;
+
+  bool canStop() { return matches.length >= maxMatches; }
+}
+
+bool cntrSearchImpl(Container thisC, ref SearchRec searchRec){  //returns: "exit from recursion"
+  //recursive entry/leave
+  searchRec.cellPath ~= thisC;
+  searchRec.absInnerPos += thisC.innerPos;
+
+  scope(exit){
+    searchRec.absInnerPos -= thisC.innerPos;
+    searchRec.cellPath.popBack;
+//print("leave");
+  }
+
+//print("enter");
+
+  Cell[] cells = thisC.subCells;
+  size_t baseIdx;
+  foreach(isGlyph, len; cells.map!(c => cast(Glyph)c !is null).group){
+    auto act = cells[baseIdx..baseIdx+len];
+
+    if(!isGlyph){
+      foreach(c; act.map!(c => cast(Container)c).filter!"a"){
+        if(cntrSearchImpl(c, searchRec)) return true; //end recursive call
+      }
+    }else{
+      auto chars = act.map!(c => (cast(Glyph)c).ch);
+
+//print("searching in", chars.text);
+
+      size_t searchBaseIdx = 0;
+      while(1){
+        auto idx = chars.indexOf(searchRec.searchText, No.caseSensitive);
+        if(idx<0) break;
+
+        searchRec.matches ~= SearchRec.Match(thisC, searchRec.absInnerPos, cast(int)(baseIdx+searchBaseIdx+idx), cast(int)(searchRec.searchText.length));
+        if(searchRec.canStop) return true;
+
+        const skip = idx + searchRec.searchText.length;
+        chars.popFrontExactly(skip);
+        searchBaseIdx += skip;
+      }
+    }
+
+//readln;
+//print("advance", len);
+    baseIdx += len;
+  }
+
+  return false;
+}
+
+auto cntrSearch(Container thisC, string searchText, vec2 origin = vec2.init){
+  auto sr = SearchRec(searchText.to!dstring, origin);
+  cntrSearchImpl(thisC, sr);
+
+  return sr.matches;
+}
+
+
+
+// SearchBox ///////////////////////////////////////////////////
+
+bool SearchBox(string file=__FILE__ , int line=__LINE__)(ref string searchText, void delegate() fun = (){} ){ with(im){
+  bool res;
+  Row!(file, line)({
+    width = fh*12;
+    Text("Find "); Edit!(file, line)(searchText, { flex = 1; });
+    fun();
+    res = Btn(symbol("Zoom"));
+  });
+  return res;
+}}
 
 // ScrollListBox ///////////////////////////////////////////////
 
 static void ScrollListBox(T, U, string file=__FILE__ , int line=__LINE__)(ref T focusedItem, U items, void delegate(in T) cellFun, int pageSize, ref int topIndex)
 if(isInputRange!U && is(ElementType!U == T))
 {with(im){
-  auto view = items.take(topIndex+pageSize).tail(pageSize).array;
+//  auto view = items.take(topIndex+pageSize).tail(pageSize).array;
+  auto scrollMax = max(0, items.walkLength.to!int-pageSize);
+  topIndex = topIndex.clamp(0, scrollMax);
+  auto view = items.drop(topIndex).take(pageSize).array;
   Row!(file, line)({
     ListBox(focusedItem, view, cellFun);
-    Spacer;
-    Slider(topIndex, range(max(0, items.walkLength.to!int-pageSize), 0), "width=1x height=12x"/+todo: yalign = stretch+/);
+    if(1 || scrollMax){
+      Spacer;
+      Slider(topIndex, range(scrollMax, 0), "width=1x height=12x"/+todo: yalign = stretch+/);
+    }
   });
 }}
 
@@ -227,6 +322,8 @@ class SyntaxDefinition : Row { // SyntaxDefinition /////////////////////////////
 class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
   float viewScale = 1; //used for automatic screenspace linewidth
 
+  bounds2[][] searchBounds;
+
   this(){
     bkColor = clBlack;
   }
@@ -387,16 +484,29 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
       }}
 
       //draw arrows
-      alpha = 0.5;
-      foreach(link; links) if(link.from.parent.groupName == link.to.groupName){
+      alpha = 0.66;
+      foreach(link; links){
         const h1 = link.from.parent.isHovered, h2 = link.to.isHovered;
+
+        if(!h1 && !h2 && link.from.parent.groupName != link.to.groupName) continue;
 
         color  = h1 && !h2 ? clYellow
                : h2 && !h1 ? clLime
                            : clSilver;
 
         lineWidth = viewScale>1 ? 1 : -1;
-        line2(ArrowStyle.arrow, /*LineStyle.dash, */link.from.absOutputPos, link.to.nameLabel.absInputPos);
+        //line2(ArrowStyle.arrow, /*LineStyle.dash, */link.from.absOutputPos, link.to.nameLabel.absInputPos);
+
+
+        vec2 P0 = link.from.absOutputPos, P4 = link.to.nameLabel.absInputPos;
+        float a = min(50, distance(P0, P4)/3);
+        vec2 ofs = P0.x<P4.x ? vec2(a, 0) : vec2(a, -a),
+             P1 = P0 + ofs,
+             P3 = P4 + ofs*vec2(-1, 1),
+             P2 = avg(P1, P3);
+
+        bezier2(P0, P1, P2);
+        bezier2(P2, P3, P4);
       }
       alpha = 1;
 
@@ -417,8 +527,17 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
 
         color = clSilver;
         lineWidth = -1;
-        drawRect(bnd.inflated(20));
+        drawRect(bnd.inflated(30));
       }
+
+      color = clFuchsia;
+      alpha = .66f;
+      lineWidth = -3 * sqr(sin(QPS.fract*PIf*2));
+      foreach(bnd; searchBounds.join){
+        drawRect(bnd);
+      }
+
+
 
     }
     dr.subDraw(dr2);
@@ -476,6 +595,28 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
     invalidate; //opt
 
     static actMode = 1;
+    static searchText = "";
+    static searchBoxVisible = true;
+
+    with(im) Panel(PanelPosition.topRight, {
+      theme = "tool";
+      if(!searchBoxVisible){
+        if(Btn(symbol("Zoom"))) searchBoxVisible = true;
+      }else{
+        Row({
+          if(SearchBox(searchText)){
+             if(searchText.empty){
+               beep;
+             }else{
+              graph.searchBounds = cntrSearch(graph, searchText).map!(m => m.extractBounds).array;
+            }
+          }
+          if(Btn(symbol("ChromeClose"))) searchBoxVisible = false;
+          static bool a = true;
+          ChkBox(a, "__-=+*EF#Bblabla__");
+        });
+      }
+    });
 
     with(im) Panel(PanelPosition.topLeft, {
       width = 300;
@@ -489,7 +630,7 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
       if(!hideUI){
 
         //filtered data source
-        auto filteredDefinitions = graph.definitions.filter!(a => a.name.isWild(filterStr~"*"));
+        auto filteredDefinitions = graph.definitions.filter!(a => a.name.isWild(filterStr~"*")).array;
 
         //scroller state
         static SyntaxDefinition actSyntaxDefinition; //state
@@ -536,6 +677,12 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
     im.draw;
 
     drawFPS(drGUI);
+
+    if(0){
+      drGUI.translate(400, 100);
+      drGUI.debugDrawings(viewGUI);
+      drGUI.pop;
+    }
   }
 
   override void onDestroy(){

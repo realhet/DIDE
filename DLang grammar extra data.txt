@@ -12,7 +12,7 @@
     "groupName_override": ""
   },
   "CharWidth": {
-    "outerPos": [7830.4893,1925.3533],
+    "outerPos": [6158.4893,3717.3533],
     "groupName_override": "ABI MangledName"
   },
   "AliasAssignment": {
@@ -24,15 +24,15 @@
     "groupName_override": ""
   },
   "TemplateParameter": {
-    "outerPos": [5405.8569,3356.7896],
+    "outerPos": [6241.0107,1868.8035],
     "groupName_override": ""
   },
   "ArrayMemberInitializations": {
-    "outerPos": [4339.105,827.72327],
+    "outerPos": [4350.8774,785.67847],
     "groupName_override": ""
   },
   "AsmShiftExp": {
-    "outerPos": [4030.7803,4276.6011],
+    "outerPos": [4026.4141,4310.9126],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "ParameterWithAttributes": {
@@ -40,19 +40,19 @@
     "groupName_override": "UnaryExpression"
   },
   "StatementNoCaseNoDefault": {
-    "outerPos": [3407.9941,3689.8145],
+    "outerPos": [3404.3262,3829.199],
     "groupName_override": ""
   },
   "TemplateArgX": {
-    "outerPos": [7296.0708,1786.5037],
+    "outerPos": [5624.0703,3578.5037],
     "groupName_override": "ABI MangledName"
   },
   "TypeShort": {
-    "outerPos": [7222.4751,3289.6614],
+    "outerPos": [7124.644,3502.6746],
     "groupName_override": "ABI TypeX"
   },
   "ExpInitializer": {
-    "outerPos": [4119.0601,754.55017],
+    "outerPos": [4125.7876,731.00507],
     "groupName_override": ""
   },
   "FunctionContract": {
@@ -60,35 +60,35 @@
     "groupName_override": ""
   },
   "PrimaryExpression": {
-    "outerPos": [2589.479,2139.1536],
+    "outerPos": [2634.0903,2134.1965],
     "groupName_override": "UnaryExpression"
   },
   "AsmAndExp": {
-    "outerPos": [3362.3816,4284.0469],
+    "outerPos": [3342.0156,4358.3584],
     "groupName_override": ""
   },
   "Type": {
-    "outerPos": [2836.7366,908.94568],
+    "outerPos": [2830.0093,930.80902],
     "groupName_override": ""
   },
   "TemplateArgs": {
-    "outerPos": [6914.2378,1780.8962],
+    "outerPos": [5242.2383,3572.8962],
     "groupName_override": "ABI MangledName"
   },
   "TypeDelegate": {
-    "outerPos": [7222.4751,3049.6614],
+    "outerPos": [7124.644,3262.6746],
     "groupName_override": "ABI TypeX"
   },
   "TypeIdent": {
-    "outerPos": [7222.4751,2749.6614],
+    "outerPos": [7124.644,2962.6746],
     "groupName_override": "ABI TypeX"
   },
   "NoScopeStatement": {
-    "outerPos": [1672.0916,3706.3672],
+    "outerPos": [1692.8409,3707.6641],
     "groupName_override": ""
   },
   "AsmTypePrefix": {
-    "outerPos": [4982.8115,4254.3403],
+    "outerPos": [4978.4453,4288.6519],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "WithStatement": {
@@ -96,7 +96,7 @@
     "groupName_override": "Statements2"
   },
   "TypeLong": {
-    "outerPos": [7222.4751,3529.6575],
+    "outerPos": [7124.644,3742.6707],
     "groupName_override": "ABI TypeX"
   },
   "VarDeclarator": {
@@ -108,7 +108,7 @@
     "groupName_override": "UnaryExpression"
   },
   "ConstructorTemplate": {
-    "outerPos": [4022.1313,3198.3816],
+    "outerPos": [4857.2852,1710.3955],
     "groupName_override": ""
   },
   "OutContractExpression": {
@@ -120,7 +120,7 @@
     "groupName_override": ""
   },
   "TypeDouble": {
-    "outerPos": [7222.4751,3829.6577],
+    "outerPos": [7124.644,4042.6709],
     "groupName_override": "ABI TypeX"
   },
   "NewExpression": {
@@ -132,11 +132,11 @@
     "groupName_override": "UnaryExpression"
   },
   "ModuleAttributes": {
-    "outerPos": [-203.95453,225.55566],
+    "outerPos": [-202.65773,228.14935],
     "groupName_override": ""
   },
   "TemplateTypeParameterDefault": {
-    "outerPos": [6494.7183,3439.4712],
+    "outerPos": [7329.8735,1951.4851],
     "groupName_override": ""
   },
   "UserDefinedAttribute": {
@@ -152,11 +152,11 @@
     "groupName_override": ""
   },
   "NonVoidInitializer": {
-    "outerPos": [3892.4255,864.10852],
+    "outerPos": [3895.7893,917.9259],
     "groupName_override": ""
   },
   "TypeIreal": {
-    "outerPos": [7222.4751,4069.6575],
+    "outerPos": [7124.644,4282.6709],
     "groupName_override": "ABI TypeX"
   },
   "StructDeclaration": {
@@ -176,7 +176,7 @@
     "groupName_override": ""
   },
   "Parameter2": {
-    "outerPos": [7750.3726,4671.2002],
+    "outerPos": [7652.5415,4884.2139],
     "groupName_override": "ABI TypeX"
   },
   "MixinStatement": {
@@ -184,7 +184,7 @@
     "groupName_override": "Statements2"
   },
   "TypeReal": {
-    "outerPos": [7222.4751,3889.6572],
+    "outerPos": [7124.644,4102.6704],
     "groupName_override": "ABI TypeX"
   },
   "Declarators": {
@@ -200,7 +200,7 @@
     "groupName_override": ""
   },
   "TemplateID": {
-    "outerPos": [6911.4077,1690.4099],
+    "outerPos": [5239.4082,3482.4099],
     "groupName_override": "ABI MangledName"
   },
   "ConditionalExpression": {
@@ -208,7 +208,7 @@
     "groupName_override": "Expression"
   },
   "AsmEqualExp": {
-    "outerPos": [3589.627,4280.5786],
+    "outerPos": [3585.2607,4314.8901],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "NewExpressionWithArgs": {
@@ -220,7 +220,7 @@
     "groupName_override": ""
   },
   "AsmLogOrExp": {
-    "outerPos": [2516.1096,4280.5137],
+    "outerPos": [2495.7434,4354.8252],
     "groupName_override": ""
   },
   "AutoDeclaration": {
@@ -236,7 +236,7 @@
     "groupName_override": ""
   },
   "LinkageAttribute": {
-    "outerPos": [-174.5773,1082.8992],
+    "outerPos": [-181.94565,1002.2015],
     "groupName_override": ""
   },
   "KeyValuePairs": {
@@ -260,7 +260,7 @@
     "groupName_override": "Statements2"
   },
   "FunctionLiteral": {
-    "outerPos": [3058.8018,2005.9788],
+    "outerPos": [3058.8015,1999.4355],
     "groupName_override": "UnaryExpression"
   },
   "CatExpression": {
@@ -268,11 +268,11 @@
     "groupName_override": "Expression"
   },
   "AsmRelExp": {
-    "outerPos": [3809.8337,4277.4927],
+    "outerPos": [3805.4678,4311.8042],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "UnionTemplateDeclaration": {
-    "outerPos": [4019.3032,3608.2251],
+    "outerPos": [4854.457,2120.239],
     "groupName_override": ""
   },
   "VoidInitializer": {
@@ -300,11 +300,11 @@
     "groupName_override": "Expression"
   },
   "CallConvention": {
-    "outerPos": [7807.583,2879.0247],
+    "outerPos": [7705.6348,3050.9075],
     "groupName_override": "ABI TypeX"
   },
   "AnonymousEnumDeclaration": {
-    "outerPos": [6288.6733,1405.186],
+    "outerPos": [6242.1714,1391.7411],
     "groupName_override": ""
   },
   "ArrayLiteral": {
@@ -312,11 +312,11 @@
     "groupName_override": "UnaryExpression"
   },
   "TraitsExpression": {
-    "outerPos": [4076.8213,1704.2495],
+    "outerPos": [4004.2126,2163.4666],
     "groupName_override": ""
   },
   "UnaryExpression": {
-    "outerPos": [1736.2666,2592.6399],
+    "outerPos": [1744.3281,2591.0977],
     "groupName_override": "UnaryExpression"
   },
   "ReturnStatement": {
@@ -328,7 +328,7 @@
     "groupName_override": "UnaryExpression"
   },
   "AutoAssignment": {
-    "outerPos": [2953.3721,745.86133],
+    "outerPos": [2839.01,745.86133],
     "groupName_override": ""
   },
   "Postblit": {
@@ -336,7 +336,7 @@
     "groupName_override": ""
   },
   "TypeIdouble": {
-    "outerPos": [7222.4751,4009.6577],
+    "outerPos": [7124.644,4222.6709],
     "groupName_override": "ABI TypeX"
   },
   "UprExpression": {
@@ -348,27 +348,27 @@
     "groupName_override": ""
   },
   "TemplateArgument": {
-    "outerPos": [4763.5776,3764.8579],
+    "outerPos": [5598.7314,2276.8718],
     "groupName_override": ""
   },
   "Foreach": {
-    "outerPos": [433.14856,3622.8323],
+    "outerPos": [425.4375,3622.8323],
     "groupName_override": "Statements2"
   },
   "Type_": {
-    "outerPos": [5851.8472,1926.699],
+    "outerPos": [4179.8477,3718.699],
     "groupName_override": "ABI MangledName"
   },
   "EnumBody": {
-    "outerPos": [6614.1797,1209.3668],
+    "outerPos": [6567.6772,1195.9218],
     "groupName_override": ""
   },
   "TypeCdouble": {
-    "outerPos": [7222.4751,4189.6602],
+    "outerPos": [7124.644,4402.6738],
     "groupName_override": "ABI TypeX"
   },
   "Const": {
-    "outerPos": [6550.6929,1940.7419],
+    "outerPos": [4878.6934,3732.7422],
     "groupName_override": "ABI MangledName"
   },
   "ScopeGuardStatement": {
@@ -380,7 +380,7 @@
     "groupName_override": "Statements2"
   },
   "TypeFunction": {
-    "outerPos": [7223.854,2694.5872],
+    "outerPos": [7126.0229,2907.6003],
     "groupName_override": "ABI TypeX"
   },
   "RangeForeach": {
@@ -416,7 +416,7 @@
     "groupName_override": "Statements2"
   },
   "TypeArray": {
-    "outerPos": [7224.5005,2459.4836],
+    "outerPos": [7126.6694,2672.4968],
     "groupName_override": "ABI TypeX"
   },
   "IfCondition": {
@@ -440,19 +440,19 @@
     "groupName_override": "UnaryExpression"
   },
   "TypeClass": {
-    "outerPos": [7222.4751,2809.6614],
+    "outerPos": [7124.644,3022.6746],
     "groupName_override": "ABI TypeX"
   },
   "HexDigit": {
-    "outerPos": [8198.8594,1933.4333],
+    "outerPos": [6526.8594,3725.4336],
     "groupName_override": "ABI MangledName"
   },
   "TemplateThisParameter": {
-    "outerPos": [5727.1519,3410.9907],
+    "outerPos": [6562.3057,1923.0046],
     "groupName_override": ""
   },
   "Value": {
-    "outerPos": [7568.0791,1787.0037],
+    "outerPos": [5896.0791,3579.0037],
     "groupName_override": "ABI MangledName"
   },
   "OrOrExpression": {
@@ -468,7 +468,7 @@
     "groupName_override": ""
   },
   "Statement": {
-    "outerPos": [1675.1431,3892.998],
+    "outerPos": [1695.8925,3894.2949],
     "groupName_override": ""
   },
   "VariadicArgumentsAttributes": {
@@ -480,7 +480,7 @@
     "groupName_override": ""
   },
   "AsmUnaExp": {
-    "outerPos": [4805.46,4287.9302],
+    "outerPos": [4801.0938,4322.2417],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "ModuleFullyQualifiedName": {
@@ -488,15 +488,15 @@
     "groupName_override": ""
   },
   "TypeVoid": {
-    "outerPos": [7222.4751,3109.6614],
+    "outerPos": [7124.644,3322.6746],
     "groupName_override": "ABI TypeX"
   },
   "FuncAttrScope": {
-    "outerPos": [8231.0371,3030.4368],
+    "outerPos": [8129.0889,3202.3196],
     "groupName_override": "ABI TypeX"
   },
   "AsmExp": {
-    "outerPos": [2268.1272,4283.0762],
+    "outerPos": [2247.761,4357.3877],
     "groupName_override": ""
   },
   "MissingFunctionBody": {
@@ -508,11 +508,11 @@
     "groupName_override": ""
   },
   "AliasAssignments": {
-    "outerPos": [1789.0977,996.60449],
+    "outerPos": [1791.0977,992.60449],
     "groupName_override": ""
   },
   "IntegerExpression": {
-    "outerPos": [1989.6232,4147.9932],
+    "outerPos": [1969.2568,4222.3047],
     "groupName_override": ""
   },
   "AltDeclaratorIdentifier": {
@@ -520,11 +520,11 @@
     "groupName_override": ""
   },
   "AsmPrimaryExp": {
-    "outerPos": [4985.4111,4427.9263],
+    "outerPos": [4981.0449,4462.2378],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "ScopeStatement": {
-    "outerPos": [1672.4651,3806.0364],
+    "outerPos": [1693.2145,3807.3333],
     "groupName_override": ""
   },
   "Interface": {
@@ -536,15 +536,15 @@
     "groupName_override": "UnaryExpression"
   },
   "AnonymousEnumMember": {
-    "outerPos": [7008.8911,1457.27],
+    "outerPos": [6962.3882,1443.8251],
     "groupName_override": ""
   },
   "TypeVector": {
-    "outerPos": [7222.5767,4669.4971],
+    "outerPos": [7124.7456,4882.5107],
     "groupName_override": "ABI TypeX"
   },
   "TraitsKeyword": {
-    "outerPos": [4390.8887,1794.7837],
+    "outerPos": [4324.8257,2249.6384],
     "groupName_override": ""
   },
   "StaticForeachStatement": {
@@ -556,7 +556,7 @@
     "groupName_override": ""
   },
   "AsmMulExp": {
-    "outerPos": [4450.7705,4274.7368],
+    "outerPos": [4446.4043,4309.0483],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "StructInvariant": {
@@ -564,11 +564,11 @@
     "groupName_override": ""
   },
   "TraitsArgument": {
-    "outerPos": [4643.6528,1737.1235],
+    "outerPos": [4577.5894,2191.9785],
     "groupName_override": ""
   },
   "AsmOrExp": {
-    "outerPos": [2987.5671,4284.957],
+    "outerPos": [2967.2012,4359.2686],
     "groupName_override": ""
   },
   "Import": {
@@ -576,7 +576,7 @@
     "groupName_override": ""
   },
   "AlignAttribute": {
-    "outerPos": [-173.91464,1179.6619],
+    "outerPos": [-180.87033,1098.0212],
     "groupName_override": ""
   },
   "StaticIfCondition": {
@@ -584,11 +584,11 @@
     "groupName_override": ""
   },
   "EnumMemberAttribute": {
-    "outerPos": [7489.5488,1434.6392],
+    "outerPos": [7443.0464,1421.1942],
     "groupName_override": ""
   },
   "FuncAttrProperty": {
-    "outerPos": [8233.2168,2843.8938],
+    "outerPos": [8131.2686,3015.7766],
     "groupName_override": "ABI TypeX"
   },
   "ContinueStatement": {
@@ -628,11 +628,11 @@
     "groupName_override": ""
   },
   "TemplateAliasParameter": {
-    "outerPos": [5719.3589,3635.3794],
+    "outerPos": [6554.5127,2147.3933],
     "groupName_override": ""
   },
   "Initializer": {
-    "outerPos": [3734.9307,782.85413],
+    "outerPos": [3676.2424,786.52216],
     "groupName_override": ""
   },
   "OutStatement": {
@@ -640,7 +640,7 @@
     "groupName_override": ""
   },
   "SymbolTail": {
-    "outerPos": [5097.5933,3661.3872],
+    "outerPos": [5933.5698,2231.8254],
     "groupName_override": ""
   },
   "RelExpression": {
@@ -648,7 +648,7 @@
     "groupName_override": "Expression"
   },
   "FuncAttrTrusted": {
-    "outerPos": [8231.0371,3092.6184],
+    "outerPos": [8129.0889,3264.5012],
     "groupName_override": "ABI TypeX"
   },
   "IsExpression": {
@@ -656,11 +656,11 @@
     "groupName_override": "UnaryExpression"
   },
   "AsmInstruction": {
-    "outerPos": [1725.5822,4116.2129],
+    "outerPos": [1705.2158,4190.5244],
     "groupName_override": ""
   },
   "VisibilityAttribute": {
-    "outerPos": [-175.85156,1334.8728],
+    "outerPos": [-179.74211,1247.9845],
     "groupName_override": ""
   },
   "StatementListNoCaseNoDefault": {
@@ -676,7 +676,7 @@
     "groupName_override": ""
   },
   "TypeWchar": {
-    "outerPos": [7222.4751,4429.6602],
+    "outerPos": [7124.644,4642.6738],
     "groupName_override": "ABI TypeX"
   },
   "XorExpression": {
@@ -684,15 +684,15 @@
     "groupName_override": "Expression"
   },
   "LName": {
-    "outerPos": [6937.48,2105.9158],
+    "outerPos": [5265.4805,3897.916],
     "groupName_override": "ABI MangledName"
   },
   "TemplateSingleArgument": {
-    "outerPos": [4459.5825,3875.063],
+    "outerPos": [5294.7363,2387.0769],
     "groupName_override": ""
   },
   "TypeEnum": {
-    "outerPos": [7222.4751,2929.6614],
+    "outerPos": [7124.644,3142.6746],
     "groupName_override": "ABI TypeX"
   },
   "CastExpression": {
@@ -708,11 +708,11 @@
     "groupName_override": ""
   },
   "Exponent": {
-    "outerPos": [8039.3853,2001.406],
+    "outerPos": [6367.3848,3793.4063],
     "groupName_override": "ABI MangledName"
   },
   "SpecialKeyword": {
-    "outerPos": [3051.8735,2796.1484],
+    "outerPos": [3054.7002,2799.2114],
     "groupName_override": "UnaryExpression"
   },
   "AltFuncDeclaratorSuffix": {
@@ -720,7 +720,7 @@
     "groupName_override": ""
   },
   "ArrayInitializer": {
-    "outerPos": [4117.7632,807.04944],
+    "outerPos": [4124.4902,788.54974],
     "groupName_override": ""
   },
   "ParameterWithMemberAttributes": {
@@ -728,23 +728,23 @@
     "groupName_override": "UnaryExpression"
   },
   "TemplateValueParameterSpecialization": {
-    "outerPos": [6335.103,3500.3657],
+    "outerPos": [7170.2573,2012.3796],
     "groupName_override": ""
   },
   "MixinQualifiedIdentifier": {
-    "outerPos": [6464.4624,4001.8738],
+    "outerPos": [7286.7314,2511.9795],
     "groupName_override": ""
   },
   "EnumDeclaration": {
-    "outerPos": [5996.6489,1210.8317],
+    "outerPos": [5950.146,1197.3866],
     "groupName_override": ""
   },
   "TypeByte": {
-    "outerPos": [7222.4751,3169.6614],
+    "outerPos": [7124.644,3382.6746],
     "groupName_override": "ABI TypeX"
   },
   "EnumMemberAttributes": {
-    "outerPos": [7348.1934,1348.7488],
+    "outerPos": [7301.6909,1335.3038],
     "groupName_override": ""
   },
   "AnonStructDeclaration": {
@@ -764,7 +764,7 @@
     "groupName_override": ""
   },
   "FuncAttrs": {
-    "outerPos": [7807.583,2793.6594],
+    "outerPos": [7705.6348,2965.5422],
     "groupName_override": "ABI TypeX"
   },
   "GotoStatement": {
@@ -780,11 +780,11 @@
     "groupName_override": ""
   },
   "TypeStruct": {
-    "outerPos": [7222.4751,2869.6614],
+    "outerPos": [7124.644,3082.6746],
     "groupName_override": "ABI TypeX"
   },
   "TypeSpecialization": {
-    "outerPos": [3511.6421,2654.7114],
+    "outerPos": [3502.9946,2571.7361],
     "groupName_override": "UnaryExpression"
   },
   "AndAndExpression": {
@@ -792,7 +792,7 @@
     "groupName_override": "Expression"
   },
   "TypeCfloat": {
-    "outerPos": [7222.4751,4129.6582],
+    "outerPos": [7124.644,4342.6719],
     "groupName_override": "ABI TypeX"
   },
   "IdentityExpression": {
@@ -800,11 +800,11 @@
     "groupName_override": "Expression"
   },
   "TemplateArg": {
-    "outerPos": [7134.8525,1783.7009],
+    "outerPos": [5462.8525,3575.7009],
     "groupName_override": "ABI MangledName"
   },
   "EnumMembers": {
-    "outerPos": [6820.3794,1231.6012],
+    "outerPos": [6773.8765,1218.1561],
     "groupName_override": ""
   },
   "LabeledStatement": {
@@ -812,7 +812,7 @@
     "groupName_override": "Statements2"
   },
   "NamedCharacterEntity": {
-    "outerPos": [724.50177,1014.3721],
+    "outerPos": [410.54633,1008.7152],
     "groupName_override": ""
   },
   "ModuleAliasIdentifier": {
@@ -832,27 +832,27 @@
     "groupName_override": ""
   },
   "Register64": {
-    "outerPos": [5174.0186,4586.2827],
+    "outerPos": [5169.6523,4620.5942],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "ForeachAggregate": {
-    "outerPos": [671.76733,3552.7827],
+    "outerPos": [697.33527,3554.5664],
     "groupName_override": "Statements2"
   },
   "TemplateInstance": {
-    "outerPos": [4023.6997,3696.9536],
+    "outerPos": [4857.2075,2239.4138],
     "groupName_override": ""
   },
   "TemplateParameters": {
-    "outerPos": [4853.1851,3357.2661],
+    "outerPos": [5688.3389,1869.28],
     "groupName_override": ""
   },
   "Digit": {
-    "outerPos": [8307.0127,2143.8083],
+    "outerPos": [6635.0127,3935.8086],
     "groupName_override": "ABI MangledName"
   },
   "AsmLogAndExp": {
-    "outerPos": [2755.6355,4284.9805],
+    "outerPos": [2735.2693,4359.292],
     "groupName_override": ""
   },
   "AllocatorArguments": {
@@ -860,11 +860,11 @@
     "groupName_override": "UnaryExpression"
   },
   "TypeInt": {
-    "outerPos": [7222.4751,3409.6614],
+    "outerPos": [7124.644,3622.6746],
     "groupName_override": "ABI TypeX"
   },
   "TypeIfloat": {
-    "outerPos": [7222.4751,3949.6592],
+    "outerPos": [7124.644,4162.6729],
     "groupName_override": "ABI TypeX"
   },
   "SharedStaticConstructor": {
@@ -888,11 +888,11 @@
     "groupName_override": ""
   },
   "TemplateAliasParameterDefault": {
-    "outerPos": [6372.7827,3656.6743],
+    "outerPos": [7207.937,2168.6882],
     "groupName_override": ""
   },
   "FuncAttrSafe": {
-    "outerPos": [8231.6641,3154.845],
+    "outerPos": [8129.7158,3326.7278],
     "groupName_override": "ABI TypeX"
   },
   "UnionDeclaration": {
@@ -908,7 +908,7 @@
     "groupName_override": ""
   },
   "TypeCreal": {
-    "outerPos": [7222.4751,4249.6592],
+    "outerPos": [7124.644,4462.6729],
     "groupName_override": "ABI TypeX"
   },
   "InOutContractExpression": {
@@ -920,7 +920,7 @@
     "groupName_override": "UnaryExpression"
   },
   "Operands": {
-    "outerPos": [1987.9415,4245.9443],
+    "outerPos": [1967.5752,4320.2559],
     "groupName_override": ""
   },
   "SynchronizedStatement": {
@@ -932,11 +932,11 @@
     "groupName_override": "Expression"
   },
   "IdentifierBackRef": {
-    "outerPos": [6928.3354,2273.7227],
+    "outerPos": [5256.3359,4065.7227],
     "groupName_override": "ABI MangledName"
   },
   "Namechars": {
-    "outerPos": [7252.7349,2207.406],
+    "outerPos": [5580.7344,3999.4063],
     "groupName_override": "ABI MangledName"
   },
   "CmpExpression": {
@@ -944,11 +944,11 @@
     "groupName_override": "Expression"
   },
   "TypeUint": {
-    "outerPos": [7222.4751,3469.6575],
+    "outerPos": [7124.644,3682.6707],
     "groupName_override": "ABI TypeX"
   },
   "TypeCent": {
-    "outerPos": [7222.4751,3649.6575],
+    "outerPos": [7124.644,3862.6707],
     "groupName_override": "ABI TypeX"
   },
   "AndExpression": {
@@ -956,7 +956,7 @@
     "groupName_override": "Expression"
   },
   "FunctionContracts": {
-    "outerPos": [7448.3418,167.26843],
+    "outerPos": [7451.6138,179.04358],
     "groupName_override": ""
   },
   "StaticConstructor": {
@@ -968,7 +968,7 @@
     "groupName_override": ""
   },
   "NumberBackRef": {
-    "outerPos": [7091.7183,2308.8813],
+    "outerPos": [5419.7188,4100.8813],
     "groupName_override": "ABI MangledName"
   },
   "DeclaratorInitializer": {
@@ -980,19 +980,19 @@
     "groupName_override": "Statements2"
   },
   "FinallyStatement": {
-    "outerPos": [286.62711,4592.9219],
+    "outerPos": [296.71786,4594.6035],
     "groupName_override": "Statements2"
   },
   "TemplateDeclaration": {
-    "outerPos": [4021.8345,3128.9207],
+    "outerPos": [4856.9883,1640.9346],
     "groupName_override": ""
   },
   "TemplateTypeParameterSpecialization": {
-    "outerPos": [6490.7964,3388.9976],
+    "outerPos": [7325.9521,1901.0115],
     "groupName_override": ""
   },
   "TypeX": {
-    "outerPos": [6838.4063,3215.1018],
+    "outerPos": [6740.5752,3428.115],
     "groupName_override": "ABI TypeX"
   },
   "FunctionBody": {
@@ -1004,7 +1004,7 @@
     "groupName_override": ""
   },
   "Shared": {
-    "outerPos": [6550.6929,2032.7419],
+    "outerPos": [4878.6934,3824.7422],
     "groupName_override": "ABI MangledName"
   },
   "DeclDef": {
@@ -1012,11 +1012,11 @@
     "groupName_override": ""
   },
   "FuncAttrNogc": {
-    "outerPos": [8233.2168,2909.2825],
+    "outerPos": [8131.2686,3081.1653],
     "groupName_override": "ABI TypeX"
   },
   "FuncAttrNothrow": {
-    "outerPos": [8233.2188,2727.1868],
+    "outerPos": [8131.2705,2899.0696],
     "groupName_override": "ABI TypeX"
   },
   "ImportDeclaration": {
@@ -1028,23 +1028,23 @@
     "groupName_override": ""
   },
   "TypeUbyte": {
-    "outerPos": [7222.4751,3229.6614],
+    "outerPos": [7124.644,3442.6746],
     "groupName_override": "ABI TypeX"
   },
   "AnonymousEnumMembers": {
-    "outerPos": [6629.7427,1435.2642],
+    "outerPos": [6583.2397,1421.8192],
     "groupName_override": ""
   },
   "AltDeclaratorSuffixes": {
-    "outerPos": [3640.6731,632.67371],
+    "outerPos": [3654.1274,634.35553],
     "groupName_override": ""
   },
   "HexDigits": {
-    "outerPos": [8041.3696,1909.5095],
+    "outerPos": [6369.3691,3701.5095],
     "groupName_override": "ABI MangledName"
   },
   "Number": {
-    "outerPos": [7895.7524,2125.7361],
+    "outerPos": [6223.752,3917.7363],
     "groupName_override": "ABI MangledName"
   },
   "VersionSpecification": {
@@ -1052,7 +1052,7 @@
     "groupName_override": ""
   },
   "NoScopeNonEmptyStatement": {
-    "outerPos": [1670.438,3628.1719],
+    "outerPos": [1691.1874,3629.4688],
     "groupName_override": ""
   },
   "MemberFunctionAttributes": {
@@ -1064,11 +1064,11 @@
     "groupName_override": "Statements2"
   },
   "HexFloat": {
-    "outerPos": [7828.6592,1787.7712],
+    "outerPos": [6156.6592,3579.7712],
     "groupName_override": "ABI MangledName"
   },
   "ParamClose": {
-    "outerPos": [7803.2217,2700.1633],
+    "outerPos": [7703.4546,2861.1411],
     "groupName_override": "ABI TypeX"
   },
   "ImportList": {
@@ -1080,15 +1080,15 @@
     "groupName_override": "Statements2"
   },
   "TypePointer": {
-    "outerPos": [7225.1196,2636.2415],
+    "outerPos": [7127.2886,2849.2546],
     "groupName_override": "ABI TypeX"
   },
   "AutoAssignments": {
-    "outerPos": [2692.3408,730.21191],
+    "outerPos": [2574.6152,730.21191],
     "groupName_override": ""
   },
   "AggregateBody": {
-    "outerPos": [5775.4126,220.02783],
+    "outerPos": [5766.9272,220.02783],
     "groupName_override": ""
   },
   "QualifiedIdentifier": {
@@ -1096,7 +1096,7 @@
     "groupName_override": ""
   },
   "MixinTemplateName": {
-    "outerPos": [6194.7573,3963.7039],
+    "outerPos": [7029.9116,2475.7178],
     "groupName_override": ""
   },
   "FuncDeclarator": {
@@ -1104,27 +1104,27 @@
     "groupName_override": ""
   },
   "AsmBrExp": {
-    "outerPos": [4638.9609,4274.8804],
+    "outerPos": [4634.5947,4309.1919],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "Constructor": {
-    "outerPos": [4854.9678,928.71478],
+    "outerPos": [4853.7783,927.52557],
     "groupName_override": ""
   },
   "EnumMember": {
-    "outerPos": [7306.6938,1268.8981],
+    "outerPos": [7260.1909,1255.453],
     "groupName_override": ""
   },
   "DotIdentifier": {
-    "outerPos": [4961.415,4673.3296],
+    "outerPos": [4957.0488,4707.6411],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "TypeFunctionNoReturn": {
-    "outerPos": [7449.894,2696.8879],
+    "outerPos": [7348.6772,2910.0239],
     "groupName_override": "ABI TypeX"
   },
   "FuncAttrPure": {
-    "outerPos": [8235.3984,2670.4368],
+    "outerPos": [8133.4502,2842.3196],
     "groupName_override": "ABI TypeX"
   },
   "FinalSwitchStatement": {
@@ -1140,7 +1140,7 @@
     "groupName_override": ""
   },
   "Symbol": {
-    "outerPos": [4938.5483,3765.6606],
+    "outerPos": [5773.7021,2277.6746],
     "groupName_override": ""
   },
   "SpecifiedFunctionBody": {
@@ -1148,23 +1148,23 @@
     "groupName_override": ""
   },
   "TypeTuple": {
-    "outerPos": [7222.4751,4609.6611],
+    "outerPos": [7124.644,4822.6748],
     "groupName_override": "ABI TypeX"
   },
   "FunctionAttributes": {
-    "outerPos": [7621.4341,665.39856],
+    "outerPos": [7621.4341,671.56738],
     "groupName_override": ""
   },
   "BaseInterfaceList": {
-    "outerPos": [5235.4771,1533.4],
+    "outerPos": [5231.8091,1522.396],
     "groupName_override": ""
   },
   "TypeBackRef": {
-    "outerPos": [6928.0249,2340.0608],
+    "outerPos": [5256.0254,4132.0605],
     "groupName_override": "ABI MangledName"
   },
   "AsmXorExp": {
-    "outerPos": [3167.8562,4283.7471],
+    "outerPos": [3147.4902,4358.0586],
     "groupName_override": ""
   },
   "AggregateDeclaration": {
@@ -1204,7 +1204,7 @@
     "groupName_override": "Statements2"
   },
   "ScopeBlockStatement": {
-    "outerPos": [2036.3118,3830.9182],
+    "outerPos": [2036.3118,3841.9221],
     "groupName_override": ""
   },
   "StatementList": {
@@ -1232,7 +1232,7 @@
     "groupName_override": ""
   },
   "TraitsArguments": {
-    "outerPos": [4390.7773,1707.7173],
+    "outerPos": [4324.7144,2162.5723],
     "groupName_override": ""
   },
   "MixinExpression": {
@@ -1240,11 +1240,11 @@
     "groupName_override": "UnaryExpression"
   },
   "Namechar": {
-    "outerPos": [7437.6987,2210.7048],
+    "outerPos": [5765.6992,4002.7051],
     "groupName_override": "ABI MangledName"
   },
   "TemplateValueParameterDefault": {
-    "outerPos": [6337.1597,3557.2817],
+    "outerPos": [7172.314,2069.2957],
     "groupName_override": ""
   },
   "Parameters": {
@@ -1252,7 +1252,7 @@
     "groupName_override": ""
   },
   "TypeChar": {
-    "outerPos": [7222.4751,4369.6602],
+    "outerPos": [7124.644,4582.6738],
     "groupName_override": "ABI TypeX"
   },
   "StorageClass": {
@@ -1260,15 +1260,15 @@
     "groupName_override": ""
   },
   "Parameter_": {
-    "outerPos": [7547.9917,4651.4092],
+    "outerPos": [7450.1606,4864.4229],
     "groupName_override": "ABI TypeX"
   },
   "TypeUshort": {
-    "outerPos": [7222.4751,3349.6614],
+    "outerPos": [7124.644,3562.6746],
     "groupName_override": "ABI TypeX"
   },
   "Immutable": {
-    "outerPos": [6550.6929,2079.7419],
+    "outerPos": [4878.6934,3871.7422],
     "groupName_override": "ABI MangledName"
   },
   "NonEmptyStatement": {
@@ -1276,7 +1276,7 @@
     "groupName_override": ""
   },
   "TemplateArgumentList": {
-    "outerPos": [4458.4341,3761.9321],
+    "outerPos": [5293.5879,2273.946],
     "groupName_override": ""
   },
   "Lambda": {
@@ -1292,7 +1292,7 @@
     "groupName_override": "Expression"
   },
   "NonEmptyOrScopeBlockStatement": {
-    "outerPos": [1669.2917,3546.5315],
+    "outerPos": [1690.0411,3547.8284],
     "groupName_override": ""
   },
   "AssignExpression": {
@@ -1324,15 +1324,15 @@
     "groupName_override": "Statements2"
   },
   "FuncAttr": {
-    "outerPos": [7992.9692,2818.9543],
+    "outerPos": [7891.0205,2990.8372],
     "groupName_override": "ABI TypeX"
   },
   "Constraint": {
-    "outerPos": [4858.271,3446.8442],
+    "outerPos": [5693.4248,1958.8582],
     "groupName_override": ""
   },
   "DeprecatedAttribute": {
-    "outerPos": [-176.20636,1258.8171],
+    "outerPos": [-180.09686,1170.6318],
     "groupName_override": ""
   },
   "Condition": {
@@ -1348,11 +1348,11 @@
     "groupName_override": "Modules"
   },
   "TemplateValueParameter": {
-    "outerPos": [5720.0483,3499.3208],
+    "outerPos": [6555.2021,2011.3347],
     "groupName_override": ""
   },
   "FuncAttrRef": {
-    "outerPos": [8233.2168,2788.3],
+    "outerPos": [8131.2686,2960.1829],
     "groupName_override": "ABI TypeX"
   },
   "FuncDeclaration": {
@@ -1360,11 +1360,11 @@
     "groupName_override": ""
   },
   "TypeBool": {
-    "outerPos": [7222.4751,4309.6592],
+    "outerPos": [7124.644,4522.6729],
     "groupName_override": "ABI TypeX"
   },
   "TemplateTypeParameter": {
-    "outerPos": [5953.3901,3376.1274],
+    "outerPos": [6788.5439,1888.1414],
     "groupName_override": ""
   },
   "DoStatement": {
@@ -1372,11 +1372,11 @@
     "groupName_override": "Statements2"
   },
   "FuncAttrReturn": {
-    "outerPos": [8231.0371,2970.4368],
+    "outerPos": [8129.0889,3142.3196],
     "groupName_override": "ABI TypeX"
   },
   "TypeDchar": {
-    "outerPos": [7222.4751,4489.6611],
+    "outerPos": [7124.644,4702.6748],
     "groupName_override": "ABI TypeX"
   },
   "StringLiterals": {
@@ -1392,11 +1392,11 @@
     "groupName_override": ""
   },
   "Register": {
-    "outerPos": [5174.8291,4258.1489],
+    "outerPos": [5170.4629,4292.4604],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "TemplateArguments": {
-    "outerPos": [4245.3364,3745.4243],
+    "outerPos": [5080.4902,2257.4382],
     "groupName_override": ""
   },
   "SuperClass": {
@@ -1408,11 +1408,11 @@
     "groupName_override": "Statements2"
   },
   "TypeFloat": {
-    "outerPos": [7222.4751,3769.6575],
+    "outerPos": [7124.644,3982.6707],
     "groupName_override": "ABI TypeX"
   },
   "SymbolFunctionName": {
-    "outerPos": [5941.4077,1690.3845],
+    "outerPos": [4269.4082,3482.3845],
     "groupName_override": "ABI MangledName"
   },
   "MulExpression": {
@@ -1444,7 +1444,7 @@
     "groupName_override": ""
   },
   "TypeStaticArray": {
-    "outerPos": [7225.3208,2576.7629],
+    "outerPos": [7127.4897,2789.7761],
     "groupName_override": "ABI TypeX"
   },
   "BaseClassList": {
@@ -1452,15 +1452,15 @@
     "groupName_override": ""
   },
   "FuncAttrLive": {
-    "outerPos": [8231.6641,3214.8469],
+    "outerPos": [8129.7158,3386.7297],
     "groupName_override": "ABI TypeX"
   },
   "Name": {
-    "outerPos": [7065.7104,2154.4958],
+    "outerPos": [5393.7109,3946.4961],
     "groupName_override": "ABI MangledName"
   },
   "ArrayMemberInitialization": {
-    "outerPos": [4535.7573,918.80542],
+    "outerPos": [4527.3481,915.44183],
     "groupName_override": ""
   },
   "AddExpression": {
@@ -1468,11 +1468,11 @@
     "groupName_override": "Expression"
   },
   "AsmAddExp": {
-    "outerPos": [4253.7676,4274.2651],
+    "outerPos": [4249.4014,4308.5767],
     "groupName_override": "D x86 Inline Assembler 2"
   },
   "TemplateMixinDeclaration": {
-    "outerPos": [5791.1284,3902.5669],
+    "outerPos": [6626.2822,2414.5808],
     "groupName_override": ""
   },
   "DeclarationBlock": {
@@ -1488,7 +1488,7 @@
     "groupName_override": ""
   },
   "ClassTemplateDeclaration": {
-    "outerPos": [4020.6001,3294.8816],
+    "outerPos": [4855.7539,1806.8955],
     "groupName_override": ""
   },
   "Module": {
@@ -1496,16 +1496,16 @@
     "groupName_override": ""
   },
   "Parameters_": {
-    "outerPos": [7357.9502,4628.499],
+    "outerPos": [7260.1191,4841.5127],
     "groupName_override": "ABI TypeX"
   },
   "TemplateMixin": {
-    "outerPos": [5791.1284,3962.5671],
+    "outerPos": [6626.2822,2474.5811],
     "groupName_override": ""
   },
   "Pragma": {
-    "outerPos": [410.56207,1003.637],
-    "groupName_override": ""
+    "outerPos": [-175.6037,1398.2229],
+    "groupName_override": "Attributes"
   },
   "PragmaStatement": {
     "outerPos": [-37.665344,4727.6904],
@@ -1516,7 +1516,7 @@
     "groupName_override": ""
   },
   "Operand": {
-    "outerPos": [2169.7424,4265.0869],
+    "outerPos": [2149.3762,4339.3984],
     "groupName_override": ""
   },
   "ClassDeclaration": {
@@ -1532,7 +1532,7 @@
     "groupName_override": ""
   },
   "TemplateInstanceName": {
-    "outerPos": [6617.2515,1692.6345],
+    "outerPos": [4945.252,3484.6345],
     "groupName_override": "ABI MangledName"
   },
   "SwitchStatement": {
@@ -1540,7 +1540,7 @@
     "groupName_override": "Statements2"
   },
   "TypeNull": {
-    "outerPos": [7222.4751,4549.6611],
+    "outerPos": [7124.644,4762.6748],
     "groupName_override": "ABI TypeX"
   },
   "BreakStatement": {
@@ -1552,7 +1552,7 @@
     "groupName_override": ""
   },
   "SymbolName": {
-    "outerPos": [6324.855,1690.113],
+    "outerPos": [4652.8555,3482.113],
     "groupName_override": "ABI MangledName"
   },
   "ValueExpression": {
@@ -1560,11 +1560,11 @@
     "groupName_override": "UnaryExpression"
   },
   "TemplateSequenceParameter": {
-    "outerPos": [5722.3706,3741.9204],
+    "outerPos": [6557.5244,2253.9343],
     "groupName_override": ""
   },
   "TypeUlong": {
-    "outerPos": [7222.4751,3589.6575],
+    "outerPos": [7124.644,3802.6707],
     "groupName_override": "ABI TypeX"
   },
   "NonEmptyStatementNoCaseNoDefault": {
@@ -1576,7 +1576,7 @@
     "groupName_override": "Statements2"
   },
   "Wild": {
-    "outerPos": [6551.6929,1986.7419],
+    "outerPos": [4879.6934,3778.7422],
     "groupName_override": "ABI MangledName"
   },
   "Typeof": {
@@ -1584,31 +1584,31 @@
     "groupName_override": ""
   },
   "ForeachTypeList": {
-    "outerPos": [602.98901,3618.7893],
+    "outerPos": [604.53125,3627.2715],
     "groupName_override": "Statements2"
   },
   "TypeAssocArray": {
-    "outerPos": [7224.4771,2518.884],
+    "outerPos": [7126.646,2731.8972],
     "groupName_override": "ABI TypeX"
   },
   "EnumBaseType": {
-    "outerPos": [6759.4263,1346.3699],
+    "outerPos": [6712.9233,1332.9249],
     "groupName_override": ""
   },
   "MangledName": {
-    "outerPos": [5404.9165,1691.2009],
+    "outerPos": [3732.916,3483.2009],
     "groupName_override": "ABI MangledName"
   },
   "TemplateParameterList": {
-    "outerPos": [5078.1089,3355.8188],
+    "outerPos": [5913.2627,1867.8328],
     "groupName_override": ""
   },
   "StructTemplateDeclaration": {
-    "outerPos": [4019.3032,3514.5532],
+    "outerPos": [4854.457,2026.5671],
     "groupName_override": ""
   },
   "TemplateAliasParameterSpecialization": {
-    "outerPos": [6150.9019,3732.0825],
+    "outerPos": [6986.0562,2244.0964],
     "groupName_override": ""
   },
   "Initialize": {
@@ -1616,15 +1616,15 @@
     "groupName_override": "Statements2"
   },
   "QualifiedName": {
-    "outerPos": [5670.6382,1689.1111],
+    "outerPos": [3998.6387,3481.1111],
     "groupName_override": "ABI MangledName"
   },
   "TypeUcent": {
-    "outerPos": [7222.4751,3709.6575],
+    "outerPos": [7124.644,3922.6707],
     "groupName_override": "ABI TypeX"
   },
   "TypeModifiers": {
-    "outerPos": [6398.6655,1941.6228],
+    "outerPos": [4726.666,3733.623],
     "groupName_override": "ABI MangledName"
   },
   "InContractExpression": {
@@ -1632,7 +1632,7 @@
     "groupName_override": ""
   },
   "TypeTypedef": {
-    "outerPos": [7222.4751,2989.6614],
+    "outerPos": [7124.644,3202.6746],
     "groupName_override": "ABI TypeX"
   },
   "TypeSuffix": {
@@ -1640,7 +1640,7 @@
     "groupName_override": ""
   },
   "Namestart": {
-    "outerPos": [7563.9482,2159.4392],
+    "outerPos": [5891.9482,3951.4395],
     "groupName_override": "ABI MangledName"
   },
   "Vector": {
@@ -1648,7 +1648,7 @@
     "groupName_override": ""
   },
   "InterfaceTemplateDeclaration": {
-    "outerPos": [4020.6001,3401.4751],
+    "outerPos": [4855.7539,1913.489],
     "groupName_override": ""
   }
 }
