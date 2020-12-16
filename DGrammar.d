@@ -2,40 +2,51 @@
 //@import c:\d\libs
 //@ldc
 //@compile -m64 -mcpu=athlon64-sse3 -mattr=+ssse3
-///@release
-//@debug
+//@release
+///@debug
 
 import het, het.ui, het.tokenizer, het.keywords, het.stream;
 
-struct SearchRec{
+auto combineBounds(R)(R bounds){
+  return bounds.fold!"a|b";
+}
+
+struct SearchResult{
+  .Container container;
+  vec2 absInnerPos;
+  Cell[] cells;
+
+  auto cellBounds(){ return cells.map!(c => c.outerBounds + absInnerPos); }
+  auto bounds(){ return cellBounds.fold!"a|b"; }
+
+  void drawHighlighted(Drawing dr, RGB clHighlight){
+    foreach(cell; cells)if(auto glyph = cast(Glyph)cell) with(glyph){
+      dr.color = bkColor;
+      dr.drawFontGlyph(stIdx, innerBounds + absInnerPos, clHighlight, fontFlags);
+    }
+  }
+
+}
+
+struct SearchContext{
   dstring searchText;
   vec2 absInnerPos;
   Cell[] cellPath;
 
-  struct Match{
-    Cell cell;
-    vec2 absInnerPos;
-    int startIdx, len;
+  SearchResult[] results;
+  int maxResults = 9999;
 
-    auto extractBounds(){
-      return cell.subCells[startIdx..startIdx+len].map!(c => c.outerBounds + absInnerPos).array; //todo: combineBounds
-    }
-  }
-  Match[] matches;
-  int maxMatches = 9999;
-
-  bool canStop() { return matches.length >= maxMatches; }
+  bool canStop() const { return results.length >= maxResults; }
 }
 
-bool cntrSearchImpl(Container thisC, ref SearchRec searchRec){  //returns: "exit from recursion"
+bool cntrSearchImpl(Container thisC, ref SearchContext context){  //returns: "exit from recursion"
   //recursive entry/leave
-  searchRec.cellPath ~= thisC;
-  searchRec.absInnerPos += thisC.innerPos;
+  context.cellPath ~= thisC;
+  context.absInnerPos += thisC.innerPos;
 
   scope(exit){
-    searchRec.absInnerPos -= thisC.innerPos;
-    searchRec.cellPath.popBack;
-//print("leave");
+    context.absInnerPos -= thisC.innerPos;
+    context.cellPath.popBack;
   }
 
 //print("enter");
@@ -47,7 +58,7 @@ bool cntrSearchImpl(Container thisC, ref SearchRec searchRec){  //returns: "exit
 
     if(!isGlyph){
       foreach(c; act.map!(c => cast(Container)c).filter!"a"){
-        if(cntrSearchImpl(c, searchRec)) return true; //end recursive call
+        if(cntrSearchImpl(c, context)) return true; //end recursive call
       }
     }else{
       auto chars = act.map!(c => (cast(Glyph)c).ch);
@@ -56,13 +67,13 @@ bool cntrSearchImpl(Container thisC, ref SearchRec searchRec){  //returns: "exit
 
       size_t searchBaseIdx = 0;
       while(1){
-        auto idx = chars.indexOf(searchRec.searchText, No.caseSensitive);
+        auto idx = chars.indexOf(context.searchText, No.caseSensitive);
         if(idx<0) break;
 
-        searchRec.matches ~= SearchRec.Match(thisC, searchRec.absInnerPos, cast(int)(baseIdx+searchBaseIdx+idx), cast(int)(searchRec.searchText.length));
-        if(searchRec.canStop) return true;
+        context.results ~= SearchResult(thisC, context.absInnerPos, cells[baseIdx+searchBaseIdx+idx..$][0..baseIdx+searchBaseIdx+idx+context.searchText.length]);
+        if(context.canStop) return true;
 
-        const skip = idx + searchRec.searchText.length;
+        const skip = idx + context.searchText.length;
         chars.popFrontExactly(skip);
         searchBaseIdx += skip;
       }
@@ -77,26 +88,26 @@ bool cntrSearchImpl(Container thisC, ref SearchRec searchRec){  //returns: "exit
 }
 
 auto cntrSearch(Container thisC, string searchText, vec2 origin = vec2.init){
-  auto sr = SearchRec(searchText.to!dstring, origin);
-  cntrSearchImpl(thisC, sr);
-
-  return sr.matches;
+  auto context = SearchContext(searchText.to!dstring, origin);
+  if(!searchText.empty)
+    cntrSearchImpl(thisC, context);
+  return context.results;
 }
 
 
 
 // SearchBox ///////////////////////////////////////////////////
 
-bool SearchBox(string file=__FILE__ , int line=__LINE__)(ref string searchText, void delegate() fun = (){} ){ with(im){
+/*bool SearchBox(string file=__FILE__ , int line=__LINE__)(ref string searchText, int matchCount){ with(im){
   bool res;
   Row!(file, line)({
     width = fh*12;
     Text("Find "); Edit!(file, line)(searchText, { flex = 1; });
-    fun();
+    if(matchCount) Text(" ", matchCount.text, " ");
     res = Btn(symbol("Zoom"));
   });
   return res;
-}}
+}}*/
 
 // ScrollListBox ///////////////////////////////////////////////
 
@@ -321,8 +332,11 @@ class SyntaxDefinition : Row { // SyntaxDefinition /////////////////////////////
 
 class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
   float viewScale = 1; //used for automatic screenspace linewidth
+  vec2[2] searchBezierStart; //first 2 point of search bezier lines. Starting from the GUI matchCount display.
 
-  bounds2[][] searchBounds;
+  SearchResult[] searchResults;
+
+  bounds2 workArea; //calculated in draw
 
   this(){
     bkColor = clBlack;
@@ -451,8 +465,9 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
   auto selectedDefinitions(){ return definitions.filter!(a => a.isSelected); }
   auto hoveredDefinition  (){ return selection.hoveredItem; }
 
-  void update(View2D view){
+  void update(View2D view, vec2[2] searchBezierStart){
     viewScale = view.scale;
+    this.searchBezierStart = searchBezierStart;
 
     if(!selection) selection = new typeof(selection);
 
@@ -490,7 +505,7 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
 
         if(!h1 && !h2 && link.from.parent.groupName != link.to.groupName) continue;
 
-        color  = h1 && !h2 ? clYellow
+        color  = h1 && !h2 ? clAqua
                : h2 && !h1 ? clLime
                            : clSilver;
 
@@ -521,23 +536,38 @@ class SyntaxGraph : Container { // SyntaxGraph /////////////////////////////
         drawRect(bnd);
       }
 
+      workArea = bounds2.init;
       foreach(grp; definitions.array.sort!((a, b) => a.groupName < b.groupName).groupBy){
         bounds2 bnd;
         foreach(a; grp.map!(a => a.outerBounds)) bnd |= a;
+        bnd = bnd.inflated(30);
 
         color = clSilver;
         lineWidth = -1;
-        drawRect(bnd.inflated(30));
+        drawRect(bnd);
+
+        workArea |= bnd; //update workArea
       }
 
-      color = clFuchsia;
+      // selection
+      /*color = clRed;
       alpha = .66f;
       lineWidth = -3 * sqr(sin(QPS.fract*PIf*2));
-      foreach(bnd; searchBounds.join){
-        drawRect(bnd);
+      foreach(sr; searchResults){
+        drawRect(sr.bounds);
+      }*/
+
+      foreach(sr; searchResults){
+        sr.drawHighlighted(dr2, clYellow);
       }
 
-
+      lineWidth = -2 * sqr(sin(QPS.fract*PIf*2));
+      alpha = 0.66;
+      color = clYellow;
+      foreach(sr; searchResults){
+        bezier2(searchBezierStart[0], searchBezierStart[1], sr.absInnerPos + sr.cells.back.outerBounds.rightCenter);
+      }
+      alpha = 1;
 
     }
     dr.subDraw(dr2);
@@ -583,11 +613,23 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
     loadGraph;
 
     graph.flags.targetSurface = 0; //it's on the zoomable surface
-    im.root ~= graph;
-    graph.update(view);
+
+    const screenSearchBezierStart = vec2(clientWidth-70, 20), //should be calculated from the actual UI location of the SearchBox
+          P0 = view.invTrans(screenSearchBezierStart),
+          P1 = view.invTrans(screenSearchBezierStart+vec2(0, 300));
+
+    graph.update(view, [P0, P1]);
+
+    view.workArea = graph.workArea;
+
+    { static initialZoom = false; if(view.workArea && chkSet(initialZoom)) { view.zoomAll; } }
+
+    im.root ~= graph; //add it to the IMGUI
   }
 
   override void onUpdate(){
+    caption = "DLang grammar viewer";
+
     updateGraphs;
 
     view.navigate(!im.wantKeys, !im.wantMouse);
@@ -596,38 +638,66 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
 
     static actMode = 1;
     static searchText = "";
-    static searchBoxVisible = true;
+    static searchBoxVisible = false;
 
     with(im) Panel(PanelPosition.topRight, {
-      theme = "tool";
-      if(!searchBoxVisible){
-        if(Btn(symbol("Zoom"))) searchBoxVisible = true;
-      }else{
-        Row({
-          if(SearchBox(searchText)){
-             if(searchText.empty){
-               beep;
-             }else{
-              graph.searchBounds = cntrSearch(graph, searchText).map!(m => m.extractBounds).array;
-            }
+      //theme = "tool";
+
+      Row({
+        //Keyboard shortcuts
+        auto kcFind      = KeyCombo("Ctrl+F"),
+             kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
+             kcFindClose = KeyCombo("Esc"); //always
+
+        if(kcFind.pressed) searchBoxVisible = true; //this is needed for 1 frame latency of the Edit
+        if(searchBoxVisible){
+          width = fh*12;
+
+          Text("Find ");
+          .Container editContainer;
+          if(Edit(searchText, kcFind, { flex = 1; editContainer = actContainer; })){
+            //refresh search results
+            graph.searchResults = cntrSearch(graph, searchText);
           }
-          if(Btn(symbol("ChromeClose"))) searchBoxVisible = false;
-          static bool a = true;
-          ChkBox(a, "__-=+*EF#Bblabla__");
-        });
-      }
+
+          // display the number of matches. Also save the location of that number on the screen.
+          const matchCnt = graph.searchResults.length;
+          Row({
+            if(matchCnt) Text(" ", clGray, matchCnt.text, " ");
+          });
+
+          if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
+            const maxScale = max(view.scale, 1);
+            view.zoomBounds(graph.searchResults.map!(r => r.bounds).fold!"a|b", 12);
+            view.scale = min(view.scale, maxScale);
+          }
+
+          if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
+            searchBoxVisible = false;
+            searchText = "";
+            graph.searchResults = [];
+          }
+        }else{
+
+          if(Btn(symbol("Zoom"       ), kcFind, hint("Start searching."))){
+            searchBoxVisible = true ;
+          }
+        }
+      });
     });
 
-    with(im) Panel(PanelPosition.topLeft, {
+    if(1) with(im) Panel(PanelPosition.topLeft, {
       width = 300;
       vScroll;
 
       // WildCard filter
-      static hideUI = false;
+      static hideUI = true;
       static filterStr = "";
-      Row({ ChkBox(hideUI, "Hide UI "); Text("Filter "); Edit(filterStr, { flex = 1; }); });
+      Row({ ChkBox(hideUI, "Hide UI "); });
 
       if(!hideUI){
+
+        Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
 
         //filtered data source
         auto filteredDefinitions = graph.definitions.filter!(a => a.name.isWild(filterStr~"*")).array;
@@ -676,7 +746,7 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
 
     im.draw;
 
-    drawFPS(drGUI);
+    if(0) drawFPS(drGUI);
 
     if(0){
       drGUI.translate(400, 100);
