@@ -360,7 +360,7 @@
     "groupName_override": "ABI MangledName"
   },
   "EnumBody": {
-    "outerPos": [6567.6772,1195.9218],
+    "outerPos": [6527.7617,1202.7644],
     "groupName_override": ""
   },
   "TypeCdouble": {
@@ -464,7 +464,7 @@
     "groupName_override": ""
   },
   "TypeCtors": {
-    "outerPos": [3280.0022,969.84509],
+    "outerPos": [3253.3806,984.63477],
     "groupName_override": ""
   },
   "Statement": {

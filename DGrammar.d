@@ -70,7 +70,7 @@ bool cntrSearchImpl(Container thisC, ref SearchContext context){  //returns: "ex
         auto idx = chars.indexOf(context.searchText, No.caseSensitive);
         if(idx<0) break;
 
-        context.results ~= SearchResult(thisC, context.absInnerPos, cells[baseIdx+searchBaseIdx+idx..$][0..baseIdx+searchBaseIdx+idx+context.searchText.length]);
+        context.results ~= SearchResult(thisC, context.absInnerPos, cells[baseIdx+searchBaseIdx+idx..$][0..context.searchText.length]);
         if(context.canStop) return true;
 
         const skip = idx + context.searchText.length;
@@ -580,6 +580,7 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
   SyntaxGraph graph;
 
   override void onCreate(){
+    logFileOps = true;
   }
 
   auto extraFile   (){ return File(appPath, "DLang grammar extra data.txt"); }

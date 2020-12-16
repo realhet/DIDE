@@ -244,19 +244,7 @@ class FrmMain: GLWindow { mixin autoCreate;
     //view.navigate(!im.wantKeys, !im.wantMouse);
     view.navigate(1, 1);
 
-    static actMode = 1;
-
-    with(im) Panel({
-      width = clientWidth;
-      Row({
-        ComboBox(actMode, ["source code", "language graph"]);
-      });
-    });
-
-    switch(actMode){
-      case 0:updateCodeModule; break;
-      default: case 1: {}/*updateSyntaxGraph;*/ break;
-    }
+    updateCodeModule;
   }
 
   override void onPaint(){
