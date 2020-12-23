@@ -35,12 +35,44 @@ void applyCodeContainerFlags(Container container){
 
 }public{// Syntax highlight styles ///////////////////////////////////////////////////////
 
+bool isSimpleToken(in Token t){
+  with(TokenKind) final switch(t.kind){
+    //these are always simple, can go into the expression string
+    case identifier, keyword, special, literalInt, literalFloat: return true ;
+    //these need a sub-container
+    case comment, literalString, literalChar                   : return false;
+    //there are a few block opening operators, but the rest are simple
+    case operator: return !t.id.among(oproundBracketOpen, opsquareBracketOpen, opcurlyBracketOpen, optokenString);
+    //unknown is forbidden
+    case unknown: assert(0, "Fatal error: unknown token not allowed here");
+  }
+}
+
 void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=true){
   if(setBkColor) row.bkColor = clCodeBackground;
-  if(tokens.length){
-    auto st = tokens[0].pos, en = tokens[$-1].endPos;
-    auto ts = tsNormal;  ts.applySyntax(0);
-    het.uibase.appendCode(row, sourceCode.text[st..en], sourceCode.syntax[st..en], s => ts.applySyntax(s), ts);
+
+  auto ts = tsNormal;  ts.applySyntax(0);
+
+  void appendSimpleCode(R)(R tokens){
+    if(tokens.length){
+      auto st = tokens[0].pos, en = tokens[$-1].endPos;
+      het.uibase.appendCode(row, sourceCode.text[st..en], sourceCode.syntax[st..en], s => ts.applySyntax(s), ts);
+    }
+  }
+
+  foreach(isSimple, len; tokens.map!isSimpleToken.group){
+    //todo if not simple, there must be a special thing that eats up more than one tokens, so .group is not good here
+
+    auto act = tokens.takeExactly(len);
+    if(isSimple){
+      appendSimpleCode(act);
+    }else{
+      ts.fontColor = clYellow;
+      ts.bkColor = clFuchsia;
+      row.appendStr("[...]", ts);
+    }
+
+    tokens.popFrontExactly(len);
   }
 }
 
@@ -248,8 +280,8 @@ class FrmMain: GLWindow { mixin autoCreate;
   }
 
   override void onPaint(){
-    dr.clear(clBlack);
-    drGUI.clear;
+    gl.clearColor(clBlack);
+    gl.clear(GL_COLOR_BUFFER_BIT);
 
     im.draw;
 

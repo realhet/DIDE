@@ -580,7 +580,7 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
   SyntaxGraph graph;
 
   override void onCreate(){
-    logFileOps = true;
+    //logFileOps = true;
   }
 
   auto extraFile   (){ return File(appPath, "DLang grammar extra data.txt"); }
@@ -743,11 +743,16 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
   }
 
   override void onPaint(){
-    dr.clear(clBlack);  drGUI.clear;
+    gl.clearColor(clBlack);
+    gl.clear(GL_COLOR_BUFFER_BIT);
 
     im.draw;
 
-    if(0) drawFPS(drGUI);
+    auto drGUI = new Drawing;
+    if(1){
+      drawFPS(drGUI);
+      drGUI.glDraw(viewGUI);
+    }
 
     if(0){
       drGUI.translate(400, 100);
