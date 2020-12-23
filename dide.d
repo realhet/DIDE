@@ -51,37 +51,10 @@ bool isSimpleToken(in Token t){
   }
 }
 
-
-/+bool previousToken_skipComments(in Token[] tokens, in sizediff_t idxIn, out sizediff_t idxOut){
-  auto i = idxIn-1;
-  while(i>=0){
-    if(tokens[i].isComment){
-      i--;
-    }else{
-      idxOut = i;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool backTrackTemplateRoundBracketOpen(in Token[] tokens, ref sizediff_t idx){
-  if(tokens[idx].isOperator(oproundBracketOpen)){
-    auto idx2 = idx;
-    if(previousToken_skipComments(tokens, idx, idx2) && tokens[idx2].isOperator(opnot)) {
-      idx = idx2;
-      return true;
-    }
-  }
-  return false;
-}+/
-
 Token[] fetchSimpleTokens(ref Token[] tokens){
   auto idx = tokens.countUntil!(not!isSimpleToken);
 
   if(idx<0) idx = tokens.length; //take all if -1
-  /+else backTrackTemplateRoundBracketOpen(tokens, idx); //handle template !(
-    The template parameter token sequence is identifier!( not just !(. It's not reasonable to put it into a container, just handle the ( ), and put the ! in front manually. +/
 
   auto res = tokens[0..idx];
   tokens = tokens[idx..$];
@@ -127,7 +100,7 @@ void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=
       }
 
       //localize the complicated token range
-      size_t len, bracketStartIdx/*for template !(*/;
+      size_t len;
       bool isTemplate;
       with(TokenKind) switch(tokens[0].kind){
         case comment, literalString, literalChar : len = 1; break;
@@ -138,6 +111,7 @@ void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=
             case opcurlyBracketOpen:  len = searchUntil(opcurlyBracketClose ); break;
             default: break;
           }
+          break;
         }
         default: break;
       }
@@ -153,26 +127,35 @@ void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=
 
       //append the complicated object
 
-      auto obj = new Row;
-      obj.margin = "2";
-      obj.padding = "2";
-      obj.border = "1";
-      obj.border.color = clFuchsia;
 
       //het.uibase.appendCode(obj, sourceCode.text[simpleStartPos..simpleEndPos], sourceCode.syntax[simpleStartPos..simpleEndPos], s => ts.applySyntax(s), ts);
 
       if(len==1){
         if(complicatedTokens[0].isComment){
-
+          row.append(new CodeComment(complicatedTokens[0], sourceCode));
         }else{ //must be a literal string or char
-
+          row.append(new CodeStringLiteral(complicatedTokens[0], sourceCode));
         }
       }else{
-        //recursion
-        appendCode(obj, complicatedTokens[bracketStartIdx+1..$-1], sourceCode);
+        if(complicatedTokens[0].source=="("){ //todo: no string check -> isOperator()
+          row.append(new CodeRoundBracket(complicatedTokens[1..$-1], sourceCode));
+        }else if(complicatedTokens[0].source=="["){
+          row.append(new CodeSquareBracket(complicatedTokens[1..$-1], sourceCode));
+        }else{
+          //recursion
+          auto obj = new Row;
+          obj.margin = "2";
+          obj.padding = "2";
+          obj.border = "1";
+          obj.border.color = clFuchsia;
+
+          obj.appendCode(complicatedTokens[1..$-1], sourceCode);
+
+          row.append(obj);
+        }
       }
 
-      row.append(obj);
+
 
     }
   }
@@ -270,6 +253,140 @@ class CodeBase : Row{
   }
 }
 
+class CodeCommentInner : CodeBase{
+//  mixin CachedDrawing;
+
+  this(string text){
+    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Comment);
+
+    padding = "0 1";
+
+    bkColor = ts.bkColor;
+    this.appendStr(text, ts);
+    //todo: validate
+  }
+}
+
+class CodeComment : CodeBase{
+  this(Token token, SourceCode sourceCode, bool hasMargin = false){
+    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Comment);
+    ts.bkColor = mix(ts.bkColor, ts.fontColor, .25f);
+
+    bkColor = ts.bkColor;
+    padding = "0 1";
+    if(hasMargin) margin = "1";
+
+    border.inset = true;
+    border.color = ts.bkColor;
+    border.style = BorderStyle.normal;
+    border.width = 1;
+
+    assert(token.isComment);
+
+    string s = token.source;
+    if(s.startsWith("//")) s = s[2..$];
+    else if(s.startsWith("/*")) s = s[2..$-2];
+    else if(s.startsWith("/+")) s = s[2..$-2];
+    else assert(0, "invalid comment source format");
+
+    flags.yAlign = YAlign.top;
+    this.appendStr("//", ts);
+    this.append(new CodeCommentInner(s));
+  }
+}
+
+class CodeStringLiteralInner : CodeBase{
+//  mixin CachedDrawing;
+
+  this(string text){
+    auto ts = tsCode; ts.applySyntax(SyntaxKind.String);
+
+    padding = "0 1";
+
+    bkColor = ts.bkColor;
+    this.appendStr(text, ts);
+    //todo: validate
+  }
+}
+
+class CodeStringLiteral : CodeBase{
+  this(Token token, SourceCode sourceCode, bool hasMargin = false){
+    auto ts      = tsCode; ts.applySyntax(SyntaxKind.String);
+    ts.bkColor = mix(ts.bkColor, ts.fontColor, .25f);
+
+    bkColor = ts.bkColor;
+    padding = "0 1";
+    if(hasMargin) margin = "1";
+
+    border.inset = true;
+    border.color = ts.bkColor;
+    border.style = BorderStyle.normal;
+    border.width = 1;
+
+    //assert(token.isComment);
+
+    string s = token.data.text;
+
+    flags.yAlign = YAlign.top;
+    this.appendStr("\"", ts);
+    this.append(new CodeStringLiteralInner(s));
+    this.appendStr("\"", ts);
+  }
+}
+
+class CodeRoundBracketInner : CodeBase{
+//  mixin CachedDrawing;
+
+  this(Token[] tokens, SourceCode sourceCode){
+    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
+
+    padding = "0 1";
+
+    bkColor = ts.bkColor;
+    this.appendCode(tokens, sourceCode);
+    //todo: validate
+  }
+}
+
+class CodeRoundBracket : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
+
+    bkColor = ts.bkColor;
+
+    flags.yAlign = YAlign.stretch;
+    this.appendChar('(', ts);
+    this.append(new CodeRoundBracketInner(tokens, sourceCode));
+    this.appendChar(')', ts);
+  }
+}
+
+class CodeSquareBracketInner : CodeBase{
+//  mixin CachedDrawing;
+
+  this(Token[] tokens, SourceCode sourceCode){
+    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
+
+    bkColor = ts.bkColor;
+    this.appendCode(tokens, sourceCode);
+    //todo: validate
+  }
+}
+
+class CodeSquareBracket : CodeBase{
+  this(Token[] tokens, SourceCode sourceCode){
+    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
+
+    bkColor = ts.bkColor;
+
+    flags.yAlign = YAlign.stretch;
+    this.appendChar('[', ts);
+    this.append(new CodeSquareBracketInner(tokens, sourceCode));
+    this.appendChar(']', ts);
+  }
+}
+
+
 /// 'Statement' here is a thing that can't be structured more. Has a border. It can be a declaration too.
 class CodeStatement : CodeBase{
   mixin CachedDrawing;
@@ -278,6 +395,7 @@ class CodeStatement : CodeBase{
     bkColor = clCodeBackground;
     margin = "1";
     border = "normal"; border.color = clCodeBorder ;
+    border.inset = true;
     padding = "0 2";
     this.appendCode(tokens, sourceCode);
   }
@@ -286,7 +404,6 @@ class CodeStatement : CodeBase{
 /// 'Expression' is an embeded thing in a frame. Can be a function header for example. Has no border.
 class CodeExpression : CodeBase{
   mixin CachedDrawing;
-
   this(Token[] tokens, SourceCode sourceCode){
     bkColor = clCodeBackground;
     padding = "0 2";
@@ -316,7 +433,11 @@ class CodeBlock : CodeBase {
         if(tokenBlock.length && tokenBlock[$-1].isOperator(opcurlyBracketClose)){
           append(new CodeAggregate(tokenBlock, sourceCode));
         }else{
-          append(new CodeStatement(tokenBlock, sourceCode));
+          if(tokenBlock.length==1 && tokenBlock[0].isComment){
+            append(new CodeComment(tokenBlock[0], sourceCode, true));
+          }else{
+            append(new CodeStatement(tokenBlock, sourceCode));
+          }
         }
 
         //advance
