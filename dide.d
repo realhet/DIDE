@@ -12,13 +12,14 @@
 ///@run $ c:\D\libs\het\math.d
 ///@run $ c:\D\libs\het\opengl.d
 ///@run $ c:\D\libs\het\draw3d.d
+///@run $ c:\D\projects\Karc\karcSamples.d.dtest
 
 import het, het.ui, het.tokenizer, het.keywords;
 
 /*comment1*/@safe void testFunction()(/*comment3*/) /*comment4*/ { //comment2
   if(a) b!(c) = !(d);
 
-  struct S { int a; };
+  struct S { int a; }
   S s = { a:5 };
 }
 
@@ -109,6 +110,7 @@ void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=
             case oproundBracketOpen:  len = searchUntil(oproundBracketClose ); break;
             case opsquareBracketOpen: len = searchUntil(opsquareBracketClose); break;
             case opcurlyBracketOpen:  len = searchUntil(opcurlyBracketClose ); break;
+            case optokenString:       len = searchUntil(opcurlyBracketClose ); break;
             default: break;
           }
           break;
@@ -116,7 +118,7 @@ void appendCode(Row row, Token[] tokens, SourceCode sourceCode, bool setBkColor=
         default: break;
       }
 
-      /*assert*/enforce(len>0, "Unable to fetch complicated token array");
+      /*assert*/enforce(len>0, "Unable to fetch complicated token array:" ~ tokens.text);
 
       //actual fetch
       auto complicatedTokens = tokens[0..len];
@@ -248,89 +250,131 @@ enum CodeFrameType { statement, groupFrame, groupInner }
 class CodeBase : Row{
   mixin CachedMeasuring;
 
+  void insetBorder(RGB color){
+    border.inset = true;
+    border.color = color;
+    border.style = BorderStyle.normal;
+    border.width = 1;
+  }
+
+  auto syntaxStyle(SyntaxKind sk = SyntaxKind.Whitespace){
+    auto ts = tsNormal; //todo: unoptimal, should be cached
+    ts.applySyntax(sk);
+    bkColor = ts.bkColor;
+    return ts;
+  }
+
+  void lightenBk(ref TextStyle ts){
+    ts.bkColor = mix(ts.bkColor, ts.fontColor, .25f);
+    bkColor = ts.bkColor;
+  }
+
+  auto syntaxStyle_light(SyntaxKind sk = SyntaxKind.Whitespace){
+    auto ts = syntaxStyle(sk);
+    lightenBk(ts);
+    return ts;
+  }
+
   this(){
     this.applyCodeContainerFlags;
   }
 }
 
 class CodeCommentInner : CodeBase{
-//  mixin CachedDrawing;
-
   this(string text){
-    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Comment);
-
+    auto ts = syntaxStyle(SyntaxKind.Comment);
     padding = "0 1";
-
-    bkColor = ts.bkColor;
     this.appendStr(text, ts);
-    //todo: validate
   }
 }
 
 class CodeComment : CodeBase{
-  this(Token token, SourceCode sourceCode, bool hasMargin = false){
-    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Comment);
-    ts.bkColor = mix(ts.bkColor, ts.fontColor, .25f);
-
-    bkColor = ts.bkColor;
+  this(Token token, SourceCode sourceCode, bool hasMargin = false)
+  in(token.isComment)
+  {
+    auto ts = syntaxStyle_light(SyntaxKind.Comment);
+    insetBorder(ts.bkColor);
     padding = "0 1";
-    if(hasMargin) margin = "1";
 
-    border.inset = true;
-    border.color = ts.bkColor;
-    border.style = BorderStyle.normal;
-    border.width = 1;
-
-    assert(token.isComment);
-
-    string s = token.source;
-    if(s.startsWith("//")) s = s[2..$];
-    else if(s.startsWith("/*")) s = s[2..$-2];
-    else if(s.startsWith("/+")) s = s[2..$-2];
-    else assert(0, "invalid comment source format");
+    if(hasMargin) margin = "0.5";
 
     flags.yAlign = YAlign.top;
     this.appendStr("//", ts);
-    this.append(new CodeCommentInner(s));
+    this.append(new CodeCommentInner(token.comment));
   }
 }
 
 class CodeStringLiteralInner : CodeBase{
-//  mixin CachedDrawing;
-
-  this(string text){
-    auto ts = tsCode; ts.applySyntax(SyntaxKind.String);
-
-    padding = "0 1";
-
-    bkColor = ts.bkColor;
+  this(string text, RGB lightBkColor, string font){
+    auto ts = syntaxStyle(SyntaxKind.String);
+    ts.font = font;
+    padding = "0";
+    bkColor = mix(bkColor, lightBkColor, .5f);
+    //flags.dontHideSpaces = true;
     this.appendStr(text, ts);
-    //todo: validate
   }
 }
 
 class CodeStringLiteral : CodeBase{
-  this(Token token, SourceCode sourceCode, bool hasMargin = false){
-    auto ts      = tsCode; ts.applySyntax(SyntaxKind.String);
-    ts.bkColor = mix(ts.bkColor, ts.fontColor, .25f);
+  char type; // ' " `  char / string / wysiwygString
+  char unit; // c w d
 
-    bkColor = ts.bkColor;
-    padding = "0 1";
+  string decodeStringLiteral(Token token){
+    string s;
+    auto src = token.source;
+
+    //extract the codeUnit size
+    if(src[$-1].among('c', 'w', 'd')){
+      unit = src[$-1];
+      src = src[0..$-1];
+    }else{
+      unit = 'c';
+    }
+
+    //extract the type of the string
+         if(src.startsWith('"' )) type = '"';  //C string
+    else if(src.startsWith('\'')) type = '\''; //C char
+    else if(src.startsWith('`' )) type = '`';  //wysiwyg `
+    else if(src.startsWith(`r"`)) type = 'r';  //wysiwyg "
+    else if(src.startsWith(`q"`)) type = 'q';  //delimited string
+    enforce(type != 'q', "Delimited strings not supported.");
+    //todo: tokenString
+
+    return type.among('\'', '"') ? src[1..$-1]
+                                 : token.data.text;
+  }
+
+  this(Token token, SourceCode sourceCode, bool hasMargin = false){
+    auto ts = syntaxStyle_light(SyntaxKind.String);
+    insetBorder(ts.bkColor);
     if(hasMargin) margin = "1";
 
-    border.inset = true;
-    border.color = ts.bkColor;
-    border.style = BorderStyle.normal;
-    border.width = 1;
+    string s = decodeStringLiteral(token);
 
-    //assert(token.isComment);
+    padding = unit=='c' ? "0" : "0 1 0 0";
 
-    string s = token.data.text;
+    if(type != '`') ts.font = "Lucida Console";
+
+    string sss = " ";
+    wstring sss2 = "multi
+line blabla
+text "w;
+    dstring sss3 = `multi
+line blabla
+text this one is proportional
+not monospaced`d;
+    wstring sss4 = q{ token string }w;
 
     flags.yAlign = YAlign.top;
-    this.appendStr("\"", ts);
-    this.append(new CodeStringLiteralInner(s));
-    this.appendStr("\"", ts);
+    this.appendStr(type.text ~ (type.isLetter ? `"` : ""), ts);
+    this.append(new CodeStringLiteralInner(s, bkColor, ts.font));
+    this.appendStr((type.isLetter ? type.text ~ `"` : type.text)~(unit=='c' ? "" : unit.text), ts);
+  }
+
+  override void measure(){
+    super.measure;
+    foreach(sc; subCells[$ - (unit=='c' ? 1 : 2)..$])
+      sc.outerPos.y = innerSize.y - sc.outerSize.y;
   }
 }
 
@@ -340,7 +384,7 @@ class CodeRoundBracketInner : CodeBase{
   this(Token[] tokens, SourceCode sourceCode){
     auto ts = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
 
-    padding = "0 1";
+    //padding = "0 1";
 
     bkColor = ts.bkColor;
     this.appendCode(tokens, sourceCode);
@@ -393,9 +437,8 @@ class CodeStatement : CodeBase{
 
   this(Token[] tokens, SourceCode sourceCode){
     bkColor = clCodeBackground;
-    margin = "1";
-    border = "normal"; border.color = clCodeBorder ;
-    border.inset = true;
+    margin = "0.5";
+    insetBorder(clGroupBackground);
     padding = "0 2";
     this.appendCode(tokens, sourceCode);
   }
@@ -414,6 +457,7 @@ class CodeExpression : CodeBase{
 /// 'Block' is an array of things
 class CodeBlock : CodeBase {
   this(Token[] tokens, SourceCode sourceCode){
+    padding = "0.5";
     flags.yAlign = YAlign.top;
     bkColor = clCodeBackground;
 
