@@ -13,6 +13,7 @@
 ///@run $ c:\D\libs\het\opengl.d
 ///@run $ c:\D\libs\het\draw3d.d
 ///@run $ c:\D\projects\Karc\karcSamples.d.dtest
+///@run $ c:\dl\jsexample.js
 
 import het, het.ui, het.tokenizer, het.keywords;
 
@@ -211,44 +212,14 @@ Block(
 +/
 
 
-enum SplitOperation { none, declarations, statements }
 
-enum CodeFrameType { statement, groupFrame, groupInner }
+/// CodeBase ////////////////////////////////
 
+class CodeBase : Row{ /// base class for everything that is Code related.
+//  mixin CachedMeasuring;
 
-/// Adds the header of a frame. Usually an expression, but can be a function header too
-/*void appendInnerExpression(Row row, Token[] tokens, SourceCode sourceCode){
-  auto h = new CodeExpression();
-  row.append(h);
-  h.appendCode(tokens, sourceCode);
-  h.enableCachedDrawing = true;
-}  */
-
-/*void appendBranch(Row row, Token[] tokens, SourceCode sourceCode){ with(row){
-  auto blocks = splitDeclarations(tokens);
-  if(blocks.length){
-    auto tsWhitespace = tsNormal;  tsWhitespace.applySyntax(0); //textStyle for whitespace
-
-    void appendWhitespace(int p0, int p1){
-      if(p0 < p1)
-        sourceCode.text[p0..p1].byDchar.each!(ch => appendg(ch, tsWhitespace));
-    }
-
-    auto lastPos = blocks[0][0].pos;
-    foreach(tokenBlock; blocks){
-      appendWhitespace(lastPos, tokenBlock[0].pos);
-
-      append(new CodeBlock(tokenBlock, sourceCode));
-
-      //advance
-      lastPos = tokenBlock[$-1].endPos;
-    }
-  }
-}}*/
-
-/// Base class for everything that is Code related.
-class CodeBase : Row{
-  mixin CachedMeasuring;
+  bool editable(){ return true; }
+  bool selectabe(){ return true; }
 
   void insetBorder(RGB color){
     border.inset = true;
@@ -280,6 +251,17 @@ class CodeBase : Row{
   }
 }
 
+class CodeComposite : CodeBase{
+  // This is a frame which can't be edited, but can interact with.
+  // It can only be deleted as a whole.
+  // Example: for loop, "string", if then else
+  // Editable things are nested inside and are descendants of CodeBase
+
+  override bool editable(){ return false; }
+  override bool selectabe(){ return true; }
+
+}
+
 class CodeCommentInner : CodeBase{
   this(string text){
     auto ts = syntaxStyle(SyntaxKind.Comment);
@@ -288,7 +270,7 @@ class CodeCommentInner : CodeBase{
   }
 }
 
-class CodeComment : CodeBase{
+class CodeComment : CodeComposite{
   this(Token token, SourceCode sourceCode, bool hasMargin = false)
   in(token.isComment)
   {
@@ -315,7 +297,20 @@ class CodeStringLiteralInner : CodeBase{
   }
 }
 
-class CodeStringLiteral : CodeBase{
+char stringLiteralType(string src){
+  char type;
+  //extract the type of the string
+       if(src.startsWith('"' )) type = '"';  //C string
+  else if(src.startsWith('\'')) type = '\''; //C char
+  else if(src.startsWith('`' )) type = '`';  //wysiwyg `
+  else if(src.startsWith(`r"`)) type = 'r';  //wysiwyg "
+  else if(src.startsWith(`q"`)) type = 'q';  //delimited string
+  enforce(type != 'q', "Delimited strings not supported.");
+  //todo: tokenString
+  return type;
+}
+
+class CodeStringLiteral : CodeComposite{
   char type; // ' " `  char / string / wysiwygString
   char unit; // c w d
 
@@ -331,14 +326,7 @@ class CodeStringLiteral : CodeBase{
       unit = 'c';
     }
 
-    //extract the type of the string
-         if(src.startsWith('"' )) type = '"';  //C string
-    else if(src.startsWith('\'')) type = '\''; //C char
-    else if(src.startsWith('`' )) type = '`';  //wysiwyg `
-    else if(src.startsWith(`r"`)) type = 'r';  //wysiwyg "
-    else if(src.startsWith(`q"`)) type = 'q';  //delimited string
-    enforce(type != 'q', "Delimited strings not supported.");
-    //todo: tokenString
+    type = stringLiteralType(src);
 
     return type.among('\'', '"') ? src[1..$-1]
                                  : token.data.text;
@@ -355,6 +343,7 @@ class CodeStringLiteral : CodeBase{
 
     if(type != '`') ts.font = "Lucida Console";
 
+    // demo strings
     string sss = " ";
     wstring sss2 = "multi
 line blabla
@@ -379,24 +368,14 @@ not monospaced`d;
 }
 
 class CodeRoundBracketInner : CodeBase{
-//  mixin CachedDrawing;
-
   this(Token[] tokens, SourceCode sourceCode){
-    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
-
-    //padding = "0 1";
-
-    bkColor = ts.bkColor;
     this.appendCode(tokens, sourceCode);
-    //todo: validate
   }
 }
 
-class CodeRoundBracket : CodeBase{
+class CodeRoundBracket : CodeComposite{
   this(Token[] tokens, SourceCode sourceCode){
-    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
-
-    bkColor = ts.bkColor;
+    auto ts = syntaxStyle(SyntaxKind.Symbol);
 
     flags.yAlign = YAlign.stretch;
     this.appendChar('(', ts);
@@ -406,22 +385,14 @@ class CodeRoundBracket : CodeBase{
 }
 
 class CodeSquareBracketInner : CodeBase{
-//  mixin CachedDrawing;
-
   this(Token[] tokens, SourceCode sourceCode){
-    auto ts = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
-
-    bkColor = ts.bkColor;
     this.appendCode(tokens, sourceCode);
-    //todo: validate
   }
 }
 
-class CodeSquareBracket : CodeBase{
+class CodeSquareBracket : CodeComposite{
   this(Token[] tokens, SourceCode sourceCode){
-    auto ts      = tsNormal; ts.applySyntax(SyntaxKind.Symbol);
-
-    bkColor = ts.bkColor;
+    auto ts = syntaxStyle(SyntaxKind.Symbol);
 
     flags.yAlign = YAlign.stretch;
     this.appendChar('[', ts);
@@ -432,7 +403,7 @@ class CodeSquareBracket : CodeBase{
 
 
 /// 'Statement' here is a thing that can't be structured more. Has a border. It can be a declaration too.
-class CodeStatement : CodeBase{
+/*class CodeStatement : CodeBase{
   mixin CachedDrawing;
 
   this(Token[] tokens, SourceCode sourceCode){
@@ -442,11 +413,27 @@ class CodeStatement : CodeBase{
     padding = "0 2";
     this.appendCode(tokens, sourceCode);
   }
+}*/
+
+class CodeStatement : CodeComposite{
+  this(Token[] tokens, SourceCode sourceCode)
+  in(!tokens.empty && tokens[$-1].isOperator(opsemiColon))
+  {
+    bkColor = clCodeBackground;
+    margin = "0.5";
+    insetBorder(clGroupBackground);
+    padding = "0 1";
+
+    this.append(new CodeExpression(tokens[0..$-1], sourceCode));
+    auto ts = syntaxStyle(SyntaxKind.Symbol);
+    ts.bkColor = mix(ts.bkColor, clWhite, 0.15f);
+    this.appendStr("; ", ts);
+  }
 }
 
 /// 'Expression' is an embeded thing in a frame. Can be a function header for example. Has no border.
 class CodeExpression : CodeBase{
-  mixin CachedDrawing;
+//  mixin CachedDrawing;
   this(Token[] tokens, SourceCode sourceCode){
     bkColor = clCodeBackground;
     padding = "0 2";
@@ -532,6 +519,8 @@ class FrmMain: GLWindow { mixin autoCreate;
   override void onCreate(){
   }
 
+  Tuple!(Cell, vec2)[] hoveredStack, pressedStack, commonStack, selection;
+
   void updateCodeModule(){
     if(!codeModule){
       auto fn = application.args(1);
@@ -542,14 +531,74 @@ class FrmMain: GLWindow { mixin autoCreate;
       codeModule = new CodeModule(src.tokens, src);
     }
 
-    static str = "abcd";
+    codeModule.flags.targetSurface = 0;
+    im.root ~= codeModule;
 
-    with(im) Panel({
-      flags.targetSurface = 0; //it's on the zoomable surface
-      bkColor = clBlack; margin = "0"; border = "none"; padding = "0";
+    hoveredStack = codeModule.contains(view.mousePos);
 
-      actContainer.append(codeModule);
+    //don't select characters on composite containers.
+    if(hoveredStack.length>=2 && cast(Glyph)hoveredStack[$-1][0]){
+      auto a = hoveredStack[$-2][0];
+      if(cast(CodeComposite)a !is null)
+        hoveredStack.popBack;
+    }
+
+    if(inputs.LMB.pressed){ pressedStack = hoveredStack; selection = []; }
+    commonStack = inputs.LMB.down ? commonPrefix(pressedStack, hoveredStack) : [];
+
+    if(inputs.LMB.down){
+      //update selection
+      if(const cLen = commonStack.length){
+        if(cLen == pressedStack.length){ // single element
+          selection = [ commonStack.back ];
+        }else if(hoveredStack.length>cLen && pressedStack.length>cLen){ // range of elements
+          auto cells = commonStack.back[0].subCells;
+          auto i0 = cells.countUntil(pressedStack[cLen][0]),
+               i1 = cells.countUntil(hoveredStack[cLen][0]);
+          if(i0>=0 && i1>=0){
+            sort(i0, i1);
+            auto ofs = commonStack.back[1] + commonStack.back[0].innerPos;
+            selection = cells[i0..i1+1].map!(c => tuple(c, ofs)).array;
+          }
+        }
+      }else{
+        if(pressedStack.length)
+          selection = [ pressedStack.back ];
+      }
+    }
+
+    print("update");
+    with(im) Panel(PanelPosition.topLeft, {
+      //bkColor = clBlack; margin = "0"; border = "none"; padding = "0";
+
+      if(1) Row({
+        flags.yAlign = YAlign.stretch;
+        margin = "2";
+
+        void list(T)(string caption, T stack){
+          Row({
+            padding = "4";
+            margin = "2";
+            border = "1";
+            Text("# \t", bold(caption ~ "\n"));
+            Cell last;
+            foreach(c; stack){
+              auto act = c[0];
+              auto idx = last ? last.subCells.countUntil!(a => a is act) : 0;
+              Text(idx, " \t", typeid(act).name.withoutStarting("dide."), "\n");
+              last = act;
+            }
+          });
+        }
+
+        list("pressed", pressedStack);
+        list("hovered", hoveredStack);
+        list("common" , commonStack );
+      });
+
+
     });
+
   }
 
   override void onUpdate(){
@@ -564,8 +613,15 @@ class FrmMain: GLWindow { mixin autoCreate;
   override void onPaint(){
     gl.clearColor(clBlack);
     gl.clear(GL_COLOR_BUFFER_BIT);
+    //gl.polygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     im.draw;
+
+    auto dr = new Drawing;
+    dr.color = clAccent;
+    dr.alpha = .25;
+    foreach(a; selection[]) dr.fillRect((a[0].outerBounds + a[1]));
+    dr.glDraw(view); dr.free;
 
     //drawFPS(drGUI);
 
