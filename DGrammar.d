@@ -20,6 +20,14 @@ class GraphLabel(Node) : Row { // GraphLabel /////////////////////////////
     appendStr(text, ts);
   }
 
+  this(Node parent, bool isReference, string text){
+    auto ts = tsNormal;
+    ts.applySyntax(isReference ? SyntaxKind.Whitespace : SyntaxKind.BasicType);
+    ts.underline = isReference;
+    ts.italic = true;
+    this(parent, isReference, text, ts);
+  }
+
   auto absOuterBounds() const{ return innerBounds + parent.absInnerPos; }
   auto absOutputPos  () const{ return absOuterBounds.rightCenter; }
   auto absInputPos   () const{ return absOuterBounds.leftCenter ; }
@@ -30,6 +38,10 @@ class GraphNode(Graph, Label) : Row { // GraphNode /////////////////////////////
   mixin CachedDrawing;
 
   Graph parent;
+
+  this(Graph parent){
+    this.parent = parent;
+  }
 
   bool isSelected, oldSelected;
   bool isHovered() { return this is parent.hoveredNode; }
@@ -79,6 +91,8 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
   auto groupBounds(){ return nodeGroups.map!(grp => grp.map!(a => a.outerBounds).fold!"a|b".inflated(groupBoundMargin)); }
 
   Container.SearchResult[] searchResults;
+  bool searchBoxVisible;
+  string searchText;
 
   // inputs from outside
   private{
@@ -113,7 +127,7 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
     selection.update(!im.wantMouse, view, subCells.map!(a => cast(Node)a).array);
   }
 
-  // drawing routines
+  // drawing routines ////////////////////////////////////////////
 
   protected void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
     foreach(sr; searchResults)
@@ -193,17 +207,112 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
     _workArea = dr.bounds;
   }
 
+  void UI_SearchBox(View2D view){ // UI SearchBox ////////////////////////////////
+    with(im) Row({
+      //Keyboard shortcuts
+      auto kcFind      = KeyCombo("Ctrl+F"),
+           kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
+           kcFindClose = KeyCombo("Esc"); //always
+
+      if(kcFind.pressed) searchBoxVisible = true; //this is needed for 1 frame latency of the Edit
+      //todo: focus on the edit when turned on
+      if(searchBoxVisible){
+        width = fh*12;
+
+        Text("Find ");
+        .Container editContainer;
+        if(Edit(searchText, kcFind, { flex = 1; editContainer = actContainer; })){
+          //refresh search results
+          searchResults = search(searchText);
+        }
+
+        // display the number of matches. Also save the location of that number on the screen.
+        const matchCnt = searchResults.length;
+        Row({
+          if(matchCnt) Text(" ", clGray, matchCnt.text, " ");
+        });
+
+        if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
+          const maxScale = max(view.scale, 1);
+          view.zoomBounds(searchResults.map!(r => r.bounds).fold!"a|b", 12);
+          view.scale = min(view.scale, maxScale);
+        }
+
+        if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
+          searchBoxVisible = false;
+          searchText = "";
+          searchResults = [];
+        }
+      }else{
+
+        if(Btn(symbol("Zoom"       ), kcFind, hint("Start searching."))){
+          searchBoxVisible = true ; //todo: Focus the Edit control
+        }
+      }
+    });
+  }
+
+  void UI_Editor(){ with(im){ // UI_Editor ///////////////////////////////////
+    // WildCard filter
+    static hideUI = true;
+    static filterStr = "";
+    Row({ ChkBox(hideUI, "Hide Graph UI "); });
+
+    if(!hideUI){
+
+      Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
+
+      //filtered data source
+      auto filteredDefinitions = nodes.filter!(a => a.name.isWild(filterStr~"*")).array;
+
+      //scroller state
+      static SyntaxDefinition actSyntaxDefinition; //state
+      static topIndex = 0; //state
+      const pageSize = 10;
+
+      ScrollListBox!SyntaxDefinition(actSyntaxDefinition, filteredDefinitions, (in SyntaxDefinition sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
+
+      Spacer;
+      Row({
+        auto selected = selectedNodes.array;
+        Row({ Text("Selected items: "), Static(selected.length), Text("  Total: "), Static(nodes.length); });
+
+        const selectedGroupNames = selected.map!(a => a.groupName).array.sort.uniq.array;
+        static string editedGroupName;
+        Row({
+          Text("Selected groups: ");
+          foreach(i, name; selectedGroupNames)
+            if(Btn(name, id(cast(int)i))) editedGroupName = name;
+        });
+
+        Spacer;
+        Row({
+          Text("Group name os felected items: \n");
+          Edit(editedGroupName, { width = 200; });
+          if(Btn("Set", enable(selected.length>0))) foreach(a; selected) a.groupName_override = editedGroupName;
+        });
+
+      });
+
+      Spacer;
+      if(Btn("test")){
+      }
+
+    }
+  }}
+
 }
 
+/////////////////////////////////////////////
+///    Syntax graph for DLang grammar     ///
+/////////////////////////////////////////////
 
 alias SyntaxLabel = GraphLabel!SyntaxDefinition;
 
 class SyntaxDefinition : GraphNode!(SyntaxGraph, SyntaxLabel) { // SyntaxDefinition /////////////////////////////
 
   this(SyntaxGraph parent, Token[] tokens, SourceCode src){
-    this.parent = parent;
-
-    bkColor = clCodeBackground;
+    super(parent);
 
     static bool isSyntaxLabel(in Token t){ return (t.isIdentifier) && !t.source.among("Identifier", "IntegerLiteral", "FloatLiteral", "StringLiteral", "CharacterLiteral"); }
 
@@ -211,7 +320,7 @@ class SyntaxDefinition : GraphNode!(SyntaxGraph, SyntaxLabel) { // SyntaxDefinit
     enforce(isSyntaxLabel(tokens[0]), "Syntax label expected instead of: "~tokens[0].text);
     enforce(tokens[1].isOperator(opcolon));
 
-    margin = "0"; border = "normal"; border.color = clGroupBorder; padding = "2";
+    bkColor = clCodeBackground; border = "normal"; border.color = clGroupBorder; padding = "2";
 
     int lastIdx = tokens[0].pos;
     auto ts = tsNormal;
@@ -219,19 +328,10 @@ class SyntaxDefinition : GraphNode!(SyntaxGraph, SyntaxLabel) { // SyntaxDefinit
       //emit whitespace
       if(lastIdx < t.pos){ ts.applySyntax(0); appendStr(src.text[lastIdx..t.pos], ts); }
 
+      //emit the actual token
       if(isSyntaxLabel(t)){
-        const isLink = idx>0;
-
-        ts.applySyntax(isLink ? SyntaxKind.Whitespace : SyntaxKind.BasicType);
-        ts.underline = isLink;
-        ts.italic = true;
-
-        auto l = new SyntaxLabel(this, isLink, t.source, ts);
-        append(l);
-        if(!isLink){
-          //nameLabel = l;
-          parent.addNode(t.source, this);
-        }
+        const isReference = idx>0;
+        append(new SyntaxLabel(this, isReference, t.source));
       }else{
         ts.applySyntax(src.syntax[t.pos]);
         appendStr(t.source, ts);
@@ -240,9 +340,8 @@ class SyntaxDefinition : GraphNode!(SyntaxGraph, SyntaxLabel) { // SyntaxDefinit
       lastIdx = t.endPos;
     }
 
-    enforce(nameLabel !is null, "No title syntaxLabel found");
-
-    measure;
+    enforce(nameLabel !is null, "No target GraphLabel found. Unable to get Node's name.");
+    parent.addNode(name, this);
   }
 }
 
@@ -250,7 +349,40 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
 
   this(string text){ super(); importGrammar_official(text); }
 
-  this(File f){ this(f.readText); }
+  File mainFile, extraFile;
+
+  this(File mainFile, File extraFile){
+    this.mainFile = mainFile;
+    this.extraFile = extraFile;
+
+    this(mainFile.readText);
+
+    loadExtraData;
+  }
+
+  struct ExtraData{ //todo: exportFields, importFields between aggregates
+    vec2 outerPos;
+    string groupName_override;
+  }
+
+  void saveExtraData(){
+    nodes.map!(d => tuple(d.name, ExtraData(d.outerPos, d.groupName_override)))
+         .assocArray //todo: ez nem stable ordered!!!
+         .toJson
+         .saveTo(extraFile, Yes.onlyIfChanged);
+  }
+
+  void loadExtraData(){
+    ExtraData[string] tmp;
+    tmp.fromJson(extraFile.readText(false));
+    foreach(name, data; tmp){
+      if(auto a = nodeByName(name)){
+        static foreach(field; FieldNameTuple!(typeof(data))){
+          mixin("a.$ = data.$;".replace("$", field));
+        }
+      }
+    }
+  }
 
   private void patch_official(ref string text){
     //patch some bugs
@@ -293,17 +425,14 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
   }
 
   void appendDefinition_official(string def, string groupName){
-    //print("IMPORTING", def);
-
-    const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
-
     def = def.replace("opt", "?");
 
     auto src = new SourceCode(def);
-    auto a = new SyntaxDefinition(this, src.tokens, src);
-    a.groupName_original = groupName;
-    a.outerPos = nextPos;
-    append(a);
+    auto node = new SyntaxDefinition(this, src.tokens, src);
+    node.groupName_original = groupName;
+    const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
+    node.outerPos = nextPos;
+    append(node);
   }
 
   void importGrammar_official(string text){
@@ -351,171 +480,69 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
 
 }
 
-class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ////////////////////////////////////////////
+struct DlangGrammarGraph {
+  private SyntaxGraph graph_;
+  bool initiaZoomDone = false;
 
-  SyntaxGraph graph;
+  auto graph(){
+    if(graph_ is null)
+      graph_ = new SyntaxGraph(File(appPath, `Dlang grammar official.txt`  ),
+                               File(appPath, `DLang grammar extra data.txt`));
+    return graph_;
+  }
+
+  void update(View2D view){
+    const screenSearchBezierStart = vec2(view.clientSize.x-70, 20), //should be calculated from the actual UI location of the SearchBox
+          P0 = view.invTrans(screenSearchBezierStart),
+          P1 = view.invTrans(screenSearchBezierStart+vec2(0, 300));
+    graph.flags.targetSurface = 0; //it's on the zoomable surface
+    graph.update(view, [P0, P1]);
+    view.workArea = graph.workArea;
+    if(view.workArea && chkSet(initiaZoomDone)) view.zoomAll;
+    im.root ~= graph; //add it to the IMGUI
+  }
+
+  void finalize(){
+    if(graph_ !is null){
+      //print("saving"); readln;
+      graph_.saveExtraData;
+      graph_.free;
+    }
+  }
+
+  ~this(){
+    print("~this called"); //todo: this is not called. Problem with Form.destroy
+    readln;
+  }
+
+}
+
+class FrmGrammar: GLWindow { mixin autoCreate;  //!FrmGrammar ////////////////////////////////////////////
+
+  DlangGrammarGraph dlangGrammarGraph;
 
   override void onCreate(){
     //logFileOps = true;
   }
 
-  auto extraFile   (){ return File(appPath, "DLang grammar extra data.txt"); }
-
-  struct ExtraData{ //todo: exportFields, importFields  between aggregates
-    vec2 outerPos;
-    string groupName_override;
-  }
-
-  void loadGraph(){
-    if(graph) return;
-
-    graph = new SyntaxGraph(File(appPath, `Dlang grammar official.txt`));
-
-    ExtraData[string] tmp;
-    tmp.fromJson(extraFile.readText(false));
-    foreach(name, data; tmp){
-      if(auto a = graph.nodeByName(name)){
-        static foreach(field; FieldNameTuple!(typeof(data))){
-          mixin("a.$ = data.$;".replace("$", field));
-        }
-      }
-    }
-  }
-
-  void saveExtraData(){
-    graph.nodes.map!(d => tuple(d.name, ExtraData(d.outerPos, d.groupName_override))).assocArray.toJson.saveTo(extraFile);
-  }
-
-  void updateGraphs(){
-    loadGraph;
-
-    graph.flags.targetSurface = 0; //it's on the zoomable surface
-
-    const screenSearchBezierStart = vec2(clientWidth-70, 20), //should be calculated from the actual UI location of the SearchBox
-          P0 = view.invTrans(screenSearchBezierStart),
-          P1 = view.invTrans(screenSearchBezierStart+vec2(0, 300));
-
-    graph.update(view, [P0, P1]);
-
-    view.workArea = graph.workArea;
-
-    { static initialZoom = false; if(view.workArea && chkSet(initialZoom)) { view.zoomAll; } }
-
-    im.root ~= graph; //add it to the IMGUI
-  }
-
   override void onUpdate(){
     caption = "DLang grammar viewer";
-
-    updateGraphs;
-
     view.navigate(!im.wantKeys, !im.wantMouse);
 
-    invalidate; //opt
-
-    static actMode = 1;
-    static searchText = "";
-    static searchBoxVisible = false;
-
-    with(im) Panel(PanelPosition.topRight, {
-      //theme = "tool";
-
-      Row({
-        //Keyboard shortcuts
-        auto kcFind      = KeyCombo("Ctrl+F"),
-             kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
-             kcFindClose = KeyCombo("Esc"); //always
-
-        if(kcFind.pressed) searchBoxVisible = true; //this is needed for 1 frame latency of the Edit
-        if(searchBoxVisible){
-          width = fh*12;
-
-          Text("Find ");
-          .Container editContainer;
-          if(Edit(searchText, kcFind, { flex = 1; editContainer = actContainer; })){
-            //refresh search results
-            graph.searchResults = graph.search(searchText);
-          }
-
-          // display the number of matches. Also save the location of that number on the screen.
-          const matchCnt = graph.searchResults.length;
-          Row({
-            if(matchCnt) Text(" ", clGray, matchCnt.text, " ");
-          });
-
-          if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
-            const maxScale = max(view.scale, 1);
-            view.zoomBounds(graph.searchResults.map!(r => r.bounds).fold!"a|b", 12);
-            view.scale = min(view.scale, maxScale);
-          }
-
-          if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
-            searchBoxVisible = false;
-            searchText = "";
-            graph.searchResults = [];
-          }
-        }else{
-
-          if(Btn(symbol("Zoom"       ), kcFind, hint("Start searching."))){
-            searchBoxVisible = true ;
-          }
-        }
-      });
-    });
+    dlangGrammarGraph.update(view);
 
     if(1) with(im) Panel(PanelPosition.topLeft, {
       width = 300;
       vScroll;
 
-      // WildCard filter
-      static hideUI = true;
-      static filterStr = "";
-      Row({ ChkBox(hideUI, "Hide UI "); });
-
-      if(!hideUI){
-
-        Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
-
-        //filtered data source
-        auto filteredDefinitions = graph.nodes.filter!(a => a.name.isWild(filterStr~"*")).array;
-
-        //scroller state
-        static SyntaxDefinition actSyntaxDefinition; //state
-        static topIndex = 0; //state
-        const pageSize = 10;
-
-        ScrollListBox!SyntaxDefinition(actSyntaxDefinition, filteredDefinitions, (in SyntaxDefinition sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
-
-        Spacer;
-        Row({
-          auto selected = graph.selectedNodes.array;
-          Row({ Text("Selected items: "), Static(selected.length), Text("  Total: "), Static(graph.nodes.length); });
-
-          const selectedGroupNames = selected.map!(a => a.groupName).array.sort.uniq.array;
-          static string editedGroupName;
-          Row({
-            Text("Selected groups: ");
-            foreach(i, name; selectedGroupNames)
-              if(Btn(name, id(cast(int)i))) editedGroupName = name;
-          });
-
-          Spacer;
-          Row({
-            Text("Group name os felected items: \n");
-            Edit(editedGroupName, { width = 200; });
-            if(Btn("Set", enable(selected.length>0))) foreach(a; selected) a.groupName_override = editedGroupName;
-          });
-
-        });
-
-        Spacer;
-        if(Btn("test")){
-        }
-
-      }
-
+      dlangGrammarGraph.graph.UI_Editor;
     });
 
+    with(im) Panel(PanelPosition.topRight, {
+      dlangGrammarGraph.graph.UI_SearchBox(view);
+    });
+
+    invalidate; //opt
   }
 
   override void onPaint(){
@@ -524,20 +551,18 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //FrmGrammar ///////////////////
 
     im.draw;
 
-    auto drGUI = new Drawing;
     if(1){
-      drawFPS(drGUI);
-      drGUI.glDraw(viewGUI);
-    }
-
-    if(0){
-      drGUI.translate(400, 100);
-      drGUI.debugDrawings(viewGUI);
-      drGUI.pop;
+      auto dr = scoped!Drawing;
+      drawFPS(dr);
+      dr.glDraw(viewGUI);
     }
   }
 
   override void onDestroy(){
-    saveExtraData;
+    dlangGrammarGraph.finalize; //todo: local struct's destructor sot called
+  }
+
+  ~this(){
+    print("form.~this"); readln; //todo: this is not called at all, wtf?!!
   }
 }

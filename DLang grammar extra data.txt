@@ -431,17 +431,17 @@
     "outerPos": [6737.0435,493.43665],
     "groupName_override": ""
   },
-  "StructMemberInitializers": {
-    "outerPos": [4338.8247,1103.4092],
-    "groupName_override": ""
+  "ImportExpression": {
+    "outerPos": [3053.6289,2440.0999],
+    "groupName_override": "UnaryExpression"
   },
   "TypeClass": {
     "outerPos": [7124.644,3022.6746],
     "groupName_override": "ABI TypeX"
   },
-  "ImportExpression": {
-    "outerPos": [3053.6289,2440.0999],
-    "groupName_override": "UnaryExpression"
+  "StructMemberInitializers": {
+    "outerPos": [4338.8247,1103.4092],
+    "groupName_override": ""
   },
   "HexDigit": {
     "outerPos": [6526.8594,3725.4336],
@@ -1492,7 +1492,7 @@
     "groupName_override": ""
   },
   "Module": {
-    "outerPos": [-625.89899,281.45865],
+    "outerPos": [-623.64807,267.51465],
     "groupName_override": ""
   },
   "Parameters_": {
