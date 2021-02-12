@@ -5,6 +5,9 @@
 ///@release
 //@debug
 
+//@RUN $
+//@RUN pause
+
 import het, het.ui, het.tokenizer, het.keywords, het.stream;
 
 class GraphLabel(Node) : Row { // GraphLabel /////////////////////////////
@@ -74,7 +77,7 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
 
   SelectionManager!Node selection;
 
-  auto nodes        (){ return cast(Node[])subCells; } //it's kinda unsafe because cast can be null, but ok for now...
+  auto nodes        (){ return cast(Node[])subCells; } //note: all subcells' type must be Node
   auto selectedNodes(){ return nodes.filter!(a => a.isSelected); }
   auto hoveredNode  (){ return selection.hoveredItem; }
 
@@ -87,7 +90,7 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
   }
 
   float groupBoundMargin = 30;
-  auto nodeGroups(){ return nodes.sort!((a, b) => a.groupName < b.groupName).groupBy; }
+  auto nodeGroups(){ return nodes.dup.sort!((a, b) => a.groupName < b.groupName).groupBy; } //note .dup is important because .sort works in place.
   auto groupBounds(){ return nodeGroups.map!(grp => grp.map!(a => a.outerBounds).fold!"a|b".inflated(groupBoundMargin)); }
 
   Container.SearchResult[] searchResults;
@@ -252,6 +255,11 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
     });
   }
 
+  //scroller state
+  SyntaxDefinition actSyntaxDefinition; //state
+  auto topIndex = 0; //state
+  enum pageSize = 10;
+
   void UI_Editor(){ with(im){ // UI_Editor ///////////////////////////////////
     // WildCard filter
     static hideUI = true;
@@ -264,12 +272,6 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
 
       //filtered data source
       auto filteredDefinitions = nodes.filter!(a => a.name.isWild(filterStr~"*")).array;
-
-      //scroller state
-      static SyntaxDefinition actSyntaxDefinition; //state
-      static topIndex = 0; //state
-      const pageSize = 10;
-
       ScrollListBox!SyntaxDefinition(actSyntaxDefinition, filteredDefinitions, (in SyntaxDefinition sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
 
       Spacer;
@@ -480,7 +482,7 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
 
 }
 
-struct DlangGrammarGraph {
+struct DlangGrammarGraph { // DlangGrammarGraph ////////////////////////////
   private SyntaxGraph graph_;
   bool initiaZoomDone = false;
 
@@ -502,17 +504,8 @@ struct DlangGrammarGraph {
     im.root ~= graph; //add it to the IMGUI
   }
 
-  void finalize(){
-    if(graph_ !is null){
-      //print("saving"); readln;
-      graph_.saveExtraData;
-      graph_.free;
-    }
-  }
-
   ~this(){
-    print("~this called"); //todo: this is not called. Problem with Form.destroy
-    readln;
+    if(graph_) graph_.saveExtraData;
   }
 
 }
@@ -559,10 +552,6 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //!FrmGrammar //////////////////
   }
 
   override void onDestroy(){
-    dlangGrammarGraph.finalize; //todo: local struct's destructor sot called
   }
 
-  ~this(){
-    print("form.~this"); readln; //todo: this is not called at all, wtf?!!
-  }
 }
