@@ -8,6 +8,8 @@
 //@RUN $
 //@RUN pause
 
+//@import c:\d\libs\het\hdmd
+
 import het, het.ui, het.tokenizer, het.keywords, het.stream;
 
 class GraphLabel(Node) : Row { // GraphLabel /////////////////////////////
@@ -16,19 +18,24 @@ class GraphLabel(Node) : Row { // GraphLabel /////////////////////////////
   string name;
 
   this(){}
-  this(Node parent, bool isReference, string text, in TextStyle ts){
-    this.name = text;
+
+  this(Node parent, bool isReference, string name, string caption, in TextStyle ts){
+    this.name = name;
     this.parent = parent;
     this.isReference = isReference;
-    appendStr(text, ts);
+    appendStr(caption, ts);
   }
 
-  this(Node parent, bool isReference, string text){
+  this(Node parent, bool isReference, string name, in TextStyle ts){
+    this(parent, isReference, name, name, ts);
+  }
+
+  this(Node parent, bool isReference, string name){ //todo: this is for languageGraph only
     auto ts = tsNormal;
     ts.applySyntax(isReference ? SyntaxKind.Whitespace : SyntaxKind.BasicType);
     ts.underline = isReference;
     ts.italic = true;
-    this(parent, isReference, text, ts);
+    this(parent, isReference, name, ts);
   }
 
   auto absOuterBounds() const{ return innerBounds + parent.absInnerPos; }
@@ -55,11 +62,14 @@ class GraphNode(Graph, Label) : Row { // GraphNode /////////////////////////////
 
   string fullName() const { return groupName ~ "/" ~ name; }
 
-  auto labels    (){ return subCells.map!(a => cast(SyntaxLabel)a).filter!"a"; }
+  auto labels    (){ return subCells.map!(a => cast(Label)a).filter!"a"; }
   auto targets   (){ return labels.filter!(a => !a.isReference); }
   auto references(){ return labels.filter!(a =>  a.isReference); }
 
-  Label nameLabel(){ foreach(t; targets) return t; return null; }
+  Label nameLabel(){
+    pragma(msg, Label, typeof(this));
+    foreach(t; targets) return t; return null;
+  }
 
   string name() const {
     foreach(t; (cast()this).targets) return t.name;
@@ -76,6 +86,8 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
   }), "Field requirements not met.");
 
   SelectionManager!Node selection;
+
+  bool invertEdgeDirection;
 
   auto nodes        (){ return cast(Node[])subCells; } //note: all subcells' type must be Node
   auto selectedNodes(){ return nodes.filter!(a => a.isSelected); }
@@ -111,7 +123,7 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
     selection = new typeof(selection);
   }
 
-  struct Link{ Label from; SyntaxDefinition to; }
+  struct Link{ Label from; Node to; }
   Link[] _links;
 
   auto links(){
@@ -179,15 +191,24 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
 
       lineWidth = viewScale>1 ? 1 : -1; //line can't be thinner than 1 pixel, but can be thicker
 
-      vec2 P0 = link.from.absOutputPos, P4 = link.to.nameLabel.absInputPos;
-      float a = min(50, distance(P0, P4)/3);
-      vec2 ofs = P0.x<P4.x ? vec2(a, 0) : vec2(a, -a),
-           P1 = P0 + ofs,
-           P3 = P4 + ofs*vec2(-1, 1),
-           P2 = avg(P1, P3);
+      //OutputPos = rightCenter, InputPos = leftCenter
 
+      vec2 P0, P1, P2, P3, P4, ofs;
+      if(!invertEdgeDirection){ //arrows go the the right. It's good for a grammar graph
+        P0 = link.from.absOutputPos; P4 = link.to.nameLabel.absInputPos;
+        float a = min(50, distance(P0, P4)/3);
+        ofs = P0.x<P4.x ? vec2(a, 0) : vec2(a, -a);
+      }else{ //arrows go to the left. Good for module hierarchy. Rightmost module is the main project.
+        P0 = link.from.absInputPos; P4 = link.to.nameLabel.absOutputPos;
+        float a = min(50, distance(P0, P4)/3);
+        ofs = P0.x>P4.x ? vec2(-a, 0) : vec2(-a, -a);
+      }
+      P1 = P0 + ofs,
+      P3 = P4 + ofs*vec2(-1, 1),
+      P2 = avg(P1, P3);
       bezier2(P0, P1, P2);
       bezier2(P2, P3, P4);
+
     }
     alpha = 1;
   }}
@@ -256,11 +277,11 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
   }
 
   //scroller state
-  SyntaxDefinition actSyntaxDefinition; //state
+  Node actNode; //state
   auto topIndex = 0; //state
   enum pageSize = 10;
 
-  void UI_Editor(){ with(im){ // UI_Editor ///////////////////////////////////
+  void UI_Editor(){ alias GraphNode = Node; /*todo: fucking name collision with im.Node */   with(im){ // UI_Editor ///////////////////////////////////
     // WildCard filter
     static hideUI = true;
     static filterStr = "";
@@ -271,8 +292,8 @@ class ContainerGraph(Node : Cell, Label : GraphLabel!Node) : Container { // Cont
       Row({ Text("Filter "); Edit(filterStr, { flex = 1; }); });
 
       //filtered data source
-      auto filteredDefinitions = nodes.filter!(a => a.name.isWild(filterStr~"*")).array;
-      ScrollListBox!SyntaxDefinition(actSyntaxDefinition, filteredDefinitions, (in SyntaxDefinition sd){ Text(sd.name); width = 260; }, pageSize, topIndex);
+      auto filteredNodes = nodes.filter!(a => a.name.isWild(filterStr~"*")).array;
+      ScrollListBox(actNode, filteredNodes, (in GraphNode n){ Text(n.name); width = 260; }, pageSize, topIndex);
 
       Spacer;
       Row({
@@ -507,12 +528,132 @@ struct DlangGrammarGraph { // DlangGrammarGraph ////////////////////////////
   ~this(){
     if(graph_) graph_.saveExtraData;
   }
+}
 
+/////////////////////////////////////////////
+///    Module graph                       ///
+/////////////////////////////////////////////
+
+import buildsys;
+
+alias ModuleLabel = GraphLabel!ModuleNode;
+
+class ModuleNode : GraphNode!(ModuleGraph, ModuleLabel) { // ModuleNode /////////////////////////////
+
+  File moduleFile;
+  string moduleFullName;
+
+  override string name() const {
+    return moduleFile.fullName;
+  }
+
+  this(ModuleGraph parent, buildsys.ModuleInfo moduleInfo){
+    super(parent); //todo: this is copy paste. This should be done automatically.
+
+    moduleFile = moduleInfo.fileName;
+    moduleFullName = moduleInfo.moduleFullName;
+    groupName_original = moduleFile.path.fullPath;
+
+    bkColor = clCodeBackground; border = "normal"; border.color = clGroupBorder; padding = "2";
+    auto ts = tsNormal;
+
+    //module name
+    ts.applySyntax(SyntaxKind.BasicType);
+    ts.fontHeight = 18*2;
+    append(new ModuleLabel(this, false, moduleFile.fullName, moduleFullName, ts));
+
+    //fileName
+    ts.fontHeight = 18/3;
+    ts.fontColor = clGray;
+    appendStr("\n"~moduleFile.fullName, ts);
+    ts.applySyntax(SyntaxKind.Whitespace);
+
+    ts.applySyntax(SyntaxKind.Whitespace);
+    ts.fontHeight = 18;
+    foreach(mFile; moduleInfo.imports){
+      appendStr("\n    ", ts);
+      append(new ModuleLabel(this, true, mFile.fullName, mFile.fullName, ts));
+    }
+
+
+    //parent.addNode(name, this); //todo: this is in the wrong place. Parent is responsible to maintain its list
+  }
+}
+
+class ModuleGraph : ContainerGraph!(ModuleNode, ModuleLabel) { // ModuleGraph /////////////////////////////
+
+  File extraFile;
+
+  this(File extraFile){
+    super();
+    invertEdgeDirection = true;
+    this.extraFile = extraFile;
+  }
+
+  auto addModule(buildsys.ModuleInfo moduleInfo){
+    if(auto n = nodeByName(moduleInfo.fileName.fullName)) return n; //already exists
+
+    auto node = new ModuleNode(this, moduleInfo);
+    const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
+    node.outerPos = nextPos;
+
+    addNode(node.name, node); //todo: this only adds it to the nodeByName map
+    append(node); //this adds is to subCells
+    return node;
+  }
+
+  bool initiaZoomDone = false;
+
+  void update2(View2D view){
+    const screenSearchBezierStart = vec2(view.clientSize.x-70, 20), //should be calculated from the actual UI location of the SearchBox
+          P0 = view.invTrans(screenSearchBezierStart),
+          P1 = view.invTrans(screenSearchBezierStart+vec2(0, 300));
+    flags.targetSurface = 0; //it's on the zoomable surface
+    super.update(view, [P0, P1]);
+    view.workArea = workArea;
+    if(view.workArea && chkSet(initiaZoomDone)) view.zoomAll;
+    im.root ~= this; //add it to the IMGUI
+  }
+
+  struct ExtraData{ //todo: exportFields, importFields between aggregates
+    vec2 outerPos;
+  }
+
+  void saveExtraData(){
+    nodes.map!(d => tuple(d.name, ExtraData(d.outerPos)))
+         .assocArray //todo: ez nem stable ordered!!!
+         .toJson
+         .saveTo(extraFile, Yes.onlyIfChanged);
+  }
+
+  void loadExtraData(){
+    ExtraData[string] tmp;
+    tmp.fromJson(extraFile.readText(false));
+    foreach(name, data; tmp){
+      if(auto a = nodeByName(name)){
+        static foreach(field; FieldNameTuple!(typeof(data))){
+          mixin("a.$ = data.$;".replace("$", field));
+        }
+      }
+    }
+  }
+
+}
+
+
+auto testProject = File(`c:\D\projects\Karc\karc.d`);
+
+void testBuildSys(){
+  BuildSystem bs;
+  BuildSettings settings = { verbose : true };
+  bs.findDependencies(testProject, settings);
 }
 
 class FrmGrammar: GLWindow { mixin autoCreate;  //!FrmGrammar ////////////////////////////////////////////
 
   DlangGrammarGraph dlangGrammarGraph;
+
+  ModuleGraph moduleGraph;
 
   override void onCreate(){
     //logFileOps = true;
@@ -522,17 +663,31 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //!FrmGrammar //////////////////
     caption = "DLang grammar viewer";
     view.navigate(!im.wantKeys, !im.wantMouse);
 
-    dlangGrammarGraph.update(view);
+    //dlangGrammarGraph.update(view);
+
+    if(!moduleGraph){
+      BuildSystem bs;
+      BuildSettings settings = { verbose : false };
+      auto modules = bs.findDependencies(testProject, settings);
+
+      moduleGraph = new ModuleGraph(File(appPath, "Module extra data.txt"));
+
+      foreach(m; modules) moduleGraph.addModule(m);
+      moduleGraph.loadExtraData;
+    }
+    moduleGraph.update2(view);
 
     if(1) with(im) Panel(PanelPosition.topLeft, {
       width = 300;
       vScroll;
 
-      dlangGrammarGraph.graph.UI_Editor;
+      //dlangGrammarGraph.graph.UI_Editor;
+      moduleGraph.UI_Editor;
     });
 
     with(im) Panel(PanelPosition.topRight, {
-      dlangGrammarGraph.graph.UI_SearchBox(view);
+      //dlangGrammarGraph.graph.UI_SearchBox(view);
+      moduleGraph.UI_SearchBox(view);
     });
 
     invalidate; //opt
@@ -552,6 +707,7 @@ class FrmGrammar: GLWindow { mixin autoCreate;  //!FrmGrammar //////////////////
   }
 
   override void onDestroy(){
+    moduleGraph.saveExtraData;
   }
 
 }
