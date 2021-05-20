@@ -48,7 +48,6 @@ class SyntaxDefinition : GraphNode!(SyntaxGraph, SyntaxLabel) { // SyntaxDefinit
     }
 
     enforce(nameLabel !is null, "No target GraphLabel found. Unable to get Node's name.");
-    parent.addNode(name, this);
   }
 }
 
@@ -83,7 +82,7 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
     ExtraData[string] tmp;
     tmp.fromJson(extraFile.readText(false));
     foreach(name, data; tmp){
-      if(auto a = nodeByName(name)){
+      if(auto a = findNode(name)){
         static foreach(field; FieldNameTuple!(typeof(data))){
           mixin("a.$ = data.$;".replace("$", field));
         }
@@ -139,7 +138,7 @@ class SyntaxGraph : ContainerGraph!(SyntaxDefinition, SyntaxLabel) { // SyntaxGr
     node.groupName_original = groupName;
     const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
     node.outerPos = nextPos;
-    append(node);
+    addNode(node.name, node);
   }
 
   void importGrammar_official(string text){
@@ -258,9 +257,6 @@ class ModuleNode : GraphNode!(ModuleGraph, ModuleLabel) { // ModuleNode ////////
       appendStr("\n", ts);
       append(new ModuleLabel(this, true, mFile.fullName, mFile.fullName, ts));
     }
-
-
-    //parent.addNode(name, this); //todo: this is in the wrong place. Parent is responsible to maintain its list
   }
 }
 
@@ -275,14 +271,13 @@ class ModuleGraph : ContainerGraph!(ModuleNode, ModuleLabel) { // ModuleGraph //
   }
 
   auto addModule(buildsys.ModuleInfo moduleInfo){
-    if(auto n = nodeByName(moduleInfo.file.fullName)) return n; //already exists
+    if(auto n = findNode(moduleInfo.file.fullName)) return n; //already exists
 
     auto node = new ModuleNode(this, moduleInfo);
     const nextPos = subCells.length ? subCells[$-1].outerBounds.bottomLeft + vec2(0, 10) : vec2(0);
     node.outerPos = nextPos;
 
     addNode(node.name, node); //todo: this only adds it to the nodeByName map
-    append(node); //this adds is to subCells
     return node;
   }
 
@@ -314,7 +309,7 @@ class ModuleGraph : ContainerGraph!(ModuleNode, ModuleLabel) { // ModuleGraph //
     ExtraData[string] tmp;
     tmp.fromJson(extraFile.readText(false));
     foreach(name, data; tmp){
-      if(auto a = nodeByName(name)){
+      if(auto a = findNode(name)){
         static foreach(field; FieldNameTuple!(typeof(data))){
           mixin("a.$ = data.$;".replace("$", field));
         }

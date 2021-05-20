@@ -1,12 +1,9 @@
 //@exe
-//@import c:\d\libs
-//@ldc
-//@compile -m64 -mcpu=athlon64-sse3 -mattr=+ssse3
 ///@release
 //@debug
 
 ///@run $ c:\d\libs\het\test\syntaxTestText.d
-//@run $ dide.d
+//@run $ c:\d\projects\dide\dide.d
 ///@run $ c:\D\ldc2\import\std\datetime\systime.d
 ///@run $ c:\D\libs\het\utils.d
 ///@run $ c:\D\libs\het\math.d
@@ -32,7 +29,7 @@ public{// Utility stuff ////////////////////////////////////////////////////////
 void applyCodeContainerFlags(Container container){
   // general flags
   with(container.flags){
-    canWrap = false;
+    wordWrap = false;
     dontHideSpaces = true;
     rowElasticTabs = true;
   }
@@ -247,6 +244,7 @@ class CodeBase : Row{ /// base class for everything that is Code related.
   }
 
   this(){
+    this.id = srcId!("CODE", 0)(genericId(this.identityStr)); //todo: give meaningful id's
     this.applyCodeContainerFlags;
   }
 }
@@ -360,8 +358,8 @@ not monospaced`d;
     this.appendStr((type.isLetter ? type.text ~ `"` : type.text)~(unit=='c' ? "" : unit.text), ts);
   }
 
-  override void measure(){
-    super.measure;
+  override void rearrange(){
+    super.rearrange;
     foreach(sc; subCells[$ - (unit=='c' ? 1 : 2)..$])
       sc.outerPos.y = innerSize.y - sc.outerSize.y;
   }
@@ -615,13 +613,7 @@ class FrmMain: GLWindow { mixin autoCreate;
     gl.clear(GL_COLOR_BUFFER_BIT);
     //gl.polygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    im.draw;
-
-    auto dr = new Drawing;
-    dr.color = clAccent;
-    dr.alpha = .25;
-    foreach(a; selection[]) dr.fillRect((a[0].outerBounds + a[1]));
-    dr.glDraw(view); dr.free;
+    //im.draw;
 
     //drawFPS(drGUI);
 
@@ -631,6 +623,14 @@ class FrmMain: GLWindow { mixin autoCreate;
     drGUI.textOut(0, 120, "mouse in viewGUI: "~viewGUI.mousePos.text);*/
 
 //    caption = view.text ~ view.trans(g_currentMouse) ~ viewGUI.text;
+  }
+
+  override void afterPaint(){
+    auto dr = scoped!Drawing;
+    dr.color = clAccent;
+    dr.alpha = .25;
+    foreach(a; selection[]) dr.fillRect((a[0].outerBounds + a[1]));
+    dr.glDraw(view);
   }
 }
 
