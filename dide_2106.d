@@ -2,8 +2,8 @@
 ///@release
 //@debug
 
-///@run $ c:\d\libs\het\test\syntaxTestText.d
-//@run $ c:\d\projects\dide\dide.d
+//@run $ c:\d\libs\het\test\syntaxTestText.d
+///@run $ c:\d\projects\dide\dide.d
 ///@run $ c:\D\ldc2\import\std\datetime\systime.d
 ///@run $ c:\D\libs\het\utils.d
 ///@run $ c:\D\libs\het\math.d
@@ -237,7 +237,7 @@ class CodeBase : Row{ /// base class for everything that is Code related.
     bkColor = ts.bkColor;
   }
 
-  auto syntaxStyle_light(SyntaxKind sk = SyntaxKind.Whitespace){
+  auto syntaxStyle_light(SyntaxKind sk = skWhitespace){
     auto ts = syntaxStyle(sk);
     lightenBk(ts);
     return ts;
@@ -521,7 +521,7 @@ class FrmMain: GLWindow { mixin autoCreate;
 
   void updateCodeModule(){
     if(!codeModule){
-      auto fn = application.args(1);
+      auto fn = application.args[1];
       auto src = new SourceCode(File(fn).readText
         //.transformLeadingSpacesToTabs
         .stripAllLines  //todo: this is bogus!!! Can't handle strings and comments!!!!!!!
