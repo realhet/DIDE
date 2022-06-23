@@ -317,8 +317,11 @@ class Module : Container{ //this is any file in the project
     overlay = new Row;
     overlay.id = "Overlay:"~file.fullName;
     overlay.outerSize = siz;
-    overlay.flags.noBackground = true;
-    //overlay.flags.clipSubCells = false;
+    with(overlay.flags){
+      dontSearch = true;
+      noBackground = true;
+      //clipSubCells = false;
+    }
 
     auto ts = tsNormal;
     ts.fontHeight = 18*12;
@@ -356,13 +359,23 @@ class Module : Container{ //this is any file in the project
 }
 
 
+// MainOverlay //////////////////////////////////////////////////////////
+class MainOverlayContainer : het.uibase.Container{
+  this(){ flags.targetSurface = 0; }
+  override void onDraw(Drawing dr){
+    frmMain.drawOverlay(dr);
+  }
+}
 
 //! FrmMain ///////////////////////////////////////////////
+auto frmMain(){ return cast(FrmMain)mainWindow; }
+
 class FrmMain : GLWindow { mixin autoCreate;
 
   FileDialog fileDialog;
 
   Module[] modules;
+  MainOverlayContainer overlay;
 
   Module findModule(File file){ const fn = file.normalized; foreach(m; modules) if(m.file==fn) return m; return null; }
 
@@ -396,11 +409,8 @@ class FrmMain : GLWindow { mixin autoCreate;
   @VERB("Ctrl+O")       void openFile            (){ fileDialog.openMulti.each!(f => openFile         (f)); }
   @VERB("Ctrl+Shift+O") void openFileRecursive   (){ fileDialog.openMulti.each!(f => openFileRecursive(f)); } //project
 
-  override void onCreate(){
-    fileDialog = new FileDialog(hwnd, "Dlang source file", ".d", "DLang Sources(*.d)");
-  }
-
   //search /////////////////////////////////
+
   bool searchBoxVisible = false;
   string searchText;
   Container.SearchResult[] searchResults;
@@ -448,6 +458,12 @@ class FrmMain : GLWindow { mixin autoCreate;
     }
   });}
 
+  override void onCreate(){ //onCreate //////////////////////////////////
+    fileDialog = new FileDialog(hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
+    overlay = new MainOverlayContainer;
+
+  }
+
   override void onUpdate(){ // onUpdate ////////////////////////////////////////
     //showFPS = true;
 
@@ -485,6 +501,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     });
 
     im.root ~= modules;
+    im.root ~= overlay;
 
     view.subScreenArea = im.clientArea / clientSize;
   }
@@ -493,33 +510,61 @@ class FrmMain : GLWindow { mixin autoCreate;
     gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT);
   }
 
-  override void afterPaint(){
+  void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
+    const
+      blink = float(sqr(sin(blinkf(134.0f/60)*PIf))),
+      arrowSize = 12+6*blink,
+      arrowThickness = arrowSize*.2f,
 
-    void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
-      const far = view.invScale > 6;
-      const extra = view.invScale*6*sqr(sin(blinkf(134.0f/60)*PIf));
+      far = view.invScale_anim > 6, //todo: this is a lod
+      extra = view.invScale_anim*6*blink,
+      bnd = view.subScreenBounds,
+      bndInner = bnd.inflated(-view.invScale_anim*arrowThickness*2),
+      bndInnerSizeHalf = bndInner.size/2,
+      center = bnd.center;
 
-      //always draw these
-      dr.color = clSearchHighLight;
-      foreach(sr; searchResults){
-        auto r = sr.bounds;
-        r.topLeft -= vec2(extra);
-        r.bottomRight += vec2(extra);
+    color = clSearchHighLight;
+
+    bool isVisible(T)(in T b){ return bnd.overlaps(b); }
+
+    //always draw these
+    color = clSearchHighLight;
+    foreach(sr; searchResults){
+      auto r = sr.bounds;
+      if(bnd.overlaps(r)){
+        r.topLeft     -= vec2(extra);
+        r.bottomRight += vec2(extra); //todo: inflate
         fillRect(r);
-      }
+      }else{
+        dr.lineWidth = -arrowThickness;
+        dr.arrowStyle = ArrowStyle.arrow;
 
-      if(!far){
-        foreach(sr; searchResults)
+        auto v = r.center-center;
+        if(v.x >  bndInnerSizeHalf.x) v *=  bndInnerSizeHalf.x/v.x;
+        if(v.x < -bndInnerSizeHalf.x) v *= -bndInnerSizeHalf.x/v.x;
+        if(v.y >  bndInnerSizeHalf.y) v *=  bndInnerSizeHalf.y/v.y;
+        if(v.y < -bndInnerSizeHalf.y) v *= -bndInnerSizeHalf.y/v.y;
+
+        dr.line(center+v*.99f, center+v);
+        dr.arrowStyle = ArrowStyle.none;
+      }
+    }
+
+    //later pass, so this will always visible
+    if(!far){
+      foreach(sr; searchResults)
+        if(isVisible(sr.bounds))
           sr.drawHighlighted(dr, clSearchHighLight); //close lod
-      }
-    }}
+    }
+  }}
 
-    auto dr = new Drawing;
+  void drawOverlay(Drawing dr){
     drawSearchResults(dr, clWhite);
-    dr.glDraw(view);
+  }
 
-    //todo: off screen targets
+  //todo: off screen targets
 
+  override void afterPaint(){ // afterPaint //////////////////////////////////
   }
 
 }
