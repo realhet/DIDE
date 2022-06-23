@@ -8,15 +8,23 @@
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 
-int DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
+__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
+
+const clModuleBorder = clGray;
+const clModuleText = clBlack;
+
+void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
+  border.width = borderWidth;
+  border.color = bkColor;
+  border.inset = true;
+  border.borderFirst = true;
+}}
 
 // build system /////////////////////////////////////
 
 import buildsys;
 
-BuildSystem buildSystem;
-BuildSettings buildSettings = { verbose : false };
-
+__gshared BuildSystem buildSystem;
 
 /// CodeRow ////////////////////////////////////////////////
 class CodeRow: Row{
@@ -137,9 +145,10 @@ class CodeRow: Row{
       //LOD: one straight line
 
       const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength;
-      if(subCells.length-lsCnt>0){
+      if(lsCnt<subCells.length){
         const r = bounds2(subCells[lsCnt].outerPos, subCells[$-1].outerBottomRight) + innerPos;
         dr.color = avg(glyphs[lsCnt].bkColor, glyphs[lsCnt].fontColor);
+        //dr.color = application.tick&1 ? clWhite : clBlack;
         dr.fillRect(r.inflated(vec2(0, -r.height/4)));
       }
     }else{
@@ -165,7 +174,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     flags.columnElasticTabs = true;
     bkColor = clCodeBackground;
 
-    margin = "4";
+    padding = "1 4";
   }
 
   this(File file){
@@ -285,23 +294,63 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 
 /// Module ///////////////////////////////////////////////
-class Module : Row{ //this is any file in the project
+class Module : Container{ //this is any file in the project
   File file;
+
+  CodeColumn code;
+  Row overlay;
+
+  void rebuild(){
+    clearSubCells;
+
+    flags.cullSubCells = true;
+
+    bkColor = clModuleBorder;
+    this.setRoundBorder(16);
+    padding = "8";
+
+    code = new CodeColumn(this.file);
+    code.measure;
+    const siz = code.outerSize;
+    innerSize = siz;
+
+    overlay = new Row;
+    overlay.id = "Overlay:"~file.fullName;
+    overlay.outerSize = siz;
+    overlay.flags.noBackground = true;
+    //overlay.flags.clipSubCells = false;
+
+    auto ts = tsNormal;
+    ts.fontHeight = 18*12;
+    ts.fontColor = clWhite;
+    ts.transparent = true;
+
+    overlay.appendStr(file.nameWithoutExt, ts);
+    overlay.measure;
+
+    append(code);
+    append(overlay);
+  }
+
 
   this(File file_){
     file = file_.normalized;
-
     id = "Module:"~this.file.fullName;
 
-    append(new CodeColumn(this.file));
+    rebuild;
+  }
+
+  override void draw(Drawing dr){
+    overlay.flags.hidden = 2 > dr.invZoomFactor;
+    super.draw(dr);
   }
 
   override void onDraw(Drawing dr){
-    dr.color = clGray;
+    /*dr.color = clGray;
     dr.lineWidth = -2;
     dr.alpha = .5;
     dr.fillRect(0, 0, innerWidth, innerHeight);
-    dr.alpha = 1;
+    dr.alpha = 1;*/
 
   }
 }
@@ -324,12 +373,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     modules = modules.remove(idx);
   }
 
-  @VERB("Ctrl+O") void openFile(){
-    //todo: handle "Open as read-only"
-    foreach(f; fileDialog.openMulti) openFile(f);
-  }
-
-  @VERB void openFile(in File file){
+  void openFile(in File file){
     if(!file.exists) return;
     if(auto m = findModule(file)) return;
 
@@ -340,16 +384,71 @@ class FrmMain : GLWindow { mixin autoCreate;
     modules ~= m;
   }
 
-  auto findImportedModules(File projectFile){
+  auto openFileRecursive(File mainFile){
+    if(!mainFile.exists) return;
+
+    BuildSettings settings = { verbose : false };
+    foreach(m; buildSystem.findDependencies(mainFile, settings))
+      openFile(m.file);
   }
 
-  File testProject = File(`c:\D\projects\DIDE\dide2.d`);
+  @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
+  @VERB("Ctrl+O")       void openFile            (){ fileDialog.openMulti.each!(f => openFile         (f)); }
+  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ fileDialog.openMulti.each!(f => openFileRecursive(f)); } //project
 
   override void onCreate(){
-    fileDialog = new FileDialog(hwnd, "Dlang source file", ".d", "Sources(*.d)");
+    fileDialog = new FileDialog(hwnd, "Dlang source file", ".d", "DLang Sources(*.d)");
   }
 
-  override void onUpdate(){
+  //search /////////////////////////////////
+  bool searchBoxVisible = false;
+  string searchText;
+  Container.SearchResult[] searchResults;
+
+  void UI_SearchBox(View2D view){ with(im) Row({
+    //Keyboard shortcuts
+    auto kcFind      = KeyCombo("Ctrl+F"),
+         kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
+         kcFindClose = KeyCombo("Esc"); //always
+
+    if(kcFind.pressed) searchBoxVisible = true; //this is needed for 1 frame latency of the Edit
+    //todo: focus on the edit when turned on
+    if(searchBoxVisible){
+      width = fh*12;
+
+      Text("Find ");
+      .Container editContainer;
+      if(Edit(searchText, kcFind, { flex = 1; editContainer = actContainer; })){
+        //refresh search results
+        searchResults = modules.map!(m => m.search(searchText)).join;
+      }
+
+      // display the number of matches. Also save the location of that number on the screen.
+      const matchCnt = searchResults.length;
+      Row({
+        if(matchCnt) Text(" ", clGray, matchCnt.text, " ");
+      });
+
+      if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
+        const maxScale = max(view.scale, 1);
+        view.zoomBounds(searchResults.map!(r => r.bounds).fold!"a|b", 12);
+        view.scale = min(view.scale, maxScale);
+      }
+
+      if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
+        searchBoxVisible = false;
+        searchText = "";
+        searchResults = [];
+      }
+    }else{
+
+      if(Btn(symbol("Zoom"       ), kcFind, hint("Start searching."))){
+        searchBoxVisible = true ; //todo: Focus the Edit control
+      }
+    }
+  });}
+
+  override void onUpdate(){ // onUpdate ////////////////////////////////////////
     //showFPS = true;
 
     invalidate; //todo: low power usage
@@ -358,8 +457,9 @@ class FrmMain : GLWindow { mixin autoCreate;
     callVerbs(this);
 
     with(im) Panel(PanelPosition.topClient, {
-      margin = "2";
+      margin = "0";
       padding = "0";
+      border = "1 normal gray";
 
       //width = 300;
       //flags.vScrollState = ScrollState.auto_;
@@ -368,48 +468,57 @@ class FrmMain : GLWindow { mixin autoCreate;
       //BtnRow(actModule, modules.map!(a => a.file.fullName).array);
 
       Row({
-        File fileToClose;
-        theme="tool";
-        foreach(m; modules){
-          if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
-        }
-        if(Btn(symbol("Add"))) openFile;
-        if(fileToClose) closeModule(fileToClose);
+        Row({
+          File fileToClose;
+          theme="tool";
+          foreach(m; modules){
+            if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
+          }
+          if(Btn(symbol("Add"))) openFile;
+          if(fileToClose) closeModule(fileToClose);
+
+        });
+        Flex;
+        UI_SearchBox(view);
       });
 
     });
 
     im.root ~= modules;
 
-/*    if(!moduleGraph){
-      BuildSystem bs;
-      auto modules = bs.findDependencies(testProject, settings);
-
-      moduleGraph = new ModuleGraph(File(appPath, "Module extra data.txt"));
-
-      foreach(m; modules) moduleGraph.addModule(m);
-      moduleGraph.loadExtraData;
-    }
-
-    with(im) Panel(PanelPosition.topClient, {
-      Row({
-        moduleGraph.UI_SearchBox(view);
-      });
-    });
-
-    moduleGraph.update2(view);
-
-    with(im) Panel(PanelPosition.topLeft, {
-      width = 300;
-      flags.vScrollState = ScrollState.auto_;
-
-      moduleGraph.UI_Editor;
-    });*/
-
+    view.subScreenArea = im.clientArea / clientSize;
   }
 
-  override void onPaint(){
-    gl.clearColor(RGB(0x2d2d2d)); gl.clear(GL_COLOR_BUFFER_BIT);
+  override void onPaint(){ // onPaint ///////////////////////////////////////
+    gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT);
+  }
+
+  override void afterPaint(){
+
+    void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
+      const far = view.invScale > 6;
+      const extra = view.invScale*6*sqr(sin(blinkf(134.0f/60)*PIf));
+
+      //always draw these
+      dr.color = clSearchHighLight;
+      foreach(sr; searchResults){
+        auto r = sr.bounds;
+        r.topLeft -= vec2(extra);
+        r.bottomRight += vec2(extra);
+        fillRect(r);
+      }
+
+      if(!far){
+        foreach(sr; searchResults)
+          sr.drawHighlighted(dr, clSearchHighLight); //close lod
+      }
+    }}
+
+    auto dr = new Drawing;
+    drawSearchResults(dr, clWhite);
+    dr.glDraw(view);
+
+    //todo: off screen targets
 
   }
 
