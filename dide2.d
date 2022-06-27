@@ -20,6 +20,7 @@ void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
   border.borderFirst = true;
 }}
 
+
 // build system /////////////////////////////////////
 
 import buildsys;
@@ -40,6 +41,8 @@ class CodeRow: Row{
 
   this(){
     id.value = this.identityStr;
+
+    padding = "0 4";
 
     flags.wordWrap       = false;
     flags.clipSubCells   = true;
@@ -174,7 +177,6 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     flags.columnElasticTabs = true;
     bkColor = clCodeBackground;
 
-    padding = "1 4";
   }
 
   this(File file){
@@ -318,7 +320,9 @@ class Module : Container{ //this is any file in the project
     overlay.id = "Overlay:"~file.fullName;
     overlay.outerSize = siz;
     with(overlay.flags){
+      noHitTest = true;
       dontSearch = true;
+      dontLocate = true;
       noBackground = true;
       //clipSubCells = false;
     }
@@ -359,23 +363,71 @@ class Module : Container{ //this is any file in the project
 }
 
 
-// MainOverlay //////////////////////////////////////////////////////////
-class MainOverlayContainer : het.uibase.Container{
-  this(){ flags.targetSurface = 0; }
-  override void onDraw(Drawing dr){
-    frmMain.drawOverlay(dr);
-  }
-}
-
-//! FrmMain ///////////////////////////////////////////////
-auto frmMain(){ return cast(FrmMain)mainWindow; }
-
-class FrmMain : GLWindow { mixin autoCreate;
-
-  FileDialog fileDialog;
+/// WorkSpace ///////////////////////////////////////////////
+class WorkSpace : Container{ //this is a collection of opened modules
+  File file;
+  enum defaultExt = ".dide";
 
   Module[] modules;
-  MainOverlayContainer overlay;
+
+  this(){
+    flags.targetSurface = 0;
+    flags.noBackground = true;
+    fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
+  }
+
+  protected{//ModuleSettings is a temporal storage for saving and loading the workspace.
+    struct ModuleSettings{ string fileName; vec2 pos; }
+    @STORED ModuleSettings[] moduleSettings;
+
+    void toModuleSettings(){
+      moduleSettings = modules.map!(m => ModuleSettings(m.file.fullName, m.outerPos)).array;
+    }
+
+    void fromModuleSettings(){
+      clear;
+
+      foreach(ms; moduleSettings){
+        try{
+          auto m = new Module(File(ms.fileName));
+          m.outerPos = ms.pos;
+          modules ~= m;
+        }catch(Exception e){
+          WARN(e.simpleMsg);
+        }
+      }
+
+      updateSubCells;
+    }
+
+    void updateSubCells(){
+      subCells_ = cast(Cell[])modules;
+    }
+  }
+
+  void clear(){
+    modules.clear;
+    updateSubCells;
+  }
+
+  void loadWorkSpace(string jsonData){
+    auto fuck = this; fuck.fromJson(jsonData);
+    fromModuleSettings;
+    updateSubCells;
+  }
+
+  string saveWorkSpace(){
+    toModuleSettings;
+    return this.toJson;
+  }
+
+  void loadWorkSpace(File f){
+    loadWorkSpace(f.readText(true));
+  }
+
+  void saveWorkSpace(File f){
+    f.write(saveWorkSpace);
+  }
 
   Module findModule(File file){ const fn = file.normalized; foreach(m; modules) if(m.file==fn) return m; return null; }
 
@@ -384,30 +436,46 @@ class FrmMain : GLWindow { mixin autoCreate;
     const idx = modules.map!(m => m.file).countUntil(file);
     if(idx<0) return;
     modules = modules.remove(idx);
+    updateSubCells;
   }
 
-  void openFile(in File file){
+  void openModule(in File file){
     if(!file.exists) return;
     if(auto m = findModule(file)) return;
 
     auto m = new Module(file);
-    m.flags.targetSurface = 0;
+    //m.flags.targetSurface = 0; not needed, workSpace is on s0 already
     m.measure;
     if(modules.length) m.outerPos.x = modules[$-1].outerBounds.right+10;
     modules ~= m;
+    updateSubCells;
   }
 
-  auto openFileRecursive(File mainFile){
+  auto openModuleRecursive(File mainFile){
     if(!mainFile.exists) return;
 
     BuildSettings settings = { verbose : false };
     foreach(m; buildSystem.findDependencies(mainFile, settings))
-      openFile(m.file);
+      openModule(m.file);
   }
 
-  @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
-  @VERB("Ctrl+O")       void openFile            (){ fileDialog.openMulti.each!(f => openFile         (f)); }
-  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ fileDialog.openMulti.each!(f => openFileRecursive(f)); } //project
+  FileDialog fileDialog;
+  void openModule         () { fileDialog.openMulti.each!(f => openModule         (f)); }
+  void openModuleRecursive() { fileDialog.openMulti.each!(f => openModuleRecursive(f)); }
+
+  auto calcBounds(){
+    return modules.fold!((a, b)=> a|b.outerBounds)(bounds2.init);
+  }
+
+  void UI_ModuleBtns(){ with(im){
+    File fileToClose;
+    foreach(m; modules){
+      if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
+    }
+    if(Btn(symbol("Add"))) openModule;
+    if(fileToClose) closeModule(fileToClose);
+  }}
+
 
   //search /////////////////////////////////
 
@@ -458,59 +526,8 @@ class FrmMain : GLWindow { mixin autoCreate;
     }
   });}
 
-  override void onCreate(){ //onCreate //////////////////////////////////
-    fileDialog = new FileDialog(hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
-    overlay = new MainOverlayContainer;
-
-  }
-
-  override void onUpdate(){ // onUpdate ////////////////////////////////////////
-    //showFPS = true;
-
-    invalidate; //todo: low power usage
-    caption = "DIDE2";
-    view.navigate(!im.wantKeys, !im.wantMouse);
-    callVerbs(this);
-
-    with(im) Panel(PanelPosition.topClient, {
-      margin = "0";
-      padding = "0";
-      border = "1 normal gray";
-
-      //width = 300;
-      //flags.vScrollState = ScrollState.auto_;
-
-      //static string actModule;
-      //BtnRow(actModule, modules.map!(a => a.file.fullName).array);
-
-      Row({
-        Row({
-          File fileToClose;
-          theme="tool";
-          foreach(m; modules){
-            if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
-          }
-          if(Btn(symbol("Add"))) openFile;
-          if(fileToClose) closeModule(fileToClose);
-
-        });
-        Flex;
-        UI_SearchBox(view);
-      });
-
-    });
-
-    im.root ~= modules;
-    im.root ~= overlay;
-
-    view.subScreenArea = im.clientArea / clientSize;
-  }
-
-  override void onPaint(){ // onPaint ///////////////////////////////////////
-    gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT);
-  }
-
   void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
+    auto view = im.getView;
     const
       blink = float(sqr(sin(blinkf(134.0f/60)*PIf))),
       arrowSize = 12+6*blink,
@@ -558,8 +575,129 @@ class FrmMain : GLWindow { mixin autoCreate;
     }
   }}
 
+  override void onDraw(Drawing dr){
+    drawSearchResults(dr, clYellow);
+
+    /*auto bnd = calcBounds;
+    if(!bnd.empty){
+      dr.color = clGray;
+      dr.lineStyle = LineStyle.dash;
+      dr.lineWidth = -1;
+      dr.drawRect(bnd.inflated(-36));
+      dr.lineStyle = LineStyle.normal;
+    }*/
+  }
+
+
+}
+
+
+// MainOverlay //////////////////////////////////////////////////////////
+class MainOverlayContainer : het.uibase.Container{
+  this(){ flags.targetSurface = 0; }
+  override void onDraw(Drawing dr){
+    frmMain.drawOverlay(dr);
+  }
+}
+
+//! FrmMain ///////////////////////////////////////////////
+auto frmMain(){ return cast(FrmMain)mainWindow; }
+
+class FrmMain : GLWindow { mixin autoCreate;
+
+//  Module[] modules;
+  WorkSpace workSpace;
+  MainOverlayContainer overlay;
+
+  @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
+  @VERB("Ctrl+O")       void openFile            (){ workSpace.openModule; }
+  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ workSpace.openModuleRecursive; }
+
+
+  File workSpaceFile;
+  bool running;
+
+  override void onCreate(){ //onCreate //////////////////////////////////
+    workSpace = new WorkSpace;
+    workSpaceFile = File(appPath, "default"~WorkSpace.defaultExt);
+    overlay = new MainOverlayContainer;
+
+  }
+
+  override void onDestroy(){
+    if(running) workSpace.saveWorkSpace(workSpaceFile);
+  }
+
+  override void onUpdate(){ // onUpdate ////////////////////////////////////////
+    //showFPS = true;
+
+    if(running.chkSet){
+      if(workSpaceFile.exists) workSpace.loadWorkSpace(workSpaceFile);
+    }
+
+    invalidate; //todo: low power usage
+    caption = "DIDE2";
+    view.navigate(!im.wantKeys, !im.wantMouse);
+    callVerbs(this);
+
+    with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      Row({ //todo: Panel should be a Row, not a Column...
+        Row({ workSpace.UI_ModuleBtns; flex = 1; });
+        workSpace.UI_SearchBox(view);
+      });
+    });
+
+    with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      Row({
+        Text(hitTestManager.lastHitStack.map!(a => "["~a.id~"]").join(` `));
+        NL;
+        if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text);
+
+
+        foreach_reverse(m; workSpace.modules){
+          foreach(loc; m.locate(view.mousePos)){
+            Text("\n", loc.text);
+          }
+        }
+      });
+    });
+
+    im.root ~= workSpace;
+    im.root ~= overlay;
+
+    view.subScreenArea = im.clientArea / clientSize;
+  }
+
+  override void onPaint(){ // onPaint ///////////////////////////////////////
+    gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT);
+  }
+
+
   void drawOverlay(Drawing dr){
-    drawSearchResults(dr, clWhite);
+    //drawSearchResults(dr, clWhite);
+
+    //locate() debug
+    if(1){
+
+      void locate(vec2 pos){
+        //dr.color = clFuchsia;
+        dr.lineWidth = -1;
+        foreach(loc; workSpace.modules.map!(m => m.locate(pos)).joiner){
+          dr.drawRect(loc.globalOuterBounds);
+
+          dr.arrowStyle = ArrowStyle.arrow;
+          dr.moveTo(loc.globalOuterBounds.topLeft); dr.lineRel(loc.cell.topLeftGapSize+loc.localPos);
+          dr.arrowStyle = ArrowStyle.none;
+        }
+      }
+
+      foreach(x; 0..10)foreach(y; 0..10){
+        dr.color = RGB(x*25.5f, y*25.5f, .5f);
+        locate(view.mousePos+vec2(x, y)*2);
+      }
+    }
+
+
   }
 
   //todo: off screen targets
