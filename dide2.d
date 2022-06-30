@@ -20,6 +20,27 @@ void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
   border.borderFirst = true;
 }}
 
+// LOD //////////////////////////////////////////
+
+struct LodStruct {
+  float zoomFactor=1, pixelSize=1;
+  int level;
+
+  bool code=true; //level 0
+  bool modules; //level 1
+}
+
+__gshared const LodStruct lod;
+
+void setLod(float zoomFactor_){
+  with(cast(LodStruct*)(&lod)){
+    zoomFactor = zoomFactor_;
+    pixelSize = 1/zoomFactor;
+    level = pixelSize>6 ? 1 : 0;
+    code = level==0;
+    modules = level==1;
+  }
+}
 
 // build system /////////////////////////////////////
 
@@ -142,11 +163,7 @@ class CodeRow: Row{
   }//protected
 
   override void draw(Drawing dr){
-    enum smallestHeight = 3;
-
-    if(outerSize.y < smallestHeight*dr.invZoomFactor){
-      //LOD: one straight line
-
+    if(lod.level>0){
       const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength;
       if(lsCnt<subCells.length){
         const r = bounds2(subCells[lsCnt].outerPos, subCells[$-1].outerBottomRight) + innerPos;
@@ -299,6 +316,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 class Module : Container{ //this is any file in the project
   File file;
 
+  DateTime loaded, saved, modified;
+
   CodeColumn code;
   Row overlay;
 
@@ -340,7 +359,13 @@ class Module : Container{ //this is any file in the project
   }
 
 
+  this(){
+    loaded = now;
+  }
+
   this(File file_){
+    this();
+
     file = file_.normalized;
     id = "Module:"~this.file.fullName;
 
@@ -348,7 +373,7 @@ class Module : Container{ //this is any file in the project
   }
 
   override void draw(Drawing dr){
-    overlay.flags.hidden = 2 > dr.invZoomFactor;
+    overlay.flags.hidden = !lod.modules;
     super.draw(dr);
   }
 
@@ -363,12 +388,126 @@ class Module : Container{ //this is any file in the project
 }
 
 
+struct SelectionManager2(T : Container){ // SelectionManager2 ///////////////////////////////////////////////
+  //this uses Containers. flags.selected, flags.oldSelected
+
+  bounds2 getBounds(T item){ return item.outerBounds; }
+
+  enum MouseOp { idle, move, rectSelect }
+
+  MouseOp mouseOp;
+
+  enum SelectOp { none, add, sub, toggle, clearAdd }
+  SelectOp selectOp;
+
+  vec2 dragSource;
+  bounds2 dragBounds;
+
+  bounds2 selectionBounds(){
+    if(mouseOp == MouseOp.rectSelect) return dragBounds;
+                                 else return bounds2.init;
+  }
+
+  //these are calculated after update. No notifications, just keep calling update frequently
+  T hoveredItem;
+
+  void update(bool mouseEnabled, View2D view, T[] items){
+
+    void selectNone()           { foreach(a; items) a.flags.selected = false; }
+    void selectOnly(T item)     { selectNone; if(item) item.flags.selected = true; }
+    void selectHoveredOnly()    { selectOnly(hoveredItem); }
+    void saveOldSelected()      { foreach(a; items) a.flags.oldSelected = a.flags.selected; }
+
+    // acquire mouse positions
+    auto mouseAct = view.mousePos;
+    auto mouseDelta = mouseAct-view.mouseLast;
+
+    const LMB          = inputs.LMB.down,
+          LMB_pressed  = inputs.LMB.pressed,
+          LMB_released = inputs.LMB.released,
+          Shift        = inputs.Shift.down,
+          Ctrl         = inputs.Ctrl.down;
+
+    const modNone       = !Shift && !Ctrl,
+          modShift      =  Shift && !Ctrl,
+          modCtrl       = !Shift &&  Ctrl,
+          modShiftCtrl  =  Shift &&  Ctrl;
+
+    const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed;
+
+    // update current selection mode
+    if(modNone      ) selectOp = SelectOp.clearAdd;
+    if(modShift     ) selectOp = SelectOp.add;
+    if(modCtrl      ) selectOp = SelectOp.sub;
+    if(modShiftCtrl ) selectOp = SelectOp.toggle;
+
+    // update dragBounds
+    if(LMB_pressed) dragSource = mouseAct;
+    if(LMB        ) dragBounds = bounds2(dragSource, mouseAct).sorted;
+
+    //update hovered item
+    hoveredItem = null;
+    if(mouseEnabled) foreach(item; items) if(getBounds(item).contains!"[)"(mouseAct)) hoveredItem = item;
+
+    if(LMB_pressed && mouseEnabled){ // Left Mouse pressed //
+      if(hoveredItem){
+        if(modNone){ if(!hoveredItem.flags.selected) selectHoveredOnly;  mouseOp = MouseOp.move; }
+        if(modShift || modCtrl || modShiftCtrl) hoveredItem.flags.selected = !hoveredItem.flags.selected;
+      }else{
+        mouseOp = MouseOp.rectSelect;
+        saveOldSelected;
+      }
+    }
+
+    {// update ongoing things //
+      if(mouseOp == MouseOp.rectSelect && inputChanged){
+        foreach(a; items) if(dragBounds.contains!"[]"(getBounds(a))){
+          final switch(selectOp){
+            case SelectOp.add, SelectOp.clearAdd : a.flags.selected = true ;          break;
+            case SelectOp.sub                    : a.flags.selected = false;          break;
+            case SelectOp.toggle                 : a.flags.selected = !a.flags.oldSelected; break;
+            case SelectOp.none                   :                                break;
+          }
+        }else{
+          a.flags.selected = (selectOp == SelectOp.clearAdd) ? false : a.flags.selected;
+        }
+      }
+    }
+
+    if(mouseOp == MouseOp.move && mouseDelta){
+      foreach(a; items) if(a.flags.selected){
+        a.outerPos += mouseDelta;
+
+        //todo: jelezni kell valahogy az elmozdulast!!!
+        static if(is(a.cachedDrawing))
+          a.cachedDrawing.free;
+      }
+    }
+
+
+    if(LMB_released){ // left mouse released //
+
+      //...
+
+      mouseOp = MouseOp.idle;
+    }
+  }
+
+}
+
+
 /// WorkSpace ///////////////////////////////////////////////
 class WorkSpace : Container{ //this is a collection of opened modules
   File file;
   enum defaultExt = ".dide";
 
   Module[] modules;
+  SelectionManager2!Module selectionManager;
+
+  File[] openQueue;
+
+  bool justLoadedSomething;
+  bounds2 justLoadedBounds;
 
   this(){
     flags.targetSurface = 0;
@@ -389,9 +528,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
 
       foreach(ms; moduleSettings){
         try{
-          auto m = new Module(File(ms.fileName));
-          m.outerPos = ms.pos;
-          modules ~= m;
+          loadModule(File(ms.fileName), ms.pos);
         }catch(Exception e){
           WARN(e.simpleMsg);
         }
@@ -432,6 +569,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
   Module findModule(File file){ const fn = file.normalized; foreach(m; modules) if(m.file==fn) return m; return null; }
 
   void closeModule(File file){
+    //todo: ask user to save if needed
     if(!file) return;
     const idx = modules.map!(m => m.file).countUntil(file);
     if(idx<0) return;
@@ -439,29 +577,75 @@ class WorkSpace : Container{ //this is a collection of opened modules
     updateSubCells;
   }
 
-  void openModule(in File file){
-    if(!file.exists) return;
-    if(auto m = findModule(file)) return;
+  void closeSelectedModules(){
+    //todo: ask user to save if needed
+    modules = modules.filter!(m => !m.flags.selected).array;
+    updateSubCells;
+  }
+
+  void closeAll(){
+    //todo: ask user to save if needed
+    modules = [];
+    updateSubCells;
+  }
+
+  void selectAllModules(){
+    foreach(ref m; modules) m.flags.selected = true;
+  }
+
+  bool loadModule(in File file){
+    return loadModule(file, vec2(calcBounds.right+24, 0)); //default position
+  }
+
+  bool loadModule(in File file, vec2 targetPos){
+    if(!file.exists) return false;
+    if(auto m = findModule(file)) return false;
 
     auto m = new Module(file);
     //m.flags.targetSurface = 0; not needed, workSpace is on s0 already
     m.measure;
-    if(modules.length) m.outerPos.x = modules[$-1].outerBounds.right+10;
+    m.outerPos = targetPos;
     modules ~= m;
     updateSubCells;
+
+    justLoadedSomething |= true;
+    justLoadedBounds |= m.outerBounds;
+
+    return true;
   }
 
-  auto openModuleRecursive(File mainFile){
-    if(!mainFile.exists) return;
-
+  File[] allFilesFromModule(File mainFile){
+    if(!mainFile.exists) return [];
+    //todo: not just for //@exe of //@dll
     BuildSettings settings = { verbose : false };
-    foreach(m; buildSystem.findDependencies(mainFile, settings))
-      openModule(m.file);
+    return buildSystem.findDependencies(mainFile, settings).map!(m => m.file).array;
   }
+
+  auto loadModuleRecursive(File mainFile){
+    allFilesFromModule(mainFile).each!(f => loadModule(f));
+  }
+
+  void queueModule(File f){ openQueue ~= f; }
+  void queueModuleRecursive(File f){ if(f.exists) openQueue ~= allFilesFromModule(f); }
 
   FileDialog fileDialog;
-  void openModule         () { fileDialog.openMulti.each!(f => openModule         (f)); }
-  void openModuleRecursive() { fileDialog.openMulti.each!(f => openModuleRecursive(f)); }
+  void openModule         () { fileDialog.openMulti.each!(f => queueModule         (f)); }
+  void openModuleRecursive() { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
+
+  void updateOpenQueue(int maxWork){
+    while(openQueue.length){
+      auto f = openQueue.fetchFront;
+      if(loadModule(f)){
+        maxWork--;
+        if(maxWork<=0) return;
+      }
+    }
+  }
+
+  void update(View2D view){
+    updateOpenQueue(1);
+    selectionManager.update(lod.modules, view, modules);
+  }
 
   auto calcBounds(){
     return modules.fold!((a, b)=> a|b.outerBounds)(bounds2.init);
@@ -473,6 +657,11 @@ class WorkSpace : Container{ //this is a collection of opened modules
       if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
     }
     if(Btn(symbol("Add"))) openModule;
+
+    if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))){
+      closeAll;
+    }
+
     if(fileToClose) closeModule(fileToClose);
   }}
 
@@ -509,7 +698,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
 
       if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
         const maxScale = max(view.scale, 1);
-        view.zoomBounds(searchResults.map!(r => r.bounds).fold!"a|b", 12);
+        view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12);
         view.scale = min(view.scale, maxScale);
       }
 
@@ -533,10 +722,10 @@ class WorkSpace : Container{ //this is a collection of opened modules
       arrowSize = 12+6*blink,
       arrowThickness = arrowSize*.2f,
 
-      far = view.invScale_anim > 6, //todo: this is a lod
-      extra = view.invScale_anim*6*blink,
+      far = lod.level>0,
+      extra = lod.pixelSize*6*blink,
       bnd = view.subScreenBounds,
-      bndInner = bnd.inflated(-view.invScale_anim*arrowThickness*2),
+      bndInner = bnd.inflated(-lod.pixelSize*arrowThickness*2),
       bndInnerSizeHalf = bndInner.size/2,
       center = bnd.center;
 
@@ -575,7 +764,49 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   }}
 
-  override void onDraw(Drawing dr){
+  void drawModuleHighlights(Drawing dr, RGB c){
+    const t0 = now;
+    foreach(m; modules){
+      const dt = (t0-m.loaded).value(second);
+      enum T = 2.5, invT = 1.0f/T;
+      if(dt<T){
+        float a = dt*invT;
+
+        dr.color = c;
+        dr.alpha = sqr(1-a);
+        dr.fillRect(m.outerBounds);
+        dr.alpha = 1;
+      }
+    }
+  }
+
+  protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
+    void doit(Module m){
+      dr.fillRect(m.outerBounds);
+      const a = dr.alpha;
+      dr.alpha = 1;
+      dr.drawRect(m.outerBounds);
+      dr.alpha = a;
+    }
+
+    dr.lineWidth = -1;
+    color = clSelected; alpha = selectedAlpha;  foreach(m; modules) if(m.flags.selected) doit(m);
+    color = clHovered ; alpha = hoveredAlpha ;  if(auto m = selectionManager.hoveredItem) doit(m);
+    alpha = 1;
+  }}
+
+  protected void drawSelectionRect(Drawing dr, RGB clRect){
+    if(auto bnd = selectionManager.selectionBounds) with(dr) {
+      lineWidth = -1;
+      color = clRect;
+      drawRect(bnd);
+    }
+  }
+
+  override void onDraw(Drawing dr){ //onDraw //////////////////////////////
+    if(lod.modules) drawSelectedModules(dr, clAccent, .3f, clWhite, .1f);
+    drawSelectionRect(dr, clWhite);
+    drawModuleHighlights(dr, clYellow);
     drawSearchResults(dr, clYellow);
 
     /*auto bnd = calcBounds;
@@ -612,6 +843,8 @@ class FrmMain : GLWindow { mixin autoCreate;
   @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
   @VERB("Ctrl+O")       void openFile            (){ workSpace.openModule; }
   @VERB("Ctrl+Shift+O") void openFileRecursive   (){ workSpace.openModuleRecursive; }
+  @VERB("Ctrl+W")       void closeWindow         (){ if(lod.modules) workSpace.closeSelectedModules; }
+  @VERB("Ctrl+A")       void selectAll           (){ if(lod.modules && !im.wantKeys) workSpace.selectAllModules; }
 
 
   File workSpaceFile;
@@ -637,14 +870,18 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     invalidate; //todo: low power usage
     caption = "DIDE2";
-    view.navigate(!im.wantKeys, !im.wantMouse);
+    view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down, !im.wantMouse);
+    setLod(view.scale_anim);
     callVerbs(this);
 
     with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
         Row({ workSpace.UI_ModuleBtns; flex = 1; });
-        workSpace.UI_SearchBox(view);
       });
+    });
+
+    with(im) Panel(PanelPosition.topRight, { margin = "0"; padding = "0";
+      workSpace.UI_SearchBox(view);
     });
 
     with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
@@ -666,6 +903,15 @@ class FrmMain : GLWindow { mixin autoCreate;
     im.root ~= overlay;
 
     view.subScreenArea = im.clientArea / clientSize;
+
+    workSpace.update(view);
+
+    if(chkClear(workSpace.justLoadedSomething)){
+      view.zoom(workSpace.justLoadedBounds | view.subScreenBounds);
+      workSpace.justLoadedBounds = bounds2.init;
+    }
+
+    //todo:cullSubCells ellenorzese
   }
 
   override void onPaint(){ // onPaint ///////////////////////////////////////
@@ -677,7 +923,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     //drawSearchResults(dr, clWhite);
 
     //locate() debug
-    if(1){
+    if(0){
 
       void locate(vec2 pos){
         //dr.color = clFuchsia;
