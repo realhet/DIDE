@@ -326,7 +326,7 @@ class Label : Row{
     bool alignRight;
     with(LabelType){
       const isRegion = labelType.among(mainRegion, subRegion)!=0;
-      ts.fontHeight = isRegion ? 8*18 : 255;
+      ts.fontHeight = isRegion ? 180 : 255;
       ts.bold = false && labelType != subRegion;
       alignRight = isRegion;
     }
@@ -342,7 +342,7 @@ class Label : Row{
 
     //icon
     Img icon;
-    if(labelType==LabelType.module_) icon = new Img(File(`icon:\.d`));
+    if(labelType==LabelType.module_) icon = new Img(File(`icon:\.d`)); //todo: get the real extension
     else if(labelType==LabelType.folder) icon = new Img(File(`icon:\folder\`));
 
     if(icon){
@@ -937,6 +937,30 @@ class FrmMain : GLWindow { mixin autoCreate;
   @VERB("Ctrl+W")       void closeWindow         (){ if(lod.moduleLevel) workSpace.closeSelectedModules; }
   @VERB("Ctrl+A")       void selectAll           (){ if((lod.moduleLevel) && !im.wantKeys) workSpace.selectAllModules; }
 
+  bool building;
+
+  void onCompileProgress(File f, int result, string output){
+    LOG(result, f);
+    const t = now + 50*milli(second);
+    do application_processMessages; while(now<t);
+  }
+
+  @VERB("Ctrl+Shift+B") void build(){
+    if(building) return; //todo: bool canBuild(){...}
+    building = true; scope(exit) building = false;
+
+    const wp = `z:\temp2`;
+    Path(wp).make;
+
+    BuildSettings bs = {
+      rebuild  : true,
+      verbose  : false,
+      workPath : wp,
+    };
+
+    buildSystem.onCompileProgress = &onCompileProgress;
+    buildSystem.build(File(`c:\d\projects\karc\karc2.d`), bs);
+  }
 
   File workSpaceFile;
   bool running;
@@ -1058,6 +1082,7 @@ C:\D\projects\DIDE\dide2.d(383,22):        cannot pass argument `src.bigComments
 C:\D\projects\DIDE\dide2.d(338,28): Error: undefined identifier `r`
 
 C:\D\projects\DIDE\dide2.d(324,7): Error: no property `height` for type `het.uibase.TextStyle`
+  //todo: no property for type: missleading when the property name is correct but it's private or protected.
 
 C:\D\projects\DIDE\dide2.d(383,59): Error: found `src` when expecting `)`
 C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` when expecting `;` following statement
