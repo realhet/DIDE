@@ -46,9 +46,98 @@ void setLod(float zoomFactor_){
 
 // build system /////////////////////////////////////
 
-import buildsys;
+import buildsys, core.thread, std.concurrency;
 
-__gshared BuildSystem buildSystem;
+// messages sent to buildSystemWorker
+
+enum MsgBuildCommand{ cancel, shutDown }
+
+struct MsgBuildRequest{
+  File mainFile;
+  BuildSettings settings;
+}
+
+
+// messages received from buildSystemWorker
+
+struct MsgBuildStarted{
+  File mainFile;
+  immutable File[] filesToCompile, filesInCache;
+}
+
+struct MsgBuildProgress{
+  File file;
+  int result;
+  string output;
+}
+
+struct MsgBuildFinished{
+  File mainFile;
+  string error;
+  string output;
+}
+
+__gshared const bool buildSystemWorkerActive;
+
+void buildSystemWorker(){
+  BuildSystem buildSystem;
+  bool isDone = false;
+
+  //register events
+
+  void onCompileStart(File mainFile, in File[] filesToCompile, in File[] filesInCache){
+    //LOG(mainFile, filesToCompile, filesInCache);
+    ownerTid.send(MsgBuildStarted(mainFile, cast(immutable)filesToCompile, cast(immutable)filesInCache.dup));
+  }
+  buildSystem.onCompileStart = &onCompileStart;
+
+  void onCompileProgress(File file, int result, string output){
+    //LOG(file, result);
+    ownerTid.send(MsgBuildProgress(file, result, output));
+  }
+  buildSystem.onCompileProgress = &onCompileProgress;
+
+  bool onIdle(){
+    //write(".");
+    bool cancel = false;
+
+    receiveTimeout(0.msecs,
+      (MsgBuildCommand cmd){
+        if     (cmd==MsgBuildCommand.shutDown){ cancel = true; isDone = true; }
+        else if(cmd==MsgBuildCommand.cancel  ){ cancel = true; }
+      },
+      (immutable MsgBuildRequest req){
+        WARN("Build request ignored: already building...");
+      }
+    );
+
+    return cancel;
+  }
+  buildSystem.onIdle = &onIdle;
+
+  // main worker loop
+  while(!isDone) {
+    receive(
+      (MsgBuildCommand cmd){
+        if(cmd==MsgBuildCommand.shutDown) isDone = true;
+      },
+      (immutable MsgBuildRequest req){
+        string error;
+        try{
+          cast()buildSystemWorkerActive = true;
+          //todo: onIdle
+          buildSystem.build(req.mainFile, req.settings);
+        }catch(Exception e){
+          error = e.simpleMsg;
+        }
+        ownerTid.send(MsgBuildFinished(req.mainFile, error, buildSystem.sLog));
+      }
+    );
+
+    cast()buildSystemWorkerActive = false; //must be the last thing in loop to clear this flag.
+  }
+
+}
 
 /// CodeRow ////////////////////////////////////////////////
 class CodeRow: Row{
@@ -677,6 +766,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
     if(!mainFile.exists) return [];
     //todo: not just for //@exe of //@dll
     BuildSettings settings = { verbose : false };
+    BuildSystem buildSystem;
     return buildSystem.findDependencies(mainFile, settings).map!(m => m.file).array;
   }
 
@@ -703,7 +793,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
 
   void update(View2D view){
     updateOpenQueue(1);
-    selectionManager.update(lod.moduleLevel, view, modules);
+    selectionManager.update(mainWindow.isForeground && lod.moduleLevel, view, modules);
   }
 
   auto calcBounds(){
@@ -937,35 +1027,81 @@ class FrmMain : GLWindow { mixin autoCreate;
   @VERB("Ctrl+W")       void closeWindow         (){ if(lod.moduleLevel) workSpace.closeSelectedModules; }
   @VERB("Ctrl+A")       void selectAll           (){ if((lod.moduleLevel) && !im.wantKeys) workSpace.selectAllModules; }
 
-  bool building;
-
-  void onCompileProgress(File f, int result, string output){
-    LOG(result, f);
-    const t = now + 50*milli(second);
-    do application_processMessages; while(now<t);
+  void onCompileProgress(File file, int result, string output){
+    LOG(file, result, output.length);
   }
 
-  @VERB("Ctrl+Shift+B") void build(){
-    if(building) return; //todo: bool canBuild(){...}
-    building = true; scope(exit) building = false;
+  bool building(){ return buildSystemWorkerActive; }
+  Tid buildSystemWorkerTid;
 
-    const wp = `z:\temp2`;
-    Path(wp).make;
+  void initBuildSystem(){
+    buildSystemWorkerTid = spawn(&buildSystemWorker);
+  }
+
+  void updateBuildSystem(){
+    int cnt;
+    while(receiveTimeout(0.msecs,
+      (in MsgBuildStarted msg){
+        LOG(msg);
+      },
+      (in MsgBuildProgress msg){
+        LOG(msg);
+      },
+      (in MsgBuildFinished msg){
+        LOG(msg);
+      }
+    )){}
+  }
+
+  void destroyBuildSystem(){
+    buildSystemWorkerTid.send(MsgBuildCommand.shutDown);
+
+    if(building){
+      LOG("Waiting for buildsystem to shut down.");
+      while(building){ write('.'); sleep(1000); }
+    }
+  }
+
+  Path workPath = Path(`z:\temp2`);
+  File mainFile = File(`c:\d\projects\karc\karc2.d`);
+
+  void launchBuildSystem(string command)(){
+    static assert(command.among("rebuild", "run"), "Invalid command `"~command~"`");
+    if(building){ beep; return ; }
+
+    if(!workPath.exists) workPath.make;
 
     BuildSettings bs = {
-      rebuild  : true,
+      killExe  : true,
+      rebuild  : command=="rebuild",
       verbose  : false,
-      workPath : wp,
+      compileOnly : command=="rebuild",
+      workPath : this.workPath.fullPath,
     };
 
-    buildSystem.onCompileProgress = &onCompileProgress;
-    buildSystem.build(File(`c:\d\projects\karc\karc2.d`), bs);
+    buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(mainFile, bs));
+    //todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
+  }
+
+  @VERB("F9") void run(){
+    launchBuildSystem!"run";
+  }
+
+  @VERB("Shift+F9") void rebuild(){
+    launchBuildSystem!"rebuild";
+  }
+
+  @VERB("Ctrl+F2" ) void cancelBuildAndResetApp(){
+    if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel);
+    //todo: kill app
+    //todo:
   }
 
   File workSpaceFile;
   bool running;
 
   override void onCreate(){ //onCreate //////////////////////////////////
+    initBuildSystem;
     workSpace = new WorkSpace;
     workSpaceFile = File(appPath, "default"~WorkSpace.defaultExt);
     overlay = new MainOverlayContainer;
@@ -973,10 +1109,13 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   override void onDestroy(){
     if(running) workSpace.saveWorkSpace(workSpaceFile);
+    destroyBuildSystem;
   }
 
   override void onUpdate(){ // onUpdate ////////////////////////////////////////
     //showFPS = true;
+
+    updateBuildSystem;
 
     if(running.chkSet){
       if(workSpaceFile.exists) workSpace.loadWorkSpace(workSpaceFile);
@@ -984,9 +1123,9 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     invalidate; //todo: low power usage
     caption = "DIDE2";
-    view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down, !im.wantMouse);
+    view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
     setLod(view.scale_anim);
-    callVerbs(this);
+    if(isForeground) callVerbs(this);
 
     with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
@@ -1092,6 +1231,15 @@ C:\D\projects\DIDE\dide2.d(331,20): Error: cannot implicitly convert expression 
 
 C:\D\testGetAssociatedIcon.d(29,15): Error: undefined identifier `DestroyIcon`
 
+C:\D\projects\DIDE\dide2.d(51,2): Error: `@identifier` or `@(ArgumentList)` expected, not `@{`
+
+C:\D\projects\DIDE\dide2.d(103,24): Error: found `cmd` when expecting `)`
+
+C:\D\projects\DIDE\dide2.d(103,28): Error: found `{` when expecting `;` following statement
+
+C:\D\projects\DIDE\dide2.d(104,5): Error: found `)` instead of statement
+
+C:\D\projects\DIDE\dide2.d(107,1): Error: unrecognized declaration
 +/
 
 
