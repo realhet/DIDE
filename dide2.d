@@ -5,6 +5,8 @@
 //@release
 ///@debug
 
+//todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
+
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
@@ -44,7 +46,19 @@ void setLod(float zoomFactor_){
   }
 }
 
-// build system /////////////////////////////////////
+struct CodeLocation{ //CodeLocation ////////////////////////
+  File file;
+  int line, column;
+
+  bool opCast(T:bool)() const{ return cast(bool)file; }
+
+  int opCmp(in CodeLocation b) const{ return file.opCmp(b.file).cmpChain(cmp(line, b.line)).cmpChain(cmp(column, b.column)); }
+
+  string toString() const{ return format!"%s(%d,%d)"(file.fullName, line, column); }
+}
+
+
+//! Build System /////////////////////////////////////
 
 import buildsys, core.thread, std.concurrency;
 
@@ -63,6 +77,7 @@ struct MsgBuildRequest{
 struct MsgBuildStarted{
   File mainFile;
   immutable File[] filesToCompile, filesInCache;
+  immutable string[] todos;
 }
 
 struct MsgBuildProgress{
@@ -79,15 +94,15 @@ struct MsgBuildFinished{
 
 __gshared const bool buildSystemWorkerActive;
 
-void buildSystemWorker(){
+void buildSystemWorker(){ // worker //////////////////////////
   BuildSystem buildSystem;
   bool isDone = false;
 
   //register events
 
-  void onCompileStart(File mainFile, in File[] filesToCompile, in File[] filesInCache){
+  void onCompileStart(File mainFile, in File[] filesToCompile, in File[] filesInCache, in string[] todos){
     //LOG(mainFile, filesToCompile, filesInCache);
-    ownerTid.send(MsgBuildStarted(mainFile, cast(immutable)filesToCompile, cast(immutable)filesInCache.dup));
+    ownerTid.send(MsgBuildStarted(mainFile, cast(immutable)filesToCompile, cast(immutable)filesInCache.dup, cast(immutable)todos.dup));
   }
   buildSystem.onCompileStart = &onCompileStart;
 
@@ -135,6 +150,150 @@ void buildSystemWorker(){
     );
 
     cast()buildSystemWorkerActive = false; //must be the last thing in loop to clear this flag.
+  }
+
+}
+
+
+// BuildMessage //////////////////////////////
+
+struct BuildMessage{
+  CodeLocation location;
+  enum Type { error, warning, deprecation, todo, opt} //todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
+  Type type;
+  string message;
+  CodeLocation parentLocation;  //multiline message lines are linked together using parentLocation
+
+  string toString() const{
+    return parentLocation ? format!"%s: %s:        %s"(location, type.text.capitalize, message)
+                          : format!"%s: %s: %s"       (location, type.text.capitalize, message);
+  }
+}
+
+class BuildResult{ // BuildResult //////////////////////////////////////////////
+  File mainFile;
+  File[] filesToCompile, filesInCache;
+  int[File] results; //command line console exit codes
+  string[][File] outputs, remainings; //raw output lines, remaining output lines after processing
+  BuildMessage[CodeLocation] messages; //all the things referencing a code location
+
+  private{ CodeLocation _lastAddedLocation;
+           BuildMessage.Type _lastAddedType; }
+
+  void clear(){
+    foreach(f; FieldNameTuple!(typeof(this))) mixin("$ = $.init;".replace("$", f));
+  }
+
+  File[] allFiles;
+  bool[File] filesInProject;
+
+  auto getBuildStateOfFile(File f) const{ with(Module.BuildState){
+    if(f !in filesInProject) return notInProject;
+    if(auto r = f in results){
+      if(*r) return hasErrors;
+      return hasWarnings; //todo: detect hasDeprecations, flawless
+    }
+    return queued;
+  }}
+
+  private bool _processLine(string line){
+    try{
+      if(line.isWild(`?:\?*.d*(?*,?*):?*`)){
+        auto location = CodeLocation(File(wild[0]~`:\`~wild[1]~`.d`~wild[2]).normalized, wild[3].to!int, wild[4].to!int),
+             content = wild[5];
+
+        void add(BuildMessage bm){
+          messages[bm.location] = bm;
+          _lastAddedLocation = bm.location;
+          _lastAddedType = bm.type;
+        }
+
+        if(content.startsWith("  ")){
+          enforce(_lastAddedLocation);
+          add(BuildMessage(location, _lastAddedType, content.strip, _lastAddedLocation));
+          return true;
+        }else if(content.isWild(" ?*:?*")){
+          const type = wild[0].decapitalize.to!(BuildMessage.Type); //can throw
+          add(BuildMessage(location, type, wild[1].strip));
+          return true;
+        }
+      }
+    }catch(Exception e){ }
+    return false;
+  }
+
+
+  void receiveBuildMessages(){
+    while(receiveTimeout(0.msecs,
+      (in MsgBuildStarted msg){
+        clear;
+        mainFile       = msg.mainFile.normalized;
+        filesToCompile = msg.filesToCompile.map!(f => f.normalized).array;
+        filesInCache   = msg.filesInCache  .map!(f => f.normalized).array;
+
+        allFiles = (filesToCompile~filesInCache);
+        allFiles.each!((f){ filesInProject[f] = true; });
+
+        msg.todos.each!(t => _processLine(t));
+      },
+      (in MsgBuildProgress msg){
+
+        auto f = msg.file.normalized,
+             lines = msg.output.splitLines;
+
+        string[] remaining;
+        foreach(line; lines){
+          if(_processLine(line)) continue;
+          remaining ~= line;
+        }
+
+        if(remaining.length && remaining[$-1]=="") remaining = remaining[0..$-1]; //todo: something puts an extra newline on it...
+
+        results[f] = msg.result;
+        outputs[f] = lines;
+        remainings[f] = remaining;
+      },
+
+      (in MsgBuildFinished msg){
+        //todo: clear currently compiling modules.
+        //decide the global success of the build procedure
+        dump;
+      }
+
+    )){}
+  }
+
+
+  void dumpMessage(in BuildMessage bm, string indent=""){
+    writeln(indent, bm);
+
+    foreach(const v; messages.values)
+      if(v.parentLocation == bm.location)
+        dumpMessage(v, indent~"  ");
+  }
+
+  void dumpMessage(in CodeLocation location, string indent=""){
+    if(!location) return;
+    if(const bm = location in messages)
+      dumpMessage(*bm, indent);
+  }
+
+
+  void dump(){
+    print("Messages--------------------------");
+    foreach(loc; messages.keys.sort){
+      const bm = messages[loc];
+      if(!bm.parentLocation)
+        dumpMessage(bm, "  ");
+    }
+
+    print("remainings");
+    foreach(f; remainings.keys.sort){
+      if(remainings[f].length){
+        print("Unprocessed messages of: ", f);
+        remainings[f].each!(a => writeln("  ", a));
+      }
+    }
   }
 
 }
@@ -461,6 +620,10 @@ class Module : Container{ //this is any file in the project
   CodeColumn code;
   Container overlay;
 
+  enum BuildState { notInProject, queued, compiling, aborted, hasErrors, hasWarnings, hasDeprecations, flawless }
+  enum BuildStateColors = [clBlack, clWhite, clWhite, clGray, clRed, RGB(128, 255, 0), RGB(64, 255, 0), clLime];
+  BuildState buildState;
+
   void rebuild(){
     clearSubCells;
 
@@ -642,8 +805,6 @@ auto getFolderLabel(string folderPath){
   return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
 }
 
-
-
 /// WorkSpace ///////////////////////////////////////////////
 class WorkSpace : Container{ //this is a collection of opened modules
   File file;
@@ -714,7 +875,15 @@ class WorkSpace : Container{ //this is a collection of opened modules
     f.write(saveWorkSpace);
   }
 
-  Module findModule(File file){ const fn = file.normalized; foreach(m; modules) if(m.file==fn) return m; return null; }
+  Module findModule(File file){
+    auto f = file;
+    foreach(m; modules) if(m.file==f) return m;  //opt: hash table...
+
+    f = file.normalized; //todo: file.normalize measure speed. How slow is it...
+    foreach(m; modules) if(m.file==f) return m;  //opt: hash table...
+
+    return null;
+  }
 
   void closeModule(File file){
     //todo: ask user to save if needed
@@ -750,6 +919,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
     if(auto m = findModule(file)) return false;
 
     auto m = new Module(file);
+
     //m.flags.targetSurface = 0; not needed, workSpace is on s0 already
     m.measure;
     m.outerPos = targetPos;
@@ -791,8 +961,14 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   }
 
-  void update(View2D view){
+  void updateModuleBuildStates(in BuildResult buildResult){
+    foreach(m; modules)
+      m.buildState = buildResult.getBuildStateOfFile(m.file);
+  }
+
+  void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
+    updateModuleBuildStates(buildResult);
     selectionManager.update(mainWindow.isForeground && lod.moduleLevel, view, modules);
   }
 
@@ -864,7 +1040,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   });}
 
-  void drawSearchResults(Drawing dr, RGB clSearchHighLight){ with(dr){
+  void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
     auto view = im.getView;
     const
       blink = float(sqr(sin(blinkf(134.0f/60)*PIf))),
@@ -913,43 +1089,40 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   }}
 
+  protected void drawHighlight(Drawing dr, bounds2 bnd, RGB color, float alpha){
+    dr.alpha = alpha;
+    dr.fillRect(bnd);
+    dr.lineWidth = -1;
+    dr.drawRect(bnd);
+    dr.alpha = 1;
+  }
+
+  protected void drawHighlight(Drawing dr, Cell c, RGB color, float alpha){
+    drawHighlight(dr, c.outerBounds, color, alpha);
+  }
+
   /// A flashing effect, when right after the module was loaded.
-  void drawModuleHighlights(Drawing dr, RGB c){
+  void drawModuleLoadingHighlights(Drawing dr, RGB c){
     const t0 = now;
     foreach(m; modules){
-      const dt = (t0-m.loaded).value(second);
-      enum T = 2.5, invT = 1.0f/T;
-      if(dt<T){
-        float a = dt*invT;
-
-        dr.color = c;
-        dr.alpha = sqr(1-a);
-        dr.fillRect(m.outerBounds);
-        dr.alpha = 1;
-      }
+      const dt = (t0-m.loaded).value(2.5f*second);
+      if(dt<1)
+        drawHighlight(dr, m, c, sqr(1-dt));
     }
   }
 
   protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
-    void doit(Module m){
-      dr.fillRect(m.outerBounds);
-      const a = dr.alpha;
-      dr.alpha = 1;
-      dr.drawRect(m.outerBounds);
-      dr.alpha = a;
-    }
-
-    dr.lineWidth = -1;
-    color = clSelected; alpha = selectedAlpha;  foreach(m; modules) if(m.flags.selected) doit(m);
-    color = clHovered ; alpha = hoveredAlpha ;  if(auto m = selectionManager.hoveredItem) doit(m);
-    alpha = 1;
+    foreach(m; modules) if(m.flags.selected) drawHighlight(dr, m, clSelected, selectedAlpha);
+    if(auto m = selectionManager.hoveredItem) drawHighlight(dr, m, clHovered, hoveredAlpha);
   }}
 
   protected void drawSelectionRect(Drawing dr, RGB clRect){
     if(auto bnd = selectionManager.selectionBounds) with(dr) {
       lineWidth = -1;
+      lineStyle = LineStyle.dash;
       color = clRect;
       drawRect(bnd);
+      lineStyle = LineStyle.normal;
     }
   }
 
@@ -981,14 +1154,53 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   }
 
+  void drawModuleBuildStates(Drawing dr){
+    const blink = .blink(4);
+    with(Module.BuildState) foreach(m; modules) if(m.buildState!=notInProject){
+      if(m.buildState==compiling && !blink) continue;
+      dr.color = Module.BuildStateColors[m.buildState.to!int];
+      dr.lineWidth = -4;
+      //dr.drawRect(m.outerBounds);
+      dr.alpha = .25f;
+      dr.fillRect(m.outerBounds);
+    }
+    dr.alpha = 1;
+  }
+
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
     if(lod.moduleLevel){
-      drawSelectedModules(dr, clAccent, .3f, clWhite, .1f);
+      drawSelectedModules(dr, clWhite, .3f, clWhite, .1f);
       drawSelectionRect(dr, clWhite);
       drawFolders(dr, clGray, clWhite);
     }
-    drawModuleHighlights(dr, clYellow);
-    drawSearchResults(dr, clYellow);
+    drawModuleBuildStates(dr);
+    drawModuleLoadingHighlights(dr, clYellow);
+
+    auto buildMessagesAsSearchResults(BuildMessage.Type type){ //todo: opt
+      auto br = (cast(FrmMain)mainWindow).buildResult;
+      Container.SearchResult[] res;
+
+      foreach(const msg; br.messages)
+      if(msg.type==type)
+      if(auto mod = findModule(msg.location.file))
+      if((msg.location.line-1).inRange(mod.code.subCells)){
+        Container.SearchResult sr;
+        sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
+        sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
+        sr.cells = sr.container.subCells;
+        res ~= sr;
+      }
+
+      return res;
+    }
+
+    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.opt), clWowPurple);
+    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.todo), clWowBlue);
+    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.deprecation), mix(clYellow, clRed, .25f));
+    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.warning), clYellow);
+    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.error), clRed);
+    drawSearchResults(dr, searchResults, clWhite);
+
 
     /*auto bnd = calcBounds;
     if(!bnd.empty){
@@ -1017,9 +1229,18 @@ auto frmMain(){ return cast(FrmMain)mainWindow; }
 
 class FrmMain : GLWindow { mixin autoCreate;
 
-//  Module[] modules;
   WorkSpace workSpace;
   MainOverlayContainer overlay;
+
+  Tid buildSystemWorkerTid;
+
+  BuildResult buildResult; //collects buildMessages and output
+
+  Path workPath = Path(`z:\temp2`);
+  File mainFile = File(`c:\d\projects\karc\karc2.d`);
+
+  File workSpaceFile;
+  bool initialized; //workspace has been loaded.
 
   @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
   @VERB("Ctrl+O")       void openFile            (){ workSpace.openModule; }
@@ -1032,25 +1253,14 @@ class FrmMain : GLWindow { mixin autoCreate;
   }
 
   bool building(){ return buildSystemWorkerActive; }
-  Tid buildSystemWorkerTid;
 
   void initBuildSystem(){
+    buildResult = new BuildResult;
     buildSystemWorkerTid = spawn(&buildSystemWorker);
   }
 
   void updateBuildSystem(){
-    int cnt;
-    while(receiveTimeout(0.msecs,
-      (in MsgBuildStarted msg){
-        LOG(msg);
-      },
-      (in MsgBuildProgress msg){
-        LOG(msg);
-      },
-      (in MsgBuildFinished msg){
-        LOG(msg);
-      }
-    )){}
+    buildResult.receiveBuildMessages; //todo: it's only good for ONE workSpace!!!
   }
 
   void destroyBuildSystem(){
@@ -1058,12 +1268,9 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     if(building){
       LOG("Waiting for buildsystem to shut down.");
-      while(building){ write('.'); sleep(1000); }
+      while(building){ write('.'); sleep(100); }
     }
   }
-
-  Path workPath = Path(`z:\temp2`);
-  File mainFile = File(`c:\d\projects\karc\karc2.d`);
 
   void launchBuildSystem(string command)(){
     static assert(command.among("rebuild", "run"), "Invalid command `"~command~"`");
@@ -1077,6 +1284,8 @@ class FrmMain : GLWindow { mixin autoCreate;
       verbose  : false,
       compileOnly : command=="rebuild",
       workPath : this.workPath.fullPath,
+      collectTodos : false,
+      compileArgs : ["-wi"],  // "-v" <- not good: it also lists all imports
     };
 
     buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(mainFile, bs));
@@ -1097,9 +1306,6 @@ class FrmMain : GLWindow { mixin autoCreate;
     //todo:
   }
 
-  File workSpaceFile;
-  bool running;
-
   override void onCreate(){ //onCreate //////////////////////////////////
     initBuildSystem;
     workSpace = new WorkSpace;
@@ -1108,7 +1314,7 @@ class FrmMain : GLWindow { mixin autoCreate;
   }
 
   override void onDestroy(){
-    if(running) workSpace.saveWorkSpace(workSpaceFile);
+    if(initialized) workSpace.saveWorkSpace(workSpaceFile);
     destroyBuildSystem;
   }
 
@@ -1117,8 +1323,10 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     updateBuildSystem;
 
-    if(running.chkSet){
-      if(workSpaceFile.exists) workSpace.loadWorkSpace(workSpaceFile);
+    if(initialized.chkSet){
+      if(workSpaceFile.exists){
+        workSpace.loadWorkSpace(workSpaceFile);
+      }
     }
 
     invalidate; //todo: low power usage
@@ -1127,7 +1335,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     setLod(view.scale_anim);
     if(isForeground) callVerbs(this);
 
-    with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
         Row({ workSpace.UI_ModuleBtns; flex = 1; });
       });
@@ -1137,7 +1345,7 @@ class FrmMain : GLWindow { mixin autoCreate;
       workSpace.UI_SearchBox(view);
     });
 
-    with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(0) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({
         Text(hitTestManager.lastHitStack.map!(a => "["~a.id~"]").join(` `));
         NL;
@@ -1157,7 +1365,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     view.subScreenArea = im.clientArea / clientSize;
 
-    workSpace.update(view);
+    workSpace.update(view, buildResult);
 
     if(chkClear(workSpace.justLoadedSomething)){
       view.zoom(workSpace.justLoadedBounds | view.subScreenBounds);
