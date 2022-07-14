@@ -80,7 +80,11 @@ struct MsgBuildStarted{
   immutable string[] todos;
 }
 
-struct MsgBuildProgress{
+struct MsgCompileStarted{
+  int fileIdx=-1;    //indexes MsgBuildStarted.filesToCompile
+}
+
+struct MsgCompileProgress{
   File file;
   int result;
   string output;
@@ -92,49 +96,77 @@ struct MsgBuildFinished{
   string output;
 }
 
-struct BuildSystemWorkerState{
-  bool active, cancelling;
-  size_t totalModules, compiledModules;
+
+
+struct BuildSystemWorkerState{ //BuildSystemWorkerState /////////////////////////////////
+  //worker state that don't need synching.
+  bool building, cancelling;
+  int totalModules, compiledModules, inFlight;
+
+  void UI_StatusItem() const{ with(im){
+    Row({
+      width = 6*fh;
+      Row({
+        if(building) style.fontColor = mix(style.fontColor, style.bkColor, blinkf);
+        Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready");
+      });
+      Row({ flex=1; flags.hAlign = HAlign.right;
+        if(building && !cancelling && totalModules)
+          Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules));
+        else if(building && cancelling){
+          Text(format!"\u2026%d"(inFlight));
+        }
+      });
+    });
+  }}
 }
 
 __gshared const BuildSystemWorkerState buildSystemWorkerState;
 
 void buildSystemWorker(){ // worker //////////////////////////
   BuildSystem buildSystem;
+  auto state = &cast()buildSystemWorkerState;
   bool isDone = false;
 
   //register events
 
-  void onCompileStart(File mainFile, in File[] filesToCompile, in File[] filesInCache, in string[] todos){
-    with(cast()buildSystemWorkerState){ totalModules = filesToCompile.length + filesInCache.length; compiledModules = 0; }
+  void onBuildStarted(File mainFile, in File[] filesToCompile, in File[] filesInCache, in string[] todos){ //todo: rename to buildStart
+    with(state){
+      totalModules = (filesToCompile.length + filesInCache.length).to!int;
+      compiledModules = inFlight = 0;
+    }
 
     //LOG(mainFile, filesToCompile, filesInCache);
-    ownerTid.send(MsgBuildStarted(mainFile, cast(immutable)filesToCompile, cast(immutable)filesInCache.dup, cast(immutable)todos.dup));
+    ownerTid.send(MsgBuildStarted(mainFile, filesToCompile.idup, filesInCache.idup, todos.idup));
   }
-  buildSystem.onCompileStart = &onCompileStart;
+  buildSystem.onBuildStarted = &onBuildStarted;
 
   void onCompileProgress(File file, int result, string output){
-    with(cast()buildSystemWorkerState) compiledModules++;
+    state.compiledModules++;
     //LOG(file, result);
-    ownerTid.send(MsgBuildProgress(file, result, output));
+    ownerTid.send(MsgCompileProgress(file, result, output));
   }
   buildSystem.onCompileProgress = &onCompileProgress;
 
-  bool onIdle(){
-    //write(".");
-    bool cancel = false;
+  bool onIdle(int inFlight, int justStartedIdx){
+    state.inFlight = inFlight;
 
+    if(justStartedIdx>=0)
+      ownerTid.send(MsgCompileStarted(justStartedIdx));
+
+    //receive commands from mainThread
+    bool cancelRequest = false;
     receiveTimeout(0.msecs,
       (MsgBuildCommand cmd){
-        if     (cmd==MsgBuildCommand.shutDown){ cancel = true; isDone = true; cast()buildSystemWorkerState.cancelling = true; }
-        else if(cmd==MsgBuildCommand.cancel  ){ cancel = true;                cast()buildSystemWorkerState.cancelling = true; }
+        if     (cmd==MsgBuildCommand.shutDown){ cancelRequest = true; isDone = true; state.cancelling = true; }
+        else if(cmd==MsgBuildCommand.cancel  ){ cancelRequest = true;                state.cancelling = true; }
       },
       (immutable MsgBuildRequest req){
         WARN("Build request ignored: already building...");
       }
     );
 
-    return cancel;
+    return cancelRequest;
   }
   buildSystem.onIdle = &onIdle;
 
@@ -147,7 +179,7 @@ void buildSystemWorker(){ // worker //////////////////////////
       (immutable MsgBuildRequest req){
         string error;
         try{
-          cast()buildSystemWorkerState.active = true;
+          state.building = true;
           //todo: onIdle
           buildSystem.build(req.mainFile, req.settings);
         }catch(Exception e){
@@ -157,7 +189,7 @@ void buildSystemWorker(){ // worker //////////////////////////
       }
     );
 
-    cast()buildSystemWorkerState = BuildSystemWorkerState.init;; //must be the last thing in loop to clear this flag.
+    state.clear; //must be the last thing in loop to clear this.
   }
 
 }
@@ -196,12 +228,11 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
   private{ CodeLocation _lastAddedLocation;
            BuildMessageType _lastAddedType; }
 
-  void clear(){
-    foreach(f; FieldNameTuple!(typeof(this))) mixin("$ = $.init;".replace("$", f));
-  }
-
   File[] allFiles;
+  bool[File] filesInFlight;
   bool[File] filesInProject;
+
+  mixin ClassMixin_clear;
 
   auto getBuildStateOfFile(File f) const{ with(Module.BuildState){
     if(f !in filesInProject) return notInProject;
@@ -209,7 +240,7 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
       if(*r) return hasErrors;
       return hasWarnings; //todo: detect hasDeprecations, flawless
     }
-    return queued;
+    return f in filesInFlight ? compiling : queued;
   }}
 
   private bool _processLine(string line){
@@ -252,10 +283,17 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
 
         msg.todos.each!(t => _processLine(t));
       },
-      (in MsgBuildProgress msg){
+      (in MsgCompileStarted msg){
+        auto f = filesToCompile.get(msg.fileIdx);
+        assert(f);
+        filesInFlight[f] = true;
+      },
+      (in MsgCompileProgress msg){
 
         auto f = msg.file,
              lines = msg.output.splitLines;
+
+        filesInFlight.remove(f);
 
         string[] remaining;
         foreach(line; lines){
@@ -271,10 +309,13 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
       },
 
       (in MsgBuildFinished msg){
+        filesInFlight.clear;
+
         //todo: clear currently compiling modules.
         //decide the global success of the build procedure
         //todo: there are errors whose source are not specified or not loaded, those must be displayed too. Also the compiler output.
-        dump;
+
+        //dump;
       }
 
     )){}
@@ -836,13 +877,33 @@ class WorkSpace : Container{ //this is a collection of opened modules
   bool justLoadedSomething;
   bounds2 justLoadedBounds;
 
+  bool searchBoxVisible = false;
+  string searchText;
+
+  struct MarkerLayer{
+    const BuildMessageType type;
+    Container.SearchResult[] searchResults;
+    bool visible = true;
+  }
+
+  auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!MarkerLayer.array  )();
+
+  //note: compiler drops weird error. this also works:
+  //      Writing Explicit type also works:  auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
+
   this(){
     flags.targetSurface = 0;
     flags.noBackground = true;
     fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
   }
 
+  @STORED @property{ //note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
+    size_t markerLayerHideMask() const { size_t res; foreach(idx, const layer; markerLayers) if(!layer.visible) res |= 1 << idx; return res; }
+    void markerLayerHideMask(size_t v) { foreach(idx, ref layer; markerLayers) layer.visible = ((1<<idx)&v)==0; }
+  }
+
   protected{//ModuleSettings is a temporal storage for saving and loading the workspace.
+
     struct ModuleSettings{ string fileName; vec2 pos; }
     @STORED ModuleSettings[] moduleSettings;
 
@@ -1009,7 +1070,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
     //1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
     //const t0 = now;
     foreach(t; EnumMembers!BuildMessageType[1..$])
-      searchResults[t] = buildMessagesAsSearchResults(t);
+      markerLayers[t].searchResults = buildMessagesAsSearchResults(t);
     //print(siFormat("%s ms", now-t0));
   }
 
@@ -1074,15 +1135,16 @@ class WorkSpace : Container{ //this is a collection of opened modules
     return res;
   }
 
-  //search /////////////////////////////////
-
-  bool searchBoxVisible = false;
-  string searchText;
-  Container.SearchResult[][EnumMembers!BuildMessageType.length] searchResults;
-
   //! UI /////////////////////////////////////////////////////////
 
-  void UI_SearchBox(View2D view){ UI_SearchBox(view, searchResults[0]); }  //UI_SearchBox /////////////////////////////////////////////
+  void UI_SearchBox(View2D view){ UI_SearchBox(view, markerLayers[BuildMessageType.find].searchResults); }  //UI_SearchBox /////////////////////////////////////////////
+
+  void zoomAt(View2D view, in Container.SearchResult[] searchResults){
+    if(searchResults.empty) return;
+    const maxScale = max(view.scale, 1);
+    view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12);
+    view.scale = min(view.scale, maxScale);
+  }
 
   void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults){ with(im) Row({
     //Keyboard shortcuts
@@ -1109,9 +1171,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
       });
 
       if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
-        const maxScale = max(view.scale, 1);
-        view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12);
-        view.scale = min(view.scale, maxScale);
+        zoomAt(view, searchResults);
       }
 
       if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
@@ -1127,15 +1187,23 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   });}
 
-  void UI(BuildMessageType bmt){ with(im){ // UI_BuildMessageTypeBtn ///////////////////////////
+  void UI(BuildMessageType bmt, View2D view){ with(im){ // UI_BuildMessageTypeBtn ///////////////////////////
+    //todo: ennek nem itt a helye....
     auto hit = Btn({
-      style.bkColor = bkColor = bmt.color;
-      style.fontColor = blackOrWhiteFor(bkColor);
-      Text(bmt.caption, " ", searchResults[bmt].length);
+      const hidden = markerLayers[bmt].visible ? 0 : .75f;
+      style.bkColor = bkColor = bmt.color.mix(clSilver, hidden);
+      style.fontColor = blackOrWhiteFor(bkColor).mix(clSilver, hidden);
+
+      Text(bmt.caption, " ", markerLayers[bmt].searchResults.length);
     }, genericId(bmt));
 
-    if(hit.pressed){
-      beep;
+    if(mainWindow.isForeground && hit.pressed){
+      markerLayers[bmt].visible = true;
+      zoomAt(view, markerLayers[bmt].searchResults);
+    }
+
+    if(mainWindow.isForeground && hit.hover && inputs.RMB.pressed){
+      markerLayers[bmt].visible.toggle;
     }
   }}
 
@@ -1145,11 +1213,11 @@ class WorkSpace : Container{ //this is a collection of opened modules
     auto view = im.getView;
     const
       blink = float(sqr(sin(blinkf(134.0f/60)*PIf))),
-      arrowSize = 12+6*blink,
+      arrowSize = 12+3*blink,
       arrowThickness = arrowSize*.2f,
 
       far = lod.level>1,
-      extra = lod.pixelSize*6*blink,
+      extra = lod.pixelSize*2*blink,
       bnd = view.subScreenBounds,
       bndInner = bnd.inflated(-lod.pixelSize*arrowThickness*2),
       bndInnerSizeHalf = bndInner.size/2,
@@ -1256,13 +1324,11 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   void drawModuleBuildStates(Drawing dr){
-    const blink = .blink(4);
     with(Module.BuildState) foreach(m; modules) if(m.buildState!=notInProject){
-      if(m.buildState==compiling && !blink) continue;
       dr.color = Module.BuildStateColors[m.buildState.to!int];
       dr.lineWidth = -4;
-      //dr.drawRect(m.outerBounds);
-      dr.alpha = .25f;
+      //if(m.buildState==compiling) dr.drawRect(m.outerBounds);
+      dr.alpha = m.buildState==compiling ? mix(.25f, .75f, blink) : .25f;
       dr.fillRect(m.outerBounds);
     }
     dr.alpha = 1;
@@ -1277,8 +1343,9 @@ class WorkSpace : Container{ //this is a collection of opened modules
     drawModuleBuildStates(dr);
     drawModuleLoadingHighlights(dr, clYellow);
 
-    foreach(t; EnumMembers!BuildMessageType)
-      drawSearchResults(dr, searchResults[t], t.color);
+    foreach_reverse(t; EnumMembers!BuildMessageType)
+      if(markerLayers[t].visible)
+        drawSearchResults(dr, markerLayers[t].searchResults, t.color);
 
 
     //drawSearchResults(dr, searchResults, clWhite);
@@ -1334,8 +1401,8 @@ class FrmMain : GLWindow { mixin autoCreate;
     LOG(file, result, output.length);
   }
 
-  bool building()   const{ return buildSystemWorkerState.active; }
-  bool ready()      const{ return !buildSystemWorkerState.active; }
+  bool building()   const{ return buildSystemWorkerState.building; }
+  bool ready()      const{ return !buildSystemWorkerState.building; }
   bool cancelling() const{ return buildSystemWorkerState.cancelling; }
 
   void initBuildSystem(){
@@ -1455,14 +1522,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
         Row({ margin = "0 3"; flags.yAlign = YAlign.center;
           style.fontHeight = 18+6;
-          with(buildSystemWorkerState){
-            Row({
-              if(building && blink) style.fontColor = clSilver;
-              Text(cancelling ? "Cancelling" : building ? "Building" : "Ready");
-            });
-            if(totalModules)
-              Text(" ", compiledModules.text, '/', totalModules.text);
-          }
+          buildSystemWorkerState.UI_StatusItem;
         });
         VLine;//---------------------------
         Row({ flex = 1; margin = "0 3"; flags.yAlign = YAlign.center;
@@ -1477,7 +1537,7 @@ class FrmMain : GLWindow { mixin autoCreate;
         VLine;//---------------------------
         Row({ margin = "0 3"; flags.yAlign = YAlign.center;
           foreach(t; EnumMembers!BuildMessageType){
-            workSpace.UI(t);
+            workSpace.UI(t, view);
           }
         });
         VLine;//---------------------------
