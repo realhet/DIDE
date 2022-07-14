@@ -92,7 +92,12 @@ struct MsgBuildFinished{
   string output;
 }
 
-__gshared const bool buildSystemWorkerActive;
+struct BuildSystemWorkerState{
+  bool active, cancelling;
+  size_t totalModules, compiledModules;
+}
+
+__gshared const BuildSystemWorkerState buildSystemWorkerState;
 
 void buildSystemWorker(){ // worker //////////////////////////
   BuildSystem buildSystem;
@@ -101,12 +106,15 @@ void buildSystemWorker(){ // worker //////////////////////////
   //register events
 
   void onCompileStart(File mainFile, in File[] filesToCompile, in File[] filesInCache, in string[] todos){
+    with(cast()buildSystemWorkerState){ totalModules = filesToCompile.length + filesInCache.length; compiledModules = 0; }
+
     //LOG(mainFile, filesToCompile, filesInCache);
     ownerTid.send(MsgBuildStarted(mainFile, cast(immutable)filesToCompile, cast(immutable)filesInCache.dup, cast(immutable)todos.dup));
   }
   buildSystem.onCompileStart = &onCompileStart;
 
   void onCompileProgress(File file, int result, string output){
+    with(cast()buildSystemWorkerState) compiledModules++;
     //LOG(file, result);
     ownerTid.send(MsgBuildProgress(file, result, output));
   }
@@ -118,8 +126,8 @@ void buildSystemWorker(){ // worker //////////////////////////
 
     receiveTimeout(0.msecs,
       (MsgBuildCommand cmd){
-        if     (cmd==MsgBuildCommand.shutDown){ cancel = true; isDone = true; }
-        else if(cmd==MsgBuildCommand.cancel  ){ cancel = true; }
+        if     (cmd==MsgBuildCommand.shutDown){ cancel = true; isDone = true; cast()buildSystemWorkerState.cancelling = true; }
+        else if(cmd==MsgBuildCommand.cancel  ){ cancel = true;                cast()buildSystemWorkerState.cancelling = true; }
       },
       (immutable MsgBuildRequest req){
         WARN("Build request ignored: already building...");
@@ -139,7 +147,7 @@ void buildSystemWorker(){ // worker //////////////////////////
       (immutable MsgBuildRequest req){
         string error;
         try{
-          cast()buildSystemWorkerActive = true;
+          cast()buildSystemWorkerState.active = true;
           //todo: onIdle
           buildSystem.build(req.mainFile, req.settings);
         }catch(Exception e){
@@ -149,7 +157,7 @@ void buildSystemWorker(){ // worker //////////////////////////
       }
     );
 
-    cast()buildSystemWorkerActive = false; //must be the last thing in loop to clear this flag.
+    cast()buildSystemWorkerState = BuildSystemWorkerState.init;; //must be the last thing in loop to clear this flag.
   }
 
 }
@@ -157,10 +165,18 @@ void buildSystemWorker(){ // worker //////////////////////////
 
 // BuildMessage //////////////////////////////
 
+enum BuildMessageType{ find, error, bug, warning, deprecation, todo, opt } //todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
+
+auto buildMessageTypeColors = [clWhite, clRed, clOrange, clYellow, clAqua, clWowBlue, clWowPurple];
+auto color(in BuildMessageType t){ return buildMessageTypeColors[t]; }
+
+auto buildMessageTypeCaptions = [/+im.symbol("Zoom")+/"Find", "Err", "Bug", "Warn", "Depr", "Todo", "Opt"];
+auto caption(in BuildMessageType t){ return buildMessageTypeCaptions[t]; }
+
+
 struct BuildMessage{
   CodeLocation location;
-  enum Type { error, warning, deprecation, todo, opt} //todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
-  Type type;
+  BuildMessageType type;
   string message;
   CodeLocation parentLocation;  //multiline message lines are linked together using parentLocation
 
@@ -178,7 +194,7 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
   BuildMessage[CodeLocation] messages; //all the things referencing a code location
 
   private{ CodeLocation _lastAddedLocation;
-           BuildMessage.Type _lastAddedType; }
+           BuildMessageType _lastAddedType; }
 
   void clear(){
     foreach(f; FieldNameTuple!(typeof(this))) mixin("$ = $.init;".replace("$", f));
@@ -213,7 +229,7 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
           add(BuildMessage(location, _lastAddedType, content.strip, _lastAddedLocation));
           return true;
         }else if(content.isWild(" ?*:?*")){
-          const type = wild[0].decapitalize.to!(BuildMessage.Type); //can throw
+          const type = wild[0].decapitalize.to!(BuildMessageType); //can throw
           add(BuildMessage(location, type, wild[1].strip));
           return true;
         }
@@ -227,9 +243,9 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
     while(receiveTimeout(0.msecs,
       (in MsgBuildStarted msg){
         clear;
-        mainFile       = msg.mainFile.normalized;
-        filesToCompile = msg.filesToCompile.map!(f => f.normalized).array;
-        filesInCache   = msg.filesInCache  .map!(f => f.normalized).array;
+        mainFile       = msg.mainFile;
+        filesToCompile = msg.filesToCompile.dup;
+        filesInCache   = msg.filesInCache.dup;
 
         allFiles = (filesToCompile~filesInCache);
         allFiles.each!((f){ filesInProject[f] = true; });
@@ -238,7 +254,7 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
       },
       (in MsgBuildProgress msg){
 
-        auto f = msg.file.normalized,
+        auto f = msg.file,
              lines = msg.output.splitLines;
 
         string[] remaining;
@@ -257,6 +273,7 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
       (in MsgBuildFinished msg){
         //todo: clear currently compiling modules.
         //decide the global success of the build procedure
+        //todo: there are errors whose source are not specified or not loaded, those must be displayed too. Also the compiler output.
         dump;
       }
 
@@ -332,6 +349,7 @@ class CodeRow: Row{
   }
 
   this(string line){
+    this();
     set(line, [ubyte(0)].replicate(line.length));
   }
 
@@ -667,7 +685,7 @@ class Module : Container{ //this is any file in the project
   this(File file_){
     this();
 
-    file = file_.normalized;
+    file = file_.actualFile;
     id = "Module:"~this.file.fullName;
 
     rebuild;
@@ -876,11 +894,11 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   Module findModule(File file){
-    auto f = file;
-    foreach(m; modules) if(m.file==f) return m;  //opt: hash table...
+    foreach(m; modules)
+      if(sameText(m.file.fullName, file.fullName))
+        return m;
 
-    f = file.normalized; //todo: file.normalize measure speed. How slow is it...
-    foreach(m; modules) if(m.file==f) return m;  //opt: hash table...
+    //opt: hash table with fileName.lc...
 
     return null;
   }
@@ -962,13 +980,43 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   void updateModuleBuildStates(in BuildResult buildResult){
-    foreach(m; modules)
+    foreach(m; modules){
       m.buildState = buildResult.getBuildStateOfFile(m.file);
+    }
+  }
+
+  void convertBuildMessagesToSearchResults(){
+
+    auto buildMessagesAsSearchResults(BuildMessageType type){ //todo: opt
+      auto br = (cast(FrmMain)mainWindow).buildResult;
+      Container.SearchResult[] res;
+
+      foreach(const msg; br.messages)
+      if(msg.type==type)
+      if(auto mod = findModule(msg.location.file))    //opt: bottlenect! linear search
+      if((msg.location.line-1).inRange(mod.code.subCells)){
+        Container.SearchResult sr;
+        sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
+        sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
+        sr.cells = sr.container.subCells;
+        res ~= sr;
+      }
+
+      return res;
+    }
+
+    //opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, module change, module move.
+    //1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
+    //const t0 = now;
+    foreach(t; EnumMembers!BuildMessageType[1..$])
+      searchResults[t] = buildMessagesAsSearchResults(t);
+    //print(siFormat("%s ms", now-t0));
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
     updateModuleBuildStates(buildResult);
+    convertBuildMessagesToSearchResults;
     selectionManager.update(mainWindow.isForeground && lod.moduleLevel, view, modules);
   }
 
@@ -991,13 +1039,52 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }}
 
 
+  override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0)){  //locate ////////////////////////////////
+    ofs += innerPos;
+    foreach_reverse(m; modules){
+      auto st = m.locate(mouse, ofs);
+      if(st.length) return st;
+    }
+    return [];
+  }
+
+  string locationToStr(CellLocation[] st){
+    auto a(T)(void delegate(T) f){
+      if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); }
+    }
+
+    //opt: linear search...
+
+    string res;
+    a((Module m){
+      res ~= m.file.fullName;
+      a((CodeColumn col){
+        a((CodeRow row){
+          if(auto line = col.subCells.countUntil(row)+1){
+            res ~= format!"(%d"(line);
+            a((Cell cell){
+              if(auto column = row.subCells.countUntil(cell)+1)
+                res ~= format!",%s"(column);
+            });
+            res ~= ')';
+          }
+        });
+      });
+    });
+    return res;
+  }
+
   //search /////////////////////////////////
 
   bool searchBoxVisible = false;
   string searchText;
-  Container.SearchResult[] searchResults;
+  Container.SearchResult[][EnumMembers!BuildMessageType.length] searchResults;
 
-  void UI_SearchBox(View2D view){ with(im) Row({
+  //! UI /////////////////////////////////////////////////////////
+
+  void UI_SearchBox(View2D view){ UI_SearchBox(view, searchResults[0]); }  //UI_SearchBox /////////////////////////////////////////////
+
+  void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults){ with(im) Row({
     //Keyboard shortcuts
     auto kcFind      = KeyCombo("Ctrl+F"),
          kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
@@ -1039,6 +1126,20 @@ class WorkSpace : Container{ //this is a collection of opened modules
       }
     }
   });}
+
+  void UI(BuildMessageType bmt){ with(im){ // UI_BuildMessageTypeBtn ///////////////////////////
+    auto hit = Btn({
+      style.bkColor = bkColor = bmt.color;
+      style.fontColor = blackOrWhiteFor(bkColor);
+      Text(bmt.caption, " ", searchResults[bmt].length);
+    }, genericId(bmt));
+
+    if(hit.pressed){
+      beep;
+    }
+  }}
+
+  //! draw routines ////////////////////////////////////////////////////
 
   void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
     auto view = im.getView;
@@ -1176,30 +1277,11 @@ class WorkSpace : Container{ //this is a collection of opened modules
     drawModuleBuildStates(dr);
     drawModuleLoadingHighlights(dr, clYellow);
 
-    auto buildMessagesAsSearchResults(BuildMessage.Type type){ //todo: opt
-      auto br = (cast(FrmMain)mainWindow).buildResult;
-      Container.SearchResult[] res;
+    foreach(t; EnumMembers!BuildMessageType)
+      drawSearchResults(dr, searchResults[t], t.color);
 
-      foreach(const msg; br.messages)
-      if(msg.type==type)
-      if(auto mod = findModule(msg.location.file))
-      if((msg.location.line-1).inRange(mod.code.subCells)){
-        Container.SearchResult sr;
-        sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
-        sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
-        sr.cells = sr.container.subCells;
-        res ~= sr;
-      }
 
-      return res;
-    }
-
-    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.opt), clWowPurple);
-    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.todo), clWowBlue);
-    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.deprecation), mix(clYellow, clRed, .25f));
-    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.warning), clYellow);
-    drawSearchResults(dr, buildMessagesAsSearchResults(BuildMessage.Type.error), clRed);
-    drawSearchResults(dr, searchResults, clWhite);
+    //drawSearchResults(dr, searchResults, clWhite);
 
 
     /*auto bnd = calcBounds;
@@ -1252,7 +1334,9 @@ class FrmMain : GLWindow { mixin autoCreate;
     LOG(file, result, output.length);
   }
 
-  bool building(){ return buildSystemWorkerActive; }
+  bool building()   const{ return buildSystemWorkerState.active; }
+  bool ready()      const{ return !buildSystemWorkerState.active; }
+  bool cancelling() const{ return buildSystemWorkerState.cancelling; }
 
   void initBuildSystem(){
     buildResult = new BuildResult;
@@ -1333,7 +1417,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     caption = "DIDE2";
     view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
     setLod(view.scale_anim);
-    if(isForeground) callVerbs(this);
+     if(isForeground) callVerbs(this);
 
     if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
@@ -1357,6 +1441,56 @@ class FrmMain : GLWindow { mixin autoCreate;
             Text("\n", loc.text);
           }
         }
+      });
+    });
+
+    void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }
+
+    //StatusBar
+    with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";
+      Row({
+        //todo: faszomat ebbe a szarba:
+        flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
+        //flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
+
+        Row({ margin = "0 3"; flags.yAlign = YAlign.center;
+          style.fontHeight = 18+6;
+          with(buildSystemWorkerState){
+            Row({
+              if(building && blink) style.fontColor = clSilver;
+              Text(cancelling ? "Cancelling" : building ? "Building" : "Ready");
+            });
+            if(totalModules)
+              Text(" ", compiledModules.text, '/', totalModules.text);
+          }
+        });
+        VLine;//---------------------------
+        Row({ flex = 1; margin = "0 3"; flags.yAlign = YAlign.center;
+          style.fontHeight = 18+6;
+
+          auto st = workSpace.locate(view.mousePos);
+          if(st.length){
+            Text(workSpace.locationToStr(st));
+            //if(auto module_ = cast(Module)) st[0];
+          }
+        });
+        VLine;//---------------------------
+        Row({ margin = "0 3"; flags.yAlign = YAlign.center;
+          foreach(t; EnumMembers!BuildMessageType){
+            workSpace.UI(t);
+          }
+        });
+        VLine;//---------------------------
+        Row({ margin = "0 3"; flags.vAlign = VAlign.center;
+          Text(now.text);
+        });
+
+        //this applies YAlign.stretch
+        with(actContainer){
+          measure;
+          foreach(c; cast(.Container[])subCells) c.measure;
+        }
+
       });
     });
 
