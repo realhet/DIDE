@@ -21,6 +21,15 @@ void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
   border.borderFirst = true;
 }}
 
+void RoundRow(A...)(in RGB c, in A a){
+  with(im) Row({
+    bkColor = style.bkColor = c;
+    //margin = ".5";
+    fh = fh-1;
+    padding = "0 4";
+    setRoundBorder(actContainer, 8);
+  }, a);
+}
 
 // LOD //////////////////////////////////////////
 
@@ -52,11 +61,21 @@ struct CodeLocation{ //CodeLocation ////////////////////////
 
   bool opCast(T:bool)() const{ return cast(bool)file; }
 
-  int opCmp(in CodeLocation b) const{ return file.opCmp(b.file).cmpChain(cmp(line, b.line)).cmpChain(cmp(column, b.column)); }
+  int opCmp(in CodeLocation b) const{ return icmp(file.fullName, b.file.fullName).cmpChain(cmp(line, b.line)).cmpChain(cmp(column, b.column)); }
 
   string toString() const{ return format!"%s(%d,%d)"(file.fullName, line, column); }
-}
 
+  void UI(){ with(im) RoundRow(clSilver, {
+
+    auto ext = file.ext;
+    if(ext!="") Text(tag(format!`img "icon:\%s" height=%f`(ext, fh-2)));
+
+    Text(file.fullName);
+    if(column) Text(format!("(%s,%s)")(line, column));
+          else if(line) Text(format!("(%s)")(line));
+  });}
+
+}
 
 //! Build System /////////////////////////////////////
 
@@ -216,6 +235,48 @@ struct BuildMessage{
     return parentLocation ? format!"%s: %s:        %s"(location, type.text.capitalize, message)
                           : format!"%s: %s: %s"       (location, type.text.capitalize, message);
   }
+
+  void UI(){
+    with(im) RoundRow(type.color, {
+      with(padding) top = bottom = 1;
+
+      location.UI;
+
+      style.fontColor = blackOrWhiteFor(bkColor);
+      Text(" ", bold(type.to!string.capitalize), ": ");
+
+      actContainer.append(new CodeRow(message));
+      auto cr = cast(CodeRow)actContainer.subCells.back;
+      setRoundBorder(cr, 8);
+      cr.padding = "0 4";
+
+      foreach(g; cr.glyphs) g.fontColor = avg(type.color, clWhite);
+
+      //syntax highlight between ` backquotes
+      if(message.canFind('`')){
+        foreach(a; cr.chars.enumerate.filter!"a.value=='`'".map!"a.index".chunks(2).map!array) if(a.length==2){
+          auto s = cr.chars[a[0]+1..a[1]].array.to!string;
+          import het.tokenizer;
+          auto sc = scoped!SourceCode(s);
+          zip(cr.glyphs[a[0]+1..a[1]], sc.syntax).each!((glyph, syntax){
+            glyph.bkColor = true;
+
+            auto fmt = &syntaxTable[syntax].formats[defaultSyntaxPreset];
+            glyph.fontColor = fmt.fontColor;
+            glyph.bkColor   = fmt.bkColor;
+            glyph.fontFlags = cast(ubyte)fmt.fontFlags;
+          });
+        }
+     }
+
+
+      /*RoundRow(clCodeBackground,  {
+        Text(SyntaxKind.Whitespace, message);
+      });*/
+
+    });
+  }
+
 }
 
 class BuildResult{ // BuildResult //////////////////////////////////////////////
@@ -231,6 +292,8 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
   File[] allFiles;
   bool[File] filesInFlight;
   bool[File] filesInProject;
+
+  DateTime lastUpdateTime;
 
   mixin ClassMixin_clear;
 
@@ -315,43 +378,66 @@ class BuildResult{ // BuildResult //////////////////////////////////////////////
         //decide the global success of the build procedure
         //todo: there are errors whose source are not specified or not loaded, those must be displayed too. Also the compiler output.
 
-        //dump;
+        //dump.print;
       }
 
-    )){}
+    )){
+      lastUpdateTime = now;
+    }
+
   }
 
 
-  void dumpMessage(in BuildMessage bm, string indent=""){
-    writeln(indent, bm);
+  string dumpMessage(in BuildMessage bm, string indent=""){
+    string res = indent ~ bm.text ~"\n";
 
     foreach(const v; messages.values)
       if(v.parentLocation == bm.location)
-        dumpMessage(v, indent~"  ");
+        res ~= dumpMessage(v, indent~"  ");
+
+    return res;
   }
 
-  void dumpMessage(in CodeLocation location, string indent=""){
-    if(!location) return;
+  string dumpMessage(in CodeLocation location, string indent=""){
+    if(!location) return "";
     if(const bm = location in messages)
-      dumpMessage(*bm, indent);
+      return dumpMessage(*bm, indent);
+    return "";
   }
 
 
-  void dump(){
-    print("Messages--------------------------");
+  string dump(){
+    string res;
+
+    res ~= ("\n");
+    res ~= ("///////////////////////////////////\n");
+    res ~= ("///  Output                     ///\n");
+    res ~= ("///////////////////////////////////\n");
+    static if(0){ auto f = mainFile;
+      if(f in remainings && remainings[f].length){
+        remainings[f].each!(a => res ~= a~"\n");
+      }
+    }else{
+      foreach(f; remainings.keys.sort){
+        if(f in remainings && remainings[f].length){
+          res ~= f.fullName~": Output:\n";
+          remainings[f].each!(a => res ~= a~"\n");
+        }
+      }
+    }
+    res ~= "\n";
+
+    res ~= ("///////////////////////////////////\n");
+    res ~= ("///  Messages                   ///\n");
+    res ~= ("///////////////////////////////////\n");
     foreach(loc; messages.keys.sort){
       const bm = messages[loc];
       if(!bm.parentLocation)
-        dumpMessage(bm, "  ");
+        res ~= dumpMessage(bm, "  ");
     }
+    res ~= "\n";
 
-    print("remainings");
-    foreach(f; remainings.keys.sort){
-      if(remainings[f].length){
-        print("Unprocessed messages of: ", f);
-        remainings[f].each!(a => writeln("  ", a));
-      }
-    }
+    return res;
   }
 
 }
@@ -649,7 +735,7 @@ class Label : Row{
 
     //icon
     Img icon;
-    if(labelType==LabelType.module_) icon = new Img(File(`icon:\.d`)); //todo: get the real extension
+    if(labelType==LabelType.module_) icon = new Img(File(`icon:\`~File(str).ext.lc));
     else if(labelType==LabelType.folder) icon = new Img(File(`icon:\folder\`));
 
     if(icon){
@@ -683,25 +769,18 @@ class Module : Container{ //this is any file in the project
   enum BuildStateColors = [clBlack, clWhite, clWhite, clGray, clRed, RGB(128, 255, 0), RGB(64, 255, 0), clLime];
   BuildState buildState;
 
-  void rebuild(){
+  size_t linesOfCode(){ return code.subCells.length; } //todo: update this
+  size_t sizeBytes;  //todo: update this
+  bool isMainExe, isMainDll, isMainLib, isMain;
+
+  void reload(){
     clearSubCells;
 
-    flags.cullSubCells = true;
-
-    bkColor = clModuleBorder;
-    this.setRoundBorder(16);
-    padding = "8";
-
-    auto src = new SourceCode(this.file);
-
-    code = new CodeColumn(src);
-    code.measure;
-    const siz = code.outerSize;
-    innerSize = siz;
+    modified = file.modified;
+    sizeBytes = file.size;
 
     overlay = new Container;
     overlay.id = "Overlay:"~file.fullName;
-    overlay.outerSize = siz;
     with(overlay.flags){
       noHitTest = true;
       dontSearch = true;
@@ -710,16 +789,73 @@ class Module : Container{ //this is any file in the project
       //clipSubCells = false;
     }
 
-    overlay.append(new Label(LabelType.module_, vec2(0, -255), file.nameWithoutExt));
-    foreach(k; src.bigComments.keys.sort)
-      overlay.append(new Label(LabelType.subRegion, vec2(0, k*18), src.bigComments[k], overlay.innerWidth));
+    void measureAndPropagateCodeSize(){ code.measure; innerSize = code.outerSize; overlay.outerSize = code.outerSize; }
 
-    append(code);
-    append(overlay);
+    isMain = isMainExe = isMainDll = isMainLib = false;
+
+    if(file.extIs(".err")){
+
+      code = new CodeColumn;
+
+      foreach(line; file.readLines){
+        code.append(new CodeRow(line));
+      }
+
+      //todo: this is only working when it's called from update() only!!!!
+      auto br = (cast(FrmMain)mainWindow).buildResult;
+      auto markerLayerHideMask = (cast(FrmMain)mainWindow).workspace.markerLayerHideMask;
+
+/*  string dumpMessage(in BuildMessage bm, string indent=""){
+    string res = indent ~ bm.text ~"\n";
+
+    foreach(const v; messages.values)
+      if(v.parentLocation == bm.location)
+        res ~= dumpMessage(v, indent~"  ");
+
+    return res;
+  }*/
+
+      foreach(loc; br.messages.keys.sort){
+        auto msg = br.messages[loc];
+        if(msg.parentLocation) continue;
+        if((1<<msg.type) & markerLayerHideMask) continue;
+        msg.UI;
+        code.append(im.removeLastContainer); //a nasty trick to be able to call msg.UI;
+      }
+
+      measureAndPropagateCodeSize;
+    }else{
+      auto src = new SourceCode(this.file);
+
+      bool isMainSomething(string ext)(){
+        return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
+      }
+      isMainExe = isMainSomething!"exe";
+      isMainDll = isMainSomething!"dll";
+      isMainLib = isMainSomething!"lib";
+      isMain = isMainExe || isMainDll || isMainLib;
+
+      code = new CodeColumn(src);
+
+      measureAndPropagateCodeSize;
+
+      overlay.append(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
+      foreach(k; src.bigComments.keys.sort)
+        overlay.append(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+    }
+
+    append(enforce(code));
+    append(enforce(overlay));
   }
 
 
   this(){
+    flags.cullSubCells = true;
+
+    bkColor = clModuleBorder;
+    this.setRoundBorder(16);
+    padding = "8";
+
     loaded = now;
   }
 
@@ -729,7 +865,7 @@ class Module : Container{ //this is any file in the project
     file = file_.actualFile;
     id = "Module:"~this.file.fullName;
 
-    rebuild;
+    reload;
   }
 
   override void draw(Drawing dr){
@@ -842,15 +978,15 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
         a.outerPos += mouseDelta;
 
         //todo: jelezni kell valahogy az elmozdulast!!!
-        static if(is(a.cachedDrawing))
-          a.cachedDrawing.free;
+        /*static if(is(a.cachedDrawing))
+          a.cachedDrawing.free;*/
       }
     }
 
 
     if(LMB_released){ // left mouse released //
 
-      //...
+      //...                                               ou
 
       mouseOp = MouseOp.idle;
     }
@@ -860,17 +996,26 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 
 // FolderLabel //////////////////////////////////
 
-auto getFolderLabel(string folderPath){
+auto cachedFolderLabel(string folderPath){
   return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
 }
 
-/// WorkSpace ///////////////////////////////////////////////
-class WorkSpace : Container{ //this is a collection of opened modules
-  File file;
+// ErrorRow /////////////////////////////////////
+void ErrorRow(string s){ with(im){
+  Row(s);
+}}
+
+/// Workspace ///////////////////////////////////////////////
+class Workspace : Container{ //this is a collection of opened modules
+  File file; //the file of the workspace
   enum defaultExt = ".dide";
 
   Module[] modules;
   SelectionManager2!Module selectionManager;
+
+  @STORED File mainModuleFile;
+  @property Module mainModule(){ return findModule(mainModuleFile); }
+  @property void mainModule(Module m){ enforce(modules.canFind(m), "Invalid module."); enforce(m.isMain, "This module can't be selected as main module."); mainModuleFile = m.file; }
 
   File[] openQueue;
 
@@ -887,9 +1032,16 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!MarkerLayer.array  )();
-
   //note: compiler drops weird error. this also works:
   //      Writing Explicit type also works:  auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
+
+  @STORED vec2[size_t] lastModulePositions;
+
+
+  //Restrict convertBuildResultToSearchResults calls.
+  size_t lastBuildStateHash;
+  bool buildStateChanged;
+
 
   this(){
     flags.targetSurface = 0;
@@ -935,23 +1087,23 @@ class WorkSpace : Container{ //this is a collection of opened modules
     updateSubCells;
   }
 
-  void loadWorkSpace(string jsonData){
+  void loadWorkspace(string jsonData){
     auto fuck = this; fuck.fromJson(jsonData);
     fromModuleSettings;
     updateSubCells;
   }
 
-  string saveWorkSpace(){
+  string saveWorkspace(){
     toModuleSettings;
     return this.toJson;
   }
 
-  void loadWorkSpace(File f){
-    loadWorkSpace(f.readText(true));
+  void loadWorkspace(File f){
+    loadWorkspace(f.readText(true));
   }
 
-  void saveWorkSpace(File f){
-    f.write(saveWorkSpace);
+  void saveWorkspace(File f){
+    f.write(saveWorkspace);
   }
 
   Module findModule(File file){
@@ -990,7 +1142,8 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   bool loadModule(in File file){
-    return loadModule(file, vec2(calcBounds.right+24, 0)); //default position
+    const vec2 targetPos = lastModulePositions.get(file.actualFile.hashOf, vec2(calcBounds.right+24, 0));
+    return loadModule(file, targetPos); //default position
   }
 
   bool loadModule(in File file, vec2 targetPos){
@@ -999,7 +1152,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
 
     auto m = new Module(file);
 
-    //m.flags.targetSurface = 0; not needed, workSpace is on s0 already
+    //m.flags.targetSurface = 0; not needed, workspace is on s0 already
     m.measure;
     m.outerPos = targetPos;
     modules ~= m;
@@ -1011,16 +1164,16 @@ class WorkSpace : Container{ //this is a collection of opened modules
     return true;
   }
 
-  File[] allFilesFromModule(File mainFile){
-    if(!mainFile.exists) return [];
+  File[] allFilesFromModule(File file){
+    if(!file.exists) return [];
     //todo: not just for //@exe of //@dll
     BuildSettings settings = { verbose : false };
     BuildSystem buildSystem;
-    return buildSystem.findDependencies(mainFile, settings).map!(m => m.file).array;
+    return buildSystem.findDependencies(file, settings).map!(m => m.file).array;
   }
 
-  auto loadModuleRecursive(File mainFile){
-    allFilesFromModule(mainFile).each!(f => loadModule(f));
+  auto loadModuleRecursive(File file){
+    allFilesFromModule(file).each!(f => loadModule(f));
   }
 
   void queueModule(File f){ openQueue ~= f; }
@@ -1047,20 +1200,39 @@ class WorkSpace : Container{ //this is a collection of opened modules
   }
 
   void convertBuildMessagesToSearchResults(){
+    auto br = (cast(FrmMain)mainWindow).buildResult;
+
+    auto outFile = File(`virtual:\compile.err`);
+    auto output = br.dump;
+    outFile.write(output);
+
+    if(auto m = findModule(outFile)){
+      m.reload;
+    }else{
+      loadModule(outFile);
+    }
 
     auto buildMessagesAsSearchResults(BuildMessageType type){ //todo: opt
-      auto br = (cast(FrmMain)mainWindow).buildResult;
       Container.SearchResult[] res;
 
-      foreach(const msg; br.messages)
-      if(msg.type==type)
-      if(auto mod = findModule(msg.location.file))    //opt: bottlenect! linear search
-      if((msg.location.line-1).inRange(mod.code.subCells)){
-        Container.SearchResult sr;
-        sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
-        sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
-        sr.cells = sr.container.subCells;
-        res ~= sr;
+      foreach(const msg; br.messages) if(msg.type==type){
+        if(auto mod = findModule(msg.location.file)){    //opt: bottlenect! linear search
+          if((msg.location.line-1).inRange(mod.code.subCells)){
+            Container.SearchResult sr;
+            sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
+            sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
+            sr.cells = sr.container.subCells;
+            res ~= sr;
+          }else{
+            //line not found in module
+            //LOG(msg);
+          }
+        }else{
+          //module not loaded
+          //LOG(msg);
+
+          //if(msg.location.file.exists) queueModule(msg.location.file);
+        }
       }
 
       return res;
@@ -1068,17 +1240,30 @@ class WorkSpace : Container{ //this is a collection of opened modules
 
     //opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, module change, module move.
     //1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
-    //const t0 = now;
     foreach(t; EnumMembers!BuildMessageType[1..$])
       markerLayers[t].searchResults = buildMessagesAsSearchResults(t);
-    //print(siFormat("%s ms", now-t0));
   }
+
+
+  void updateLastKnownModulePositions(){
+    foreach(m; modules)
+      lastModulePositions[m.file.hashOf] = m.outerPos;
+  }
+
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
-    updateModuleBuildStates(buildResult);
-    convertBuildMessagesToSearchResults;
-    selectionManager.update(mainWindow.isForeground && lod.moduleLevel, view, modules);
+
+    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.mousePos in view.subScreenBounds, view, modules);
+
+    size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
+    buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
+    if(buildStateChanged){
+      updateModuleBuildStates(buildResult);
+      convertBuildMessagesToSearchResults; //opt: limit this by change detection
+    }
+
+    updateLastKnownModulePositions;
   }
 
   auto calcBounds(){
@@ -1109,25 +1294,24 @@ class WorkSpace : Container{ //this is a collection of opened modules
     return [];
   }
 
-  string locationToStr(CellLocation[] st){
+  CodeLocation cellLocationToCodeLocation(CellLocation[] st){
     auto a(T)(void delegate(T) f){
       if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); }
     }
 
     //opt: linear search...
 
-    string res;
+    CodeLocation res;
     a((Module m){
-      res ~= m.file.fullName;
+      res.file = m.file;
       a((CodeColumn col){
         a((CodeRow row){
           if(auto line = col.subCells.countUntil(row)+1){
-            res ~= format!"(%d"(line);
+            res.line = line.to!int;
             a((Cell cell){
               if(auto column = row.subCells.countUntil(cell)+1)
-                res ~= format!",%s"(column);
+                res.column = column.to!int;
             });
-            res ~= ')';
           }
         });
       });
@@ -1295,6 +1479,15 @@ class WorkSpace : Container{ //this is a collection of opened modules
     }
   }
 
+  protected void drawMainModules(Drawing dr){
+    auto mm=mainModule;
+    foreach(m; modules){
+      if(m==mm){ dr.color = RGB(0xFF, 0xD7, 0x00); dr.lineWidth = -2.5f; dr.drawRect(m.outerBounds); }
+      else if(m.isMain){ dr.color = clSilver; dr.lineWidth = -1.5f; dr.drawRect(m.outerBounds); }
+      //else if(m.file.extIs(".d")){ dr.color = clSilver; dr.lineWidth = 12; dr.drawRect(m.outerBounds); }
+    }
+  }
+
   protected void drawFolders(Drawing dr, RGB clFrame, RGB clText){
     //todo: detect changes and only collect info when changed.
 
@@ -1316,7 +1509,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
         dr.drawRect(bnd);
       }
 
-      with(getFolderLabel(folderPath)){
+      with(cachedFolderLabel(folderPath)){
         outerPos = bnd.topLeft - vec2(0, 255);
         draw(dr);
       }
@@ -1339,6 +1532,7 @@ class WorkSpace : Container{ //this is a collection of opened modules
       drawSelectedModules(dr, clWhite, .3f, clWhite, .1f);
       drawSelectionRect(dr, clWhite);
       drawFolders(dr, clGray, clWhite);
+      drawMainModules(dr);
     }
     drawModuleBuildStates(dr);
     drawModuleLoadingHighlights(dr, clYellow);
@@ -1378,7 +1572,7 @@ auto frmMain(){ return cast(FrmMain)mainWindow; }
 
 class FrmMain : GLWindow { mixin autoCreate;
 
-  WorkSpace workSpace;
+  Workspace workspace;
   MainOverlayContainer overlay;
 
   Tid buildSystemWorkerTid;
@@ -1386,16 +1580,15 @@ class FrmMain : GLWindow { mixin autoCreate;
   BuildResult buildResult; //collects buildMessages and output
 
   Path workPath = Path(`z:\temp2`);
-  File mainFile = File(`c:\d\projects\karc\karc2.d`);
 
-  File workSpaceFile;
+  File workspaceFile;
   bool initialized; //workspace has been loaded.
 
   @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
-  @VERB("Ctrl+O")       void openFile            (){ workSpace.openModule; }
-  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ workSpace.openModuleRecursive; }
-  @VERB("Ctrl+W")       void closeWindow         (){ if(lod.moduleLevel) workSpace.closeSelectedModules; }
-  @VERB("Ctrl+A")       void selectAll           (){ if((lod.moduleLevel) && !im.wantKeys) workSpace.selectAllModules; }
+  @VERB("Ctrl+O")       void openFile            (){ workspace.openModule; }
+  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ workspace.openModuleRecursive; }
+  @VERB("Ctrl+W")       void closeWindow         (){ if(lod.moduleLevel) workspace.closeSelectedModules; }
+  @VERB("Ctrl+A")       void selectAll           (){ if((lod.moduleLevel) && !im.wantKeys) workspace.selectAllModules; }
 
   void onCompileProgress(File file, int result, string output){
     LOG(file, result, output.length);
@@ -1411,7 +1604,7 @@ class FrmMain : GLWindow { mixin autoCreate;
   }
 
   void updateBuildSystem(){
-    buildResult.receiveBuildMessages; //todo: it's only good for ONE workSpace!!!
+    buildResult.receiveBuildMessages; //todo: it's only good for ONE workspace!!!
   }
 
   void destroyBuildSystem(){
@@ -1439,7 +1632,7 @@ class FrmMain : GLWindow { mixin autoCreate;
       compileArgs : ["-wi"],  // "-v" <- not good: it also lists all imports
     };
 
-    buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(mainFile, bs));
+    buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs));
     //todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
   }
 
@@ -1459,13 +1652,13 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   override void onCreate(){ //onCreate //////////////////////////////////
     initBuildSystem;
-    workSpace = new WorkSpace;
-    workSpaceFile = File(appPath, "default"~WorkSpace.defaultExt);
+    workspace = new Workspace;
+    workspaceFile = File(appPath, "default"~Workspace.defaultExt);
     overlay = new MainOverlayContainer;
   }
 
   override void onDestroy(){
-    if(initialized) workSpace.saveWorkSpace(workSpaceFile);
+    if(initialized) workspace.saveWorkspace(workspaceFile);
     destroyBuildSystem;
   }
 
@@ -1475,8 +1668,8 @@ class FrmMain : GLWindow { mixin autoCreate;
     updateBuildSystem;
 
     if(initialized.chkSet){
-      if(workSpaceFile.exists){
-        workSpace.loadWorkSpace(workSpaceFile);
+      if(workspaceFile.exists){
+        workspace.loadWorkspace(workspaceFile);
       }
     }
 
@@ -1488,12 +1681,12 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
-        Row({ workSpace.UI_ModuleBtns; flex = 1; });
+        Row({ workspace.UI_ModuleBtns; flex = 1; });
       });
     });
 
     with(im) Panel(PanelPosition.topRight, { margin = "0"; padding = "0";
-      workSpace.UI_SearchBox(view);
+      workspace.UI_SearchBox(view);
     });
 
     if(0) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
@@ -1503,7 +1696,7 @@ class FrmMain : GLWindow { mixin autoCreate;
         if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text);
 
 
-        foreach_reverse(m; workSpace.modules){
+        foreach_reverse(m; workspace.modules){
           foreach(loc; m.locate(view.mousePos)){
             Text("\n", loc.text);
           }
@@ -1516,28 +1709,57 @@ class FrmMain : GLWindow { mixin autoCreate;
     //StatusBar
     with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";
       Row({
+        theme = "tool"; style.fontHeight = 18;
+
         //todo: faszomat ebbe a szarba:
         flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
         //flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
 
         Row({ margin = "0 3"; flags.yAlign = YAlign.center;
-          style.fontHeight = 18+6;
+          //style.fontHeight = 18+6;
           buildSystemWorkerState.UI_StatusItem;
         });
-        VLine;//---------------------------
-        Row({ flex = 1; margin = "0 3"; flags.yAlign = YAlign.center;
-          style.fontHeight = 18+6;
 
-          auto st = workSpace.locate(view.mousePos);
-          if(st.length){
-            Text(workSpace.locationToStr(st));
-            //if(auto module_ = cast(Module)) st[0];
-          }
-        });
         VLine;//---------------------------
+
+        Row({ flex = 1; margin = "0 3"; flags.yAlign = YAlign.center; flags.clipSubCells = true;
+          //style.fontHeight = 18+6;
+
+          if(lod.moduleLevel){// selected modules stats
+            auto selectedModules = workspace.modules.filter!"a.flags.selected".array;
+            void stats(){ Row(format!"(%d LOC, %sB)"(selectedModules.map!(m => m.linesOfCode).sum, shortSizeText!" "(selectedModules.map!(m => m.sizeBytes).sum))); }
+            if(selectedModules.length){
+              if(selectedModules.length==1){
+                auto m = selectedModules.front;
+                Row({ padding="0 8"; }, { CodeLocation(selectedModules[0].file).UI; },
+                  { if(sameText(m.file.fullName, workspace.mainModuleFile.fullName)){
+                      Btn("Main", enable(false));
+                    }else{
+                      if(m.isMain){
+                        if(Btn("Set Main")) workspace.mainModule = m;
+                      }
+                    }
+                    stats;
+                  }
+                );
+              }else{
+                Row({ padding="0 8"; }, selectedModules.length.text, " modules selected ", { stats; });
+              }
+            }
+          }
+
+          if(1 /+lod.codeLevel+/){// mouse cursor location stats
+            auto st = workspace.locate(view.mousePos);
+            if(st.length) Row({ padding="0 8"; }, "\u2316 ", { workspace.cellLocationToCodeLocation(st).UI; });
+          }
+
+        });
+
+        VLine;//---------------------------
+
         Row({ margin = "0 3"; flags.yAlign = YAlign.center;
           foreach(t; EnumMembers!BuildMessageType){
-            workSpace.UI(t, view);
+            workspace.UI(t, view);
           }
         });
         VLine;//---------------------------
@@ -1554,16 +1776,16 @@ class FrmMain : GLWindow { mixin autoCreate;
       });
     });
 
-    im.root ~= workSpace;
+    im.root ~= workspace;
     im.root ~= overlay;
 
     view.subScreenArea = im.clientArea / clientSize;
 
-    workSpace.update(view, buildResult);
+    workspace.update(view, buildResult);
 
-    if(chkClear(workSpace.justLoadedSomething)){
-      view.zoom(workSpace.justLoadedBounds | view.subScreenBounds);
-      workSpace.justLoadedBounds = bounds2.init;
+    if(chkClear(workspace.justLoadedSomething)){
+      view.zoom(workspace.justLoadedBounds | view.subScreenBounds);
+      workspace.justLoadedBounds = bounds2.init;
     }
 
     //todo:cullSubCells ellenorzese
@@ -1583,7 +1805,7 @@ class FrmMain : GLWindow { mixin autoCreate;
       void locate(vec2 pos){
         //dr.color = clFuchsia;
         dr.lineWidth = -1;
-        foreach(loc; workSpace.modules.map!(m => m.locate(pos)).joiner){
+        foreach(loc; workspace.modules.map!(m => m.locate(pos)).joiner){
           dr.drawRect(loc.globalOuterBounds);
 
           dr.arrowStyle = ArrowStyle.arrow;
