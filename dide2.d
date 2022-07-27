@@ -15,31 +15,6 @@ __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded so
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
 
-void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
-  border.width = borderWidth;
-  border.color = bkColor;
-  border.inset = true;
-  border.borderFirst = true;
-}}
-
-void RoundRow(A...)(in RGB c, in A a){
-  with(im) Row({
-    bkColor = style.bkColor = c;
-    //margin = ".5";
-    //fh = fh-1;
-    padding = "0 4";
-    setRoundBorder(actContainer, 8);
-  }, a);
-}
-
-auto newContainer(T : .Container, A...)(A args){
-  im.Container!T(args);
-  return cast(T)im.removeLastContainer;
-}
-
-auto newRow   (A...)(A args){ return newContainer!(.Row   )(args); }
-auto newColumn(A...)(A args){ return newContainer!(.Column)(args); }
-
 // LOD //////////////////////////////////////////
 
 struct LodStruct {
@@ -64,19 +39,78 @@ void setLod(float zoomFactor_){
   }
 }
 
+void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
+  border.width = borderWidth;
+  border.color = bkColor;
+  border.inset = true;
+  border.borderFirst = true;
+}}
+
+void RoundBorder(float borderWidth){ with(im){
+  border.width = borderWidth;
+  border.color = bkColor;
+  border.inset = true;
+  border.borderFirst = true;
+}}
+
 //! UI ///////////////////////////////
 
-void UI(in CodeLocation cl){ with(cl) with(im) RoundRow(clSilver, { //CodeLocation.UI //////////////////////
-  style = tsNormal;
-  style.bkColor = bkColor;
+static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents){ with(im) //UI_OuterBlockFrame///////////////////////////
+  Container!T({
+    margin = "0.5";
+    padding = "1.5";
+    style.bkColor = bkColor = color;
+    style.fontColor = blackOrWhiteFor(color);
+    flags.yAlign = YAlign.top;
+    RoundBorder(8);
+    if(contents) contents();
+  });
+}
 
-  auto ext = file.ext;
-  if(ext!="") Text(tag(format!`img "icon:\%s" height=%f`(ext, fh-2)));
+static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate() contents){ with(im) //UI_InnerBlockFrame////////////////////////
+  Container!T({
+    margin = "0";
+    padding = "0 4";
+    style.bkColor = bkColor = color;
+    style.fontColor = fontColor;
+    flags.yAlign = YAlign.top;
+    RoundBorder(8);
+    if(contents) contents();
+  });
+}
 
-  Text(file.fullName);
-  if(column) Text(format!("(%s,%s)")(line, column));
-        else if(line) Text(format!("(%s)")(line));
-});}
+static void UI_BuildMessageContents(CodeLocation location, string title, void delegate() contents){ with(im){ //UI_BuildMessageContents///////////////////////////////
+  location.UI;
+  if(title!="") Text(bold(" "~title~" "));
+  if(contents) contents();
+}}
+
+static void UI_ConsoleTextBlock(string contents){ with(im) //UI_ConsoleTextBlock/////////////////////////////////////
+  UI_InnerBlockFrame(clBlack, clWhite, {
+    style.font = "Lucida Console";
+    Text(contents); //todo: Use codeRow here for optimized LOD. Refer to -> UI_BuildMessageTextBlock()
+  });
+}
+
+static void UI_CompilerOutput(File file, string text){ //UI_CompilerOutput/////////////////////////////////
+  UI_OuterBlockFrame(RGB(0xD0D0D0), {
+    UI_BuildMessageContents(CodeLocation(file), "Output:", {
+      UI_ConsoleTextBlock(text);
+    });
+  });
+}
+
+void UI(in CodeLocation cl){ with(cl) with(im) //CodeLocation.UI //////////////////////
+  UI_InnerBlockFrame(clSilver, clBlack, {
+    auto ext = file.ext;
+    if(ext!="") Text(tag(format!`img "icon:\%s" height=%f`(ext, fh-2)));
+
+    Text(file.fullName);
+    if(column) Text(format!("(%s,%s)")(line, column));
+          else if(line) Text(format!("(%s)")(line));
+  });
+}
+
 
 void UI(in BuildSystemWorkerState bsws) { with(bsws) with(im){ //BuildSystemWorkerState.UI //////////////////////
   Row({
@@ -96,62 +130,65 @@ void UI(in BuildSystemWorkerState bsws) { with(bsws) with(im){ //BuildSystemWork
 }}
 
 
-void UI(in BuildMessage msg, in BuildMessage[] subMessages = []){ // BuildMessage.UI ////////////////////////////
-  with(msg) with(im) RoundRow(type.color, {
-    with(padding) top = bottom = 1;
-    margin = "1";
-    flags.yAlign = YAlign.top;
-
-    location.UI;
-
-    style.fontColor = blackOrWhiteFor(bkColor);
-    style.bold = true;
-    Text(" "~(parentLocation ? "\u2026" : type.to!string.capitalize~":")~" ");
-    style.bold = false;
-
-    void addMessageRow(string message){
-      actContainer.append(new CodeRow(message));
-      auto cr = cast(CodeRow)actContainer.subCells.back;
-      setRoundBorder(cr, 8);
-      cr.padding = "0 4";
-
-      foreach(g; cr.glyphs) g.fontColor = avg(type.color, clWhite);
-
-      //syntax highlight between ` backquotes
-      if(1) if(message.canFind('`')){
-        foreach(a; cr.chars.enumerate.filter!"a.value=='`'".map!"a.index".chunks(2).map!array) if(a.length==2){
-          auto s = cr.chars[a[0]+1..a[1]].array.to!string;
-          import het.tokenizer;
-          auto sc = scoped!SourceCode(s);
-          zip(cr.glyphs[a[0]+1..a[1]], sc.syntax).each!((glyph, syntax){
-
-            auto fmt = &syntaxTable[syntax].formats[defaultSyntaxPreset];
-            glyph.fontColor = fmt.fontColor;
-            glyph.bkColor   = fmt.bkColor;
-            glyph.fontFlags = cast(ubyte)fmt.fontFlags;
-          });
-        }
+void UI_BuildMessageTextBlock(string message, RGB clFont){ //UI_BuildMessageTextBlock//////////////////////////////
+  //Apply syntax highlight on the texts between `` quotes.
+  auto isCode = new bool[message.length];
+  {
+    bool inCode = false;
+    size_t i;
+    foreach(ch; message.byChar){
+      if(!inCode){
+        if(ch=='`') inCode=true;
+      }else{
+        if(ch=='`') inCode=false; else isCode[i]=true;
       }
+      i++;
     }
+  }
 
-    auto messageLines = message.splitLines;
+  auto codeOnly = message.dup;
+  foreach(i, b; isCode) if(!b) codeOnly.ptr[i] = ' ';
 
-    if(messageLines.length<=1){
-      addMessageRow(messageLines[0]);
-    }else{
-      Column({
-        foreach(line; messageLines){
-          addMessageRow(line);
-        }
-      });
-    }
+  auto sc = scoped!SourceCode(cast(string)codeOnly);
 
-    foreach(sm; subMessages){
-      Text("\n    "); sm.UI([]);
-    }
+  void appendLine(int idx){ with(im){
+    auto cr = cast(CodeRow)actContainer;
+    auto r = sc.getLineRange(idx);
+    cr.set(message[r[0]..r[1]], sc.syntax[r[0]..r[1]]);
+    auto g = cr.glyphs;
+    foreach(i, b; isCode[r[0]..r[1]]) if(!b) g[i].fontColor = clFont;
+  }}
 
+  const lineCount = sc.lineCount;
+  if(lineCount==1){
+    UI_InnerBlockFrame!CodeRow(clCodeBackground, clFont, {
+      appendLine(0);
+    });
+  }else if(lineCount>1){
+    with(im) UI_InnerBlockFrame!CodeColumn(clCodeBackground, clFont, {
+      foreach(i; 0..lineCount) Container!CodeRow({ appendLine(i); });
+    });
+  }
+}
+
+
+void UI(in BuildMessage msg, BuildResult br){ UI(msg, br.subMessagesOf(msg.location)); }
+
+void UI(in BuildMessage msg, in BuildMessage[] subMessages){ with(msg) with(im) // BuildMessage.UI ////////////////////////////
+  UI_OuterBlockFrame(type.color, {
+    UI_BuildMessageContents(location, parentLocation ? "\u2026" : type.to!string.capitalize~":", {
+      const clFont = avg(type.color, clWhite);
+
+      UI_BuildMessageTextBlock(message, clFont);
+
+      foreach(sm; subMessages){
+        Text("\n    "); sm.UI([]);
+      }
+
+    });
   });
 }
+
 
 
 /// CodeRow ////////////////////////////////////////////////
@@ -162,7 +199,7 @@ class CodeRow: Row{
 
   int charCount(){ return cast(int)subCells.length; }
 
-  private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0, 9); }
+  private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
   private auto spaces() { return glyphs.map!(g => isSpace(g)); }
   private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
 
@@ -287,9 +324,14 @@ class CodeRow: Row{
 
 
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
+  //note: this is basically the CodeBlock
+
   auto rows(){ return cast(CodeRow[])subCells; }
   int rowCount(){ return cast(int)subCells.length; }
-  @property string text() { return rows.map!"a.text".join("\r\n"); }
+  @property string text() { return rows.map!(r => r.text).join("\r\n"); }  // \r\n is the default in std library
+
+  enum defaultSpacesPerTab = 4; //default in std library
+  int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
   this(){
     id.value = this.identityStr;
@@ -309,14 +351,20 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     set(src);
   }
 
+  this(string str){
+    this(scoped!SourceCode(str));
+  }
+
   void set(SourceCode src){
     clearSubCells;
 
-    src.foreachLine( (int idx, string line, ubyte[] syntax) => append(new CodeRow(line, syntax)) );
+    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(line, syntax)) );
+    if(subCells.empty)
+      appendCell(new CodeRow("", null)); //always must have at least an empty row
 
     makeElasticTabs;
 
-    const spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
+    spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
     rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
 
     measure;
@@ -416,6 +464,25 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 }
 
+void test_CodeColumn(){
+
+  void test_RowCount(string src, int rowCount, string dst="*"){
+    if(dst=="*") dst = src;
+    auto cc = scoped!CodeColumn(src);
+    void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
+    expect(cc.rows.length, rowCount);
+    expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.text).join('\n')));
+  }
+
+  test_RowCount("", 1);
+  test_RowCount(" ", 1);
+  test_RowCount("\n", 2);
+  test_RowCount("\n ", 2, "\n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen, az elastic tabokat meg egymas ala kell igazitani space-ekkel. De ezt majd kesobb. Most minden tab lesz.
+  test_RowCount("\r\n", 2, "\n");
+  test_RowCount(" \n \n \r\n", 4, " \n \n \n".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
+  test_RowCount(" \n \n \r\n ", 4, " \n \n \n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
+}
+
 /// Label //////////////////////////////////////////
 
 enum LabelType{ folder, module_, mainRegion, subRegion }
@@ -453,7 +520,7 @@ class Label : Row{
     if(icon){
       icon.innerSize = vec2(ts.fontHeight);
       icon.transparent = true;
-      append(icon);
+      appendCell(icon);
     }
 
     //text
@@ -512,6 +579,7 @@ class Module : Container{ //this is any file in the project
     if(file.extIs(".err")){
 
       code = new CodeColumn;
+      code.padding = "1";
 
       //foreach(line; file.readLines) code.append(new CodeRow(line));
 
@@ -528,54 +596,26 @@ class Module : Container{ //this is any file in the project
 
     return res;
   }*/
-      foreach(rf; br.remainings.keys.sort){
-        auto r = br.remainings[rf];
-        if(r.length){
-          with(im) code.append(newRow({
-            margin = "1";
-            padding = "2";
-            style = tsNormal;
-            style.bkColor = bkColor = RGB(0xD0D0D0);
-            actContainer.setRoundBorder(8);
-            CodeLocation(rf).UI;
-            Text(bold(" Output: "));
-            Row({
-              style.font = "Consolas";
-              padding = "1";
-              bkColor = clBlack;
-              actContainer.setRoundBorder(8);
-              style.fontColor = clWhite;
-              style.bkColor = clBlack;
-              Text(r.join('\n'));
-            });
-          }));
-        }
+      foreach(file; br.remainings.keys.sort){
+        auto pragmas = br.remainings[file];
+        if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
       }
 
-      foreach(loc; br.messages.keys.sort){
-        auto msg = br.messages[loc];
-        if(msg.parentLocation) continue;
-        if((1<<msg.type) & markerLayerHideMask) continue;
-
-        //find sub-messages recursively
-        auto subMessagesOf(in CodeLocation loc){
-          BuildMessage[] subMessages;  //todo: this is an array of struct. It's unoptimal
-          void doit(in CodeLocation parentLocation){
-            auto sm = br.messages.byValue.filter!(m => m.parentLocation==parentLocation).array;
-            subMessages ~= sm;
-            sm.each!(m => doit(m.location));
-          }
-          doit(msg.location);
-          return subMessages;
+      with(im) code.append({
+        foreach(loc; br.messages.keys.sort){
+          auto msg = br.messages[loc];
+          if(msg.parentLocation) continue;
+          if((1<<msg.type) & markerLayerHideMask) continue;
+          msg.UI(br.subMessagesOf(msg.location));
         }
+      });
 
-        msg.UI(subMessagesOf(msg.location));
-        code.append(im.removeLastContainer); //a nasty trick to be able to call msg.UI;
-      }
+        //code.append(im.removeLastContainer); //a nasty trick to be able to call msg.UI;
+
 
       measureAndPropagateCodeSize;
 
-      overlay.append(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
+      overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
     }else{
       auto src = new SourceCode(this.file);
 
@@ -591,13 +631,13 @@ class Module : Container{ //this is any file in the project
 
       measureAndPropagateCodeSize;
 
-      overlay.append(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
+      overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
       foreach(k; src.bigComments.keys.sort)
-        overlay.append(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+        overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
     }
 
-    append(enforce(code));
-    append(enforce(overlay));
+    appendCell(enforce(code));
+    appendCell(enforce(overlay));
   }
 
 
@@ -820,7 +860,7 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     void updateSubCells(){
-      subCells_ = cast(Cell[])modules;
+      subCells = cast(Cell[])modules;
     }
   }
 
@@ -1433,6 +1473,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     updateBuildSystem;
 
     if(initialized.chkSet){
+      test_CodeColumn;
       if(workspaceFile.exists){
         workspace.loadWorkspace(workspaceFile);
       }
@@ -1441,8 +1482,9 @@ class FrmMain : GLWindow { mixin autoCreate;
     invalidate; //todo: low power usage
     caption = "DIDE2";
     view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
-    setLod(view.scale_anim);
-     if(isForeground) callVerbs(this);
+    if(!inputs.LMB && !inputs.RMB) setLod(view.scale_anim);
+
+    if(isForeground) callVerbs(this);
 
     if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
@@ -1529,6 +1571,17 @@ class FrmMain : GLWindow { mixin autoCreate;
     }
 
     //todo:cullSubCells ellenorzese
+
+
+    {
+      T0;
+      int i;
+      foreach(m; workspace.modules) if(m.file.name.sameText("utils.d"))
+        foreach(r; m.code.rows)
+          foreach(g; r.glyphs)
+            i++;
+      print(DT, i);
+    }
   }
 
   override void onPaint(){ // onPaint ///////////////////////////////////////
@@ -1575,35 +1628,3 @@ class FrmMain : GLWindow { mixin autoCreate;
 //todo: search in std, core, etc
 //todo: winapi help search
 
-/// Error collection ///////////////////////////////////
-/+
-
-c:\d\libs\het\tokenizer.d(792,41): Deprecation: use `{ }` for an empty statement, not `;`
-c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-
-C:\D\projects\DIDE\dide2.d(383,22): Error: constructor `dide2.Label.this(int height, bool bold, Vector!(float, 2) pos, string str, bool alignRight, float parentWidth = 0.0F)` is not callable using argument types `(int, bool, string, bool, const(float))`
-C:\D\projects\DIDE\dide2.d(383,22):        cannot pass argument `src.bigComments[k]` of type `string` to parameter `Vector!(float, 2) pos`
-
-C:\D\projects\DIDE\dide2.d(338,28): Error: undefined identifier `r`
-
-C:\D\projects\DIDE\dide2.d(324,7): Error: no property `height` for type `het.uibase.TextStyle`
-  //todo: no property for type: missleading when the property name is correct but it's private or protected.
-
-C:\D\projects\DIDE\dide2.d(383,59): Error: found `src` when expecting `)`
-C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` when expecting `;` following statement
-C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` instead of statement
-
-C:\D\projects\DIDE\dide2.d(331,20): Error: cannot implicitly convert expression `isRegion` of type `const(uint)` to `bool`
-
-C:\D\testGetAssociatedIcon.d(29,15): Error: undefined identifier `DestroyIcon`
-
-C:\D\projects\DIDE\dide2.d(51,2): Error: `@identifier` or `@(ArgumentList)` expected, not `@{`
-
-C:\D\projects\DIDE\dide2.d(103,24): Error: found `cmd` when expecting `)`
-
-C:\D\projects\DIDE\dide2.d(103,28): Error: found `{` when expecting `;` following statement
-
-C:\D\projects\DIDE\dide2.d(104,5): Error: found `)` instead of statement
-
-C:\D\projects\DIDE\dide2.d(107,1): Error: unrecognized declaration
-+/
