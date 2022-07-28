@@ -333,6 +333,40 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   enum defaultSpacesPerTab = 4; //default in std library
   int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
+  //index, location calculations
+  int maxIdx(){ //inclusive end position
+    assert(rowCount>0);
+    return rows.map!(r => r.charCount + 1/+newLine+/).sum - 1/+except last newLine+/;
+  }
+
+  ivec2 idx2pos(int idx){
+    if(idx<0) return ivec2(0); //clamp to min
+
+    const rowCount = this.rowCount;
+    assert(rowCount>0);
+    int y;
+    while(1){
+      const actRowLen = rows[y].charCount+1;
+      if(idx<actRowLen){
+        return ivec2(idx, y);
+      }else{
+        if(y<rowCount){
+          y++;
+          idx -= actRowLen;
+        }else{
+          return ivec2(rowCount-1, rows[rowCount-1].charCount); //clamp to max
+        }
+      }
+    }
+  }
+
+  int pos2idx(ivec2 p){
+    if(p.y<0) return 0; //clamp to min
+    if(p.y>=rowCount) return maxIdx; //lamp to max
+    return rows[0..p.y].map!(r => r.charCount+1).sum + clamp(p.x, 0, rows[p.y].charCount);
+  }
+
+
   this(){
     id.value = this.identityStr;
 
@@ -786,6 +820,24 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 
 }
 
+//
+struct TextCursor{  //TextSursor /////////////////////////////
+  ivec2 pos;
+  float desiredX; //used for up down movement, after left right movements.
+
+  int opCmp    (in TextCursor b) const{ return (cmp(pos.y, b.pos.y)).cmpChain(cmp(pos.x, b.pos.x)); }
+  bool opEquals(in TextCursor b) const{ return pos == b.pos; }
+}
+
+struct TextSelection{ //TextSelection
+  CodeColumn codeColumn;
+  TextCursor[2] cursors;
+  @property auto start() const{ return min(cursors[0], cursors[1]); }
+  @property auto end  () const{ return max(cursors[0], cursors[1]); }
+
+  int opCmp    (in TextSelection b) const{ return cmp(cast(size_t)(cast(void*)codeColumn), cast(size_t)(cast(void*)b.codeColumn)).cmpChain(myCmp(start, b.start)).cmpChain(myCmp(end, b.end)); }
+  bool opEquals(in TextSelection b) const{ return codeColumn==b.codeColumn && start==b.start && end==b.end; }
+}
 
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container{ //this is a collection of opened modules
@@ -824,6 +876,7 @@ class Workspace : Container{ //this is a collection of opened modules
   size_t lastBuildStateHash;
   bool buildStateChanged;
 
+  TextSelection[] textSelections;
 
   this(){
     flags.targetSurface = 0;
@@ -1201,7 +1254,28 @@ class Workspace : Container{ //this is a collection of opened modules
 
   void UI_mouseLocationHint(View2D view){ with(im){
     auto st = locate(view.mousePos);
-    if(st.length) Row({ padding="0 8"; }, "\u2316 ", { cellLocationToCodeLocation(st).UI; });
+    if(st.length){
+      Row({ padding="0 8"; }, "\u2316 ", {
+        const loc = cellLocationToCodeLocation(st);
+        loc.UI;
+        const debug_pos2idx=true;
+        if(loc.file && loc.line){
+          if(loc.column) with(findModule(loc.file).code){
+            const pos = ivec2(loc.column, loc.line)-1;
+            const idx = pos2idx(pos);
+            const pos2 = idx2pos(idx);
+            const idx2 = pos2idx(pos2);
+            Text("   ", pos.text, idx.text, pos2.text, idx2.text);
+          }else with(findModule(loc.file).code){
+            const pos = ivec2(st[$-1].localPos.x<=0 ? 0 : rows[loc.line-1].charCount, loc.line-1);
+            const idx = pos2idx(pos);
+            const pos2 = idx2pos(idx);
+            const idx2 = pos2idx(pos2);
+            Text("   ", pos.text, idx.text, pos2.text, idx2.text);
+          }
+        }
+      });
+    }
   }}
 
 
@@ -1343,6 +1417,64 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
+
+  void updateTextSelections(){
+
+    bool validate(const TextSelection ts){
+      return modules.map!(m => m.code).canFind(ts.codeColumn); //opt: linear
+    }
+
+    textSelections = textSelections.filter!(ts => validate(ts)).array.sort.array;
+  }
+
+  void drawTextSelections(Drawing dr){
+    updateTextSelections;
+
+    dr.color = clWhite;
+    dr.alpha = 1;
+    scope(exit) dr.alpha = 1;
+
+    Module moduleOf(in TextSelection ts){
+      foreach(m; modules) if(m.code==ts.codeColumn) return m; //opt: linear
+      return null;
+    }
+
+    foreach(ts; textSelections){
+      auto m = moduleOf(ts);
+      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
+                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+      dr.translate(codeColumnsInnerPosAbs); scope(exit) dr.pop;
+      //draw the selection
+      if(ts.cursors[0] != ts.cursors[1]){
+        const st=m.code.pos2idx(ts.start.pos),
+              en=m.code.pos2idx(ts.end  .pos);
+        foreach(i; st..en){
+          const pos = m.code.idx2pos(i); //opt: unoptimal conversions between idx and pos
+          auto r = m.code.rows[pos.y];
+          dr.translate(r.outerPos+r.topLeftGapSize); scope(exit) dr.pop; //opt: really slow at every char
+
+          if(pos.x<r.charCount){
+            auto g = r.glyphs[pos.x];
+            const old = tuple(g.bkColor, g.fontColor);
+            g.bkColor = clSilver; g.fontColor = clBlack;
+            g.draw(dr);
+            g.bkColor = old[0]; g.fontColor = old[1];
+          }else{
+            //newLine at the end of the line
+          }
+        }
+
+      }
+
+
+
+
+
+
+      //opt: linear
+    }
+  }
+
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
     if(lod.moduleLevel){
       drawSelectedModules(dr, clWhite, .3f, clWhite, .1f);
@@ -1358,6 +1490,13 @@ class Workspace : Container{ //this is a collection of opened modules
     foreach_reverse(t; EnumMembers!BuildMessageType)
       if(markerLayers[t].visible)
         drawSearchResults(dr, markerLayers[t].searchResults, t.color);
+
+    {
+      auto m = findModule(File(`c:\d\libs\het\utils.d`));
+      textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
+    }
+
+    drawTextSelections(dr);
   }
 
 
@@ -1573,7 +1712,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     //todo:cullSubCells ellenorzese
 
 
-    {
+    if(0){
       T0;
       int i;
       foreach(m; workspace.modules) if(m.file.name.sameText("utils.d"))
