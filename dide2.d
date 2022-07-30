@@ -1427,11 +1427,14 @@ class Workspace : Container{ //this is a collection of opened modules
     textSelections = textSelections.filter!(ts => validate(ts)).array.sort.array;
   }
 
-  void drawTextSelections(Drawing dr){
+  void drawTextSelections(Drawing dr){ //drawTextSelections ////////////////////////////
     updateTextSelections;
 
-    dr.color = clWhite;
-    dr.alpha = 1;
+    const blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
+    const clSelected = mix(mix(RGB(0x404040), clSilver, lod.zoomFactor.smoothstep(0.02, 0.1)), clWhite, blink);
+    const clCaret = clOrange;
+
+    dr.alpha = .35f; //font surface only
     scope(exit) dr.alpha = 1;
 
     Module moduleOf(in TextSelection ts){
@@ -1453,26 +1456,43 @@ class Workspace : Container{ //this is a collection of opened modules
           auto r = m.code.rows[pos.y];
           dr.translate(r.outerPos+r.topLeftGapSize); scope(exit) dr.pop; //opt: really slow at every char
 
-          if(pos.x<r.charCount){
+          if(pos.x<r.subCells.length){//highlighted chars
             auto g = r.glyphs[pos.x];
             const old = tuple(g.bkColor, g.fontColor);
-            g.bkColor = clSilver; g.fontColor = clBlack;
+            g.bkColor = clSelected; g.fontColor = clBlack;
             g.draw(dr);
             g.bkColor = old[0]; g.fontColor = old[1];
           }else{
             //newLine at the end of the line
+            static Glyph gLF; if(!gLF) gLF = new Glyph("\u240A\u2936\u23CE"d[1], tsNormal);
+            const x = r.subCells.length ? r.subCells[$-1].outerBounds.right : 0;
+            gLF.bkColor = clSelected; gLF.fontColor = clBlack;
+            gLF.outerPos = vec2(x, 0);
+            gLF.draw(dr);
           }
         }
-
       }
-
-
-
-
-
-
-      //opt: linear
     }
+
+    //caret
+    dr.alpha = blink;
+    dr.lineWidth = -3-(blink)*3;
+    dr.color = clFuchsia;
+    foreach(ts; textSelections){
+
+      //todo: this is redundant, combine the too loops
+      auto m = moduleOf(ts);
+      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
+                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+
+      const pos = ts.cursors[1].pos;
+      auto r = m.code.rows[pos.y]; //todo: error check/clamp
+
+      const x = pos.x<=0 ? 0 : r.subCells[pos.x-1].outerBounds.right;
+      dr.moveTo(codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0));
+      dr.lineRel(0, r.innerHeight);
+    }
+
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
@@ -1493,7 +1513,8 @@ class Workspace : Container{ //this is a collection of opened modules
 
     {
       auto m = findModule(File(`c:\d\libs\het\utils.d`));
-      textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
+      //textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
+      textSelections = iota(100).map!(i => TextSelection(m.code, [TextCursor(m.code.idx2pos(i*140)), TextCursor(m.code.idx2pos(i*140+40))])).array;
     }
 
     drawTextSelections(dr);
