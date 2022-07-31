@@ -15,6 +15,19 @@ __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded so
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
 
+// utils ////////////////////////////////////////
+
+size_t allocatedSize(in Cell c){
+  if(!c) return 0;
+  import core.memory;
+  size_t res = GC.sizeOf(cast(void*)c);
+  if(auto co = cast(const Container)c){
+    res += co.subCells.map!(allocatedSize).sum;
+  }
+  return res;
+}
+
+
 // LOD //////////////////////////////////////////
 
 struct LodStruct {
@@ -129,7 +142,6 @@ void UI(in BuildSystemWorkerState bsws) { with(bsws) with(im){ //BuildSystemWork
   });
 }}
 
-
 void UI_BuildMessageTextBlock(string message, RGB clFont){ //UI_BuildMessageTextBlock//////////////////////////////
   //Apply syntax highlight on the texts between `` quotes.
   auto isCode = new bool[message.length];
@@ -160,11 +172,7 @@ void UI_BuildMessageTextBlock(string message, RGB clFont){ //UI_BuildMessageText
   }}
 
   const lineCount = sc.lineCount;
-  if(lineCount==1){
-    UI_InnerBlockFrame!CodeRow(clCodeBackground, clFont, {
-      appendLine(0);
-    });
-  }else if(lineCount>1){
+  if(lineCount>=1){
     with(im) UI_InnerBlockFrame!CodeColumn(clCodeBackground, clFont, {
       foreach(i; 0..lineCount) Container!CodeRow({ appendLine(i); });
     });
@@ -184,7 +192,6 @@ void UI(in BuildMessage msg, in BuildMessage[] subMessages){ with(msg) with(im) 
       foreach(sm; subMessages){
         Text("\n    "); sm.UI([]);
       }
-
     });
   });
 }
@@ -193,6 +200,10 @@ void UI(in BuildMessage msg, in BuildMessage[] subMessages){ with(msg) with(im) 
 
 /// CodeRow ////////////////////////////////////////////////
 class CodeRow: Row{
+  CodeColumn parent;
+
+  int getIndex(){ foreach(i, c; parent.subCells) if(c is this) return i.to!int; return -1; }
+
   auto glyphs() { return subCells.map!(c => cast(Glyph)c); } //can return nulls
   auto chars()  { return glyphs.map!"a ? a.ch : '\u26A0'"; }
   string text() { return chars.to!string; }
@@ -203,7 +214,13 @@ class CodeRow: Row{
   private auto spaces() { return glyphs.map!(g => isSpace(g)); }
   private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
 
-  this(){
+  int leadingTabCount(){
+    static bool isTab(Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
+    return glyphs.countUntil!(g => !isTab(g)).to!int;
+  }
+
+  this(CodeColumn parent_){
+    parent = enforce(parent_);
     id.value = this.identityStr;
 
     padding = "0 4";
@@ -218,14 +235,14 @@ class CodeRow: Row{
     super();
   }
 
-  this(string line, ubyte[] syntax){
+  this(CodeColumn parent_, string line, ubyte[] syntax){
     assert(line.length==syntax.length);
-    this();
+    this(parent_);
     set(line, syntax);
   }
 
-  this(string line){
-    this();
+  this(CodeColumn parent_, string line){
+    this(parent_);
     set(line, [ubyte(0)].replicate(line.length));
   }
 
@@ -308,15 +325,18 @@ class CodeRow: Row{
 
   override void draw(Drawing dr){
     if(lod.level>1){
-      const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength;
+      const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength; //opt: this should be memoized
       if(lsCnt<subCells.length){
         const r = bounds2(subCells[lsCnt].outerPos, subCells[$-1].outerBottomRight) + innerPos;
         dr.color = avg(glyphs[lsCnt].bkColor, glyphs[lsCnt].fontColor);
-        //dr.color = application.tick&1 ? clWhite : clBlack;
         dr.fillRect(r.inflated(vec2(0, -r.height/4)));
       }
     }else{
       super.draw(dr);
+
+      /*dr.fontHeight = 18;
+      dr.color = clFuchsia;
+      dr.textOut(outerPos.x, outerPos.y, getIndex.text);*/
     }
   }
 
@@ -392,9 +412,9 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   void set(SourceCode src){
     clearSubCells;
 
-    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(line, syntax)) );
+    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
     if(subCells.empty)
-      appendCell(new CodeRow("", null)); //always must have at least an empty row
+      appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
 
     makeElasticTabs;
 
@@ -821,22 +841,63 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 }
 
 //
-struct TextCursor{  //TextSursor /////////////////////////////
+struct TextCursor{  //TextCursor /////////////////////////////
   ivec2 pos;
   float desiredX; //used for up down movement, after left right movements.
 
   int opCmp    (in TextCursor b) const{ return (cmp(pos.y, b.pos.y)).cmpChain(cmp(pos.x, b.pos.x)); }
   bool opEquals(in TextCursor b) const{ return pos == b.pos; }
+
+  void moveRight(CodeColumn cc, int delta){
+    if(!delta) return;
+    if(delta==int.min){ //home
+      const ltc = cc.rows[pos.y].leadingTabCount;
+      pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
+    }else if(delta==int.max)  pos.x = cc.rows[pos.y].charCount; //end
+    else pos = cc.idx2pos(cc.pos2idx(pos)+delta); //slow but simple
+    desiredX = pos.x<=0 ? 0 : cc.rows[pos.y].subCells[pos.x-1].outerBounds.right;
+  }
+
+  void moveDown(CodeColumn cc, int delta){
+    if(!delta) return;
+    if(delta==int.min) pos.y = 0; //home
+    else if(delta==int.max) pos.y = cc.rowCount-1; //end
+    else pos.y = (pos.y+delta).clamp(0, cc.rowCount-1);
+
+    //jump to desired x in actual row
+    auto r = cc.rows[pos.y];
+    pos.x = iota(r.charCount+1).map!(i => abs((i<=0 ? 0 : r.subCells[i-1].outerBounds.right)-desiredX)).minIndex.to!int;
+  }
+
+  void move(CodeColumn cc, ivec2 delta){
+    if(!delta) return;
+    if(delta==ivec2(int.min)){
+      pos = ivec2(0); desiredX = 0; //this skips the possible stop at the leading tabs in the first line
+    }else{
+      moveDown (cc, delta.y);
+      moveRight(cc, delta.x);
+    }
+  }
 }
 
 struct TextSelection{ //TextSelection
   CodeColumn codeColumn;
   TextCursor[2] cursors;
+  auto ref caret(){ return cursors[1]; }
+
   @property auto start() const{ return min(cursors[0], cursors[1]); }
   @property auto end  () const{ return max(cursors[0], cursors[1]); }
 
   int opCmp    (in TextSelection b) const{ return cmp(cast(size_t)(cast(void*)codeColumn), cast(size_t)(cast(void*)b.codeColumn)).cmpChain(myCmp(start, b.start)).cmpChain(myCmp(end, b.end)); }
   bool opEquals(in TextSelection b) const{ return codeColumn==b.codeColumn && start==b.start && end==b.end; }
+
+  void collapseToCaret(){ cursors[0] = cursors[1]; }
+
+  void move(ivec2 delta){
+    caret.move(codeColumn, delta);
+    collapseToCaret;
+  }
+
 }
 
 /// Workspace ///////////////////////////////////////////////
@@ -1088,11 +1149,54 @@ class Workspace : Container{ //this is a collection of opened modules
       lastModulePositions[m.file.hashOf] = m.outerPos;
   }
 
+  // textSelection, cursor movements /////////////////////////////
+
+  void updateTextSelections(){
+
+    bool isModuleExists(const TextSelection ts){ return modules.map!(m => m.code).canFind(ts.codeColumn); } //opt: linear
+
+    //validate & sort
+    textSelections = textSelections.filter!(ts => isModuleExists(ts)).array.sort.array;
+
+    void doit(alias fun)(){ foreach(ref s; textSelections) unaryFun!fun(s); }
+
+    {
+      auto dir = ivec2(KeyCombo("Left").typed?-1:0 + KeyCombo("Right").typed?+1:0,
+                       KeyCombo("Up"  ).typed?-1:0 + KeyCombo("Down" ).typed?+1:0);
+      if(KeyCombo("Home").pressed) dir.x = int.min;
+      if(KeyCombo("End").pressed) dir.x = int.max;
+      if(KeyCombo("Ctrl+Home").pressed) dir = ivec2(int.min);
+      if(KeyCombo("Ctrl+End").pressed) dir = ivec2(int.max);
+
+      if(dir) doit!((ref a) => a.move(dir));
+    }
+
+    if(textSelections.length>1 && KeyCombo("Esc").typed){
+      textSelections.length = 1; //todo: which one to keep... I think VSCode keeps the oldest...
+    }
+
+    if(textSelections.length){
+      if(KeyCombo("Ctrl+Alt+Up").typed){
+        auto ts = textSelections[0];
+        ts.move(ivec2(0, -1));
+        if(ts!=textSelections[0]) textSelections = ts ~ textSelections;
+      }
+      if(KeyCombo("Ctrl+Alt+Down").typed){
+        auto ts = textSelections[$-1];
+        ts.move(ivec2(0, 1));
+        if(ts!=textSelections[$-1]) textSelections ~= ts;
+      }
+    }
+
+
+  }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
 
     selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.mousePos in view.subScreenBounds, view, modules);
+
+    updateTextSelections;
 
     size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
     buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
@@ -1278,8 +1382,6 @@ class Workspace : Container{ //this is a collection of opened modules
     }
   }}
 
-
-
   //! draw routines ////////////////////////////////////////////////////
 
   void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
@@ -1417,22 +1519,10 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
-
-  void updateTextSelections(){
-
-    bool validate(const TextSelection ts){
-      return modules.map!(m => m.code).canFind(ts.codeColumn); //opt: linear
-    }
-
-    textSelections = textSelections.filter!(ts => validate(ts)).array.sort.array;
-  }
-
   void drawTextSelections(Drawing dr){ //drawTextSelections ////////////////////////////
-    updateTextSelections;
-
     const blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
     const clSelected = mix(mix(RGB(0x404040), clSilver, lod.zoomFactor.smoothstep(0.02, 0.1)), clWhite, blink);
-    const clCaret = clOrange;
+    const clCaret = mix(clWhite, clOrange, blink);
 
     dr.alpha = .35f; //font surface only
     scope(exit) dr.alpha = 1;
@@ -1476,8 +1566,8 @@ class Workspace : Container{ //this is a collection of opened modules
 
     //caret
     dr.alpha = blink;
-    dr.lineWidth = -3-(blink)*3;
-    dr.color = clFuchsia;
+    dr.lineWidth = -1-(blink)*3;
+    dr.color = clCaret;
     foreach(ts; textSelections){
 
       //todo: this is redundant, combine the too loops
@@ -1511,10 +1601,14 @@ class Workspace : Container{ //this is a collection of opened modules
       if(markerLayers[t].visible)
         drawSearchResults(dr, markerLayers[t].searchResults, t.color);
 
-    {
+/*    {
       auto m = findModule(File(`c:\d\libs\het\utils.d`));
       //textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
       textSelections = iota(100).map!(i => TextSelection(m.code, [TextCursor(m.code.idx2pos(i*140)), TextCursor(m.code.idx2pos(i*140+40))])).array;
+    }*/
+    if(textSelections.length==0){
+      auto m = findModule(File(`c:\d\libs\het\utils.d`));
+      textSelections = [TextSelection(m.code, [TextCursor(ivec2(0)), TextCursor(ivec2(0))])];
     }
 
     drawTextSelections(dr);
@@ -1707,6 +1801,9 @@ class FrmMain : GLWindow { mixin autoCreate;
         VLine;//---------------------------
         Row({ margin = "0 3"; flags.vAlign = VAlign.center;
           Text(now.text);
+          if(Btn("Calc size")){
+            print(workspace.allocatedSize);
+          }
         });
 
         //this applies YAlign.stretch
