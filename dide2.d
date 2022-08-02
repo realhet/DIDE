@@ -206,7 +206,7 @@ class CodeRow: Row{
 
   auto glyphs() { return subCells.map!(c => cast(Glyph)c); } //can return nulls
   auto chars()  { return glyphs.map!"a ? a.ch : '\u26A0'"; }
-  string text() { return chars.to!string; }
+  string sourceText() { return chars.to!string; }
 
   int charCount(){ return cast(int)subCells.length; }
 
@@ -346,9 +346,12 @@ class CodeRow: Row{
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
   //note: this is basically the CodeBlock
 
-  auto rows(){ return cast(CodeRow[])subCells; }
-  int rowCount(){ return cast(int)subCells.length; }
-  @property string text() { return rows.map!(r => r.text).join("\r\n"); }  // \r\n is the default in std library
+  auto const rows(){ return cast(CodeRow[])subCells; }
+  int rowCount() const{ return cast(int)subCells.length; }
+  int lastRowIdx() const{ return rowCount-1; }
+  int lastRowLength() const{ return rows[$-1].charCount; }
+  int rowCharCount(int rowIdx) const{ if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].charCount; else return 0; }
+  @property string sourceText() { return rows.map!(r => r.sourceText).join("\r\n"); }  // \r\n is the default in std library
 
   enum defaultSpacesPerTab = 4; //default in std library
   int spacesPerTab = defaultSpacesPerTab; //autodetected on load
@@ -363,18 +366,18 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     if(idx<0) return ivec2(0); //clamp to min
 
     const rowCount = this.rowCount;
-    assert(rowCount>0);
+    assert(rowCount>0, "One row must present even when the CodeColumn is empty.");
     int y;
     while(1){
       const actRowLen = rows[y].charCount+1;
       if(idx<actRowLen){
         return ivec2(idx, y);
       }else{
+        y++;
         if(y<rowCount){
-          y++;
           idx -= actRowLen;
         }else{
-          return ivec2(rowCount-1, rows[rowCount-1].charCount); //clamp to max
+          return ivec2(rows[rowCount-1].charCount, rowCount-1); //clamp to max
         }
       }
     }
@@ -525,7 +528,7 @@ void test_CodeColumn(){
     auto cc = scoped!CodeColumn(src);
     void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
     expect(cc.rows.length, rowCount);
-    expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.text).join('\n')));
+    expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.sourceText).join('\n')));
   }
 
   test_RowCount("", 1);
@@ -840,28 +843,114 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 
 }
 
-//
+// CodeColumn navigation utils ////////////////////////////////////
+
+dchar charAt(const CodeRow cr, int i, bool newLineAtEnd=true){
+  if(!cr || i<0 || i>cr.subCells.length) return '\x00';
+  if(i==cr.subCells.length) return newLineAtEnd ? '\n' : '\x00';
+  const cell = cr.subCells[i];
+  if(const g = cast(const Glyph)cell) return g.ch; else return '\x01';
+}
+
+dchar charAt(const CodeColumn cc, ivec2 p){
+  if(!cc || p.y<0 || p.x<0 || p.y>=cc.rowCount) return '\x00';
+  return charAt(cast(const CodeRow)cc.subCells[p.y], p.x, p.y<cc.rowCount-1);
+}
+
+enum WordCategory{ space, symbol, word }
+
+WordCategory wordCategory(dchar ch){
+  import std.uni;
+  if(ch.isAlphaNum || ch=='_') return WordCategory.word;
+  if(ch.among(' ', '\t', '\n', '\r')) return WordCategory.space;
+  return WordCategory.symbol;
+}
+
+bool isWordBoundary(R)(R a){
+  //input: 2 element historical sliding window of the characters
+  //output is true when the wordCategory is decreasing.
+  //The 3 possible transitions are: word->symbol, word->space, symbol->space
+  return a.front.wordCategory > a.drop(1).front.wordCategory;
+}
+
+struct CharFetcher{
+  CodeColumn codeColumn;
+  ivec2 pos;
+  bool forward=true;
+
+  @property dchar front() const{ return charAt(codeColumn, pos); }
+  @property bool empty() const{
+    if(forward) return codeColumn && TextCursor(pos)>=TextCursor(ivec2(codeColumn.lastRowLength, codeColumn.lastRowIdx));
+    else        return codeColumn && TextCursor(pos)< TextCursor(ivec2(0));
+  }
+
+  void popFront(){
+    if(forward){
+      pos.x++;
+      if(pos.x>codeColumn.rowCharCount(pos.y)){
+        pos.x=0;
+        pos.y++;
+      }
+    }else{
+      pos.x--;
+      if(pos.x<0){
+        pos.y--;
+        pos.x=codeColumn.rowCharCount(pos.y);
+      }
+    }
+
+    //not good because these are clamping.pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+(forward ? 1 : -1)); //opt: it's slow but simple
+  }
+
+  auto save(){ return this; }
+}
+
+
+
 struct TextCursor{  //TextCursor /////////////////////////////
   ivec2 pos;
-  float desiredX; //used for up down movement, after left right movements.
+  float desiredX=0; //used for up down movement, after left right movements.
 
   int opCmp    (in TextCursor b) const{ return (cmp(pos.y, b.pos.y)).cmpChain(cmp(pos.x, b.pos.x)); }
   bool opEquals(in TextCursor b) const{ return pos == b.pos; }
 
+  void moveLeft(CodeColumn cc, long delta){ moveRight(cc, -delta); }
+  void moveRight(CodeColumn cc, long delta){ moveRight(cc, delta.to!int); }
+
+  //special delta units
+  enum home     = int.min,  end       = int.max,
+       wordLeft = home+1 ,  wordRight = end-1  ;
+
   void moveRight(CodeColumn cc, int delta){
     if(!delta) return;
-    if(delta==int.min){ //home
+    if(delta==home){
       const ltc = cc.rows[pos.y].leadingTabCount;
       pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
-    }else if(delta==int.max)  pos.x = cc.rows[pos.y].charCount; //end
-    else pos = cc.idx2pos(cc.pos2idx(pos)+delta); //slow but simple
+    }else if(delta==end){
+      pos.x = cc.rows[pos.y].charCount;
+    }else if(delta==wordRight){
+      const skip = CharFetcher(cc, pos, true)
+                  .chain("\n\n"d) //extra stopping condition when no word boundary found
+                  .slide(2)
+                  .countUntil!(a => a.isWordBoundary || a.equal("\n\n"d)); //only stop at empty lines (that's 2 newline)
+      moveRight(cc, skip+1);
+    }else if(delta==wordLeft){
+      const skip = CharFetcher(cc, pos, false)
+                  .drop(1) //ignore the char at right hand side of the cursor
+                  .chain("\n\n"d) //extra stopping condition when no word boundary found
+                  .slide(2)
+                  .countUntil!(a => a.isWordBoundary || a.drop(1).front=='\n'); //stop at every newline
+      moveLeft(cc, skip+1);
+    }else{
+      pos = cc.idx2pos(cc.pos2idx(pos)+delta); //opt: it's slow but simple
+    }
     desiredX = pos.x<=0 ? 0 : cc.rows[pos.y].subCells[pos.x-1].outerBounds.right;
   }
 
   void moveDown(CodeColumn cc, int delta){
     if(!delta) return;
-    if(delta==int.min) pos.y = 0; //home
-    else if(delta==int.max) pos.y = cc.rowCount-1; //end
+    if(delta==home) pos.y = 0; //home
+    else if(delta==end) pos.y = cc.rowCount-1; //end
     else pos.y = (pos.y+delta).clamp(0, cc.rowCount-1);
 
     //jump to desired x in actual row
@@ -871,8 +960,8 @@ struct TextCursor{  //TextCursor /////////////////////////////
 
   void move(CodeColumn cc, ivec2 delta){
     if(!delta) return;
-    if(delta==ivec2(int.min)){
-      pos = ivec2(0); desiredX = 0; //this skips the possible stop at the leading tabs in the first line
+    if(delta==ivec2(home)){
+      pos = ivec2(0); desiredX = 0; //this needed to skip the possible stop right after the leading tabs in the first line
     }else{
       moveDown (cc, delta.y);
       moveRight(cc, delta.x);
@@ -1160,35 +1249,52 @@ class Workspace : Container{ //this is a collection of opened modules
 
     void doit(alias fun)(){ foreach(ref s; textSelections) unaryFun!fun(s); }
 
-    {
-      auto dir = ivec2(KeyCombo("Left").typed?-1:0 + KeyCombo("Right").typed?+1:0,
-                       KeyCombo("Up"  ).typed?-1:0 + KeyCombo("Down" ).typed?+1:0);
-      if(KeyCombo("Home").pressed) dir.x = int.min;
-      if(KeyCombo("End").pressed) dir.x = int.max;
-      if(KeyCombo("Ctrl+Home").pressed) dir = ivec2(int.min);
-      if(KeyCombo("Ctrl+End").pressed) dir = ivec2(int.max);
+    if(frmMain.isForeground && !im.wantKeys){ // keyboard handling --------------------------------------------------------------------------
+      int pageSize(){ return (frmMain.view.subScreenBounds.height/DefaultFontHeight*.8f).iround.clamp(1, 100); }
 
-      if(dir) doit!((ref a) => a.move(dir));
-    }
+      foreach(isShift; [false, true]){
+        ivec2 dir;
 
-    if(textSelections.length>1 && KeyCombo("Esc").typed){
-      textSelections.length = 1; //todo: which one to keep... I think VSCode keeps the oldest...
-    }
+        void a(string key, void delegate() fun){ if(KeyCombo((isShift ? "Shift+" : "")~key).typed) fun(); }
 
-    if(textSelections.length){
-      if(KeyCombo("Ctrl+Alt+Up").typed){
-        auto ts = textSelections[0];
-        ts.move(ivec2(0, -1));
-        if(ts!=textSelections[0]) textSelections = ts ~ textSelections;
+        a("Left"        , { dir.x--;                      });  //todo: formatting test with this and the new UI
+        a("Right"       , { dir.x++;                      });
+        a("Up"          , { dir.y--;                      });
+        a("Down"        , { dir.y++;                      });
+        a("PgUp"        , { dir.y -= pageSize;            });
+        a("PgDn"        , { dir.y += pageSize;            });
+        a("Home"        , { dir.x = TextCursor.home;      });
+        a("End"         , { dir.x = TextCursor.end;       });
+        a("Ctrl+Home"   , { dir = ivec2(TextCursor.home); });
+        a("Ctrl+End"    , { dir = ivec2(TextCursor.end);  });
+        a("Ctrl+Left"   , { dir.x = TextCursor.wordLeft;  });
+        a("Ctrl+Right"  , { dir.x = TextCursor.wordRight; });
+
+        if(dir) doit!((ref a) => a.move(dir));
       }
-      if(KeyCombo("Ctrl+Alt+Down").typed){
-        auto ts = textSelections[$-1];
-        ts.move(ivec2(0, 1));
-        if(ts!=textSelections[$-1]) textSelections ~= ts;
+
+      if(textSelections.length>1 && KeyCombo("Esc").typed){
+        textSelections.length = 1; //todo: which one to keep... I think VSCode keeps the oldest...
       }
+
+      if(textSelections.length){
+        if(KeyCombo("Ctrl+Alt+Up").typed){
+          auto ts = textSelections[0];
+          ts.move(ivec2(0, -1));
+          if(ts!=textSelections[0]) textSelections = ts ~ textSelections;
+        }
+        if(KeyCombo("Ctrl+Alt+Down").typed){
+          auto ts = textSelections[$-1];
+          ts.move(ivec2(0, 1));
+          if(ts!=textSelections[$-1]) textSelections ~= ts;
+        }
+      }
+
     }
 
+    if(frmMain.isForeground && !im.wantMouse){ // mouse handling ----------------------------------------------------------
 
+    }
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
@@ -1735,7 +1841,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     invalidate; //todo: low power usage
     caption = "DIDE2";
-    view.navigate(!im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
+    view.navigate(false && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
     if(!inputs.LMB && !inputs.RMB) setLod(view.scale_anim);
 
     if(isForeground) callVerbs(this);
