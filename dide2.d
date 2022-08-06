@@ -7,13 +7,19 @@
 
 //todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
 
+//todo: wholeWords search (eleje/vege kulon)
+//todo: filter search results per file and per syntax (comment, string, code, etc)
+
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
 
-__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
+import dideui, didemodule;
 
-const clModuleBorder = clGray;
-const clModuleText = clBlack;
+// ugly globals ////////////////////////////////////////
+
+auto frmMain(){ return (cast(FrmMain)mainWindow); }
+auto global_getBuildResult(){ return frmMain.buildResult; }
+auto global_getMarkerLayerHideMask(){ return frmMain.workspace.markerLayerHideMask; }
 
 // utils ////////////////////////////////////////
 
@@ -27,713 +33,6 @@ size_t allocatedSize(in Cell c){
   return res;
 }
 
-
-// LOD //////////////////////////////////////////
-
-struct LodStruct {
-  float zoomFactor=1, pixelSize=1;
-  int level;
-
-  bool codeLevel      = true; //level 0
-  bool moduleLevel    = false; //level 1/*code text visible*/, 2/*code text invisible*/
-}
-
-__gshared const LodStruct lod;
-
-void setLod(float zoomFactor_){
-  with(cast(LodStruct*)(&lod)){
-    zoomFactor = zoomFactor_;
-    pixelSize = 1/zoomFactor;
-    level = pixelSize>6 ? 2 :
-            pixelSize>2 ? 1 : 0;
-
-    codeLevel = level==0;
-    moduleLevel = level>0;
-  }
-}
-
-void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
-  border.width = borderWidth;
-  border.color = bkColor;
-  border.inset = true;
-  border.borderFirst = true;
-}}
-
-void RoundBorder(float borderWidth){ with(im){
-  border.width = borderWidth;
-  border.color = bkColor;
-  border.inset = true;
-  border.borderFirst = true;
-}}
-
-//! UI ///////////////////////////////
-
-static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents){ with(im) //UI_OuterBlockFrame///////////////////////////
-  Container!T({
-    margin = "0.5";
-    padding = "1.5";
-    style.bkColor = bkColor = color;
-    style.fontColor = blackOrWhiteFor(color);
-    flags.yAlign = YAlign.top;
-    RoundBorder(8);
-    if(contents) contents();
-  });
-}
-
-static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate() contents){ with(im) //UI_InnerBlockFrame////////////////////////
-  Container!T({
-    margin = "0";
-    padding = "0 4";
-    style.bkColor = bkColor = color;
-    style.fontColor = fontColor;
-    flags.yAlign = YAlign.top;
-    RoundBorder(8);
-    if(contents) contents();
-  });
-}
-
-static void UI_BuildMessageContents(CodeLocation location, string title, void delegate() contents){ with(im){ //UI_BuildMessageContents///////////////////////////////
-  location.UI;
-  if(title!="") Text(bold(" "~title~" "));
-  if(contents) contents();
-}}
-
-static void UI_ConsoleTextBlock(string contents){ with(im) //UI_ConsoleTextBlock/////////////////////////////////////
-  UI_InnerBlockFrame(clBlack, clWhite, {
-    style.font = "Lucida Console";
-    Text(contents); //todo: Use codeRow here for optimized LOD. Refer to -> UI_BuildMessageTextBlock()
-  });
-}
-
-static void UI_CompilerOutput(File file, string text){ //UI_CompilerOutput/////////////////////////////////
-  UI_OuterBlockFrame(RGB(0xD0D0D0), {
-    UI_BuildMessageContents(CodeLocation(file), "Output:", {
-      UI_ConsoleTextBlock(text);
-    });
-  });
-}
-
-void UI(in CodeLocation cl){ with(cl) with(im) //CodeLocation.UI //////////////////////
-  UI_InnerBlockFrame(clSilver, clBlack, {
-    auto ext = file.ext;
-    if(ext!="") Text(tag(format!`img "icon:\%s" height=%f`(ext, fh-2)));
-
-    Text(file.fullName);
-    if(column) Text(format!("(%s,%s)")(line, column));
-          else if(line) Text(format!("(%s)")(line));
-  });
-}
-
-
-void UI(in BuildSystemWorkerState bsws) { with(bsws) with(im){ //BuildSystemWorkerState.UI //////////////////////
-  Row({
-    width = 6*fh;
-    Row({
-      if(building) style.fontColor = mix(style.fontColor, style.bkColor, blinkf);
-      Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready");
-    });
-    Row({ flex=1; flags.hAlign = HAlign.right;
-      if(building && !cancelling && totalModules)
-        Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules));
-      else if(building && cancelling){
-        Text(format!"\u2026%d"(inFlight));
-      }
-    });
-  });
-}}
-
-void UI_BuildMessageTextBlock(string message, RGB clFont){ //UI_BuildMessageTextBlock//////////////////////////////
-  //Apply syntax highlight on the texts between `` quotes.
-  auto isCode = new bool[message.length];
-  {
-    bool inCode = false;
-    size_t i;
-    foreach(ch; message.byChar){
-      if(!inCode){
-        if(ch=='`') inCode=true;
-      }else{
-        if(ch=='`') inCode=false; else isCode[i]=true;
-      }
-      i++;
-    }
-  }
-
-  auto codeOnly = message.dup;
-  foreach(i, b; isCode) if(!b) codeOnly.ptr[i] = ' ';
-
-  auto sc = scoped!SourceCode(cast(string)codeOnly);
-
-  void appendLine(int idx){ with(im){
-    auto cr = cast(CodeRow)actContainer;
-    auto r = sc.getLineRange(idx);
-    cr.set(message[r[0]..r[1]], sc.syntax[r[0]..r[1]]);
-    auto g = cr.glyphs;
-    foreach(i, b; isCode[r[0]..r[1]]) if(!b) g[i].fontColor = clFont;
-  }}
-
-  const lineCount = sc.lineCount;
-  if(lineCount>=1){
-    with(im) UI_InnerBlockFrame!CodeColumn(clCodeBackground, clFont, {
-      foreach(i; 0..lineCount) Container!CodeRow({ appendLine(i); });
-    });
-  }
-}
-
-
-void UI(in BuildMessage msg, BuildResult br){ UI(msg, br.subMessagesOf(msg.location)); }
-
-void UI(in BuildMessage msg, in BuildMessage[] subMessages){ with(msg) with(im) // BuildMessage.UI ////////////////////////////
-  UI_OuterBlockFrame(type.color, {
-    UI_BuildMessageContents(location, parentLocation ? "\u2026" : type.to!string.capitalize~":", {
-      const clFont = avg(type.color, clWhite);
-
-      UI_BuildMessageTextBlock(message, clFont);
-
-      foreach(sm; subMessages){
-        Text("\n    "); sm.UI([]);
-      }
-    });
-  });
-}
-
-
-
-/// CodeRow ////////////////////////////////////////////////
-class CodeRow: Row{
-  CodeColumn parent;
-
-  int getIndex(){ foreach(i, c; parent.subCells) if(c is this) return i.to!int; return -1; }
-
-  auto glyphs() { return subCells.map!(c => cast(Glyph)c); } //can return nulls
-  auto chars()  { return glyphs.map!"a ? a.ch : '\u26A0'"; }
-  string sourceText() { return chars.to!string; }
-
-  int charCount(){ return cast(int)subCells.length; }
-
-  private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
-  private auto spaces() { return glyphs.map!(g => isSpace(g)); }
-  private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
-
-  int leadingTabCount(){
-    static bool isTab(Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
-    return glyphs.countUntil!(g => !isTab(g)).to!int;
-  }
-
-  this(CodeColumn parent_){
-    parent = enforce(parent_);
-    id.value = this.identityStr;
-
-    padding = "0 4";
-
-    flags.wordWrap       = false;
-    flags.clipSubCells   = true;
-    flags.cullSubCells   = true;
-    flags.rowElasticTabs = false;
-    flags.dontHideSpaces = true;
-    bkColor = clCodeBackground;
-    outerHeight = DefaultFontHeight;
-    super();
-  }
-
-  this(CodeColumn parent_, string line, ubyte[] syntax){
-    assert(line.length==syntax.length);
-    this(parent_);
-    set(line, syntax);
-  }
-
-  this(CodeColumn parent_, string line){
-    this(parent_);
-    set(line, [ubyte(0)].replicate(line.length));
-  }
-
-  void set(string line, ubyte[] syntax){
-    internal_setSubCells([]);
-
-    static TextStyle style; //it is needed by appendCode/applySyntax
-    this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); }, style, DefaultIndentSize);
-
-    adjustCharWidths;
-  }
-
-  protected{
-    static immutable float NormalSpaceWidth  = 7.25f, //same as '0'..'9' and +-_
-                           LeadingSpaceWidth = NormalSpaceWidth;
-
-    void adjustCharWidths(){
-
-      bool isLeading = true;
-      foreach(g; glyphs) if(g){
-        if(isSpace(g)){
-          g.outerWidth = isLeading ? LeadingSpaceWidth
-                                   : NormalSpaceWidth;
-        }else{
-          isLeading = false;
-
-          //non-leading char width modifications
-          if(g.syntax==5 && g.ch!='.'  //number except '.'
-          || g.ch.among('+', '-', '_') //symbols next to numbers
-          /* || g.syntax==6/+string+/*/) g.outerWidth = NormalSpaceWidth;
-        }
-      }else{
-        isLeading = false;
-      }
-
-      //foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
-    }
-
-    private void spaceToTab(long i){
-      auto g = glyphs[i];
-      assert(isSpace(glyphs[i]));
-      g.ch = '\t';
-      g.isTab = true;
-      //note: refreshTabIdx must be called later
-    }
-
-    void replaceSpacesWithTabs(int xStart, int xTab, size_t tabCount){
-      assert(xStart<=xTab                                 , "invalid xStart, xTab");
-      assert(xStart>=0                                    , "xStart out of range");
-      assert(xTab<subCells.length                         , "xTab out of range");
-      assert(glyphs[xStart..xTab+1].all!(g => isSpace(g)) , "All must be spaces");
-      assert(tabCount <= xTab-xStart+1                    , "tabCount too much.");
-
-      auto normalizeLeadingSpaces(Cell[] sc){
-        (cast(Glyph[])sc) .until!(a => !(isSpace(a) && a.outerWidth!=NormalSpaceWidth))
-                          .each!(a => a.outerWidth = NormalSpaceWidth);
-        return sc;
-      }
-
-      internal_setSubCells(subCells[0..xStart+tabCount] ~ (xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : []));
-      foreach(i; xStart..xStart+tabCount) spaceToTab(i); //promote spaces to tabs
-
-      refreshTabIdx; //todo: should only be done once at the end...
-    }
-
-    void convertLeadingSpacesToTabs(int spaceCnt){
-      //todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
-
-      assert(spaceCnt>0);
-      const tabCnt = (cast(int)leadingSpaces.walkLength)/spaceCnt;
-      if(tabCnt>0){
-        const removeCnt = tabCnt*spaceCnt-tabCnt;
-        internal_setSubCells(subCells[removeCnt..$]);
-        foreach(i; 0..tabCnt) spaceToTab(i);
-        refreshTabIdx; //todo: should only be done once at the end...
-      }
-    }
-
-  }//protected
-
-  override void draw(Drawing dr){
-    if(lod.level>1){
-      const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength; //opt: this should be memoized
-      if(lsCnt<subCells.length){
-        const r = bounds2(subCells[lsCnt].outerPos, subCells[$-1].outerBottomRight) + innerPos;
-        dr.color = avg(glyphs[lsCnt].bkColor, glyphs[lsCnt].fontColor);
-        dr.fillRect(r.inflated(vec2(0, -r.height/4)));
-      }
-    }else{
-      super.draw(dr);
-
-      /*dr.fontHeight = 18;
-      dr.color = clFuchsia;
-      dr.textOut(outerPos.x, outerPos.y, getIndex.text);*/
-    }
-  }
-
-}
-
-
-class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
-  //note: this is basically the CodeBlock
-
-  auto const rows(){ return cast(CodeRow[])subCells; }
-  int rowCount() const{ return cast(int)subCells.length; }
-  int lastRowIdx() const{ return rowCount-1; }
-  int lastRowLength() const{ return rows[$-1].charCount; }
-  int rowCharCount(int rowIdx) const{ if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].charCount; else return 0; }
-  @property string sourceText() { return rows.map!(r => r.sourceText).join("\r\n"); }  // \r\n is the default in std library
-
-  enum defaultSpacesPerTab = 4; //default in std library
-  int spacesPerTab = defaultSpacesPerTab; //autodetected on load
-
-  //index, location calculations
-  int maxIdx(){ //inclusive end position
-    assert(rowCount>0);
-    return rows.map!(r => r.charCount + 1/+newLine+/).sum - 1/+except last newLine+/;
-  }
-
-  ivec2 idx2pos(int idx){
-    if(idx<0) return ivec2(0); //clamp to min
-
-    const rowCount = this.rowCount;
-    assert(rowCount>0, "One row must present even when the CodeColumn is empty.");
-    int y;
-    while(1){
-      const actRowLen = rows[y].charCount+1;
-      if(idx<actRowLen){
-        return ivec2(idx, y);
-      }else{
-        y++;
-        if(y<rowCount){
-          idx -= actRowLen;
-        }else{
-          return ivec2(rows[rowCount-1].charCount, rowCount-1); //clamp to max
-        }
-      }
-    }
-  }
-
-  int pos2idx(ivec2 p){
-    if(p.y<0) return 0; //clamp to min
-    if(p.y>=rowCount) return maxIdx; //lamp to max
-    return rows[0..p.y].map!(r => r.charCount+1).sum + clamp(p.x, 0, rows[p.y].charCount);
-  }
-
-
-  this(){
-    id.value = this.identityStr;
-
-    flags.wordWrap     = false;
-    flags.clipSubCells = true;
-    flags.cullSubCells = true;
-
-    flags.columnElasticTabs = true;
-    bkColor = clCodeBackground;
-
-  }
-
-  this(SourceCode src){
-    this();
-    id = "CodeColumns:"~src.file.fullName;
-    set(src);
-  }
-
-  this(string str){
-    this(scoped!SourceCode(str));
-  }
-
-  void set(SourceCode src){
-    clearSubCells;
-
-    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
-    if(subCells.empty)
-      appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
-
-    makeElasticTabs;
-
-    spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
-    rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
-
-    measure;
-  }
-
-  void makeElasticTabs(){
-    //const t0=QPS; scope(exit) print(QPS-t0);
-
-    bool detectTab(int x, int y){
-      if(cast(uint)y >= rowCount) return false;
-      with(rows[y]){
-        if(cast(uint)x >= charCount) return false;
-        return spaces[x] && (x+1 >= charCount || !spaces[x+1]);
-      }
-    }
-
-    bool[long] visited;
-
-    static struct TabInfo{ int y, xStart, xTab; }
-    TabInfo[] newTabs;
-
-    void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount){
-      if(!canGoDown && !canGoUp) return;
-
-      //assume: x, y is a valid tab position
-      if(visited.get(x+(long(y)<<32))) return;
-
-      int y0 = y;  if(canGoUp  ) while(y0 > 0          && detectTab(x, y0-1)) y0--;
-      int y1 = y;  if(canGoDown) while(y1 < rowCount-1 && detectTab(x, y1+1)) y1++;
-
-      int maxLen = 0, minLen = int.max;
-      if(y0<y1) foreach(yy; y0..y1+1) with(rows[yy]) {
-        visited[x+(long(yy)<<32)] = true;
-
-        int x0 = x; while(x0 > 0 && spaces[x0-1]) x0--;
-        int x1 = x;
-
-        int len = x1-x0+1;
-        maxLen.maximize(len);
-        minLen.minimize(len);
-      }
-
-      if(maxLen>1){
-
-        int xStartMin = 0;
-        if(!canGoUp) xStartMin = leadingSpaceCount.to!int; //ez egy behuzas. Nem mehet balrabb a tab, mint a legfelso sor indent-je.
-        //if(xStartMin>0) "------------------".print;
-
-        foreach(yy; y0..y1+1) with(rows[yy]) {
-          int xStart = x; while(xStart > xStartMin && spaces[xStart-1]) xStart--;
-          int xTab   = x+1-minLen;
-
-          newTabs ~= TabInfo(yy, xStart, xTab);
-
-          //if(xStartMin>0) print(lines[yy].text, "         ", newTabs[$-1]);
-        }
-      }
-    }
-
-    //scan through all the rows and initiate floodFills
-    foreach(y, row; rows) with(row){
-      int st = 0;
-      foreach(isSpace, len; spaces.group){
-        const en = st + cast(int)len;
-
-        if(isSpace && st>0){
-          bool canGoUp, canGoDown;
-
-          if(len==1 && st>0 && chars[st-1].among('[', '(')) canGoDown = true; //todo: the tabs below this one should inherit the indent of this first line
-          else                                              canGoUp = canGoDown = canGoDown = len>=2;
-
-          flood(en-1, cast(int)y, canGoUp, canGoDown, leadingSpaces.walkLength);
-        }
-
-        st = en;
-      }
-    }
-
-    //replace spaces with tabs
-    auto sortedTabs = newTabs.sort!((a, b) => cmpChain(cmp(a.y, b.y), cmp(b.xTab, a.xTab))<0); //x is descending!!
-
-    int idx; foreach(const tabInfo; sortedTabs) with(rows[tabInfo.y]){
-
-      //tabs on the previous line will split this tab if it is long enough
-      auto tabsOnPrevLine = sortedTabs[0..idx] .retro
-                                               .until !(t => t.y< tabInfo.y-1)
-                                               .filter!(t => t.y==tabInfo.y-1);
-      auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1));
-      const tabCount = 1 + splitThisTabAt.walkLength;
-      //print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
-      replaceSpacesWithTabs(tabInfo.xStart, tabInfo.xTab, tabCount);
-
-      idx++;
-    }
-
-  }
-
-}
-
-void test_CodeColumn(){
-
-  void test_RowCount(string src, int rowCount, string dst="*"){
-    if(dst=="*") dst = src;
-    auto cc = scoped!CodeColumn(src);
-    void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
-    expect(cc.rows.length, rowCount);
-    expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.sourceText).join('\n')));
-  }
-
-  test_RowCount("", 1);
-  test_RowCount(" ", 1);
-  test_RowCount("\n", 2);
-  test_RowCount("\n ", 2, "\n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen, az elastic tabokat meg egymas ala kell igazitani space-ekkel. De ezt majd kesobb. Most minden tab lesz.
-  test_RowCount("\r\n", 2, "\n");
-  test_RowCount(" \n \n \r\n", 4, " \n \n \n".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
-  test_RowCount(" \n \n \r\n ", 4, " \n \n \n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
-}
-
-/// Label //////////////////////////////////////////
-
-enum LabelType{ folder, module_, mainRegion, subRegion }
-
-class Label : Row{
-
-  this(LabelType labelType, vec2 pos, string str, float parentWidth=0){
-    auto ts = tsNormal;
-    ts.fontColor = clWhite;
-    ts.bkColor = clBlack;
-    ts.transparent = true;
-
-    bool alignRight;
-    with(LabelType){
-      const isRegion = labelType.among(mainRegion, subRegion)!=0;
-      ts.fontHeight = isRegion ? 180 : 255;
-      ts.bold = false && labelType != subRegion;
-      alignRight = isRegion;
-    }
-
-    with(flags){
-      noHitTest = true;
-      dontSearch = true;
-      dontLocate = true;
-      noBackground = true;
-    }
-
-    outerPos = pos;
-
-    //icon
-    Img icon;
-    if(labelType==LabelType.module_) icon = new Img(File(`icon:\`~File(str).ext.lc));
-    else if(labelType==LabelType.folder) icon = new Img(File(`icon:\folder\`));
-
-    if(icon){
-      icon.innerSize = vec2(ts.fontHeight);
-      icon.transparent = true;
-      appendCell(icon);
-    }
-
-    //text
-    appendStr(str, ts);
-    measure;
-    if(alignRight){
-      assert(parentWidth);
-      outerX = parentWidth-outerWidth;
-    }
-  }
-
-}
-
-// FolderLabel //////////////////////////////////
-
-auto cachedFolderLabel(string folderPath){
-  return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
-}
-
-
-/// Module ///////////////////////////////////////////////
-class Module : Container{ //this is any file in the project
-  File file;
-
-  DateTime loaded, saved, modified;
-
-  CodeColumn code;
-  Container overlay;
-
-  ModuleBuildState buildState;
-
-  size_t linesOfCode(){ return code.subCells.length; } //todo: update this
-  size_t sizeBytes;  //todo: update this
-  bool isMainExe, isMainDll, isMainLib, isMain;
-
-  void reload(){
-    clearSubCells;
-
-    modified = file.modified;
-    sizeBytes = file.size;
-
-    overlay = new Container;
-    overlay.id = "Overlay:"~file.fullName;
-    with(overlay.flags){
-      noHitTest = true;
-      dontSearch = true;
-      dontLocate = true;
-      noBackground = true;
-      //clipSubCells = false;
-    }
-
-    void measureAndPropagateCodeSize(){ code.measure; innerSize = code.outerSize; overlay.outerSize = code.outerSize; }
-
-    isMain = isMainExe = isMainDll = isMainLib = false;
-
-    if(file.extIs(".err")){
-
-      code = new CodeColumn;
-      code.padding = "1";
-
-      //foreach(line; file.readLines) code.append(new CodeRow(line));
-
-      //todo: this is only working when it's called from update() only!!!!
-      auto br = (cast(FrmMain)mainWindow).buildResult;
-      auto markerLayerHideMask = (cast(FrmMain)mainWindow).workspace.markerLayerHideMask;
-
-/*  string dumpMessage(in BuildMessage bm, string indent=""){
-    string res = indent ~ bm.text ~"\n";
-
-    foreach(const v; messages.values)
-      if(v.parentLocation == bm.location)
-        res ~= dumpMessage(v, indent~"  ");
-
-    return res;
-  }*/
-      foreach(file; br.remainings.keys.sort){
-        auto pragmas = br.remainings[file];
-        if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-      }
-
-      with(im) code.append({
-        foreach(loc; br.messages.keys.sort){
-          auto msg = br.messages[loc];
-          if(msg.parentLocation) continue;
-          if((1<<msg.type) & markerLayerHideMask) continue;
-          msg.UI(br.subMessagesOf(msg.location));
-        }
-      });
-
-        //code.append(im.removeLastContainer); //a nasty trick to be able to call msg.UI;
-
-
-      measureAndPropagateCodeSize;
-
-      overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-    }else{
-      auto src = new SourceCode(this.file);
-
-      bool isMainSomething(string ext)(){
-        return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
-      }
-      isMainExe = isMainSomething!"exe";
-      isMainDll = isMainSomething!"dll";
-      isMainLib = isMainSomething!"lib";
-      isMain = isMainExe || isMainDll || isMainLib;
-
-      code = new CodeColumn(src);
-
-      measureAndPropagateCodeSize;
-
-      overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-      foreach(k; src.bigComments.keys.sort)
-        overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
-    }
-
-    appendCell(enforce(code));
-    appendCell(enforce(overlay));
-  }
-
-
-  this(){
-    flags.cullSubCells = true;
-
-    bkColor = clModuleBorder;
-    this.setRoundBorder(16);
-    padding = "8";
-
-    loaded = now;
-  }
-
-  this(File file_){
-    this();
-
-    file = file_.actualFile;
-    id = "Module:"~this.file.fullName;
-
-    reload;
-  }
-
-  override void draw(Drawing dr){
-    overlay.flags.hidden = lod.codeLevel;
-    if(overlay.subCells.length)
-      (cast(.Container)(overlay.subCells[0])).flags.hidden = !lod.moduleLevel;
-
-    super.draw(dr);
-  }
-
-  override void onDraw(Drawing dr){
-    /*if(lod.moduleLevel){
-      dr.color = clBlack;
-      dr.alpha = .33;
-      dr.fillRect(0, 0, innerWidth, innerHeight);
-      dr.alpha = 1;
-    }*/
-  }
-}
 
 
 struct SelectionManager2(T : Container){ // SelectionManager2 ///////////////////////////////////////////////
@@ -873,6 +172,24 @@ bool isWordBoundary(R)(R a){
   return a.front.wordCategory > a.drop(1).front.wordCategory;
 }
 
+ivec2 moveRight(ivec2 pos, CodeColumn cc){
+  pos.x++;
+  if(pos.x>cc.rowCharCount(pos.y)){
+    pos.x=0;
+    pos.y++;
+  }
+  return pos;
+}
+
+ivec2 moveLeft(ivec2 pos, CodeColumn cc){
+  pos.x--;
+  if(pos.x<0){
+    pos.y--;
+    pos.x=cc.rowCharCount(pos.y);
+  }
+  return pos;
+}
+
 struct CharFetcher{
   CodeColumn codeColumn;
   ivec2 pos;
@@ -885,19 +202,8 @@ struct CharFetcher{
   }
 
   void popFront(){
-    if(forward){
-      pos.x++;
-      if(pos.x>codeColumn.rowCharCount(pos.y)){
-        pos.x=0;
-        pos.y++;
-      }
-    }else{
-      pos.x--;
-      if(pos.x<0){
-        pos.y--;
-        pos.x=codeColumn.rowCharCount(pos.y);
-      }
-    }
+    pos = forward ? moveRight(pos, codeColumn)
+                  : moveLeft (pos, codeColumn);
 
     //not good because these are clamping.pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+(forward ? 1 : -1)); //opt: it's slow but simple
   }
@@ -942,7 +248,8 @@ struct TextCursor{  //TextCursor /////////////////////////////
                   .countUntil!(a => a.isWordBoundary || a.drop(1).front=='\n'); //stop at every newline
       moveLeft(cc, skip+1);
     }else{
-      pos = cc.idx2pos(cc.pos2idx(pos)+delta); //opt: it's slow but simple
+      //opt: cache idx2pos and pos2idx. The line searcher is slow in those
+      pos = cc.idx2pos(cc.pos2idx(pos)+delta); //note: this must be a clamped move
     }
     desiredX = pos.x<=0 ? 0 : cc.rows[pos.y].subCells[pos.x-1].outerBounds.right;
   }
@@ -969,7 +276,7 @@ struct TextCursor{  //TextCursor /////////////////////////////
   }
 }
 
-struct TextSelection{ //TextSelection
+struct TextSelection{ //TextSelection ///////////////////////////////
   CodeColumn codeColumn;
   TextCursor[2] cursors;
   auto ref caret(){ return cursors[1]; }
@@ -977,14 +284,29 @@ struct TextSelection{ //TextSelection
   @property auto start() const{ return min(cursors[0], cursors[1]); }
   @property auto end  () const{ return max(cursors[0], cursors[1]); }
 
+  @property bool isZeroLength() const{ return cursors[0]==cursors[1]; }
+  @property bool isSingleLine() const{ return cursors[0].pos.y==cursors[1].pos.y; }
+  @property bool isMultiLine() const{ return !isSingleLine; }
+
   int opCmp    (in TextSelection b) const{ return cmp(cast(size_t)(cast(void*)codeColumn), cast(size_t)(cast(void*)b.codeColumn)).cmpChain(myCmp(start, b.start)).cmpChain(myCmp(end, b.end)); }
   bool opEquals(in TextSelection b) const{ return codeColumn==b.codeColumn && start==b.start && end==b.end; }
 
   void collapseToCaret(){ cursors[0] = cursors[1]; }
 
-  void move(ivec2 delta){
+  void move(ivec2 delta, bool isShift){
+    if(!delta) return;
+
+    if(!isShift && cursors[0]!=cursors[1]){
+      caret = delta.y.cmpChain(delta.x)<0 ? start : end; //collapse selection if it is a non-shift move
+
+      //if it is only a left/right move, then stop at the end of the selection.
+      if(!delta.y && delta.x){
+        if(delta.x.among(TextCursor.wordLeft, TextCursor.wordRight)) delta.x = 0; //wordLeft/wordRight stops at the end of the selection
+        else delta.x -= sign(delta.x); //normal left/right also wordLeft/wordRight stops at the end of the selection
+      }
+    }
     caret.move(codeColumn, delta);
-    collapseToCaret;
+    if(!isShift) cursors[0] = caret;
   }
 
 }
@@ -1003,8 +325,8 @@ class Workspace : Container{ //this is a collection of opened modules
 
   File[] openQueue;
 
-  bool justLoadedSomething;
-  bounds2 justLoadedBounds;
+  /+bool justLoadedSomething;
+  bounds2 justLoadedBounds;+/
 
   bool searchBoxVisible = false;
   string searchText;
@@ -1027,6 +349,9 @@ class Workspace : Container{ //this is a collection of opened modules
   bool buildStateChanged;
 
   TextSelection[] textSelections;
+  size_t textSelectionsHash;
+
+  FileDialog fileDialog;
 
   this(){
     flags.targetSurface = 0;
@@ -1062,20 +387,26 @@ class Workspace : Container{ //this is a collection of opened modules
       updateSubCells;
     }
 
+    void dropInvalidTextSelections(){
+      bool isModuleExists(const TextSelection ts){ return modules.map!(m => m.code).canFind(ts.codeColumn); } //opt: linear
+      textSelections = textSelections.filter!(ts => isModuleExists(ts)).array;
+    }
+
     void updateSubCells(){
+      dropInvalidTextSelections;
       subCells = cast(Cell[])modules;
     }
   }
 
   void clear(){
-    modules.clear;
+    modules = [];
+    textSelections = [];
     updateSubCells;
   }
 
   void loadWorkspace(string jsonData){
     auto fuck = this; fuck.fromJson(jsonData);
     fromModuleSettings;
-    updateSubCells;
   }
 
   string saveWorkspace(){
@@ -1111,22 +442,18 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   auto selectedModules(){ return modules.filter!(m => m.flags.selected).array; }
-  auto unSelectedModules(){ return modules.filter!(m => !m.flags.selected).array; }
+  auto unselectedModules(){ return modules.filter!(m => !m.flags.selected).array; }
+  auto hoveredModule(){ return selectionManager.hoveredItem; }
 
-  void closeSelectedModules(){
+  private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
-    modules = unSelectedModules;
+    modules = unselectedModules;
     updateSubCells;
   }
 
-  void closeAll(){
+  private void closeAllModules_impl(){
     //todo: ask user to save if needed
-    modules = [];
-    updateSubCells;
-  }
-
-  void selectAllModules(){
-    foreach(ref m; modules) m.flags.selected = true;
+    clear;
   }
 
   bool loadModule(in File file){
@@ -1136,7 +463,11 @@ class Workspace : Container{ //this is a collection of opened modules
 
   bool loadModule(in File file, vec2 targetPos){
     if(!file.exists) return false;
-    if(auto m = findModule(file)) return false;
+    if(auto m = findModule(file)){
+      m.loaded = now; //it's just a flash indicator
+      frmMain.view.smartScrollTo(m.outerBounds);
+      return false; //no loading was issued
+    }
 
     auto m = new Module(file);
 
@@ -1146,8 +477,10 @@ class Workspace : Container{ //this is a collection of opened modules
     modules ~= m;
     updateSubCells;
 
-    justLoadedSomething |= true;
-    justLoadedBounds |= m.outerBounds;
+    /+justLoadedSomething |= true;
+    justLoadedBounds |= m.outerBounds; +/
+
+    frmMain.view.smartScrollTo(m.outerBounds);
 
     return true;
   }
@@ -1166,10 +499,6 @@ class Workspace : Container{ //this is a collection of opened modules
 
   void queueModule(File f){ openQueue ~= f; }
   void queueModuleRecursive(File f){ if(f.exists) openQueue ~= allFilesFromModule(f); }
-
-  FileDialog fileDialog;
-  void openModule         () { fileDialog.openMulti.each!(f => queueModule         (f)); }
-  void openModuleRecursive() { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
 
   void updateOpenQueue(int maxWork){
     while(openQueue.length){
@@ -1240,6 +569,101 @@ class Workspace : Container{ //this is a collection of opened modules
 
   // textSelection, cursor movements /////////////////////////////
 
+  int lineSize(){ return DefaultFontHeight; }
+  int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); }
+  void cursorOp(ivec2 dir, bool select){ foreach(ref ts; textSelections) ts.move(dir, select); }
+
+  void scrollV(float dy){ frmMain.view.scrollV(dy); }
+  void scrollH(float dx){ frmMain.view.scrollH(dx); }
+  void zoom(float log){ frmMain.view.zoom(log); }
+
+  float scrollSpeed(){ return frmMain.deltaTime.value(second)*2000; }
+  float zoomSpeed(){ return frmMain.deltaTime.value(second)*8; }
+
+  void insertCursor(bool up){
+    foreach(ts; textSelections.dup){
+      if(ts.isZeroLength){
+
+      }else if(ts.isSingleLine){
+
+      }else{ //multiline
+        if(ts.cursors[0]<ts.cursors[1]){
+          if(up) ts.cursors[0].move(ts.codeColumn, ivec2(0, -1));
+          else   ts.cursors[1].move(ts.codeColumn, ivec2(0,  1));
+        }else{
+          if(up) ts.cursors[1].move(ts.codeColumn, ivec2(0, -1));
+                 ts.cursors[0].move(ts.codeColumn, ivec2(0,  1));
+        }
+      }
+    }
+  }
+
+  @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
+  @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
+  @VERB("Ctrl+A"                        ) void selectAllModules     () { modules.each!(m => m.flags.selected = true); }
+  @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); }
+  @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; }
+  @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
+  @VERB("Esc"                           ) void cancelSelection      () { if(lod.moduleLevel) deselectAllModules; else textSelections.length = textSelections.length>=1 ? 1 : 0; /+todo: collapseSelection levels: multipleFiles, multiselect, singleselect, singleCaret+/}
+
+  /+todo: uzemmod fuggest megoldani: A Ctrl+A ha editing van, akkor az editalt modulra vonatkozzon, tavoli nezetben viszont a kivalasztott modulokra. Ezt a kettot valahogy ossze kellene egysegesiteni.
+          nem vilagos, hogy a ctrl+W az mire vonatkozik...+/
+
+  // Cursor and selection ----------------------------------------
+
+  @VERB("Left"                          ) void cursorLeft       (bool sel=false){ cursorOp(ivec2(-1,  0)                 , sel); }
+  @VERB("Right"                         ) void cursorRight      (bool sel=false){ cursorOp(ivec2( 1,  0)                 , sel); }
+  @VERB("Ctrl+Left"                     ) void cursorWordLeft   (bool sel=false){ cursorOp(ivec2(TextCursor.wordLeft , 0), sel); }
+  @VERB("Ctrl+Right"                    ) void cursorWordRight  (bool sel=false){ cursorOp(ivec2(TextCursor.wordRight, 0), sel); }
+  @VERB("Home"                          ) void cursorHome       (bool sel=false){ cursorOp(ivec2(TextCursor.home     , 0), sel); }
+  @VERB("End"                           ) void cursorEnd        (bool sel=false){ cursorOp(ivec2(TextCursor.end      , 0), sel); }
+  @VERB("Up"                            ) void cursorUp         (bool sel=false){ cursorOp(ivec2( 0, -1)                 , sel); }
+  @VERB("Down"                          ) void cursorDown       (bool sel=false){ cursorOp(ivec2( 0,  1)                 , sel); }
+  @VERB("PgUp"                          ) void cursorPageUp     (bool sel=false){ cursorOp(ivec2( 0, -pageSize)          , sel); }
+  @VERB("PgDn"                          ) void cursorPageDown   (bool sel=false){ cursorOp(ivec2( 0,  pageSize)          , sel); }
+  @VERB("Ctrl+Home"                     ) void cursorTop        (bool sel=false){ cursorOp(ivec2(TextCursor.home)        , sel); }
+  @VERB("Ctrl+End"                      ) void cursorBottom     (bool sel=false){ cursorOp(ivec2(TextCursor.end )        , sel); }
+
+  @VERB("Shift+Left"                    ) void cursorLeftSelect       (){ cursorLeft       (true); }
+  @VERB("Shift+Right"                   ) void cursorRightSelect      (){ cursorRight      (true); }
+  @VERB("Shift+Ctrl+Left"               ) void cursorWordLeftSelect   (){ cursorWordLeft   (true); }
+  @VERB("Shift+Ctrl+Right"              ) void cursorWordRightSelect  (){ cursorWordRight  (true); }
+  @VERB("Shift+Home"                    ) void cursorHomeSelect       (){ cursorHome       (true); }
+  @VERB("Shift+End"                     ) void cursorEndSelect        (){ cursorEnd        (true); }
+  @VERB("Shift+Up Shift+Ctrl+Up"        ) void cursorUpSelect         (){ cursorUp         (true); }
+  @VERB("Shift+Down Shift+Ctrl+Down"    ) void cursorDownSelect       (){ cursorDown       (true); }
+  @VERB("Shift+PgUp"                    ) void cursorPageUpSelect     (){ cursorPageUp     (true); }
+  @VERB("Shift+PgDn"                    ) void cursorPageDownSelect   (){ cursorPageDown   (true); }
+  @VERB("Shift+Ctrl+Home"               ) void cursorTopSelect        (){ cursorTop        (true); }
+  @VERB("Shift+Ctrl+End"                ) void cursorBottomSelect     (){ cursorBottom     (true); }
+
+  @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(true ); }
+  @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor(false); }
+
+  // Navigation ---------------------------------------------
+
+  @VERB("Ctrl+Up"             ) void scrollLineUp           (){ scrollV( DefaultFontHeight); }
+  @VERB("Ctrl+Down"           ) void scrollLineDown         (){ scrollV(-DefaultFontHeight); }
+  @VERB("Alt+PgUp"            ) void scrollPageUp           (){ scrollV( frmMain.clientHeight*.9); }
+  @VERB("Alt+PgDn"            ) void scrollPageDown         (){ scrollV(-frmMain.clientHeight*.9); }
+  @VERB("Ctrl+="              ) void zoomIn                 (){ zoom( .5); }
+  @VERB("Ctrl+-"              ) void zoomOut                (){ zoom(-.5); }
+
+  @HOLD("Ctrl+Num8"           ) void holdScrollUp           (){ scrollV( scrollSpeed); }
+  @HOLD("Ctrl+Num2"           ) void holdScrollDown         (){ scrollV(-scrollSpeed); }
+  @HOLD("Ctrl+Num4"           ) void holdScrollLeft         (){ scrollH( scrollSpeed); }
+  @HOLD("Ctrl+Num6"           ) void holdScrollRight        (){ scrollH(-scrollSpeed); }
+  @HOLD("Ctrl+Num+"           ) void holdZoomIn             (){ zoom( zoomSpeed); }
+  @HOLD("Ctrl+Num-"           ) void holdZoomOut            (){ zoom(-zoomSpeed); }
+
+  @HOLD("Alt+Ctrl+Num8"       ) void holdScrollUp_slow      (){ scrollV( scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num2"       ) void holdScrollDown_slow    (){ scrollV(-scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num4"       ) void holdScrollLeft_slow    (){ scrollH( scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num6"       ) void holdScrollRight_slow   (){ scrollH(-scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
+  @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
+
+  /+
   void updateTextSelections(){
 
     bool isModuleExists(const TextSelection ts){ return modules.map!(m => m.code).canFind(ts.codeColumn); } //opt: linear
@@ -1250,7 +674,7 @@ class Workspace : Container{ //this is a collection of opened modules
     void doit(alias fun)(){ foreach(ref s; textSelections) unaryFun!fun(s); }
 
     if(frmMain.isForeground && !im.wantKeys){ // keyboard handling --------------------------------------------------------------------------
-      int pageSize(){ return (frmMain.view.subScreenBounds.height/DefaultFontHeight*.8f).iround.clamp(1, 100); }
+      int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/DefaultFontHeight*.8f).iround.clamp(1, 100); }
 
       foreach(isShift; [false, true]){
         ivec2 dir;
@@ -1270,7 +694,7 @@ class Workspace : Container{ //this is a collection of opened modules
         a("Ctrl+Left"   , { dir.x = TextCursor.wordLeft;  });
         a("Ctrl+Right"  , { dir.x = TextCursor.wordRight; });
 
-        if(dir) doit!((ref a) => a.move(dir));
+        if(dir) doit!((ref a) => a.move(dir, isShift));
       }
 
       if(textSelections.length>1 && KeyCombo("Esc").typed){
@@ -1280,29 +704,45 @@ class Workspace : Container{ //this is a collection of opened modules
       if(textSelections.length){
         if(KeyCombo("Ctrl+Alt+Up").typed){
           auto ts = textSelections[0];
-          ts.move(ivec2(0, -1));
+          ts.move(ivec2(0, -1), false);
           if(ts!=textSelections[0]) textSelections = ts ~ textSelections;
         }
         if(KeyCombo("Ctrl+Alt+Down").typed){
           auto ts = textSelections[$-1];
-          ts.move(ivec2(0, 1));
+          ts.move(ivec2(0, 1), false);
           if(ts!=textSelections[$-1]) textSelections ~= ts;
         }
       }
 
     }
 
+    if(frmMain.isForeground && !im.wantKeys) callVerbs(this);
+
     if(frmMain.isForeground && !im.wantMouse){ // mouse handling ----------------------------------------------------------
 
     }
+
+  }   +/
+
+  void updateKeyboard(){ callVerbs(this); }
+
+  void updateMouse(){
+
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
 
-    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.mousePos in view.subScreenBounds, view, modules);
+    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.mousePos in view.subScreenBounds_anim, view, modules);
 
-    updateTextSelections;
+    if(frmMain.isForeground && !im.wantKeys) updateKeyboard;
+
+    if(frmMain.isForeground && !im.wantMouse){
+
+    }
+
+    if(textSelectionsHash.chkSet(textSelections.hashOf))
+      frmMain.view.scrollZoom(calcTextSelectionsBounds);
 
     size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
     buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
@@ -1318,7 +758,7 @@ class Workspace : Container{ //this is a collection of opened modules
     return modules.fold!((a, b)=> a|b.outerBounds)(bounds2.init);
   }
 
-  void UI_ModuleBtns(){ with(im){
+  deprecated void UI_ModuleBtns(){ with(im){
     File fileToClose;
     foreach(m; modules){
       if(Btn(m.file.name, hint(m.file.fullName), genericId(m.file.fullName), selected(0), { fh = 12; theme="tool"; if(Btn(symbol("Cancel"))) fileToClose = m.file; })) {}
@@ -1326,7 +766,7 @@ class Workspace : Container{ //this is a collection of opened modules
     if(Btn(symbol("Add"))) openModule;
 
     if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))){
-      closeAll;
+      closeAllModules;
     }
 
     if(fileToClose) closeModule(fileToClose);
@@ -1499,7 +939,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
       far = lod.level>1,
       extra = lod.pixelSize*2*blink,
-      bnd = view.subScreenBounds,
+      bnd = view.subScreenBounds_anim,
       bndInner = bnd.inflated(-lod.pixelSize*arrowThickness*2),
       bndInnerSizeHalf = bndInner.size/2,
       center = bnd.center;
@@ -1539,19 +979,6 @@ class Workspace : Container{ //this is a collection of opened modules
     }
   }}
 
-  protected void drawHighlight(Drawing dr, bounds2 bnd, RGB color, float alpha){
-    dr.color = color;
-    dr.alpha = alpha;
-    dr.fillRect(bnd);
-    dr.lineWidth = -1;
-    dr.drawRect(bnd);
-    dr.alpha = 1;
-  }
-
-  protected void drawHighlight(Drawing dr, Cell c, RGB color, float alpha){
-    drawHighlight(dr, c.outerBounds, color, alpha);
-  }
-
   /// A flashing effect, when right after the module was loaded.
   void drawModuleLoadingHighlights(Drawing dr, RGB c){
     const t0 = now;
@@ -1563,8 +990,8 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
-    foreach(m; modules) if(m.flags.selected) drawHighlight(dr, m, clSelected, selectedAlpha);
-    if(auto m = selectionManager.hoveredItem) drawHighlight(dr, m, clHovered, hoveredAlpha);
+    selectedModules.each!(m => drawHighlight(dr, m, clSelected, selectedAlpha));
+    drawHighlight(dr, hoveredModule, clHovered, hoveredAlpha);
   }}
 
   protected void drawSelectionRect(Drawing dr, RGB clRect){
@@ -1577,7 +1004,7 @@ class Workspace : Container{ //this is a collection of opened modules
     }
   }
 
-  protected void drawMainModules(Drawing dr){
+  protected void drawMainModuleOutlines(Drawing dr){
     auto mm=mainModule;
     foreach(m; modules){
       if(m==mm){ dr.color = RGB(0xFF, 0xD7, 0x00); dr.lineWidth = -2.5f; dr.drawRect(m.outerBounds); }
@@ -1625,6 +1052,63 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
+  bounds2 calcTextSelectionsBounds(){
+    bounds2 bnd;
+
+    Module moduleOf(in TextSelection ts){
+      foreach(m; modules) if(m.code==ts.codeColumn) return m; //opt: linear
+      return null;
+    }
+
+    //todo: only scrollZoom at the recently expanded part of the selection and the caret. Not the whole selection.
+    if(0/+only process caret+/) foreach(ts; textSelections){
+      auto m = moduleOf(ts);
+      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
+                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+
+      const tr0 = codeColumnsInnerPosAbs;
+      //draw the selection
+      if(ts.cursors[0] != ts.cursors[1]){
+        const st=m.code.pos2idx(ts.start.pos),
+              en=m.code.pos2idx(ts.end  .pos);
+
+        auto pos = m.code.idx2pos(st);
+        foreach(i; st..en){ scope(exit) pos = moveRight(pos, ts.codeColumn);
+          auto r = m.code.rows[pos.y];
+          const tr1 = tr0 + r.outerPos+r.topLeftGapSize;
+
+          if(pos.x<r.subCells.length){//highlighted chars
+            auto g = r.glyphs[pos.x];
+
+            bnd |= g.outerBounds+tr1;
+          }else{
+            //newLine at the end of the line
+            const x = r.subCells.length ? r.subCells[$-1].outerBounds.right : 0;
+            bnd |= bounds2(x, 0, x+10, r.innerHeight)+tr1;
+          }
+        }
+      }
+    }
+
+    //caret
+    foreach(ts; textSelections){
+      //todo: this is redundant, combine the too loops, also combine with drawTextSelections
+      auto m = moduleOf(ts);
+      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
+                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+
+      const pos = ts.cursors[1].pos;
+      auto r = m.code.rows[pos.y]; //todo: error check/clamp
+
+      const x = pos.x<=0 ? 0 : r.subCells[pos.x-1].outerBounds.right;
+      const p = codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0);
+
+      bnd |= bounds2(p-vec2(2, 0), p+vec2(2, r.innerHeight));
+    }
+
+    return bnd;
+  }
+
   void drawTextSelections(Drawing dr){ //drawTextSelections ////////////////////////////
     const blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
     const clSelected = mix(mix(RGB(0x404040), clSilver, lod.zoomFactor.smoothstep(0.02, 0.1)), clWhite, blink);
@@ -1647,8 +1131,9 @@ class Workspace : Container{ //this is a collection of opened modules
       if(ts.cursors[0] != ts.cursors[1]){
         const st=m.code.pos2idx(ts.start.pos),
               en=m.code.pos2idx(ts.end  .pos);
-        foreach(i; st..en){
-          const pos = m.code.idx2pos(i); //opt: unoptimal conversions between idx and pos
+
+        auto pos = m.code.idx2pos(st); //opt: unoptimal conversions between idx and pos
+        foreach(i; st..en){ scope(exit) pos = moveRight(pos, ts.codeColumn);
           auto r = m.code.rows[pos.y];
           dr.translate(r.outerPos+r.topLeftGapSize); scope(exit) dr.pop; //opt: really slow at every char
 
@@ -1685,10 +1170,10 @@ class Workspace : Container{ //this is a collection of opened modules
       auto r = m.code.rows[pos.y]; //todo: error check/clamp
 
       const x = pos.x<=0 ? 0 : r.subCells[pos.x-1].outerBounds.right;
-      dr.moveTo(codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0));
+      const p = codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0);
+      dr.moveTo(p);
       dr.lineRel(0, r.innerHeight);
     }
-
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
@@ -1696,7 +1181,7 @@ class Workspace : Container{ //this is a collection of opened modules
       drawSelectedModules(dr, clWhite, .3f, clWhite, .1f);
       drawSelectionRect(dr, clWhite);
       drawFolders(dr, clGray, clWhite);
-      drawMainModules(dr);
+      drawMainModuleOutlines(dr);
     }
 
     if(lod.moduleLevel || (cast(FrmMain)mainWindow).building) drawModuleBuildStates(dr);
@@ -1733,7 +1218,6 @@ class MainOverlayContainer : het.uibase.Container{
 }
 
 //! FrmMain ///////////////////////////////////////////////
-auto frmMain(){ return cast(FrmMain)mainWindow; }
 
 class FrmMain : GLWindow { mixin autoCreate;
 
@@ -1750,10 +1234,6 @@ class FrmMain : GLWindow { mixin autoCreate;
   bool initialized; //workspace has been loaded.
 
   @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
-  @VERB("Ctrl+O")       void openFile            (){ workspace.openModule; }
-  @VERB("Ctrl+Shift+O") void openFileRecursive   (){ workspace.openModuleRecursive; }
-  @VERB("Ctrl+W")       void closeWindow         (){ if(lod.moduleLevel) workspace.closeSelectedModules; }
-  @VERB("Ctrl+A")       void selectAll           (){ if((lod.moduleLevel) && !im.wantKeys) workspace.selectAllModules; }
 
   void onCompileProgress(File file, int result, string output){
     LOG(file, result, output.length);
@@ -1841,8 +1321,9 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     invalidate; //todo: low power usage
     caption = "DIDE2";
-    view.navigate(false && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
-    if(!inputs.LMB && !inputs.RMB) setLod(view.scale_anim);
+    view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
+    view.updateSmartScroll;
+    setLod(view.scale_anim);
 
     if(isForeground) callVerbs(this);
 
@@ -1928,10 +1409,10 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     workspace.update(view, buildResult);
 
-    if(chkClear(workspace.justLoadedSomething)){
+    /+if(chkClear(workspace.justLoadedSomething)){
       view.zoom(workspace.justLoadedBounds | view.subScreenBounds);
       workspace.justLoadedBounds = bounds2.init;
-    }
+    }+/
 
     //todo:cullSubCells ellenorzese
 
@@ -1944,6 +1425,13 @@ class FrmMain : GLWindow { mixin autoCreate;
           foreach(g; r.glyphs)
             i++;
       print(DT, i);
+    }
+
+    if(inputs.A.down){
+      view.scrollZoom(bounds2(100,100, 4000, 1000));
+    }
+    if(inputs.B.down){
+      view.zoom(bounds2(100,100, 4000, 1000));
     }
   }
 
@@ -1977,13 +1465,12 @@ class FrmMain : GLWindow { mixin autoCreate;
     }
 
     dr.mmGrid(view);
-
+    //todo: off screen targets
 
   }
 
-  //todo: off screen targets
-
   override void afterPaint(){ // afterPaint //////////////////////////////////
+
   }
 
 }
