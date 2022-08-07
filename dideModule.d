@@ -37,13 +37,11 @@ void setLod(float zoomFactor_){
 class CodeRow: Row{
   CodeColumn parent;
 
-  int getIndex(){ foreach(i, c; parent.subCells) if(c is this) return i.to!int; return -1; }
+  int index(){ return parent.subCellIndex(this); }
 
   auto glyphs() { return subCells.map!(c => cast(Glyph)c); } //can return nulls
   auto chars()  { return glyphs.map!"a ? a.ch : '\u26A0'"; }
   string sourceText() { return chars.to!string; }
-
-  int charCount(){ return cast(int)subCells.length; }
 
   private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
   private auto spaces() { return glyphs.map!(g => isSpace(g)); }
@@ -184,8 +182,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   auto const rows(){ return cast(CodeRow[])subCells; }
   int rowCount() const{ return cast(int)subCells.length; }
   int lastRowIdx() const{ return rowCount-1; }
-  int lastRowLength() const{ return rows[$-1].charCount; }
-  int rowCharCount(int rowIdx) const{ if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].charCount; else return 0; }
+  int lastRowLength() const{ return rows[$-1].cellCount; }
+  int rowCharCount(int rowIdx) const{ if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].cellCount; else return 0; }
   @property string sourceText() { return rows.map!(r => r.sourceText).join("\r\n"); }  // \r\n is the default in std library
 
   enum defaultSpacesPerTab = 4; //default in std library
@@ -194,7 +192,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   //index, location calculations
   int maxIdx(){ //inclusive end position
     assert(rowCount>0);
-    return rows.map!(r => r.charCount + 1/+newLine+/).sum - 1/+except last newLine+/;
+    return rows.map!(r => r.cellCount + 1/+newLine+/).sum - 1/+except last newLine+/;
   }
 
   ivec2 idx2pos(int idx){
@@ -204,7 +202,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     assert(rowCount>0, "One row must present even when the CodeColumn is empty.");
     int y;
     while(1){
-      const actRowLen = rows[y].charCount+1;
+      const actRowLen = rows[y].cellCount+1;
       if(idx<actRowLen){
         return ivec2(idx, y);
       }else{
@@ -212,7 +210,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
         if(y<rowCount){
           idx -= actRowLen;
         }else{
-          return ivec2(rows[rowCount-1].charCount, rowCount-1); //clamp to max
+          return ivec2(rows[rowCount-1].cellCount, rowCount-1); //clamp to max
         }
       }
     }
@@ -221,7 +219,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   int pos2idx(ivec2 p){
     if(p.y<0) return 0; //clamp to min
     if(p.y>=rowCount) return maxIdx; //lamp to max
-    return rows[0..p.y].map!(r => r.charCount+1).sum + clamp(p.x, 0, rows[p.y].charCount);
+    return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount);
   }
 
 
@@ -268,8 +266,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     bool detectTab(int x, int y){
       if(cast(uint)y >= rowCount) return false;
       with(rows[y]){
-        if(cast(uint)x >= charCount) return false;
-        return spaces[x] && (x+1 >= charCount || !spaces[x+1]);
+        if(cast(uint)x >= cellCount) return false;
+        return spaces[x] && (x+1 >= cellCount || !spaces[x+1]);
       }
     }
 

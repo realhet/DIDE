@@ -156,6 +156,10 @@ dchar charAt(const CodeColumn cc, ivec2 p){
   return charAt(cast(const CodeRow)cc.subCells[p.y], p.x, p.y<cc.rowCount-1);
 }
 
+dchar charAt(const TextCursor tc){
+  return charAt(tc.codeColumn, tc.pos);
+}
+
 enum WordCategory{ space, symbol, word }
 
 WordCategory wordCategory(dchar ch){
@@ -172,40 +176,19 @@ bool isWordBoundary(R)(R a){
   return a.front.wordCategory > a.drop(1).front.wordCategory;
 }
 
-ivec2 moveRight(ivec2 pos, CodeColumn cc){
-  pos.x++;
-  if(pos.x>cc.rowCharCount(pos.y)){
-    pos.x=0;
-    pos.y++;
-  }
-  return pos;
-}
-
-ivec2 moveLeft(ivec2 pos, CodeColumn cc){
-  pos.x--;
-  if(pos.x<0){
-    pos.y--;
-    pos.x=cc.rowCharCount(pos.y);
-  }
-  return pos;
-}
-
 struct CharFetcher{
-  CodeColumn codeColumn;
-  ivec2 pos;
+  TextCursor cursor;
   bool forward=true;
 
-  @property dchar front() const{ return charAt(codeColumn, pos); }
+  @property dchar front() const{ return charAt(cursor); }
   @property bool empty() const{
-    if(forward) return codeColumn && TextCursor(pos)>=TextCursor(ivec2(codeColumn.lastRowLength, codeColumn.lastRowIdx));
-    else        return codeColumn && TextCursor(pos)< TextCursor(ivec2(0));
+    if(forward) return cursor.pos.y>=cursor.codeColumn.lastRowIdx;
+    else        return cursor.pos.y<0;
   }
 
   void popFront(){
-    pos = forward ? moveRight(pos, codeColumn)
-                  : moveLeft (pos, codeColumn);
-
-    //not good because these are clamping.pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+(forward ? 1 : -1)); //opt: it's slow but simple
+    if(forward) cursor.moveRight_unsafe;
+           else cursor.moveLeft_unsafe;
   }
 
   auto save(){ return this; }
@@ -214,72 +197,95 @@ struct CharFetcher{
 
 
 struct TextCursor{  //TextCursor /////////////////////////////
+//todo: to be able to edit and preserve the textcursor indices, textcursor should target objects, not indices. [codeRow, cell] would be the minimum. codeRow.subCellIdx(cell) and codeRow.index should be cached.
+  CodeColumn codeColumn;
+
+  @property bool valid() const{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; }
+
   ivec2 pos;
   float desiredX=0; //used for up down movement, after left right movements.
 
-  int opCmp    (in TextCursor b) const{ return (cmp(pos.y, b.pos.y)).cmpChain(cmp(pos.x, b.pos.x)); }
-  bool opEquals(in TextCursor b) const{ return pos == b.pos; }
+  int opCmp    (in TextCursor b) const{ return cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn).cmpChain(cmp(pos.y, b.pos.y).cmpChain(cmp(pos.x, b.pos.x))); }
+  bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
 
-  void moveLeft(CodeColumn cc, long delta){ moveRight(cc, -delta); }
-  void moveRight(CodeColumn cc, long delta){ moveRight(cc, delta.to!int); }
+  void moveRight_unsafe(){
+    pos.x++;
+    if(pos.x>codeColumn.rowCharCount(pos.y)){
+      pos.x=0;
+      pos.y++;
+    }
+  }
+
+  void moveLeft_unsafe(){
+    pos.x--;
+    if(pos.x<0){
+      pos.y--;
+      pos.x=codeColumn.rowCharCount(pos.y);
+    }
+  }
+
+  void moveLeft(long delta){ moveRight(-delta); }
+  void moveRight(long delta){ moveRight(delta.to!int); }
 
   //special delta units
   enum home     = int.min,  end       = int.max,
        wordLeft = home+1 ,  wordRight = end-1  ;
 
-  void moveRight(CodeColumn cc, int delta){
+  void moveRight(int delta){
     if(!delta) return;
     if(delta==home){
-      const ltc = cc.rows[pos.y].leadingTabCount;
+      const ltc = codeColumn.rows[pos.y].leadingTabCount;
       pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
     }else if(delta==end){
-      pos.x = cc.rows[pos.y].charCount;
+      pos.x = codeColumn.rows[pos.y].cellCount;
     }else if(delta==wordRight){
-      const skip = CharFetcher(cc, pos, true)
+      const skip = CharFetcher(this, true)
                   .chain("\n\n"d) //extra stopping condition when no word boundary found
                   .slide(2)
                   .countUntil!(a => a.isWordBoundary || a.equal("\n\n"d)); //only stop at empty lines (that's 2 newline)
-      moveRight(cc, skip+1);
+      moveRight(skip+1);
     }else if(delta==wordLeft){
-      const skip = CharFetcher(cc, pos, false)
+      const skip = CharFetcher(this, false)
                   .drop(1) //ignore the char at right hand side of the cursor
                   .chain("\n\n"d) //extra stopping condition when no word boundary found
                   .slide(2)
                   .countUntil!(a => a.isWordBoundary || a.drop(1).front=='\n'); //stop at every newline
-      moveLeft(cc, skip+1);
+      moveLeft(skip+1);
     }else{
       //opt: cache idx2pos and pos2idx. The line searcher is slow in those
-      pos = cc.idx2pos(cc.pos2idx(pos)+delta); //note: this must be a clamped move
+      pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+delta); //note: this must be a clamped move
     }
-    desiredX = pos.x<=0 ? 0 : cc.rows[pos.y].subCells[pos.x-1].outerBounds.right;
+    desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right;
   }
 
-  void moveDown(CodeColumn cc, int delta){
+  void moveDown(int delta){
     if(!delta) return;
     if(delta==home) pos.y = 0; //home
-    else if(delta==end) pos.y = cc.rowCount-1; //end
-    else pos.y = (pos.y+delta).clamp(0, cc.rowCount-1);
+    else if(delta==end) pos.y = codeColumn.rowCount-1; //end
+    else pos.y = (pos.y+delta).clamp(0, codeColumn.rowCount-1);
 
     //jump to desired x in actual row
-    auto r = cc.rows[pos.y];
-    pos.x = iota(r.charCount+1).map!(i => abs((i<=0 ? 0 : r.subCells[i-1].outerBounds.right)-desiredX)).minIndex.to!int;
+    auto r = codeColumn.rows[pos.y];
+    pos.x = iota(r.cellCount+1).map!(i => abs((i<=0 ? 0 : r.subCells[i-1].outerBounds.right)-desiredX)).minIndex.to!int;
   }
 
-  void move(CodeColumn cc, ivec2 delta){
+  void move(ivec2 delta){
     if(!delta) return;
     if(delta==ivec2(home)){
       pos = ivec2(0); desiredX = 0; //this needed to skip the possible stop right after the leading tabs in the first line
     }else{
-      moveDown (cc, delta.y);
-      moveRight(cc, delta.x);
+      moveDown (delta.y);
+      moveRight(delta.x);
     }
   }
 }
 
 struct TextSelection{ //TextSelection ///////////////////////////////
-  CodeColumn codeColumn;
   TextCursor[2] cursors;
-  auto ref caret(){ return cursors[1]; }
+  ref caret(){ return cursors[1]; }
+  ref const caret(){ return cursors[1]; }
+
+  @property bool valid() const{ return cursors[].map!"a.valid".all; }
 
   @property auto start() const{ return min(cursors[0], cursors[1]); }
   @property auto end  () const{ return max(cursors[0], cursors[1]); }
@@ -288,10 +294,18 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   @property bool isSingleLine() const{ return cursors[0].pos.y==cursors[1].pos.y; }
   @property bool isMultiLine() const{ return !isSingleLine; }
 
-  int opCmp    (in TextSelection b) const{ return cmp(cast(size_t)(cast(void*)codeColumn), cast(size_t)(cast(void*)b.codeColumn)).cmpChain(myCmp(start, b.start)).cmpChain(myCmp(end, b.end)); }
-  bool opEquals(in TextSelection b) const{ return codeColumn==b.codeColumn && start==b.start && end==b.end; }
+  int opCmp(in TextSelection b) const{
+    return cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)) //todo: structured codeColumns: it assumes cursors[0].codeColumn is cursors[1].codeColumn
+          .cmpChain(myCmp(start, b.start))
+          .cmpChain(myCmp(end, b.end))
+          .cmpChain(myCmp(caret, b.caret));
+  }
 
-  void collapseToCaret(){ cursors[0] = cursors[1]; }
+  bool opEquals(in TextSelection b) const{
+    return cursors[0].codeColumn is b.cursors[0].codeColumn
+        && cursors[0]==b.cursors[0]
+        && cursors[1]==b.cursors[1];
+  }
 
   void move(ivec2 delta, bool isShift){
     if(!delta) return;
@@ -305,7 +319,7 @@ struct TextSelection{ //TextSelection ///////////////////////////////
         else delta.x -= sign(delta.x); //normal left/right also wordLeft/wordRight stops at the end of the selection
       }
     }
-    caret.move(codeColumn, delta);
+    caret.move(delta);
     if(!isShift) cursors[0] = caret;
   }
 
@@ -320,8 +334,10 @@ class Workspace : Container{ //this is a collection of opened modules
   SelectionManager2!Module selectionManager;
 
   @STORED File mainModuleFile;
-  @property Module mainModule(){ return findModule(mainModuleFile); }
-  @property void mainModule(Module m){ enforce(modules.canFind(m), "Invalid module."); enforce(m.isMain, "This module can't be selected as main module."); mainModuleFile = m.file; }
+  @property{
+    Module mainModule(){ return findModule(mainModuleFile); }
+    void mainModule(Module m){ enforce(modules.canFind(m), "Invalid module."); enforce(m.isMain, "This module can't be selected as main module."); mainModuleFile = m.file; }
+  }
 
   File[] openQueue;
 
@@ -388,7 +404,9 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     void dropInvalidTextSelections(){
-      bool isModuleExists(const TextSelection ts){ return modules.map!(m => m.code).canFind(ts.codeColumn); } //opt: linear
+      bool isModuleExists(const TextSelection ts){
+        return modules.map!(m => m.code).canFind(ts.cursors[0].codeColumn); //opt: linear. Also when a codeColumns dies, it should remove the textSelections too.
+      }
       textSelections = textSelections.filter!(ts => isModuleExists(ts)).array;
     }
 
@@ -567,6 +585,71 @@ class Workspace : Container{ //this is a collection of opened modules
       lastModulePositions[m.file.hashOf] = m.outerPos;
   }
 
+  override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0)){  //locate ////////////////////////////////
+    ofs += innerPos;
+    foreach_reverse(m; modules){
+      auto st = m.locate(mouse, ofs);
+      if(st.length) return st;
+    }
+    return [];
+  }
+
+  CodeLocation cellLocationToCodeLocation(CellLocation[] st){
+    auto a(T)(void delegate(T) f){ if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); } }
+
+    //opt: linear search...
+
+    CodeLocation res;
+    a((Module m){
+      res.file = m.file;
+      a((CodeColumn col){
+        a((CodeRow row){
+          if(auto line = col.subCells.countUntil(row)+1){
+            res.line = line.to!int;
+            a((Cell cell){
+              if(auto column = row.subCells.countUntil(cell)+1)
+                res.column = column.to!int;
+            });
+          }
+        });
+      });
+    });
+    return res;
+  }
+
+  static CellLocation[] findLastCodeRow(CellLocation[] st){
+    foreach_reverse(i; 0..st.length){
+      auto row = cast(CodeRow)st[i].cell;
+      if(row) return st[i..$];
+    }
+    return [];
+  }
+
+  TextCursor cellLocationToTextCursor(CellLocation[] st){ //todo: TextCursor should contain the codeRow, not the textSelection.
+    TextCursor res;
+    st = findLastCodeRow(st);
+    if(auto row = cast(CodeRow)st.get(0).cell){
+      auto cell = st.get(1).cell;
+      res.codeColumn = row.parent;
+
+      res.desiredX = st[0].localPos.x;
+      res.pos.y = row.index;
+
+      //find x character index
+      int x;
+      if(cell){
+        x = row.subCellIndex(cell);
+        assert(x>=0);
+        if(st[1].localPos.x>cell.innerWidth/2) x++;
+      }else{
+        x = res.desiredX<0 ? 0 : row.cellCount;
+      }
+      assert(x.inRange(0, row.cellCount));
+      res.pos.x = x;
+    }
+    return res;
+  }
+
   // textSelection, cursor movements /////////////////////////////
 
   int lineSize(){ return DefaultFontHeight; }
@@ -579,6 +662,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
   float scrollSpeed(){ return frmMain.deltaTime.value(second)*2000; }
   float zoomSpeed(){ return frmMain.deltaTime.value(second)*8; }
+  float wheelSpeed = 0.375f;
 
   void insertCursor(bool up){
     foreach(ts; textSelections.dup){
@@ -588,15 +672,17 @@ class Workspace : Container{ //this is a collection of opened modules
 
       }else{ //multiline
         if(ts.cursors[0]<ts.cursors[1]){
-          if(up) ts.cursors[0].move(ts.codeColumn, ivec2(0, -1));
-          else   ts.cursors[1].move(ts.codeColumn, ivec2(0,  1));
+          if(up) ts.cursors[0].move(ivec2(0, -1));
+          else   ts.cursors[1].move(ivec2(0,  1));
         }else{
-          if(up) ts.cursors[1].move(ts.codeColumn, ivec2(0, -1));
-                 ts.cursors[0].move(ts.codeColumn, ivec2(0,  1));
+          if(up) ts.cursors[1].move(ivec2(0, -1));
+                 ts.cursors[0].move(ivec2(0,  1));
         }
       }
     }
   }
+
+  // Module operations ------------------------------------------------
 
   @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
   @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
@@ -609,7 +695,7 @@ class Workspace : Container{ //this is a collection of opened modules
   /+todo: uzemmod fuggest megoldani: A Ctrl+A ha editing van, akkor az editalt modulra vonatkozzon, tavoli nezetben viszont a kivalasztott modulokra. Ezt a kettot valahogy ossze kellene egysegesiteni.
           nem vilagos, hogy a ctrl+W az mire vonatkozik...+/
 
-  // Cursor and selection ----------------------------------------
+  // Cursor and text selection ----------------------------------------
 
   @VERB("Left"                          ) void cursorLeft       (bool sel=false){ cursorOp(ivec2(-1,  0)                 , sel); }
   @VERB("Right"                         ) void cursorRight      (bool sel=false){ cursorOp(ivec2( 1,  0)                 , sel); }
@@ -663,87 +749,47 @@ class Workspace : Container{ //this is a collection of opened modules
   @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
   @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
 
-  /+
-  void updateTextSelections(){
+  void handleKeyboard(){  }
 
-    bool isModuleExists(const TextSelection ts){ return modules.map!(m => m.code).canFind(ts.codeColumn); } //opt: linear
-
-    //validate & sort
-    textSelections = textSelections.filter!(ts => isModuleExists(ts)).array.sort.array;
-
-    void doit(alias fun)(){ foreach(ref s; textSelections) unaryFun!fun(s); }
-
-    if(frmMain.isForeground && !im.wantKeys){ // keyboard handling --------------------------------------------------------------------------
-      int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/DefaultFontHeight*.8f).iround.clamp(1, 100); }
-
-      foreach(isShift; [false, true]){
-        ivec2 dir;
-
-        void a(string key, void delegate() fun){ if(KeyCombo((isShift ? "Shift+" : "")~key).typed) fun(); }
-
-        a("Left"        , { dir.x--;                      });  //todo: formatting test with this and the new UI
-        a("Right"       , { dir.x++;                      });
-        a("Up"          , { dir.y--;                      });
-        a("Down"        , { dir.y++;                      });
-        a("PgUp"        , { dir.y -= pageSize;            });
-        a("PgDn"        , { dir.y += pageSize;            });
-        a("Home"        , { dir.x = TextCursor.home;      });
-        a("End"         , { dir.x = TextCursor.end;       });
-        a("Ctrl+Home"   , { dir = ivec2(TextCursor.home); });
-        a("Ctrl+End"    , { dir = ivec2(TextCursor.end);  });
-        a("Ctrl+Left"   , { dir.x = TextCursor.wordLeft;  });
-        a("Ctrl+Right"  , { dir.x = TextCursor.wordRight; });
-
-        if(dir) doit!((ref a) => a.move(dir, isShift));
-      }
-
-      if(textSelections.length>1 && KeyCombo("Esc").typed){
-        textSelections.length = 1; //todo: which one to keep... I think VSCode keeps the oldest...
-      }
-
-      if(textSelections.length){
-        if(KeyCombo("Ctrl+Alt+Up").typed){
-          auto ts = textSelections[0];
-          ts.move(ivec2(0, -1), false);
-          if(ts!=textSelections[0]) textSelections = ts ~ textSelections;
-        }
-        if(KeyCombo("Ctrl+Alt+Down").typed){
-          auto ts = textSelections[$-1];
-          ts.move(ivec2(0, 1), false);
-          if(ts!=textSelections[$-1]) textSelections ~= ts;
-        }
-      }
-
-    }
-
-    if(frmMain.isForeground && !im.wantKeys) callVerbs(this);
-
-    if(frmMain.isForeground && !im.wantMouse){ // mouse handling ----------------------------------------------------------
-
-    }
-
-  }   +/
-
-  void updateKeyboard(){ callVerbs(this); }
-
-  void updateMouse(){
-
-  }
+  TextCursor cursorAtMouse, cursorAtMouseWhenPressed;
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
 
-    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.mousePos in view.subScreenBounds_anim, view, modules);
+    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.isMouseInside, view, modules);
 
-    if(frmMain.isForeground && !im.wantKeys) updateKeyboard;
+    //keyboard handling
+    if(!im.wantKeys && frmMain.isForeground)
+      callVerbs(this);
 
-    if(frmMain.isForeground && !im.wantMouse){
+    auto cursorAtMouse = cellLocationToTextCursor(locate(view.mousePos));
 
+    //mouse handling
+    if(!im.wantMouse){
+      if(view.isMouseInside) if(auto dw = inputs["MW"].delta) view.zoomAroundMouse(dw*wheelSpeed);
+
+      if(frmMain.isForeground && inputs.mouseDelta) if(inputs["MMB"] || inputs["RMB"]) view.scroll(inputs.mouseDelta);
+
+      if(frmMain.isForeground && view.isMouseInside) if(inputs["LMB"].pressed){
+        cursorAtMouseWhenPressed = cursorAtMouse;
+        if(cursorAtMouseWhenPressed.valid){
+          textSelections = [TextSelection([cursorAtMouseWhenPressed, cursorAtMouseWhenPressed])];
+        }
+      }
     }
 
+    if(cursorAtMouseWhenPressed.valid && frmMain.isForeground && inputs["LMB"]){
+      //todo: restrict mousePos to the module bounds
+      if(cursorAtMouse.valid && cursorAtMouse.codeColumn==cursorAtMouseWhenPressed.codeColumn){
+        textSelections = [TextSelection([cursorAtMouseWhenPressed, cursorAtMouse])];
+      }
+    }
+
+    //focus at selection
     if(textSelectionsHash.chkSet(textSelections.hashOf))
       frmMain.view.scrollZoom(calcTextSelectionsBounds);
 
+    //update buildresults if needed (compilation progress or layer mask change)
     size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
     buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
     if(buildStateChanged){
@@ -772,40 +818,6 @@ class Workspace : Container{ //this is a collection of opened modules
     if(fileToClose) closeModule(fileToClose);
   }}
 
-
-  override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0)){  //locate ////////////////////////////////
-    ofs += innerPos;
-    foreach_reverse(m; modules){
-      auto st = m.locate(mouse, ofs);
-      if(st.length) return st;
-    }
-    return [];
-  }
-
-  CodeLocation cellLocationToCodeLocation(CellLocation[] st){
-    auto a(T)(void delegate(T) f){
-      if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); }
-    }
-
-    //opt: linear search...
-
-    CodeLocation res;
-    a((Module m){
-      res.file = m.file;
-      a((CodeColumn col){
-        a((CodeRow row){
-          if(auto line = col.subCells.countUntil(row)+1){
-            res.line = line.to!int;
-            a((Cell cell){
-              if(auto column = row.subCells.countUntil(cell)+1)
-                res.column = column.to!int;
-            });
-          }
-        });
-      });
-    });
-    return res;
-  }
 
   //! UI /////////////////////////////////////////////////////////
 
@@ -917,7 +929,7 @@ class Workspace : Container{ //this is a collection of opened modules
             const idx2 = pos2idx(pos2);
             Text("   ", pos.text, idx.text, pos2.text, idx2.text);
           }else with(findModule(loc.file).code){
-            const pos = ivec2(st[$-1].localPos.x<=0 ? 0 : rows[loc.line-1].charCount, loc.line-1);
+            const pos = ivec2(st[$-1].localPos.x<=0 ? 0 : rows[loc.line-1].cellCount, loc.line-1);
             const idx = pos2idx(pos);
             const pos2 = idx2pos(idx);
             const idx2 = pos2idx(pos2);
@@ -1056,15 +1068,15 @@ class Workspace : Container{ //this is a collection of opened modules
     bounds2 bnd;
 
     Module moduleOf(in TextSelection ts){
-      foreach(m; modules) if(m.code==ts.codeColumn) return m; //opt: linear
+      foreach(m; modules) if(m.code==ts.cursors[0].codeColumn) return m; //opt: linear
       return null;
     }
 
     //todo: only scrollZoom at the recently expanded part of the selection and the caret. Not the whole selection.
     if(0/+only process caret+/) foreach(ts; textSelections){
       auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
-                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
+                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
 
       const tr0 = codeColumnsInnerPosAbs;
       //draw the selection
@@ -1072,13 +1084,13 @@ class Workspace : Container{ //this is a collection of opened modules
         const st=m.code.pos2idx(ts.start.pos),
               en=m.code.pos2idx(ts.end  .pos);
 
-        auto pos = m.code.idx2pos(st);
-        foreach(i; st..en){ scope(exit) pos = moveRight(pos, ts.codeColumn);
-          auto r = m.code.rows[pos.y];
+        auto crsr = TextCursor(ts.cursors[0].codeColumn, m.code.idx2pos(st));
+        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
+          auto r = m.code.rows[crsr.pos.y];
           const tr1 = tr0 + r.outerPos+r.topLeftGapSize;
 
-          if(pos.x<r.subCells.length){//highlighted chars
-            auto g = r.glyphs[pos.x];
+          if(crsr.pos.x<r.subCells.length){//highlighted chars
+            auto g = r.glyphs[crsr.pos.x];
 
             bnd |= g.outerBounds+tr1;
           }else{
@@ -1094,8 +1106,8 @@ class Workspace : Container{ //this is a collection of opened modules
     foreach(ts; textSelections){
       //todo: this is redundant, combine the too loops, also combine with drawTextSelections
       auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
-                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
+                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
 
       const pos = ts.cursors[1].pos;
       auto r = m.code.rows[pos.y]; //todo: error check/clamp
@@ -1118,27 +1130,27 @@ class Workspace : Container{ //this is a collection of opened modules
     scope(exit) dr.alpha = 1;
 
     Module moduleOf(in TextSelection ts){
-      foreach(m; modules) if(m.code==ts.codeColumn) return m; //opt: linear
+      foreach(m; modules) if(m.code==ts.cursors[0].codeColumn) return m; //opt: linear
       return null;
     }
 
     foreach(ts; textSelections){
       auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
-                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
+                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
       dr.translate(codeColumnsInnerPosAbs); scope(exit) dr.pop;
       //draw the selection
       if(ts.cursors[0] != ts.cursors[1]){
         const st=m.code.pos2idx(ts.start.pos),
               en=m.code.pos2idx(ts.end  .pos);
 
-        auto pos = m.code.idx2pos(st); //opt: unoptimal conversions between idx and pos
-        foreach(i; st..en){ scope(exit) pos = moveRight(pos, ts.codeColumn);
-          auto r = m.code.rows[pos.y];
+        auto crsr = TextCursor(m.code, m.code.idx2pos(st)); //opt: unoptimal conversions between idx and pos
+        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe;
+          auto r = m.code.rows[crsr.pos.y];
           dr.translate(r.outerPos+r.topLeftGapSize); scope(exit) dr.pop; //opt: really slow at every char
 
-          if(pos.x<r.subCells.length){//highlighted chars
-            auto g = r.glyphs[pos.x];
+          if(crsr.pos.x<r.subCells.length){//highlighted chars
+            auto g = r.glyphs[crsr.pos.x];
             const old = tuple(g.bkColor, g.fontColor);
             g.bkColor = clSelected; g.fontColor = clBlack;
             g.draw(dr);
@@ -1163,8 +1175,8 @@ class Workspace : Container{ //this is a collection of opened modules
 
       //todo: this is redundant, combine the too loops
       auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos             + m.topLeftGapSize +
-                                     ts.codeColumn.outerPos + ts.codeColumn.topLeftGapSize;
+      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
+                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
 
       const pos = ts.cursors[1].pos;
       auto r = m.code.rows[pos.y]; //todo: error check/clamp
@@ -1197,10 +1209,10 @@ class Workspace : Container{ //this is a collection of opened modules
       //textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
       textSelections = iota(100).map!(i => TextSelection(m.code, [TextCursor(m.code.idx2pos(i*140)), TextCursor(m.code.idx2pos(i*140+40))])).array;
     }*/
-    if(textSelections.length==0){
+    /*if(textSelections.length==0){
       auto m = findModule(File(`c:\d\libs\het\utils.d`));
-      textSelections = [TextSelection(m.code, [TextCursor(ivec2(0)), TextCursor(ivec2(0))])];
-    }
+      textSelections = [TextSelection([TextCursor(m.code, ivec2(0)), TextCursor(m.code, ivec2(0))])];
+    }*/
 
     drawTextSelections(dr);
   }
@@ -1321,7 +1333,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     invalidate; //todo: low power usage
     caption = "DIDE2";
-    view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, !im.wantMouse && isForeground);
+    //view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
     view.updateSmartScroll;
     setLod(view.scale_anim);
 
