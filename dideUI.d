@@ -2,6 +2,12 @@ module dideui;
 
 import het, het.ui, het.tokenizer, buildsys, didemodule;
 
+__gshared float blink;
+
+void updateBlink(){
+  blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
+}
+
 void setRoundBorder(Container cntr, float borderWidth){ with(cntr){
   border.width = borderWidth;
   border.color = bkColor;
@@ -79,7 +85,7 @@ void UI(in BuildSystemWorkerState bsws) { with(bsws) with(im){ //BuildSystemWork
   Row({
     width = 6*fh;
     Row({
-      if(building) style.fontColor = mix(style.fontColor, style.bkColor, blinkf);
+      if(building) style.fontColor = mix(style.fontColor, style.bkColor, blink);
       Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready");
     });
     Row({ flex=1; flags.hAlign = HAlign.right;

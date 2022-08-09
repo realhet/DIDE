@@ -15,6 +15,8 @@ import buildsys, core.thread, std.concurrency;
 
 import dideui, didemodule;
 
+alias blink = dideui.blink;
+
 // ugly globals ////////////////////////////////////////
 
 auto frmMain(){ return (cast(FrmMain)mainWindow); }
@@ -282,10 +284,13 @@ struct TextCursor{  //TextCursor /////////////////////////////
 
 struct TextSelection{ //TextSelection ///////////////////////////////
   TextCursor[2] cursors;
+
   ref caret(){ return cursors[1]; }
   ref const caret(){ return cursors[1]; }
 
-  @property bool valid() const{ return cursors[].map!"a.valid".all; }
+  auto codeColumn(){ return cursors[0].codeColumn; }
+
+  @property bool valid() const{ return cursors[].map!"a.valid".all && cursors[0].codeColumn is cursors[1].codeColumn; }
 
   @property auto start() const{ return min(cursors[0], cursors[1]); }
   @property auto end  () const{ return max(cursors[0], cursors[1]); }
@@ -323,6 +328,116 @@ struct TextSelection{ //TextSelection ///////////////////////////////
     if(!isShift) cursors[0] = caret;
   }
 
+  string sourceText(){
+    string res;
+    if(valid && cursors[0] != cursors[1]){
+      const st=codeColumn.pos2idx(start.pos),
+            en=codeColumn.pos2idx(end  .pos); //note: st and en is validated
+
+      auto crsr = TextCursor(codeColumn, codeColumn.idx2pos(st));
+      if(en>st){
+        res.reserve(en-st); //don't care about newlines and unicode overhead...
+        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
+          auto row = codeColumn.rows[crsr.pos.y];
+
+          if(crsr.pos.x<row.cellCount){//highlighted chars
+            auto g = row.glyphs[crsr.pos.x];
+            if(g){
+              res ~= g.ch;
+            }else{
+              raise("NOT IMPL"); //todo: structured editor
+            }
+          }else{
+            res ~= DefaultNewLine; // todo: newLine const
+          }
+        }
+      }
+    }
+    return res;
+  }
+
+  bool hitTest(vec2 p){
+    return false;
+    //todo: hitTest
+  }
+}
+
+int distance(TextSelection ts, TextCursor tc){ //todo: constness
+  if(ts.valid && tc.valid && ts.codeColumn is tc.codeColumn){
+    auto cc = tc.codeColumn, st = ts.start, en = ts.end;
+    if(tc<st) return cc.pos2idx(st.pos) - cc.pos2idx(tc.pos);
+    if(tc>en) return cc.pos2idx(tc.pos) - cc.pos2idx(en.pos);
+    return 0; //it's inside
+  }else{
+    return int.max;
+  }
+}
+
+bool touches(TextSelection a, TextSelection b){
+
+  bool chk(){
+    auto a0 = a.start, a1 = a.end;
+    auto b0 = b.start, b1 = b.end;
+    return (a0<=b0 && b0<=a1)
+        || (a0<=b1 && b1<=a1)
+        || (b0<=a0 && a0<=b1)
+        || (b0<=a1 && a1<=b1); //opt: not so optimal.
+  }
+
+  return a.valid && b.valid && a.codeColumn is b.codeColumn && chk;
+}
+
+TextSelection merge(TextSelection a, TextSelection b){
+  const backward = a.cursors[0]>a.cursors[1] || b.cursors[0]>b.cursors[1];
+  auto res = TextSelection([min(a.start, b.start), max(a.end, b.end)]);
+  if(backward) swap(res.cursors[0], res.cursors[1]);
+  return res;
+}
+
+TextSelection[] merge(TextSelection[] textSelections){
+  auto sorted = textSelections.sort.array;
+
+  textSelections = [];
+  foreach(a; sorted){
+    if(textSelections.length && touches(a, textSelections[$-1])){
+      textSelections[$-1] = merge(a, textSelections[$-1]);
+    }else{
+      textSelections ~= a;
+    }
+  }
+
+  return textSelections;
+}
+
+string sourceText(TextSelection[] ts){
+
+  static bool checkSameLineEmptyCarets(TextSelection a, TextSelection b){
+    return a.isZeroLength && b.isZeroLength && a.codeColumn is b.codeColumn && a.cursors[0].pos.y== b.cursors[0].pos.y;
+  }
+
+  //note: this is somewhat the vsCode functionality
+  //todo: sorting by module (codeColumn) is unclear: now it's based on the pointer value (random)
+  bool newLineNeeded; //if the last item was a normal selecton, a newLine is needed. RowSelections have their own newlines at the end (even when they are the very end).
+  return ts
+    .filter!"a.valid"
+    .array.sort.array
+    .uniq!((a,b)=> checkSameLineEmptyCarets(a, b))
+    .map!((a){
+      auto res = newLineNeeded ? DefaultNewLine : "";
+      if(a.isZeroLength){
+        newLineNeeded = false;
+        return a.codeColumn.rowSourceText(a.cursors[0].pos.y)~DefaultNewLine;
+      }else{
+        newLineNeeded = true;
+        return a.sourceText;
+      }
+    })
+    .join
+    .withoutEnding(DefaultNewLine);
+}
+
+bool hitTest(TextSelection[] ts, vec2 p){
+  return ts.map!(a => a.hitTest(p)).any; //todo: this should be in the draw routine with automatic mouse hittest
 }
 
 /// Workspace ///////////////////////////////////////////////
@@ -654,7 +769,10 @@ class Workspace : Container{ //this is a collection of opened modules
 
   int lineSize(){ return DefaultFontHeight; }
   int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); }
-  void cursorOp(ivec2 dir, bool select){ foreach(ref ts; textSelections) ts.move(dir, select); }
+  void cursorOp(ivec2 dir, bool select){
+    foreach(ref ts; textSelections) ts.move(dir, select);
+    textSelections = merge(textSelections);
+  }
 
   void scrollV(float dy){ frmMain.view.scrollV(dy); }
   void scrollH(float dx){ frmMain.view.scrollH(dx); }
@@ -664,22 +782,14 @@ class Workspace : Container{ //this is a collection of opened modules
   float zoomSpeed(){ return frmMain.deltaTime.value(second)*8; }
   float wheelSpeed = 0.375f;
 
-  void insertCursor(bool up){
-    foreach(ts; textSelections.dup){
-      if(ts.isZeroLength){
-
-      }else if(ts.isSingleLine){
-
-      }else{ //multiline
-        if(ts.cursors[0]<ts.cursors[1]){
-          if(up) ts.cursors[0].move(ivec2(0, -1));
-          else   ts.cursors[1].move(ivec2(0,  1));
-        }else{
-          if(up) ts.cursors[1].move(ivec2(0, -1));
-                 ts.cursors[0].move(ivec2(0,  1));
-        }
-      }
+  void insertCursor(int dir){
+    auto newTextSelections = textSelections.dup;
+    foreach(ref ts; newTextSelections){
+      ts.cursors[0].move(ivec2(0, dir));
+      ts.cursors[1].move(ivec2(0, dir));
     }
+
+    textSelections = merge(textSelections ~ newTextSelections);
   }
 
   // Module operations ------------------------------------------------
@@ -723,8 +833,8 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Shift+Ctrl+Home"               ) void cursorTopSelect        (){ cursorTop        (true); }
   @VERB("Shift+Ctrl+End"                ) void cursorBottomSelect     (){ cursorBottom     (true); }
 
-  @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(true ); }
-  @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor(false); }
+  @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
+  @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
 
   // Navigation ---------------------------------------------
 
@@ -749,9 +859,15 @@ class Workspace : Container{ //this is a collection of opened modules
   @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
   @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
 
+  // Editing ------------------------------------------------
+
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy                   (){ auto s = textSelections.sourceText; if(s.length) clipboard.asText = s; }
+
   void handleKeyboard(){  }
 
-  TextCursor cursorAtMouse, cursorAtMouseWhenPressed;
+  TextCursor cursorAtMouse, cursorToExtend;
+  TextSelection selectionAtMouse;
+  TextSelection[] selectionsWhenMouseWasPressed;
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
     updateOpenQueue(1);
@@ -770,23 +886,92 @@ class Workspace : Container{ //this is a collection of opened modules
 
       if(frmMain.isForeground && inputs.mouseDelta) if(inputs["MMB"] || inputs["RMB"]) view.scroll(inputs.mouseDelta);
 
-      if(frmMain.isForeground && view.isMouseInside) if(inputs["LMB"].pressed){
-        cursorAtMouseWhenPressed = cursorAtMouse;
-        if(cursorAtMouseWhenPressed.valid){
-          textSelections = [TextSelection([cursorAtMouseWhenPressed, cursorAtMouseWhenPressed])];
+      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs["LMB"].pressed){
+        if(textSelections.hitTest(view.mousePos)){ //todo: start dragging
+
+        }else if(cursorAtMouse.valid){ //start selecting with mouse
+          selectionsWhenMouseWasPressed = textSelections.dup;
+
+          //extension cursor is the nearest selection.cursors[0]
+          cursorToExtend = selectionsWhenMouseWasPressed.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
+                                                        .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init)
+                                                        .cursors[0];
+          if(!cursorToExtend.valid) cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+
+          selectionAtMouse = TextSelection([cursorAtMouse, cursorAtMouse]);
         }
       }
     }
 
-    if(cursorAtMouseWhenPressed.valid && frmMain.isForeground && inputs["LMB"]){
+    if(selectionAtMouse.valid && frmMain.isForeground && inputs["LMB"]){
       //todo: restrict mousePos to the module bounds
-      if(cursorAtMouse.valid && cursorAtMouse.codeColumn==cursorAtMouseWhenPressed.codeColumn){
-        textSelections = [TextSelection([cursorAtMouseWhenPressed, cursorAtMouse])];
+      if(cursorAtMouse.valid && cursorAtMouse.codeColumn==selectionAtMouse.cursors[0].codeColumn){
+        selectionAtMouse.cursors[1] = cursorAtMouse;
       }
     }
 
+    void endMouseSelection(){
+      selectionAtMouse = TextSelection.init;
+      selectionsWhenMouseWasPressed = [];
+    }
+
+    //finalize mouse select
+    if(selectionAtMouse.valid && inputs["LMB"].released){
+      endMouseSelection;
+    }
+
+    //abort mouse select
+    if(selectionAtMouse.valid && inputs["Esc"].pressed){
+      textSelections = selectionsWhenMouseWasPressed; //revert
+      endMouseSelection;
+    }
+
+    //compine selection with mouse selection
+    if(selectionAtMouse.valid){
+      const add    = inputs["Alt"].down,
+            extend = inputs["Shift"].down;
+
+      //todo: for additive operations, only the selections on the most recent
+
+      if(add && extend){
+        //Column select
+        if(selectionAtMouse.isSingleLine){
+          textSelections = [selectionAtMouse]; //todo: primary
+        }else{
+          auto c0 = selectionAtMouse.cursors[0],  //note: vsCode starts this from the extension point, I start it from mouse drag start
+               c1 = selectionAtMouse.cursors[1];
+          const downward = c0.pos.y<c1.pos.y,
+                dir = downward ? 1 : -1,
+                count = abs(c0.pos.y-c1.pos.y)+1;
+          auto a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
+               a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
+
+          if(downward) a1 = a1.retro.array;
+                  else a0 = a0.retro.array;
+
+          textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
+          //textSelections[0].primary = true;//todo: mark primary
+
+          if(!downward) textSelections = textSelections.retro.array; //make it sorted
+
+          //if there are nonzero length selections, remove all the zero length selections.
+          if(textSelections.map!(a => !a.isZeroLength).any)
+            textSelections = textSelections.filter!(a => !a.isZeroLength).array;
+        }
+
+      }else if(add){
+        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, selectionAtMouse)).array ~ selectionAtMouse;
+      }else if(extend){
+        auto extendedSelection = TextSelection([cursorToExtend, selectionAtMouse.caret]);
+        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, extendedSelection)).array ~ extendedSelection;
+      }else{
+        textSelections = [selectionAtMouse]; //todo: mark this as the primary selection. Extend will work on that.
+      }
+    }
+
+
     //focus at selection
-    if(textSelectionsHash.chkSet(textSelections.hashOf))
+    if(textSelectionsHash.chkSet(textSelections.hashOf)) //todo: focus the extents of the changed areas, not just the carets
       frmMain.view.scrollZoom(calcTextSelectionsBounds);
 
     //update buildresults if needed (compilation progress or layer mask change)
@@ -945,7 +1130,6 @@ class Workspace : Container{ //this is a collection of opened modules
   void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
     auto view = im.getView;
     const
-      blink = float(sqr(sin(blinkf(134.0f/60)*PIf))),
       arrowSize = 12+3*blink,
       arrowThickness = arrowSize*.2f,
 
@@ -1122,7 +1306,6 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void drawTextSelections(Drawing dr){ //drawTextSelections ////////////////////////////
-    const blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
     const clSelected = mix(mix(RGB(0x404040), clSilver, lod.zoomFactor.smoothstep(0.02, 0.1)), clWhite, blink);
     const clCaret = mix(clWhite, clOrange, blink);
 
@@ -1321,6 +1504,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   override void onUpdate(){ // onUpdate ////////////////////////////////////////
     //showFPS = true;
+
+    updateBlink;
 
     updateBuildSystem;
 

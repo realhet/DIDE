@@ -3,6 +3,7 @@ module didemodule;
 import het, het.ui, het.tokenizer, dideui, buildsys;
 
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
+__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
@@ -183,19 +184,29 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   int rowCount() const{ return cast(int)subCells.length; }
   int lastRowIdx() const{ return rowCount-1; }
   int lastRowLength() const{ return rows[$-1].cellCount; }
-  int rowCharCount(int rowIdx) const{ if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].cellCount; else return 0; }
-  @property string sourceText() { return rows.map!(r => r.sourceText).join("\r\n"); }  // \r\n is the default in std library
+
+  int rowCharCount(int rowIdx) const{
+    if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].cellCount;
+    return 0;
+  }
+
+  string rowSourceText(int rowIdx) const{
+    if(rowIdx>=0 && rowIdx<rowCount) return rows[rowIdx].sourceText;
+    return "";
+  }
+
+  @property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
 
   enum defaultSpacesPerTab = 4; //default in std library
   int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
   //index, location calculations
-  int maxIdx(){ //inclusive end position
+  int maxIdx() const{ //inclusive end position
     assert(rowCount>0);
     return rows.map!(r => r.cellCount + 1/+newLine+/).sum - 1/+except last newLine+/;
   }
 
-  ivec2 idx2pos(int idx){
+  ivec2 idx2pos(int idx) const{
     if(idx<0) return ivec2(0); //clamp to min
 
     const rowCount = this.rowCount;
@@ -216,7 +227,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     }
   }
 
-  int pos2idx(ivec2 p){
+  int pos2idx(ivec2 p) const{
     if(p.y<0) return 0; //clamp to min
     if(p.y>=rowCount) return maxIdx; //lamp to max
     return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount);
