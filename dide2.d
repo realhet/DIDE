@@ -1410,7 +1410,21 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 
   void drawOverlay(Drawing dr){
-
+    auto cntr = scoped!CodeColumn(null);
+    {
+      print("A");
+      auto s = [TextSelection([TextCursor(cntr, ivec2(9, 1)), TextCursor(cntr, ivec2(9, 1))]), TextSelection([TextCursor(cntr, ivec2(5, 1)), TextCursor(cntr, ivec2(5, 1))])];
+      print(cmp(9, 5), myCmp(9, 5), myCmp(s[0], s[1]), s[0]<s[1], s[0]>s[1], s[0]==s[1]);
+      s = s.sort.array;
+      s.each!print;
+    }
+    {
+      print("B");
+      auto s = [TextSelection([TextCursor(cntr, ivec2(5, 1)), TextCursor(cntr, ivec2(5, 1))]), TextSelection([TextCursor(cntr, ivec2(9, 1)), TextCursor(cntr, ivec2(9, 1))])];
+      print(s[0]<s[1], s[0]>s[1], s[0]==s[1]);
+      s = s.sort.array;
+      s.each!print;
+    }
     //dr.mmGrid(view);
   }
 

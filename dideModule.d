@@ -140,8 +140,8 @@ struct TextCursor{  //TextCursor /////////////////////////////
   ivec2 pos;
   float desiredX=0; //used for up down movement, after left right movements.
 
-  int opCmp    (in TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
-  bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
+  int opCmp    (const TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
+  bool opEquals(const TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
 
   void moveRight_unsafe(){
     pos.x++;
@@ -348,17 +348,20 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   @property bool isSingleLine() const{ return cursors[0].pos.y==cursors[1].pos.y; }
   @property bool isMultiLine() const{ return !isSingleLine; }
 
-  int opCmp(in TextSelection b) const{
-    return cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)) //todo: structured codeColumns: it assumes cursors[0].codeColumn is cursors[1].codeColumn
+  int opCmp(const TextSelection b) const{
+    LOG(this, b);
+    return cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)) //todo: structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
           .cmpChain(myCmp(start, b.start))
           .cmpChain(myCmp(end, b.end))
           .cmpChain(myCmp(caret, b.caret));
   }
 
-  bool opEquals(in TextSelection b) const{
+  bool opEquals(const TextSelection b) const{
+    LOG(this, b);
     return cursors[0].codeColumn is b.cursors[0].codeColumn
-        && cursors[0]==b.cursors[0]
-        && cursors[1]==b.cursors[1];
+        && start==b.start
+        && end==b.end
+        && caret==b.caret;
   }
 
   void move(ivec2 delta, bool isShift){
