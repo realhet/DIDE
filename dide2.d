@@ -10,6 +10,10 @@
 //todo: wholeWords search (eleje/vege kulon)
 //todo: filter search results per file and per syntax (comment, string, code, etc)
 
+//todo: Adam Ruppe search tool -> http://search.dpldocs.info/?q=sleep
+
+//todo: het.math.cmp integration with std
+
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
 
@@ -144,309 +148,14 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 
 }
 
-// CodeColumn navigation utils ////////////////////////////////////
-
-dchar charAt(const CodeRow cr, int i, bool newLineAtEnd=true){
-  if(!cr || i<0 || i>cr.subCells.length) return '\x00';
-  if(i==cr.subCells.length) return newLineAtEnd ? '\n' : '\x00';
-  const cell = cr.subCells[i];
-  if(const g = cast(const Glyph)cell) return g.ch; else return '\x01';
-}
-
-dchar charAt(const CodeColumn cc, ivec2 p){
-  if(!cc || p.y<0 || p.x<0 || p.y>=cc.rowCount) return '\x00';
-  return charAt(cast(const CodeRow)cc.subCells[p.y], p.x, p.y<cc.rowCount-1);
-}
-
-dchar charAt(const TextCursor tc){
-  return charAt(tc.codeColumn, tc.pos);
-}
-
-enum WordCategory{ space, symbol, word }
-
-WordCategory wordCategory(dchar ch){
-  import std.uni;
-  if(ch.isAlphaNum || ch=='_') return WordCategory.word;
-  if(ch.among(' ', '\t', '\n', '\r')) return WordCategory.space;
-  return WordCategory.symbol;
-}
-
-bool isWordBoundary(R)(R a){
-  //input: 2 element historical sliding window of the characters
-  //output is true when the wordCategory is decreasing.
-  //The 3 possible transitions are: word->symbol, word->space, symbol->space
-  return a.front.wordCategory > a.drop(1).front.wordCategory;
-}
-
-struct CharFetcher{
-  TextCursor cursor;
-  bool forward=true;
-
-  @property dchar front() const{ return charAt(cursor); }
-  @property bool empty() const{
-    if(forward) return cursor.pos.y>=cursor.codeColumn.lastRowIdx;
-    else        return cursor.pos.y<0;
-  }
-
-  void popFront(){
-    if(forward) cursor.moveRight_unsafe;
-           else cursor.moveLeft_unsafe;
-  }
-
-  auto save(){ return this; }
-}
-
-
-
-struct TextCursor{  //TextCursor /////////////////////////////
-//todo: to be able to edit and preserve the textcursor indices, textcursor should target objects, not indices. [codeRow, cell] would be the minimum. codeRow.subCellIdx(cell) and codeRow.index should be cached.
-  CodeColumn codeColumn;
-
-  @property bool valid() const{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; }
-
-  ivec2 pos;
-  float desiredX=0; //used for up down movement, after left right movements.
-
-  int opCmp    (in TextCursor b) const{ return cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn).cmpChain(cmp(pos.y, b.pos.y).cmpChain(cmp(pos.x, b.pos.x))); }
-  bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
-
-  void moveRight_unsafe(){
-    pos.x++;
-    if(pos.x>codeColumn.rowCharCount(pos.y)){
-      pos.x=0;
-      pos.y++;
-    }
-  }
-
-  void moveLeft_unsafe(){
-    pos.x--;
-    if(pos.x<0){
-      pos.y--;
-      pos.x=codeColumn.rowCharCount(pos.y);
-    }
-  }
-
-  void moveLeft(long delta){ moveRight(-delta); }
-  void moveRight(long delta){ moveRight(delta.to!int); }
-
-  //special delta units
-  enum home     = int.min,  end       = int.max,
-       wordLeft = home+1 ,  wordRight = end-1  ;
-
-  void moveRight(int delta){
-    if(!delta) return;
-    if(delta==home){
-      const ltc = codeColumn.rows[pos.y].leadingTabCount;
-      pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
-    }else if(delta==end){
-      pos.x = codeColumn.rows[pos.y].cellCount;
-    }else if(delta==wordRight){
-      const skip = CharFetcher(this, true)
-                  .chain("\n\n"d) //extra stopping condition when no word boundary found
-                  .slide(2)
-                  .countUntil!(a => a.isWordBoundary || a.equal("\n\n"d)); //only stop at empty lines (that's 2 newline)
-      moveRight(skip+1);
-    }else if(delta==wordLeft){
-      const skip = CharFetcher(this, false)
-                  .drop(1) //ignore the char at right hand side of the cursor
-                  .chain("\n\n"d) //extra stopping condition when no word boundary found
-                  .slide(2)
-                  .countUntil!(a => a.isWordBoundary || a.drop(1).front=='\n'); //stop at every newline
-      moveLeft(skip+1);
-    }else{
-      //opt: cache idx2pos and pos2idx. The line searcher is slow in those
-      pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+delta); //note: this must be a clamped move
-    }
-    desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right;
-  }
-
-  void moveDown(int delta){
-    if(!delta) return;
-    if(delta==home) pos.y = 0; //home
-    else if(delta==end) pos.y = codeColumn.rowCount-1; //end
-    else pos.y = (pos.y+delta).clamp(0, codeColumn.rowCount-1);
-
-    //jump to desired x in actual row
-    auto r = codeColumn.rows[pos.y];
-    pos.x = iota(r.cellCount+1).map!(i => abs((i<=0 ? 0 : r.subCells[i-1].outerBounds.right)-desiredX)).minIndex.to!int;
-  }
-
-  void move(ivec2 delta){
-    if(!delta) return;
-    if(delta==ivec2(home)){
-      pos = ivec2(0); desiredX = 0; //this needed to skip the possible stop right after the leading tabs in the first line
-    }else{
-      moveDown (delta.y);
-      moveRight(delta.x);
-    }
-  }
-}
-
-struct TextSelection{ //TextSelection ///////////////////////////////
-  TextCursor[2] cursors;
-
-  ref caret(){ return cursors[1]; }
-  ref const caret(){ return cursors[1]; }
-
-  auto codeColumn(){ return cursors[0].codeColumn; }
-
-  @property bool valid() const{ return cursors[].map!"a.valid".all && cursors[0].codeColumn is cursors[1].codeColumn; }
-
-  @property auto start() const{ return min(cursors[0], cursors[1]); }
-  @property auto end  () const{ return max(cursors[0], cursors[1]); }
-
-  @property bool isZeroLength() const{ return cursors[0]==cursors[1]; }
-  @property bool isSingleLine() const{ return cursors[0].pos.y==cursors[1].pos.y; }
-  @property bool isMultiLine() const{ return !isSingleLine; }
-
-  int opCmp(in TextSelection b) const{
-    return cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)) //todo: structured codeColumns: it assumes cursors[0].codeColumn is cursors[1].codeColumn
-          .cmpChain(myCmp(start, b.start))
-          .cmpChain(myCmp(end, b.end))
-          .cmpChain(myCmp(caret, b.caret));
-  }
-
-  bool opEquals(in TextSelection b) const{
-    return cursors[0].codeColumn is b.cursors[0].codeColumn
-        && cursors[0]==b.cursors[0]
-        && cursors[1]==b.cursors[1];
-  }
-
-  void move(ivec2 delta, bool isShift){
-    if(!delta) return;
-
-    if(!isShift && cursors[0]!=cursors[1]){
-      caret = delta.y.cmpChain(delta.x)<0 ? start : end; //collapse selection if it is a non-shift move
-
-      //if it is only a left/right move, then stop at the end of the selection.
-      if(!delta.y && delta.x){
-        if(delta.x.among(TextCursor.wordLeft, TextCursor.wordRight)) delta.x = 0; //wordLeft/wordRight stops at the end of the selection
-        else delta.x -= sign(delta.x); //normal left/right also wordLeft/wordRight stops at the end of the selection
-      }
-    }
-    caret.move(delta);
-    if(!isShift) cursors[0] = caret;
-  }
-
-  string sourceText(){
-    string res;
-    if(valid && cursors[0] != cursors[1]){
-      const st=codeColumn.pos2idx(start.pos),
-            en=codeColumn.pos2idx(end  .pos); //note: st and en is validated
-
-      auto crsr = TextCursor(codeColumn, codeColumn.idx2pos(st));
-      if(en>st){
-        res.reserve(en-st); //don't care about newlines and unicode overhead...
-        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
-          auto row = codeColumn.rows[crsr.pos.y];
-
-          if(crsr.pos.x<row.cellCount){//highlighted chars
-            auto g = row.glyphs[crsr.pos.x];
-            if(g){
-              res ~= g.ch;
-            }else{
-              raise("NOT IMPL"); //todo: structured editor
-            }
-          }else{
-            res ~= DefaultNewLine; // todo: newLine const
-          }
-        }
-      }
-    }
-    return res;
-  }
-
-  bool hitTest(vec2 p){
-    return false;
-    //todo: hitTest
-  }
-}
-
-int distance(TextSelection ts, TextCursor tc){ //todo: constness
-  if(ts.valid && tc.valid && ts.codeColumn is tc.codeColumn){
-    auto cc = tc.codeColumn, st = ts.start, en = ts.end;
-    if(tc<st) return cc.pos2idx(st.pos) - cc.pos2idx(tc.pos);
-    if(tc>en) return cc.pos2idx(tc.pos) - cc.pos2idx(en.pos);
-    return 0; //it's inside
-  }else{
-    return int.max;
-  }
-}
-
-bool touches(TextSelection a, TextSelection b){
-
-  bool chk(){
-    auto a0 = a.start, a1 = a.end;
-    auto b0 = b.start, b1 = b.end;
-    return (a0<=b0 && b0<=a1)
-        || (a0<=b1 && b1<=a1)
-        || (b0<=a0 && a0<=b1)
-        || (b0<=a1 && a1<=b1); //opt: not so optimal.
-  }
-
-  return a.valid && b.valid && a.codeColumn is b.codeColumn && chk;
-}
-
-TextSelection merge(TextSelection a, TextSelection b){
-  const backward = a.cursors[0]>a.cursors[1] || b.cursors[0]>b.cursors[1];
-  auto res = TextSelection([min(a.start, b.start), max(a.end, b.end)]);
-  if(backward) swap(res.cursors[0], res.cursors[1]);
-  return res;
-}
-
-TextSelection[] merge(TextSelection[] textSelections){
-  auto sorted = textSelections.sort.array;
-
-  textSelections = [];
-  foreach(a; sorted){
-    if(textSelections.length && touches(a, textSelections[$-1])){
-      textSelections[$-1] = merge(a, textSelections[$-1]);
-    }else{
-      textSelections ~= a;
-    }
-  }
-
-  return textSelections;
-}
-
-string sourceText(TextSelection[] ts){
-
-  static bool checkSameLineEmptyCarets(TextSelection a, TextSelection b){
-    return a.isZeroLength && b.isZeroLength && a.codeColumn is b.codeColumn && a.cursors[0].pos.y== b.cursors[0].pos.y;
-  }
-
-  //note: this is somewhat the vsCode functionality
-  //todo: sorting by module (codeColumn) is unclear: now it's based on the pointer value (random)
-  bool newLineNeeded; //if the last item was a normal selecton, a newLine is needed. RowSelections have their own newlines at the end (even when they are the very end).
-  return ts
-    .filter!"a.valid"
-    .array.sort.array
-    .uniq!((a,b)=> checkSameLineEmptyCarets(a, b))
-    .map!((a){
-      auto res = newLineNeeded ? DefaultNewLine : "";
-      if(a.isZeroLength){
-        newLineNeeded = false;
-        return a.codeColumn.rowSourceText(a.cursors[0].pos.y)~DefaultNewLine;
-      }else{
-        newLineNeeded = true;
-        return a.sourceText;
-      }
-    })
-    .join
-    .withoutEnding(DefaultNewLine);
-}
-
-bool hitTest(TextSelection[] ts, vec2 p){
-  return ts.map!(a => a.hitTest(p)).any; //todo: this should be in the draw routine with automatic mouse hittest
-}
 
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container{ //this is a collection of opened modules
   File file; //the file of the workspace
   enum defaultExt = ".dide";
 
+  File[] openQueue;
   Module[] modules;
-  SelectionManager2!Module selectionManager;
 
   @STORED File mainModuleFile;
   @property{
@@ -454,10 +163,10 @@ class Workspace : Container{ //this is a collection of opened modules
     void mainModule(Module m){ enforce(modules.canFind(m), "Invalid module."); enforce(m.isMain, "This module can't be selected as main module."); mainModuleFile = m.file; }
   }
 
-  File[] openQueue;
-
-  /+bool justLoadedSomething;
-  bounds2 justLoadedBounds;+/
+  SelectionManager2!Module selectionManager;
+  TextCursor cursorAtMouse, cursorToExtend;
+  TextSelection selectionAtMouse;
+  TextSelection[] selectionsWhenMouseWasPressed;
 
   bool searchBoxVisible = false;
   string searchText;
@@ -602,7 +311,7 @@ class Workspace : Container{ //this is a collection of opened modules
       return false; //no loading was issued
     }
 
-    auto m = new Module(file);
+    auto m = new Module(this, file);
 
     //m.flags.targetSurface = 0; not needed, workspace is on s0 already
     m.measure;
@@ -796,7 +505,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
   @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
   @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-  @VERB("Ctrl+A"                        ) void selectAllModules     () { modules.each!(m => m.flags.selected = true); }
+  @VERB("Ctrl+A"                        ) void selectAllModules     () { modules.each!(m => m.flags.selected = true);} //todo: selectAll for the editors
   @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); }
   @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; }
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
@@ -862,31 +571,93 @@ class Workspace : Container{ //this is a collection of opened modules
   // Editing ------------------------------------------------
 
   @VERB("Ctrl+C Ctrl+Ins"     ) void copy                   (){ auto s = textSelections.sourceText; if(s.length) clipboard.asText = s; }
+  @VERB("Ctrl+X"              ) void cut                    (){
+    copy;
 
-  void handleKeyboard(){  }
+    auto savedSelections = textSelections.map!(s => s.toReference.text).array;
 
-  TextCursor cursorAtMouse, cursorToExtend;
-  TextSelection selectionAtMouse;
-  TextSelection[] selectionsWhenMouseWasPressed;
+    textSelections = textSelections.sort.array;
 
-  void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
-    updateOpenQueue(1);
+    bool[Container] modifiedContainers;
 
-    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.isMouseInside, view, modules);
+    foreach(sel; textSelections) if(!sel.isZeroLength){
+      print(sel);
+    }
 
-    //keyboard handling
+    foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
+      print("SORT ORDER IS FUCKED UP!", sel);
+      auto col = sel.codeColumn;
+      modifiedContainers[parentOf(col.parent)] = true; //todo: this should be the parent module.
+      const st = sel.start,
+            en = sel.end;
+      foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
+        auto row = col.rows[y];
+        const rowCellCount = row.cellCount;
+
+        const isFirstRow = y==st.pos.y,
+              isLastRow  = y==en.pos.y,
+              isMidRow   = !isFirstRow && !isLastRow;
+
+        if(isMidRow){ //delete whole row
+          col.subCells = col.subCells.remove(y);
+        }else{ //delete partial row
+          const x0 = isFirstRow ? st.pos.x : 0,
+                x1 = isLastRow  ? en.pos.x : rowCellCount+1;
+          foreach_reverse(x; x0..x1){
+            print(format!"%d : %d/%d"(y, x, rowCellCount));
+            if(x<rowCellCount){
+              row.subCells = row.subCells.remove(x);
+            }else{ //newLine
+              auto nextRow = col.rows[y+1];
+              col.subCells = col.subCells.remove(y+1);
+              row.append(nextRow.subCells);
+              //todo: set the new parent of the CodeNodes
+            }
+          }
+          row.refreshTabIdx;
+        }
+      }
+    }
+
+    modifiedContainers.keys.each!((c){ c.measure; });
+
+    textSelections.clear;
+  }
+
+
+
+  // Mouse ---------------------------------------------------
+
+  struct MouseMappings{
+    string main                  = "LMB",
+           scroll                = "MMB",
+           menu                  = "RMB",
+           zoom                  = "MW",
+           selectAdd             = "Alt",
+           selectExtend          = "Shift",
+           selectColumn          = "Shift+Alt",
+           selectColumnAdd       = "Ctrl+Shift+Alt";
+  }
+  MouseMappings mouseMappings;
+
+
+  void handleKeyboard(){
     if(!im.wantKeys && frmMain.isForeground)
       callVerbs(this);
+  }
+
+  void handleMouse(View2D view){
+    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.isMouseInside, view, modules);
 
     auto cursorAtMouse = cellLocationToTextCursor(locate(view.mousePos));
 
-    //mouse handling
+    //initiate mouse operations
     if(!im.wantMouse){
-      if(view.isMouseInside) if(auto dw = inputs["MW"].delta) view.zoomAroundMouse(dw*wheelSpeed);
+      if(view.isMouseInside) if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*wheelSpeed);
 
-      if(frmMain.isForeground && inputs.mouseDelta) if(inputs["MMB"] || inputs["RMB"]) view.scroll(inputs.mouseDelta);
+      if(frmMain.isForeground && inputs.mouseDelta) if(inputs[mouseMappings.scroll]) view.scroll(inputs.mouseDelta);
 
-      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs["LMB"].pressed){
+      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs[mouseMappings.main].pressed){
         if(textSelections.hitTest(view.mousePos)){ //todo: start dragging
 
         }else if(cursorAtMouse.valid){ //start selecting with mouse
@@ -903,7 +674,7 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
-    if(selectionAtMouse.valid && frmMain.isForeground && inputs["LMB"]){
+    if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main]){
       //todo: restrict mousePos to the module bounds
       if(cursorAtMouse.valid && cursorAtMouse.codeColumn==selectionAtMouse.cursors[0].codeColumn){
         selectionAtMouse.cursors[1] = cursorAtMouse;
@@ -916,24 +687,19 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     //finalize mouse select
-    if(selectionAtMouse.valid && inputs["LMB"].released){
-      endMouseSelection;
-    }
-
-    //abort mouse select
-    if(selectionAtMouse.valid && inputs["Esc"].pressed){
-      textSelections = selectionsWhenMouseWasPressed; //revert
+    if(selectionAtMouse.valid && inputs[mouseMappings.main].released){
       endMouseSelection;
     }
 
     //compine selection with mouse selection
     if(selectionAtMouse.valid){
-      const add    = inputs["Alt"].down,
-            extend = inputs["Shift"].down;
 
+      bool kc(string sh){
+        return KeyCombo([sh, mouseMappings.main].join("+")).active;
+      }
       //todo: for additive operations, only the selections on the most recent
 
-      if(add && extend){
+      if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){
         //Column select
         if(selectionAtMouse.isSingleLine){
           textSelections = [selectionAtMouse]; //todo: primary
@@ -959,20 +725,23 @@ class Workspace : Container{ //this is a collection of opened modules
             textSelections = textSelections.filter!(a => !a.isZeroLength).array;
         }
 
-      }else if(add){
+        if(kc(mouseMappings.selectColumnAdd)){ //Ctrl+Alt+Shift = add column selection
+          textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
+        }
+
+      }else if(kc(mouseMappings.selectAdd)){
         textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, selectionAtMouse)).array ~ selectionAtMouse;
-      }else if(extend){
+      }else if(kc(mouseMappings.selectExtend)){
         auto extendedSelection = TextSelection([cursorToExtend, selectionAtMouse.caret]);
         textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, extendedSelection)).array ~ extendedSelection;
       }else{
         textSelections = [selectionAtMouse]; //todo: mark this as the primary selection. Extend will work on that.
       }
     }
+  }
 
-
-    //focus at selection
-    if(textSelectionsHash.chkSet(textSelections.hashOf)) //todo: focus the extents of the changed areas, not just the carets
-      frmMain.view.scrollZoom(calcTextSelectionsBounds);
+  void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
+    updateOpenQueue(1);
 
     //update buildresults if needed (compilation progress or layer mask change)
     size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
@@ -981,6 +750,14 @@ class Workspace : Container{ //this is a collection of opened modules
       updateModuleBuildStates(buildResult);
       convertBuildMessagesToSearchResults; //opt: limit this by change detection
     }
+
+    //keyboard and mouse handling
+    handleKeyboard;
+    handleMouse(view);
+
+    //focus at selection
+    if(textSelectionsHash.chkSet(textSelections.hashOf)) //todo: focus the extents of the changed areas, not just the carets
+      frmMain.view.scrollZoom(calcTextSelectionsBounds);
 
     updateLastKnownModulePositions;
   }
@@ -1105,21 +882,24 @@ class Workspace : Container{ //this is a collection of opened modules
       Row({ padding="0 8"; }, "\u2316 ", {
         const loc = cellLocationToCodeLocation(st);
         loc.UI;
-        const debug_pos2idx=true;
-        if(loc.file && loc.line){
+
+        /*if(loc.file && loc.line){
           if(loc.column) with(findModule(loc.file).code){
             const pos = ivec2(loc.column, loc.line)-1;
-            const idx = pos2idx(pos);
-            const pos2 = idx2pos(idx);
-            const idx2 = pos2idx(pos2);
-            Text("   ", pos.text, idx.text, pos2.text, idx2.text);
+            Text("   ", pos.text);
           }else with(findModule(loc.file).code){
-            const pos = ivec2(st[$-1].localPos.x<=0 ? 0 : rows[loc.line-1].cellCount, loc.line-1);
-            const idx = pos2idx(pos);
-            const pos2 = idx2pos(idx);
-            const idx2 = pos2idx(pos2);
-            Text("   ", pos.text, idx.text, pos2.text, idx2.text);
+            const pos = ivec2(st.back.localPos.x<=0 ? 0 : rows[loc.line-1].cellCount, loc.line-1);
+            Text("   ", pos.text);
           }
+        }*/
+
+        /*auto crsr = cellLocationToTextCursor(st);
+        if(crsr.valid){
+          Text("   ", crsr.text, "   ", crsr.toReference.text, "   ", crsr.worldPos.text, "   ", view.mousePos.text);
+        }*/
+
+        foreach(sel; textSelections){
+          Text(sel.toReference.text, "\n");
         }
       });
     }
@@ -1248,7 +1028,7 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
-  bounds2 calcTextSelectionsBounds(){
+  bounds2 calcTextSelectionsBounds(){ //todo: this is lame
     bounds2 bnd;
 
     Module moduleOf(in TextSelection ts){
@@ -1279,7 +1059,7 @@ class Workspace : Container{ //this is a collection of opened modules
             bnd |= g.outerBounds+tr1;
           }else{
             //newLine at the end of the line
-            const x = r.subCells.length ? r.subCells[$-1].outerBounds.right : 0;
+            const x = r.subCells.length ? r.subCells.back.outerBounds.right : 0;
             bnd |= bounds2(x, 0, x+10, r.innerHeight)+tr1;
           }
         }
@@ -1305,48 +1085,90 @@ class Workspace : Container{ //this is a collection of opened modules
     return bnd;
   }
 
-  void drawTextSelections(Drawing dr){ //drawTextSelections ////////////////////////////
-    const clSelected = mix(mix(RGB(0x404040), clSilver, lod.zoomFactor.smoothstep(0.02, 0.1)), clWhite, blink);
-    const clCaret = mix(clWhite, clOrange, blink);
-
-    dr.alpha = .35f; //font surface only
+  void drawTextSelections(Drawing dr, View2D view){ //drawTextSelections ////////////////////////////
     scope(exit) dr.alpha = 1;
 
-    Module moduleOf(in TextSelection ts){
-      foreach(m; modules) if(m.code==ts.cursors[0].codeColumn) return m; //opt: linear
-      return null;
-    }
+    const near       = lod.zoomFactor.smoothstep(0.02, 0.1);
+    const clSelected = mix(mix(RGB(0x404040), clGray, near*.66f),
+                           mix(clWhite      , clGray, near*.66f), blink);
+    const clCaret    = mix(clWhite, clFuchsia, blink);
+    const alpha = mix(0.75f, .4f, near);
 
-    foreach(ts; textSelections){
-      auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
-                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
-      dr.translate(codeColumnsInnerPosAbs); scope(exit) dr.pop;
-      //draw the selection
-      if(ts.cursors[0] != ts.cursors[1]){
-        const st=m.code.pos2idx(ts.start.pos),
-              en=m.code.pos2idx(ts.end  .pos);
+    const cullBounds = view.subScreenBounds_anim;
 
-        auto crsr = TextCursor(m.code, m.code.idx2pos(st)); //opt: unoptimal conversions between idx and pos
-        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe;
-          auto r = m.code.rows[crsr.pos.y];
-          dr.translate(r.outerPos+r.topLeftGapSize); scope(exit) dr.pop; //opt: really slow at every char
+    dr.color = clSelected;
+    dr.alpha = alpha;
+    foreach(sel; textSelections) if(!sel.isZeroLength){
+      auto col = sel.codeColumn;
+      const colInnerPos = worldInnerPos(col), //opt: group selections by codeColumn.
+            colInnerBounds = bounds2(colInnerPos, colInnerPos+col.innerSize);
+      if(cullBounds.overlaps(colInnerBounds)){
+        const localCullBounds = cullBounds - colInnerPos;
+        auto st = sel.start,
+             en = sel.end;
 
-          if(crsr.pos.x<r.subCells.length){//highlighted chars
-            auto g = r.glyphs[crsr.pos.x];
-            const old = tuple(g.bkColor, g.fontColor);
-            g.bkColor = clSelected; g.fontColor = clBlack;
-            g.draw(dr);
-            g.bkColor = old[0]; g.fontColor = old[1];
+        foreach(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the copy routine as well. Must refactor and reuse
+          auto row = col.rows[y];
+          const rowCellCount = row.cellCount;
+
+          //culling
+          if(row.outerBottom < localCullBounds.top   ) continue;  //opt: trisect
+          if(row.outerTop    > localCullBounds.bottom) break;
+
+          const isFirstRow = y==st.pos.y,
+                isLastRow  = y==en.pos.y;
+          const x0 = isFirstRow ? st.pos.x : 0,
+                x1 = isLastRow  ? en.pos.x : rowCellCount+1;
+          const rowInnerPos = colInnerPos + row.innerPos;
+
+          dr.translate(rowInnerPos); scope(exit) dr.pop;
+
+          if(lod.level<=1){
+            foreach(x; x0..x1){
+
+              void fade(bounds2 bnd){
+                dr.color = clSelected;
+                dr.alpha = alpha;
+
+                enum gap = .5f;
+                if(isFirstRow){ bnd.top    += gap; if(x==x0  ) bnd.left  += gap; }
+                if(isLastRow ){ bnd.bottom -= gap; if(x==x1-1) bnd.right -= gap; }
+                dr.fillRect(bnd);
+              }
+
+              if(x<rowCellCount){
+                //todo: make the nice version: the font will be NOT blended to gray, but it hides the markerLayers completely. Should make a text drawer that uses alpha on the background and leaves the font color as is.
+                /+if(auto g = row.glyphs[x]){
+                  const old = tuple(g.bkColor, g.fontColor);
+                  g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
+                  dr.alpha = 1;
+                  g.draw(dr);
+                  g.bkColor = old[0]; g.fontColor = old[1];
+                }else+/{
+                  fade(row.subCells[x].outerBounds);
+                }
+              }else{ //newLine
+                static Glyph gLF; if(!gLF) gLF = new Glyph("\u240A\u2936\u23CE"d[1], tsNormal);
+                gLF.bkColor = row.bkColor;  gLF.fontColor = clGray;
+                dr.alpha = 1;
+                gLF.outerPos = row.newLineBounds.topLeft;
+                gLF.draw(dr);
+
+                fade(gLF.outerBounds);
+              }
+            }
+
           }else{
-            //newLine at the end of the line
-            static Glyph gLF; if(!gLF) gLF = new Glyph("\u240A\u2936\u23CE"d[1], tsNormal);
-            const x = r.subCells.length ? r.subCells[$-1].outerBounds.right : 0;
-            gLF.bkColor = clSelected; gLF.fontColor = clBlack;
-            gLF.outerPos = vec2(x, 0);
-            gLF.draw(dr);
+            if(!isFirstRow && !isLastRow){
+              if(row.cellCount)
+                dr.fillRect(bounds2(0, 0, row.subCells.back.outerRight, row.innerHeight));
+            }else{
+              dr.fillRect(bounds2(row.localCaretPos(x0).pos.x, 0, row.localCaretPos(x1).pos.x, row.innerHeight));
+            }
+
           }
         }
+
       }
     }
 
@@ -1354,21 +1176,10 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = blink;
     dr.lineWidth = -1-(blink)*3;
     dr.color = clCaret;
-    foreach(ts; textSelections){
+    foreach(s; textSelections)
+      s.caret.worldPos.draw(dr);
 
-      //todo: this is redundant, combine the too loops
-      auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
-                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
-
-      const pos = ts.cursors[1].pos;
-      auto r = m.code.rows[pos.y]; //todo: error check/clamp
-
-      const x = pos.x<=0 ? 0 : r.subCells[pos.x-1].outerBounds.right;
-      const p = codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0);
-      dr.moveTo(p);
-      dr.lineRel(0, r.innerHeight);
-    }
+    dr.alpha = 1;
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
@@ -1387,17 +1198,7 @@ class Workspace : Container{ //this is a collection of opened modules
       if(markerLayers[t].visible)
         drawSearchResults(dr, markerLayers[t].searchResults, t.color);
 
-/*    {
-      auto m = findModule(File(`c:\d\libs\het\utils.d`));
-      //textSelections = [TextSelection(m.code, [TextCursor(ivec2(3,0)), TextCursor(ivec2(5,6))])];
-      textSelections = iota(100).map!(i => TextSelection(m.code, [TextCursor(m.code.idx2pos(i*140)), TextCursor(m.code.idx2pos(i*140+40))])).array;
-    }*/
-    /*if(textSelections.length==0){
-      auto m = findModule(File(`c:\d\libs\het\utils.d`));
-      textSelections = [TextSelection([TextCursor(m.code, ivec2(0)), TextCursor(m.code, ivec2(0))])];
-    }*/
-
-    drawTextSelections(dr);
+    drawTextSelections(dr, frmMain.view); //bug: this will not work for multiple workspace views!!!
   }
 
 
@@ -1429,10 +1230,6 @@ class FrmMain : GLWindow { mixin autoCreate;
   bool initialized; //workspace has been loaded.
 
   @VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
-
-  void onCompileProgress(File file, int result, string output){
-    LOG(file, result, output.length);
-  }
 
   bool building()   const{ return buildSystemWorkerState.building; }
   bool ready()      const{ return !buildSystemWorkerState.building; }
@@ -1605,31 +1402,6 @@ class FrmMain : GLWindow { mixin autoCreate;
     view.subScreenArea = im.clientArea / clientSize;
 
     workspace.update(view, buildResult);
-
-    /+if(chkClear(workspace.justLoadedSomething)){
-      view.zoom(workspace.justLoadedBounds | view.subScreenBounds);
-      workspace.justLoadedBounds = bounds2.init;
-    }+/
-
-    //todo:cullSubCells ellenorzese
-
-
-    if(0){
-      T0;
-      int i;
-      foreach(m; workspace.modules) if(m.file.name.sameText("utils.d"))
-        foreach(r; m.code.rows)
-          foreach(g; r.glyphs)
-            i++;
-      print(DT, i);
-    }
-
-    if(inputs.A.down){
-      view.scrollZoom(bounds2(100,100, 4000, 1000));
-    }
-    if(inputs.B.down){
-      view.zoom(bounds2(100,100, 4000, 1000));
-    }
   }
 
   override void onPaint(){ // onPaint ///////////////////////////////////////
@@ -1638,32 +1410,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 
   void drawOverlay(Drawing dr){
-    //drawSearchResults(dr, clWhite);
 
-    //locate() debug
-    if(0){
-
-      void locate(vec2 pos){
-        //dr.color = clFuchsia;
-        dr.lineWidth = -1;
-        foreach(loc; workspace.modules.map!(m => m.locate(pos)).joiner){
-          dr.drawRect(loc.globalOuterBounds);
-
-          dr.arrowStyle = ArrowStyle.arrow;
-          dr.moveTo(loc.globalOuterBounds.topLeft); dr.lineRel(loc.cell.topLeftGapSize+loc.localPos);
-          dr.arrowStyle = ArrowStyle.none;
-        }
-      }
-
-      foreach(x; 0..10)foreach(y; 0..10){
-        dr.color = RGB(x*25.5f, y*25.5f, .5f);
-        locate(view.mousePos+vec2(x, y)*2);
-      }
-    }
-
-    dr.mmGrid(view);
-    //todo: off screen targets
-
+    //dr.mmGrid(view);
   }
 
   override void afterPaint(){ // afterPaint //////////////////////////////////
