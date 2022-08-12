@@ -574,18 +574,15 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+X"              ) void cut                    (){
     copy;
 
-    auto savedSelections = textSelections.map!(s => s.toReference.text).array;
+    textSelections = textSelections.sort.array; //opt: on demand sort
 
-    textSelections = textSelections.sort.array;
+    auto savedSelections = textSelections.map!"a.toReference".array;
+    savedSelections.each!print;
+    savedSelections.map!"a.fromReference".each!print;
 
     bool[Container] modifiedContainers;
 
-    foreach(sel; textSelections) if(!sel.isZeroLength){
-      print(sel);
-    }
-
     foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
-      print("SORT ORDER IS FUCKED UP!", sel);
       auto col = sel.codeColumn;
       modifiedContainers[parentOf(col.parent)] = true; //todo: this should be the parent module.
       const st = sel.start,
@@ -604,7 +601,6 @@ class Workspace : Container{ //this is a collection of opened modules
           const x0 = isFirstRow ? st.pos.x : 0,
                 x1 = isLastRow  ? en.pos.x : rowCellCount+1;
           foreach_reverse(x; x0..x1){
-            print(format!"%d : %d/%d"(y, x, rowCellCount));
             if(x<rowCellCount){
               row.subCells = row.subCells.remove(x);
             }else{ //newLine
@@ -621,7 +617,12 @@ class Workspace : Container{ //this is a collection of opened modules
 
     modifiedContainers.keys.each!((c){ c.measure; });
 
-    textSelections.clear;
+    //textSelections.clear;
+    savedSelections.each!print;
+    savedSelections.map!"a.fromReference".each!print;
+
+    textSelections = savedSelections.map!"a.fromReference".filter!"a.valid".array;
+
   }
 
 
@@ -649,6 +650,9 @@ class Workspace : Container{ //this is a collection of opened modules
   void handleMouse(View2D view){
     selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.isMouseInside, view, modules);
 
+    //check if a keycombo modifier with the main mouse button isactive
+    bool kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+
     auto cursorAtMouse = cellLocationToTextCursor(locate(view.mousePos));
 
     //initiate mouse operations
@@ -675,9 +679,25 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main]){
-      //todo: restrict mousePos to the module bounds
-      if(cursorAtMouse.valid && cursorAtMouse.codeColumn==selectionAtMouse.cursors[0].codeColumn){
-        selectionAtMouse.cursors[1] = cursorAtMouse;
+      //restrict mousePos to the codeColumn bounds
+      auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
+      bnd.high -= 1; //make sure it's inside
+
+      auto restrictedMousePos = view.mousePos;
+      if(bnd.area){
+        if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){ //normal clamping for columnSelect
+          restrictedMousePos = restrictedMousePos.clamp(bnd.low, bnd.high);
+        }else{ //text editor clamping for normal select
+          if(restrictedMousePos.y<bnd.top) restrictedMousePos = bnd.topLeft;
+          else if(restrictedMousePos.y>bnd.bottom) restrictedMousePos = bnd.bottomRight;
+          else restrictedMousePos.x = restrictedMousePos.x.clamp(bnd.left, bnd.right);
+        }
+      }
+
+      auto restrictedCursorAtMouse = cellLocationToTextCursor(locate(restrictedMousePos));
+
+      if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn){
+        selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
       }
     }
 
@@ -693,37 +713,30 @@ class Workspace : Container{ //this is a collection of opened modules
 
     //compine selection with mouse selection
     if(selectionAtMouse.valid){
-
-      bool kc(string sh){
-        return KeyCombo([sh, mouseMappings.main].join("+")).active;
-      }
       //todo: for additive operations, only the selections on the most recent
 
       if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){
         //Column select
-        if(selectionAtMouse.isSingleLine){
-          textSelections = [selectionAtMouse]; //todo: primary
-        }else{
-          auto c0 = selectionAtMouse.cursors[0],  //note: vsCode starts this from the extension point, I start it from mouse drag start
-               c1 = selectionAtMouse.cursors[1];
-          const downward = c0.pos.y<c1.pos.y,
-                dir = downward ? 1 : -1,
-                count = abs(c0.pos.y-c1.pos.y)+1;
-          auto a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
-               a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
+        auto c0 = kc(mouseMappings.selectColumnAdd) ? selectionAtMouse.cursors[0] : cursorToExtend,
+             c1 = selectionAtMouse.cursors[1];
+        const downward = c0.pos.y<c1.pos.y,
+              dir      = downward ? 1 : -1,
+              count    = abs(c0.pos.y-c1.pos.y)+1;
 
-          if(downward) a1 = a1.retro.array;
-                  else a0 = a0.retro.array;
+        auto a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
+             a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
 
-          textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
-          //textSelections[0].primary = true;//todo: mark primary
+        if(downward) a1 = a1.retro.array;
+                else a0 = a0.retro.array;
 
-          if(!downward) textSelections = textSelections.retro.array; //make it sorted
+        textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
+        //textSelections[0].primary = true;//todo: mark primary
 
-          //if there are nonzero length selections, remove all the zero length selections.
-          if(textSelections.map!(a => !a.isZeroLength).any)
-            textSelections = textSelections.filter!(a => !a.isZeroLength).array;
-        }
+        if(!downward) textSelections = textSelections.retro.array; //make it sorted
+
+        //remove empty selections (except all are empty)
+        if(textSelections.length>1 && !textSelections.all!"a.caret.pos.x==0 && a.isZeroLength")
+          textSelections = textSelections.remove!"a.isZeroLength";
 
         if(kc(mouseMappings.selectColumnAdd)){ //Ctrl+Alt+Shift = add column selection
           textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
@@ -737,6 +750,8 @@ class Workspace : Container{ //this is a collection of opened modules
       }else{
         textSelections = [selectionAtMouse]; //todo: mark this as the primary selection. Extend will work on that.
       }
+
+      //todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
     }
   }
 
@@ -898,8 +913,8 @@ class Workspace : Container{ //this is a collection of opened modules
           Text("   ", crsr.text, "   ", crsr.toReference.text, "   ", crsr.worldPos.text, "   ", view.mousePos.text);
         }*/
 
-        foreach(sel; textSelections){
-          Text(sel.toReference.text, "\n");
+        foreach(sel; textSelections.take(3)){
+          Text("\n", sel.toReference.text, "\n    ", sel.toReference.fromReference.text);
         }
       });
     }
@@ -1410,21 +1425,6 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 
   void drawOverlay(Drawing dr){
-    auto cntr = scoped!CodeColumn(null);
-    {
-      print("A");
-      auto s = [TextSelection([TextCursor(cntr, ivec2(9, 1)), TextCursor(cntr, ivec2(9, 1))]), TextSelection([TextCursor(cntr, ivec2(5, 1)), TextCursor(cntr, ivec2(5, 1))])];
-      print(cmp(9, 5), myCmp(9, 5), myCmp(s[0], s[1]), s[0]<s[1], s[0]>s[1], s[0]==s[1]);
-      s = s.sort.array;
-      s.each!print;
-    }
-    {
-      print("B");
-      auto s = [TextSelection([TextCursor(cntr, ivec2(5, 1)), TextCursor(cntr, ivec2(5, 1))]), TextSelection([TextCursor(cntr, ivec2(9, 1)), TextCursor(cntr, ivec2(9, 1))])];
-      print(s[0]<s[1], s[0]>s[1], s[0]==s[1]);
-      s = s.sort.array;
-      s.each!print;
-    }
     //dr.mmGrid(view);
   }
 

@@ -106,6 +106,12 @@ vec2 worldInnerPos(Cell cell){
   return worldOuterPos(cell) + cell.topLeftGapSize;
 }
 
+bounds2 worldInnerBounds(Cell cell){
+  if(!cell) return bounds2.init;
+  auto p = worldInnerPos(cell);
+  return bounds2(p, p+cell.innerSize);
+}
+
 auto parentChain(Cell act){
   Cell[] res;
 
@@ -140,8 +146,8 @@ struct TextCursor{  //TextCursor /////////////////////////////
   ivec2 pos;
   float desiredX=0; //used for up down movement, after left right movements.
 
-  int opCmp    (const TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
-  bool opEquals(const TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
+  int opCmp    (in TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
+  bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
 
   void moveRight_unsafe(){
     pos.x++;
@@ -325,9 +331,30 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
     return res;
   }
 
-  TextCursor toNormal(){
-    //todo:
-    return TextCursor.init;
+  TextCursor fromReference(){
+    TextCursor res;
+
+    if(exists && path.length>=2)
+    if(auto col = cast(CodeColumn)path[$-2])
+    if(auto row = cast(CodeRow)path[$-1]){
+    if(row.parent is col)
+      res.codeColumn = col;
+      res.pos.y = row.index;
+      res.pos.x = 0;
+      void calcDesiredX(){ res.desiredX = row.localCaretPos(res.pos.x).pos.x; }
+      if(right){
+        res.pos.x = row.subCellIndex(right);
+        calcDesiredX;
+      }else if(left){
+        res.pos.x = row.subCellIndex(left);
+        if(res.pos.x>=0){
+          res.pos.x++;
+          calcDesiredX;
+        }
+      }
+    }
+
+    return res.valid ? res : TextCursor.init;
   }
 }
 
@@ -349,15 +376,13 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   @property bool isMultiLine() const{ return !isSingleLine; }
 
   int opCmp(const TextSelection b) const{
-    LOG(this, b);
-    return cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)) //todo: structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
-          .cmpChain(myCmp(start, b.start))
-          .cmpChain(myCmp(end, b.end))
-          .cmpChain(myCmp(caret, b.caret));
+    return cmpChain(cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)), //todo: structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
+                    cmp(start, b.start),
+                    cmp(end, b.end),
+                    cmp(caret, b.caret));
   }
 
   bool opEquals(const TextSelection b) const{
-    LOG(this, b);
     return cursors[0].codeColumn is b.cursors[0].codeColumn
         && start==b.start
         && end==b.end
@@ -451,49 +476,26 @@ TextSelection merge(TextSelection a, TextSelection b){
 }
 
 TextSelection[] merge(TextSelection[] arr){
-  auto sorted = arr.sort.array;
-
-  bool any;
+  auto sorted = arr.sort.array;  //opt: on demand sorting
 
   arr = [];
   foreach(a; sorted){
     if(arr.length && touches(a, arr.back)){
       arr.back = merge(a, arr.back);
-      any = true;
     }else{
       arr ~= a;
     }
   }
 
-  //todo: this is unoptimal. It keeps calling merge until there is nothing left to merge.
-  return any ? merge(arr) : arr;
+  return arr;
 }
 
 string sourceText(TextSelection[] ts){
-
-  static bool checkSameLineEmptyCarets(TextSelection a, TextSelection b){
-    return a.isZeroLength && b.isZeroLength && a.codeColumn is b.codeColumn && a.cursors[0].pos.y== b.cursors[0].pos.y;
-  }
-
-  //note: this is somewhat the vsCode functionality
-  //todo: sorting by module (codeColumn) is unclear: now it's based on the pointer value (random)
-  bool newLineNeeded; //if the last item was a normal selecton, a newLine is needed. RowSelections have their own newlines at the end (even when they are the very end).
   return ts
-    .filter!"a.valid"
-    .array.sort.array
-    .uniq!((a,b)=> checkSameLineEmptyCarets(a, b))
-    .map!((a){
-      auto res = newLineNeeded ? DefaultNewLine : "";
-      if(a.isZeroLength){
-        newLineNeeded = false;
-        return a.codeColumn.rowSourceText(a.cursors[0].pos.y)~DefaultNewLine;
-      }else{
-        newLineNeeded = true;
-        return a.sourceText;
-      }
-    })
-    .join
-    .withoutEnding(DefaultNewLine);
+    .filter!"a.valid && !a.isZeroLength"
+    .array.sort.array      //opt: on demand sorting
+    .map!"a.sourceText"
+    .join(DefaultNewLine);
 }
 
 bool hitTest(TextSelection[] ts, vec2 p){
@@ -504,12 +506,11 @@ bool hitTest(TextSelection[] ts, vec2 p){
 struct TextSelectionReference{ // TextSelectionReference //////////////////////////////
   TextCursorReference[2] cursors;
 
-  TextSelection toNormal(){
-    //todo:
-    return TextSelection.init;
+  TextSelection fromReference(){
+    auto res = TextSelection([cursors[0].fromReference, cursors[1].fromReference]);
+    return res.valid ? res : TextSelection.init;
   }
 }
-
 
 
 /// CodeRow ////////////////////////////////////////////////
