@@ -41,7 +41,7 @@ size_t allocatedSize(in Cell c){
 
 
 
-struct SelectionManager2(T : Container){ // SelectionManager2 ///////////////////////////////////////////////
+struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager ///////////////////////////////////////////////
   //this uses Containers. flags.selected, flags.oldSelected
 
   bounds2 getBounds(T item){ return item.outerBounds; }
@@ -149,6 +149,163 @@ struct SelectionManager2(T : Container){ // SelectionManager2 //////////////////
 }
 
 
+struct TextSelectionManager{ // TextSelectionManager /////////////////////////////////////////
+
+  TextCursor cursorAtMouse, cursorToExtend;
+  TextSelection selectionAtMouse;
+  TextSelection[] selectionsWhenMouseWasPressed;
+  bool mouseScrolling;
+
+  Nullable!vec2 scrollInRequest;
+
+  DateTime lastMainMousePressTime;
+
+  bool wordSelecting;
+
+  bool updateDoubleClick(string key){ //todo: make het.inputs.ClickDetector to work with time, and use that instead this
+    bool res;
+    if(inputs[key].pressed){
+      auto actTime = now;
+      res = actTime-lastMainMousePressTime < 250*milli(second);  //todo: get this it from Windows
+      lastMainMousePressTime = actTime;
+    }
+    return res;
+  }
+
+  void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){
+    scrollInRequest.nullify;
+
+    const doubleClick = updateDoubleClick(mouseMappings.main);
+    if(doubleClick) wordSelecting = true;
+
+    //check if a keycombo modifier with the main mouse button isactive
+    bool kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+
+    auto cursorAtMouse = workspace.cellLocationToTextCursor(workspace.locate(view.mousePos));
+
+    //initiate mouse operations
+    if(!im.wantMouse){
+      if(view.isMouseInside) if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
+
+      if(frmMain.isForeground && view.isMouseInside && inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
+
+      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs[mouseMappings.main].pressed){
+        if(textSelections.hitTest(view.mousePos)){ //todo: start dragging
+
+        }else if(cursorAtMouse.valid){ //start selecting with mouse
+          selectionsWhenMouseWasPressed = textSelections.dup;
+
+          //extension cursor is the nearest selection.cursors[0]
+          if(!doubleClick)
+            cursorToExtend = selectionsWhenMouseWasPressed.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
+                                                          .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init)
+                                                          .cursors[0];
+          if(!cursorToExtend.valid) cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+
+          selectionAtMouse = TextSelection([cursorAtMouse, cursorAtMouse]);
+        }
+      }
+    }
+
+    if(mouseScrolling){
+      if(!inputs[mouseMappings.scroll]){
+        mouseScrolling = false;
+      }else{
+        if(const delta = inputs.mouseDelta)
+          view.scroll(delta);
+      }
+    }
+
+    if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main]){
+      //restrict mousePos to the codeColumn bounds
+      auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
+      bnd.high -= 1; //make sure it's inside
+
+      const restrictedMousePos = kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)
+                                 ? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
+                                 : restrictPos_editor(view.mousePos, bnd); //text editor clamping for normal select
+
+      auto restrictedCursorAtMouse = workspace.cellLocationToTextCursor(workspace.locate(restrictedMousePos));
+
+      if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn){
+        selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
+      }
+
+      scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
+    }
+
+    void endMouseSelection(){
+      selectionAtMouse = TextSelection.init;
+      selectionsWhenMouseWasPressed = [];
+      wordSelecting = false;
+    }
+
+    //finalize mouse select
+    if(selectionAtMouse.valid && !inputs[mouseMappings.main]){
+      endMouseSelection;
+    }
+
+    //combine selection with mouse selection
+    if(selectionAtMouse.valid){
+      //todo: for additive operations, only the selections on the most recent
+
+      auto applyWordSelect   (TextSelection   s){ return wordSelecting ? s.extendToWordsOrSpaces : s; }
+      auto applyWordSelectArr(TextSelection[] s){ return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
+
+      if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){
+        //Column select
+        auto c0 = kc(mouseMappings.selectColumnAdd) ? selectionAtMouse.cursors[0] : cursorToExtend,
+             c1 = selectionAtMouse.cursors[1];
+        const downward = c0.pos.y<c1.pos.y,
+              dir      = downward ? 1 : -1,
+              count    = abs(c0.pos.y-c1.pos.y)+1;
+
+        auto a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
+             a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
+
+        if(downward) a1 = a1.retro.array;
+                else a0 = a0.retro.array;
+
+        textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
+        //textSelections[0].primary = true;//todo: mark primary
+
+        if(!downward) textSelections = textSelections.retro.array; //make it sorted
+
+        //if there are any nonZeroLength selections, remove all zeroLength carets
+        if(textSelections.any!"!a.isZeroLength")
+          textSelections = textSelections.remove!"a.isZeroLength";
+
+        //if all are carets, remove those at line ends
+
+        if(textSelections.all!"a.isZeroLength" && !textSelections.all!"a.isAtLineStart" && !textSelections.all!"a.isAtLineEnd")
+          textSelections = textSelections.remove!"a.isAtLineEnd";
+
+        textSelections = applyWordSelectArr(textSelections);
+
+        if(kc(mouseMappings.selectColumnAdd)){ //Ctrl+Alt+Shift = add column selection
+          textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
+        }
+
+      }else if(kc(mouseMappings.selectAdd)){
+        auto s = applyWordSelect(selectionAtMouse);
+        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
+      }else if(kc(mouseMappings.selectExtend)){
+        auto s = applyWordSelect(TextSelection([cursorToExtend, selectionAtMouse.caret]));
+        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
+      }else{
+        auto s = applyWordSelect(selectionAtMouse);
+        textSelections = [s]; //todo: mark this as the primary selection. Extend will work on that.
+      }
+
+      //add extra
+
+      //todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
+    }
+  }
+
+}
+
+
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container{ //this is a collection of opened modules
   File file; //the file of the workspace
@@ -163,10 +320,8 @@ class Workspace : Container{ //this is a collection of opened modules
     void mainModule(Module m){ enforce(modules.canFind(m), "Invalid module."); enforce(m.isMain, "This module can't be selected as main module."); mainModuleFile = m.file; }
   }
 
-  SelectionManager2!Module selectionManager;
-  TextCursor cursorAtMouse, cursorToExtend;
-  TextSelection selectionAtMouse;
-  TextSelection[] selectionsWhenMouseWasPressed;
+  ContainerSelectionManager!Module moduleSelectionManager;
+  TextSelectionManager textSelectionManager;
 
   bool searchBoxVisible = false;
   string searchText;
@@ -285,7 +440,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
   auto selectedModules(){ return modules.filter!(m => m.flags.selected).array; }
   auto unselectedModules(){ return modules.filter!(m => !m.flags.selected).array; }
-  auto hoveredModule(){ return selectionManager.hoveredItem; }
+  auto hoveredModule(){ return moduleSelectionManager.hoveredItem; }
 
   private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
@@ -501,6 +656,58 @@ class Workspace : Container{ //this is a collection of opened modules
     textSelections = merge(textSelections ~ newTextSelections);
   }
 
+  bool copy_impl(TextSelection[] textSelections){  // copy ///////////////////////////////////////
+    auto copiedSourceText = textSelections.exportSourceText;
+    bool valid = copiedSourceText.length>0;
+    if(valid) clipboard.asText = copiedSourceText;
+    return valid;
+  }
+
+  void cut_impl(TextSelection[] textSelections, void delegate(CodeRow left, CodeRow right) onRowJoin){  // cut ////////////////////////////////////////
+    bool[Container] modifiedContainers;
+
+    foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
+      auto col = sel.codeColumn;
+      modifiedContainers[parentOf(col.parent)] = true; //todo: this should be the parent module.
+      const st = sel.start,
+            en = sel.end;
+      foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
+        if(auto row = col.getRow(y)){
+          const rowCellCount = row.cellCount;
+
+          const isFirstRow = y==st.pos.y,
+                isLastRow  = y==en.pos.y,
+                isMidRow   = !isFirstRow && !isLastRow;
+
+          if(isMidRow){ //delete whole row
+            col.subCells = col.subCells.remove(y);
+          }else{ //delete partial row
+            const x0 = isFirstRow ? st.pos.x : 0,
+                  x1 = isLastRow  ? en.pos.x : rowCellCount+1;
+            foreach_reverse(x; x0..x1){
+              if(x>=0 && x<rowCellCount){
+                row.subCells = row.subCells.remove(x);
+              }else if(x==rowCellCount){ //newLine
+                if(auto nextRow = col.getRow(y+1)){
+                  onRowJoin(row, nextRow);
+                  row.append(nextRow.subCells);
+                  nextRow.subCells = [];
+                  col.subCells = col.subCells.remove(y+1);
+                  //todo: set the new parent of the CodeNodes
+                }else assert(0, "TextSelection out of range NL");
+              }else assert(0, "TextSelection out of range X");
+            }
+            row.refreshTabIdx;
+          }
+        }else assert(0, "TextSelection out of range Y");
+      }
+    }
+
+    modifiedContainers.keys.each!(c => c.measure); //todo: do a correct recursive refresh
+    //opt: this operation is much slower than the cursor movement. I guess this is the cause
+  }
+
+
   // Module operations ------------------------------------------------
 
   @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
@@ -570,68 +777,38 @@ class Workspace : Container{ //this is a collection of opened modules
 
   // Editing ------------------------------------------------
 
-  @VERB("Ctrl+C Ctrl+Ins"     ) void copy                   (){ auto s = textSelections.sourceText; if(s.length) clipboard.asText = s; }
-  @VERB("Ctrl+X"              ) void cut                    (){
-    copy;
-
-    textSelections = textSelections.sort.array; //opt: on demand sort
-
+  @VERB("Ctrl+X Shift+Del"    ) void cut(bool doCopy=true){
+    textSelections = textSelections.sort.array.zeroLengthSelectionsToFullRows; //todo: on demand sorting
     auto savedSelections = textSelections.map!"a.toReference".array;
-    savedSelections.each!print;
-    savedSelections.map!"a.fromReference".each!print;
-
-    bool[Container] modifiedContainers;
-
-    foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
-      auto col = sel.codeColumn;
-      modifiedContainers[parentOf(col.parent)] = true; //todo: this should be the parent module.
-      const st = sel.start,
-            en = sel.end;
-      foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
-        auto row = col.rows[y];
-        const rowCellCount = row.cellCount;
-
-        const isFirstRow = y==st.pos.y,
-              isLastRow  = y==en.pos.y,
-              isMidRow   = !isFirstRow && !isLastRow;
-
-        if(isMidRow){ //delete whole row
-          col.subCells = col.subCells.remove(y);
-        }else{ //delete partial row
-          const x0 = isFirstRow ? st.pos.x : 0,
-                x1 = isLastRow  ? en.pos.x : rowCellCount+1;
-          foreach_reverse(x; x0..x1){
-            if(x<rowCellCount){
-              row.subCells = row.subCells.remove(x);
-            }else{ //newLine
-              auto nextRow = col.rows[y+1];
-              col.subCells = col.subCells.remove(y+1);
-              row.append(nextRow.subCells);
-              //todo: set the new parent of the CodeNodes
-            }
-          }
-          row.refreshTabIdx;
-        }
-      }
-    }
-
-    modifiedContainers.keys.each!((c){ c.measure; });
-
-    //textSelections.clear;
-    savedSelections.each!print;
-    savedSelections.map!"a.fromReference".each!print;
-
+    if(doCopy) copy_impl(textSelections);
+    cut_impl(textSelections, (left, right){
+      foreach(ref ss; savedSelections)
+        ss.replaceLatestRow(right, left);
+    });
     textSelections = savedSelections.map!"a.fromReference".filter!"a.valid".array;
-
   }
 
+  protected void deleteAtLeastOne(int dir){
+    assert(dir.among(-1, 1), "Invalid param");
+    textSelections.each!((ref s){
+      if(s.valid && s.isZeroLength)
+        s.move(ivec2(dir, 0), true);
+    });
+    cut(false);
+  }
 
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRows); }
+  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOne(-1); }
+  @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOne( 1); }
+  //opt: A backspace is meg a Delete is qrvalassu (300ms) Asszem a Container.measure() miatt
+
+  //todo: Ctrl+D word select and find
 
   // Mouse ---------------------------------------------------
 
   struct MouseMappings{
     string main                  = "LMB",
-           scroll                = "MMB",
+           scroll                = "MMB",   //todo: soft scroll/zoom, fast scroll
            menu                  = "RMB",
            zoom                  = "MW",
            selectAdd             = "Alt",
@@ -639,120 +816,10 @@ class Workspace : Container{ //this is a collection of opened modules
            selectColumn          = "Shift+Alt",
            selectColumnAdd       = "Ctrl+Shift+Alt";
   }
-  MouseMappings mouseMappings;
-
 
   void handleKeyboard(){
     if(!im.wantKeys && frmMain.isForeground)
       callVerbs(this);
-  }
-
-  void handleMouse(View2D view){
-    selectionManager.update(mainWindow.isForeground && lod.moduleLevel && view.isMouseInside, view, modules);
-
-    //check if a keycombo modifier with the main mouse button isactive
-    bool kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
-
-    auto cursorAtMouse = cellLocationToTextCursor(locate(view.mousePos));
-
-    //initiate mouse operations
-    if(!im.wantMouse){
-      if(view.isMouseInside) if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*wheelSpeed);
-
-      if(frmMain.isForeground && inputs.mouseDelta) if(inputs[mouseMappings.scroll]) view.scroll(inputs.mouseDelta);
-
-      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs[mouseMappings.main].pressed){
-        if(textSelections.hitTest(view.mousePos)){ //todo: start dragging
-
-        }else if(cursorAtMouse.valid){ //start selecting with mouse
-          selectionsWhenMouseWasPressed = textSelections.dup;
-
-          //extension cursor is the nearest selection.cursors[0]
-          cursorToExtend = selectionsWhenMouseWasPressed.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
-                                                        .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init)
-                                                        .cursors[0];
-          if(!cursorToExtend.valid) cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
-
-          selectionAtMouse = TextSelection([cursorAtMouse, cursorAtMouse]);
-        }
-      }
-    }
-
-    if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main]){
-      //restrict mousePos to the codeColumn bounds
-      auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
-      bnd.high -= 1; //make sure it's inside
-
-      auto restrictedMousePos = view.mousePos;
-      if(bnd.area){
-        if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){ //normal clamping for columnSelect
-          restrictedMousePos = restrictedMousePos.clamp(bnd.low, bnd.high);
-        }else{ //text editor clamping for normal select
-          if(restrictedMousePos.y<bnd.top) restrictedMousePos = bnd.topLeft;
-          else if(restrictedMousePos.y>bnd.bottom) restrictedMousePos = bnd.bottomRight;
-          else restrictedMousePos.x = restrictedMousePos.x.clamp(bnd.left, bnd.right);
-        }
-      }
-
-      auto restrictedCursorAtMouse = cellLocationToTextCursor(locate(restrictedMousePos));
-
-      if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn){
-        selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
-      }
-    }
-
-    void endMouseSelection(){
-      selectionAtMouse = TextSelection.init;
-      selectionsWhenMouseWasPressed = [];
-    }
-
-    //finalize mouse select
-    if(selectionAtMouse.valid && inputs[mouseMappings.main].released){
-      endMouseSelection;
-    }
-
-    //compine selection with mouse selection
-    if(selectionAtMouse.valid){
-      //todo: for additive operations, only the selections on the most recent
-
-      if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){
-        //Column select
-        auto c0 = kc(mouseMappings.selectColumnAdd) ? selectionAtMouse.cursors[0] : cursorToExtend,
-             c1 = selectionAtMouse.cursors[1];
-        const downward = c0.pos.y<c1.pos.y,
-              dir      = downward ? 1 : -1,
-              count    = abs(c0.pos.y-c1.pos.y)+1;
-
-        auto a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
-             a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
-
-        if(downward) a1 = a1.retro.array;
-                else a0 = a0.retro.array;
-
-        textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
-        //textSelections[0].primary = true;//todo: mark primary
-
-        if(!downward) textSelections = textSelections.retro.array; //make it sorted
-
-        //remove empty selections (except all are empty)
-        if(textSelections.length>1 && !textSelections.all!"a.caret.pos.x==0 && a.isZeroLength")
-          textSelections = textSelections.remove!"a.isZeroLength";
-
-        if(kc(mouseMappings.selectColumnAdd)){ //Ctrl+Alt+Shift = add column selection
-          textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
-        }
-
-      }else if(kc(mouseMappings.selectAdd)){
-        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, selectionAtMouse)).array ~ selectionAtMouse;
-      }else if(kc(mouseMappings.selectExtend)){
-        auto extendedSelection = TextSelection([cursorToExtend, selectionAtMouse.caret]);
-        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, extendedSelection)).array ~ extendedSelection;
-      }else{
-        textSelections = [selectionAtMouse]; //todo: mark this as the primary selection. Extend will work on that.
-      }
-
-      //todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
-    }
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
@@ -768,11 +835,19 @@ class Workspace : Container{ //this is a collection of opened modules
 
     //keyboard and mouse handling
     handleKeyboard;
-    handleMouse(view);
+
+    moduleSelectionManager.update(!im.wantMouse && mainWindow.isForeground && view.isMouseInside && lod.moduleLevel, view, modules);
+    textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
 
     //focus at selection
-    if(textSelectionsHash.chkSet(textSelections.hashOf)) //todo: focus the extents of the changed areas, not just the carets
-      frmMain.view.scrollZoom(calcTextSelectionsBounds);
+    const selectionChanged = textSelectionsHash.chkSet(textSelections.hashOf);
+
+    if(!textSelectionManager.scrollInRequest.isNull){
+      const p = textSelectionManager.scrollInRequest.get;
+      frmMain.view.scrollZoom(bounds2(p, p));
+    }else if(selectionChanged){
+      frmMain.view.scrollZoom(calcTextSelectionsBounds); //todo: focus the extents of the changed areas, not just the carets
+    }
 
     updateLastKnownModulePositions;
   }
@@ -986,7 +1061,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }}
 
   protected void drawSelectionRect(Drawing dr, RGB clRect){
-    if(auto bnd = selectionManager.selectionBounds) with(dr) {
+    if(auto bnd = moduleSelectionManager.selectionBounds) with(dr) {
       lineWidth = -1;
       lineStyle = LineStyle.dash;
       color = clRect;
@@ -1043,61 +1118,8 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
-  bounds2 calcTextSelectionsBounds(){ //todo: this is lame
-    bounds2 bnd;
-
-    Module moduleOf(in TextSelection ts){
-      foreach(m; modules) if(m.code==ts.cursors[0].codeColumn) return m; //opt: linear
-      return null;
-    }
-
-    //todo: only scrollZoom at the recently expanded part of the selection and the caret. Not the whole selection.
-    if(0/+only process caret+/) foreach(ts; textSelections){
-      auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
-                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
-
-      const tr0 = codeColumnsInnerPosAbs;
-      //draw the selection
-      if(ts.cursors[0] != ts.cursors[1]){
-        const st=m.code.pos2idx(ts.start.pos),
-              en=m.code.pos2idx(ts.end  .pos);
-
-        auto crsr = TextCursor(ts.cursors[0].codeColumn, m.code.idx2pos(st));
-        foreach(i; st..en){ scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
-          auto r = m.code.rows[crsr.pos.y];
-          const tr1 = tr0 + r.outerPos+r.topLeftGapSize;
-
-          if(crsr.pos.x<r.subCells.length){//highlighted chars
-            auto g = r.glyphs[crsr.pos.x];
-
-            bnd |= g.outerBounds+tr1;
-          }else{
-            //newLine at the end of the line
-            const x = r.subCells.length ? r.subCells.back.outerBounds.right : 0;
-            bnd |= bounds2(x, 0, x+10, r.innerHeight)+tr1;
-          }
-        }
-      }
-    }
-
-    //caret
-    foreach(ts; textSelections){
-      //todo: this is redundant, combine the too loops, also combine with drawTextSelections
-      auto m = moduleOf(ts);
-      const codeColumnsInnerPosAbs = m.outerPos                        + m.topLeftGapSize +
-                                     ts.cursors[0].codeColumn.outerPos + ts.cursors[0].codeColumn.topLeftGapSize;
-
-      const pos = ts.cursors[1].pos;
-      auto r = m.code.rows[pos.y]; //todo: error check/clamp
-
-      const x = pos.x<=0 ? 0 : r.subCells[pos.x-1].outerBounds.right;
-      const p = codeColumnsInnerPosAbs+r.outerPos+r.topLeftGapSize+vec2(x, 0);
-
-      bnd |= bounds2(p-vec2(2, 0), p+vec2(2, r.innerHeight));
-    }
-
-    return bnd;
+  bounds2 calcTextSelectionsBounds(){
+    return textSelections.fold!((a, b) => a | b.caret.worldBounds)(bounds2());
   }
 
   void drawTextSelections(Drawing dr, View2D view){ //drawTextSelections ////////////////////////////
@@ -1106,7 +1128,7 @@ class Workspace : Container{ //this is a collection of opened modules
     const near       = lod.zoomFactor.smoothstep(0.02, 0.1);
     const clSelected = mix(mix(RGB(0x404040), clGray, near*.66f),
                            mix(clWhite      , clGray, near*.66f), blink);
-    const clCaret    = mix(clWhite, clFuchsia, blink);
+    const clCaret    = clWhite;
     const alpha = mix(0.75f, .4f, near);
 
     const cullBounds = view.subScreenBounds_anim;

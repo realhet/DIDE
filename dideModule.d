@@ -123,6 +123,14 @@ auto parentChain(Cell act){
   return res.retro.array;
 }
 
+bounds2 worldBounds(TextCursor tc){
+  if(tc.valid) if(auto row = tc.codeColumn.getRow(tc.pos.y)) with(row.localCaretPos(tc.pos.x)){
+    return bounds2(pos, pos+vec2(0, height)) + row.worldInnerPos;
+  }
+
+  return bounds2.init;
+}
+
 
 /// A caret's graphical position in world coords
 static struct CaretPos{ // CaretPos ///////////////////////////////////
@@ -131,8 +139,14 @@ static struct CaretPos{ // CaretPos ///////////////////////////////////
   bool valid()const{ return height>0; }
 
   void draw(Drawing dr){
-    if(valid)
-      dr.vLine(pos, pos.y+height);
+    if(valid){
+      if(dr.alpha<1){ //shrink a bit by alpha
+        const shrink = (1-dr.alpha)*height*.33f;
+        dr.vLine(pos.x, pos.y+shrink, pos.y+height-shrink);
+      }else{
+        dr.vLine(pos, pos.y+height);
+      }
+    }
   }
 }
 
@@ -141,10 +155,17 @@ struct TextCursor{  //TextCursor /////////////////////////////
 //todo: to be able to edit and preserve the textcursor indices, textcursor should target objects, not indices. [codeRow, cell] would be the minimum. codeRow.subCellIdx(cell) and codeRow.index should be cached.
   CodeColumn codeColumn;
 
-  @property bool valid() const{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; }
-
   ivec2 pos;
   float desiredX=0; //used for up down movement, after left right movements.
+
+  @property bool valid() const{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; }
+
+  @property int rowCharCount() const{ //todo: constness
+    return codeColumn ? codeColumn.rowCharCount(pos.y) : 0;
+  }
+
+  @property bool isAtLineStart() const{ return pos.x<=0; }
+  @property bool isAtLineEnd  () const{ return pos.x>=rowCharCount; }
 
   int opCmp    (in TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
   bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
@@ -172,6 +193,10 @@ struct TextCursor{  //TextCursor /////////////////////////////
   enum home     = int.min,  end       = int.max,
        wordLeft = home+1 ,  wordRight = end-1  ;
 
+  void calcDesiredX_unsafe(){
+    desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right;
+  }
+
   void moveRight(int delta){
     if(!delta) return;
     if(delta==home){
@@ -196,7 +221,7 @@ struct TextCursor{  //TextCursor /////////////////////////////
       //opt: cache idx2pos and pos2idx. The line searcher is slow in those
       pos = codeColumn.idx2pos(codeColumn.pos2idx(pos)+delta); //note: this must be a clamped move
     }
-    desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right;
+    calcDesiredX_unsafe;
   }
 
   void moveDown(int delta){
@@ -275,8 +300,9 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
       parent = act;
     }while(p.length);
 
-    return (!left && !right) //this means that the row was empty and the caret is at the beginning od the row.
-           || checkChild(left) || checkChild(right);
+    return (parent && parent.subCells.empty) || //this means that the row was empty and the caret is at the beginning od the row.
+           checkChild(left) || checkChild(right);
+
   }
 
   string toString(){
@@ -301,9 +327,9 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
         if(idx<0){ res ~= format!"?LOST:%s?"((typeid(act).name)); break; }
 
         if(auto col = cast(CodeColumn)act){
-          res ~= format!"[%d].Col"(idx); //todo: expect codeRow after this
+          res ~= format!"[%d].Y"(idx); //todo: expect codeRow after this
         }else if(auto row = cast(CodeRow)act){
-          res ~= format!"[%d].Row"(idx); //todo: expect codeColumn or codeNode after this
+          res ~= format!"[%d].X"(idx); //todo: expect codeColumn or codeNode after this
         }else if(auto mod = cast(Module)act){
           res ~= mod.file.fullName;      //todo: except codecolumn after this
         }else{
@@ -339,23 +365,31 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
     if(auto row = cast(CodeRow)path[$-1]){
     if(row.parent is col)
       res.codeColumn = col;
-      res.pos.y = row.index;
+      res.pos.y = row.index; //opt: slof linear search
       res.pos.x = 0;
-      void calcDesiredX(){ res.desiredX = row.localCaretPos(res.pos.x).pos.x; }
-      if(right){
-        res.pos.x = row.subCellIndex(right);
-        calcDesiredX;
-      }else if(left){
-        res.pos.x = row.subCellIndex(left);
-        if(res.pos.x>=0){
-          res.pos.x++;
-          calcDesiredX;
+
+      const rightIdx = right ? row.subCellIndex(right) : -1;
+      if(rightIdx>=0){
+        res.pos.x = rightIdx;
+      }else{
+        const leftIdx = left ? row.subCellIndex(left) : -1;
+        if(leftIdx>=0){
+          res.pos.x = leftIdx + 1; //note: +1 because cursor is to the right
         }
       }
-    }
+
+      res.desiredX = row.localCaretPos(res.pos.x).pos.x;
+    }else assert(0, "row.parent !is col");
 
     return res.valid ? res : TextCursor.init;
   }
+
+  /// Used when a delete operation joins 2 tows and the second row is deleted.
+  void replaceLatestRow(CodeRow old, CodeRow new_){
+    if(path.length && path.back is old)
+      path.back = new_;
+  }
+
 }
 
 struct TextSelection{ //TextSelection ///////////////////////////////
@@ -374,6 +408,9 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   @property bool isZeroLength() const{ return cursors[0]==cursors[1]; }
   @property bool isSingleLine() const{ return cursors[0].pos.y==cursors[1].pos.y; }
   @property bool isMultiLine() const{ return !isSingleLine; }
+
+  @property bool isAtLineStart() const{ return start.isAtLineStart; }
+  @property bool isAtLineEnd  () const{ return end  .isAtLineEnd  ; }
 
   int opCmp(const TextSelection b) const{
     return cmpChain(cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)), //todo: structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
@@ -443,6 +480,7 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   }
 }
 
+
 int distance(TextSelection ts, TextCursor tc){ //todo: constness
   if(ts.valid && tc.valid && ts.codeColumn is tc.codeColumn){
     auto cc = tc.codeColumn, st = ts.start, en = ts.end;
@@ -490,16 +528,87 @@ TextSelection[] merge(TextSelection[] arr){
   return arr;
 }
 
-string sourceText(TextSelection[] ts){
+auto extendToFullRow(TextSelection sel){
+  if(sel.valid){
+    with(sel.cursors[0]){ pos.x = 0; desiredX = 0; } //note: TextCursor.home is not good: It stops at leadingWhiteSpace
+    with(sel.cursors[1]){
+      moveRight(TextCursor.end);
+      moveRight(1); //goes to start of next line
+    }
+  }
+  return sel;
+}
+
+auto extendToWordsOrSpaces(TextSelection sel){
+  if(sel.valid){
+
+    void adjust(ref TextCursor c, int dir){
+      const dchar[] neighbors = CharFetcher(c, false).drop(1).take(1).array ~ CharFetcher(c, true).take(1).array;
+      if(neighbors.length<2) return; //it's at the end
+
+      static bool isSpace(dchar ch){ return ch.among(' ', '\t')>0; } //Only space and tab counts here.
+      static bool isWord (dchar ch){ return wordCategory(ch)==WordCategory.word; }
+
+      auto lookingForWords = neighbors.any!isWord;
+      auto lookingForSpaces = neighbors.all!isSpace; //2 spaces -> lookingForSpace
+
+      if(lookingForWords || lookingForSpaces){
+        const cnt = CharFetcher(c, dir>0)
+                    .drop(dir<0 ? 1 : 0)
+                    .countUntil!(ch => lookingForWords  ? !isWord(ch)
+                                     : lookingForSpaces ? !isSpace(ch)
+                                     : true);
+        if(cnt>0)
+          c.moveRight(dir*cnt);
+      }
+    }
+
+    const stIdx = sel.cursors[0]<=sel.cursors[1] ? 0 : 1;
+    adjust(sel.cursors[  stIdx], -1);
+    adjust(sel.cursors[1-stIdx],  1);
+  }
+  return sel;
+}
+
+auto zeroLengthSelectionsToFullRows(TextSelection[] sel){
+  auto fullRows = sel .filter!"a.valid && a.isZeroLength"
+                      .map!extendToFullRow.array;
+
+  return fullRows.length ? merge(sel~fullRows) : sel;
+}
+
+/// input newLine is '\n'
+/// it only adds newLine when the last item doesn't have one at its end
+/// replaces all '\n' to specidied newLine
+string sourceTextJoin(R)(R r, string newLine){
+  bool needsNewLine;
+  string res;
+  foreach(string s; r){
+    if(chkClear(needsNewLine)) res ~= '\n';
+    res ~= s;
+    needsNewLine = !s.endsWith('\n');
+  }
+  if(newLine!="\n") res = res.replace("\n", newLine);
+  return res;
+}
+
+
+string exportSourceText(TextSelection[] ts){
   return ts
     .filter!"a.valid && !a.isZeroLength"
     .array.sort.array      //opt: on demand sorting
     .map!"a.sourceText"
-    .join(DefaultNewLine);
+    .sourceTextJoin(DefaultNewLine);
 }
 
 bool hitTest(TextSelection[] ts, vec2 p){
   return ts.map!(a => a.hitTest(p)).any; //todo: this should be in the draw routine with automatic mouse hittest
+}
+
+TextSelection useValidCursor(TextSelection ts){
+  if(ts.valid) return ts;
+  const i = ts.cursors[0].valid ? 0 : 1;
+  return TextSelection([ts.cursors[i], ts.cursors[i]]);
 }
 
 
@@ -507,9 +616,13 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
   TextCursorReference[2] cursors;
 
   TextSelection fromReference(){
-    auto res = TextSelection([cursors[0].fromReference, cursors[1].fromReference]);
-    return res.valid ? res : TextSelection.init;
+    return TextSelection([cursors[0].fromReference, cursors[1].fromReference]).useValidCursor;
   }
+
+  void replaceLatestRow(CodeRow old, CodeRow new_){
+    foreach(ref c; cursors) c.replaceLatestRow(old, new_);
+  }
+
 }
 
 
@@ -692,8 +805,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
   auto getRow(int rowIdx){ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
 
-  int rowCharCount(int rowIdx){
-    if(auto row = getRow(rowIdx)) return row.cellCount;
+  int rowCharCount(int rowIdx) const{  //todo: it's ugly because of the constness. Make it nicer.
+    if(rowIdx.inRange(subCells)) return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
     return 0;
   }
 
