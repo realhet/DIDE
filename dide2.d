@@ -1,9 +1,11 @@
 //@exe
 //@import c:\d\libs\het\hldc
-//@compile --d-version=stringId
+//@compile --d-version=stringId,AnimatedCursors
 
 //@release
 ///@debug
+
+//note: debug is not needed to get proper exception information
 
 //todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
 
@@ -13,6 +15,8 @@
 //todo: Adam Ruppe search tool -> http://search.dpldocs.info/?q=sleep
 
 //todo: het.math.cmp integration with std
+
+//todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
@@ -162,20 +166,15 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
   bool wordSelecting;
 
-  bool updateDoubleClick(string key){ //todo: make het.inputs.ClickDetector to work with time, and use that instead this
-    bool res;
-    if(inputs[key].pressed){
-      auto actTime = now;
-      res = actTime-lastMainMousePressTime < 250*milli(second);  //todo: get this it from Windows
-      lastMainMousePressTime = actTime;
-    }
-    return res;
-  }
+  ClickDetector cdMainMouseButton;
 
   void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){
     scrollInRequest.nullify;
 
-    const doubleClick = updateDoubleClick(mouseMappings.main);
+    //detect double click with LMB
+    cdMainMouseButton.update(inputs[mouseMappings.main].down);
+    const doubleClick = cdMainMouseButton.doubleClicked;
+
     if(doubleClick) wordSelecting = true;
 
     //check if a keycombo modifier with the main mouse button isactive
@@ -707,8 +706,8 @@ class Workspace : Container{ //this is a collection of opened modules
     //opt: this operation is much slower than the cursor movement. I guess this is the cause
   }
 
-
   // Module operations ------------------------------------------------
+  Nullable!bounds2 scrollInBoundsRequest;
 
   @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
   @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
@@ -716,7 +715,29 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); }
   @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; }
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
-  @VERB("Esc"                           ) void cancelSelection      () { if(lod.moduleLevel) deselectAllModules; else textSelections.length = textSelections.length>=1 ? 1 : 0; /+todo: collapseSelection levels: multipleFiles, multiselect, singleselect, singleCaret+/}
+  @VERB("Esc"                           ) void cancelSelection      () {
+    if(lod.moduleLevel){
+      deselectAllModules;
+    }
+
+    if(lod.codeLevel){
+      if(textSelections.length>1){
+        textSelections.length = 1;
+        with(textSelections[0]){
+          scrollInBoundsRequest = worldBounds(textSelections);
+        }
+        //todo: scroll in
+      }else if(textSelections.length==1) with(textSelections[0]){
+        if(valid && !isZeroLength){
+          cursors[0] = cursors[1];
+          //todo: scroll in
+          scrollInBoundsRequest = worldBounds(textSelections);
+        }else{
+          textSelections = [];
+        }
+      }
+    }
+  }
 
   /+todo: uzemmod fuggest megoldani: A Ctrl+A ha editing van, akkor az editalt modulra vonatkozzon, tavoli nezetben viszont a kivalasztott modulokra. Ezt a kettot valahogy ossze kellene egysegesiteni.
           nem vilagos, hogy a ctrl+W az mire vonatkozik...+/
@@ -751,6 +772,10 @@ class Workspace : Container{ //this is a collection of opened modules
 
   @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
   @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
+
+  @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shring/extend Ast Selection
+  @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
+  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){  }
 
   // Navigation ---------------------------------------------
 
@@ -839,14 +864,35 @@ class Workspace : Container{ //this is a collection of opened modules
     moduleSelectionManager.update(!im.wantMouse && mainWindow.isForeground && view.isMouseInside && lod.moduleLevel, view, modules);
     textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
 
-    //focus at selection
+    //detect textSelection change
     const selectionChanged = textSelectionsHash.chkSet(textSelections.hashOf);
 
-    if(!textSelectionManager.scrollInRequest.isNull){
+    //focus at selection
+    if(!scrollInBoundsRequest.isNull){
+      const b = scrollInBoundsRequest.get;
+      frmMain.view.scrollZoom(b);
+    }else if(!textSelectionManager.scrollInRequest.isNull){
       const p = textSelectionManager.scrollInRequest.get;
       frmMain.view.scrollZoom(bounds2(p, p));
     }else if(selectionChanged){
-      frmMain.view.scrollZoom(calcTextSelectionsBounds); //todo: focus the extents of the changed areas, not just the carets
+      frmMain.view.scrollZoom(worldBounds(textSelections)); //todo: focus the extents of the changed areas, not just the carets... This should be controlled by the direction of the operation...
+    }
+    scrollInBoundsRequest.nullify;
+
+    //animate cursors
+    version(AnimatedCursors){
+      if(textSelections.length<=MaxAnimatedCursors){
+        const animT = calcAnimationT(application.deltaTime.value(second), .5, .25),
+              maxDist = 1.0f;
+
+        foreach(ref ts; textSelections){
+          foreach(ref cr; ts.cursors[]) with(cr){
+           targetPos = localPos.pos; //todo: animate height as well
+           if(animatedPos.x.isnan) animatedPos = targetPos;
+                                 else animatedPos.follow(targetPos, animT, maxDist);
+          }
+        }
+      }
     }
 
     updateLastKnownModulePositions;
@@ -1118,10 +1164,6 @@ class Workspace : Container{ //this is a collection of opened modules
     dr.alpha = 1;
   }
 
-  bounds2 calcTextSelectionsBounds(){
-    return textSelections.fold!((a, b) => a | b.caret.worldBounds)(bounds2());
-  }
-
   void drawTextSelections(Drawing dr, View2D view){ //drawTextSelections ////////////////////////////
     scope(exit) dr.alpha = 1;
 
@@ -1173,6 +1215,7 @@ class Workspace : Container{ //this is a collection of opened modules
                 dr.fillRect(bnd);
               }
 
+              assert(x.inRange(0, rowCellCount), "out of range");
               if(x<rowCellCount){
                 //todo: make the nice version: the font will be NOT blended to gray, but it hides the markerLayers completely. Should make a text drawer that uses alpha on the background and leaves the font color as is.
                 /+if(auto g = row.glyphs[x]){
@@ -1209,8 +1252,45 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
-    //caret
-    dr.alpha = blink;
+    //caret trail
+    version(AnimatedCursors){
+      if(textSelections.length <= MaxAnimatedCursors){
+        dr.alpha = blink/2;
+        dr.lineWidth = -1-(blink)*3;
+        dr.color = clCaret;
+        //opt: culling
+        //opt: limit max munber of animated cursors
+        foreach(s; textSelections){
+          CaretPos[3] cp;
+          cp[0] = s.caret.worldPos;
+          cp[1..3] = cp[0];
+          cp[2].pos += s.caret.animatedPos - s.caret.targetPos;
+          cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f);
+          //todo: animate caret height too
+
+          auto dir = cp[1].pos-cp[2].pos; //todo: center them on height
+          if(dir){
+            if(dir.normalize.x.abs<0.05f){ //vertical line
+              vec2[2] p = [cp[1].pos, cp[2].pos];
+              if(p[0].y<p[1].y) p[1].y += cp[2].height;
+              else              p[0].y += cp[1].height;
+              dr.line(p[0], p[1]);
+            }else{ //horizontal bar
+              vec2[4] p;
+              p[0] = cp[1].pos;
+              p[1] = cp[1].pos + vec2(0, cp[1].height);
+              p[2] = cp[2].pos + vec2(0, cp[2].height);
+              p[3] = cp[2].pos;
+
+              if(p[0].x<p[3].x) { dr.fillTriangle(p[0], p[1], p[3]); dr.fillTriangle(p[1], p[2], p[3]); }
+              else              { dr.fillTriangle(p[3], p[2], p[0]); dr.fillTriangle(p[2], p[1], p[0]); }
+            }
+          }
+        }
+      }
+    }
+
+    dr.alpha = blink;  //opt: culling
     dr.lineWidth = -1-(blink)*3;
     dr.color = clCaret;
     foreach(s; textSelections)

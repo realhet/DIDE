@@ -2,6 +2,9 @@ module didemodule;
 
 import het, het.ui, het.tokenizer, dideui, buildsys;
 
+//version identifiers: AnimatedCursors
+enum MaxAnimatedCursors = 100;
+
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 
@@ -131,6 +134,14 @@ bounds2 worldBounds(TextCursor tc){
   return bounds2.init;
 }
 
+bounds2 worldBounds(TextSelection ts){
+  return ts.valid ? worldBounds(ts.cursors[0]) | worldBounds(ts.cursors[1])
+                  : bounds2.init;
+}
+
+bounds2 worldBounds(TextSelection[] ts){
+  return ts.map!worldBounds.fold!"a|b"(bounds2.init);
+}
 
 /// A caret's graphical position in world coords
 static struct CaretPos{ // CaretPos ///////////////////////////////////
@@ -157,6 +168,11 @@ struct TextCursor{  //TextCursor /////////////////////////////
 
   ivec2 pos;
   float desiredX=0; //used for up down movement, after left right movements.
+
+  version(AnimatedCursors){
+    vec2 targetPos   = vec2(float.nan),
+         animatedPos = vec2(float.nan);
+  }
 
   @property bool valid() const{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; }
 
@@ -200,10 +216,10 @@ struct TextCursor{  //TextCursor /////////////////////////////
   void moveRight(int delta){
     if(!delta) return;
     if(delta==home){
-      const ltc = codeColumn.rows[pos.y].leadingTabCount;
+      const ltc = codeColumn.rows[pos.y].leadingTabCount; //unsafe
       pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
     }else if(delta==end){
-      pos.x = codeColumn.rows[pos.y].cellCount;
+      pos.x = codeColumn.rows[pos.y].cellCount; //unsafe
     }else if(delta==wordRight){
       const skip = CharFetcher(this, true)
                   .chain("\n\n"d) //extra stopping condition when no word boundary found
@@ -611,6 +627,12 @@ TextSelection useValidCursor(TextSelection ts){
   return TextSelection([ts.cursors[i], ts.cursors[i]]);
 }
 
+void animate(ref TextSelection sel, ){
+  version(AnimatedCursors){
+
+  }
+}
+
 
 struct TextSelectionReference{ // TextSelectionReference //////////////////////////////
   TextCursorReference[2] cursors;
@@ -638,13 +660,12 @@ class CodeRow: Row{
   string sourceText() { return chars.to!string; }
 
   private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
+  private static bool isTab  (Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
   private auto spaces() { return glyphs.map!(g => isSpace(g)); }
   private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
+  private auto leadingTabs  (){ return glyphs.until!(g => !isTab(g)  ); }
 
-  int leadingTabCount(){
-    static bool isTab(Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
-    return glyphs.countUntil!(g => !isTab(g)).to!int;
-  }
+  int leadingTabCount() { return cast(int)leadingTabs.walkLength; }
 
   this(CodeColumn parent_){
     parent = enforce(parent_);
