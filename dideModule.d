@@ -726,6 +726,34 @@ class CodeRow: Row{
     adjustCharWidths;
   }
 
+  /// Returns inserted count
+  int insertText(int at, string str){
+
+    if(str.empty) return 0;
+    enforce(at>=0 && at<=subCells.length, "Out of bounds");
+
+    auto after = subCells[at..$];
+    subCells = subCells[0..at];
+
+    auto syntax = [ubyte(0)].replicate(str.length);
+
+    const cnt0 = subCells.length;
+
+    static TextStyle style; //it is needed by appendCode/applySyntax
+    this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); }, style, DefaultIndentSize);
+
+    const insertedCnt = (subCells.length-cnt0).to!int;
+
+    subCells ~= after;
+
+    if(str.canFind('\t')) refreshTabIdx;
+    //todo: elastic tabs
+
+    adjustCharWidths;
+
+    return insertedCnt;
+  }
+
   protected{
     static immutable float NormalSpaceWidth  = 7.25f, //same as '0'..'9' and +-_
                            LeadingSpaceWidth = NormalSpaceWidth;

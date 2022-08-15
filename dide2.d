@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -768,7 +768,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Shift+PgUp"                    ) void cursorPageUpSelect     (){ cursorPageUp     (true); }
   @VERB("Shift+PgDn"                    ) void cursorPageDownSelect   (){ cursorPageDown   (true); }
   @VERB("Shift+Ctrl+Home"               ) void cursorTopSelect        (){ cursorTop        (true); }
-  @VERB("Shift+Ctrl+End"                ) void cursorBottomSelect     (){ cursorBottom     (true); }
+  @VERB("Shift+Ctrl+End"                ) void cursorBottomSelect     (){ cursorBottom     (true); }  //bug: 1. press [Shift End], 2. press[End]   //same with home
 
   @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
   @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
@@ -837,22 +837,61 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOneChar(No .toLeft); }
   //opt: A backspace is meg a Delete is qrvalassu (300ms) Asszem a Container.measure() miatt
 
-  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (Flag!"fromClipboard" fromClipboard = Yes.fromClipboard, string input=""){
     if(textSelections.filter!"a.valid".empty) return; //no target
 
-    auto lines = clipboard.asText.splitLines;
+    if(fromClipboard)
+      input = clipboard.asText;
+
+    auto lines = input.splitLines;
     if(lines.empty) return; //nothing to do with an empty clipboard
 
     cut(No.copy, No.fullRows);
 
-    if(textSelections.length==1){ //put all the clipboard into one place
-      NOTIMPL;
-    }else if(textSelections.length>1){ //cyclically paste the lines of the clipboard
-      foreach(ref ts, line; lockstep(textSelections, lines.cycle)){
-        LOG(ts, line);
+    bool[Container] modifiedContainers; //todo: recursive refresh
+
+    ///inserts text at cursor, moves the corsor to the end of the text
+    void simpleInsert(ref TextSelection ts, string str){
+      assert(ts.valid);
+      assert(ts.isZeroLength);
+      assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
+      if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
+
+        const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
+
+        ts.cursors[0].moveRight(insertedCnt);
+        ts.cursors[1] = ts.cursors[0];
+
+        modifiedContainers[parentOf(ts.codeColumn.parent)] = true; //todo: this should be the parent module only, not the whole Workspace.
+      }
+
+      auto tmpRow = new CodeColumn(ts.codeColumn, str);
+    }
+
+    ///insert all lines into the selection
+    void fullInsert(ref TextSelection ts){
+      assert(ts.valid && ts.isZeroLength);
+      if(lines.length==1){ //simple text without newline
+        simpleInsert(ts, lines[0]);
+      }else if(lines.length>1){ //insert multiline text
+        NOTIMPL;
       }
     }
 
+    if(textSelections.length==1){ //put all the clipboard into one place
+      fullInsert(textSelections[0]);
+    }else if(textSelections.length>1){
+      if(lines.length>textSelections.length){ //clone the full clipboard into all selections.
+        foreach_reverse(ref ts; textSelections)
+          fullInsert(ts);
+      }else{ //cyclically paste the lines of the clipboard
+        foreach_reverse(ref ts, line; lockstep(textSelections, lines.cycle.take(textSelections.length)))
+          simpleInsert(ts, line);
+      }
+    }
+
+    modifiedContainers.keys.each!(c => c.measure); //todo: do a correct recursive refresh
+    //opt: this operation is much slower than the cursor movement. I guess this is the cause
   }
 
   //todo: Ctrl+D word select and find
@@ -871,8 +910,31 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void handleKeyboard(){
-    if(!im.wantKeys && frmMain.isForeground)
+    if(!im.wantKeys && frmMain.isForeground){
       callVerbs(this);
+
+      //todo: single window inly
+      string unprocessed;
+      foreach(ch; mainWindow.inputChars.unTag.byDchar){
+        if(ch==9 && ch==10){
+          //if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+        }else if(ch>=32){
+          //cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+          try{
+            //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
+            auto s = ch.to!string;
+            paste(No.fromClipboard, s);
+          }catch(Exception){
+            unprocessed ~= ch;
+          }
+
+        }else{
+          unprocessed ~= ch;
+        }
+      }
+      mainWindow.inputChars = unprocessed;
+
+    }
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
