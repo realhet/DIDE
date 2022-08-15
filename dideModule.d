@@ -115,16 +115,74 @@ bounds2 worldInnerBounds(Cell cell){
   return bounds2(p, p+cell.innerSize);
 }
 
-auto parentChain(Cell act){
-  Cell[] res;
+struct CellPath{//CellPath ///////////////////////////////
+  Cell[] path;
+  alias path this;
 
-  while(act){
-    res ~= act;
-    act = parentOf(act);
+  this(Cell act){
+    while(act){
+      path ~= act;
+      act = parentOf(act);
+    }
+
+    path = path.retro.array;
   }
 
-  return res.retro.array;
+  ///It goes from parent to child and searches child in parent.subCells[]. Fails at any error.
+  bool exists(){
+    auto p = path;
+
+    auto parent = cast(Container)p.fetchFront;  if(!parent) return false;
+
+    bool checkChild(Cell c){ return c && parent && parent.subCellIndex(c)>=0; }
+
+    do{
+      auto act = cast(Container)p.fetchFront;
+      if(!checkChild(act)) return false;
+      parent = act;
+    }while(p.length);
+
+    return true;
+  }
+
+  string toString(){ //todo: constness
+    auto path = this.path;
+    if(path.empty) return "";
+
+    string res;
+    Container parent = null;
+    do{
+      auto act = cast(Container)path.fetchFront;
+      if(!act){ res ~= "?NULL?"; break; }
+
+      if(!parent){ //root element
+        if(auto cntr=cast(Container)act){
+          res ~= ""; //todo: expect Module after this
+        }else{
+          res ~= format!"?UNKNOWN_ROOT:%s?"(typeid(act).name); break;
+        }
+      }else{ //subsequent elements
+        auto idx = parent.subCellIndex(act);
+        if(idx<0){ res ~= format!"?LOST:%s?"((typeid(act).name)); break; }
+
+        if(auto col = cast(CodeColumn)act){
+          res ~= format!"[%d].Y"(idx); //todo: expect codeRow after this
+        }else if(auto row = cast(CodeRow)act){
+          res ~= format!"[%d].X"(idx); //todo: expect codeColumn or codeNode after this
+        }else if(auto mod = cast(Module)act){
+          res ~= mod.file.fullName;      //todo: except codecolumn after this
+        }else{
+          res ~= format!"?UNKNOWN:%s?"(typeid(act).name); break;  //todo: CodeNode handling
+        }
+      }
+
+      parent = act;
+    }while(path.length);
+
+    return res;
+  }
 }
+
 
 bounds2 worldBounds(TextCursor tc){
   if(tc.valid) if(auto row = tc.codeColumn.getRow(tc.pos.y)) with(row.localCaretPos(tc.pos.x)){
@@ -280,7 +338,7 @@ struct TextCursor{  //TextCursor /////////////////////////////
   auto toReference(){
     TextCursorReference res;
     if(valid) if(auto row = codeColumn.getRow(pos.y)){
-      res.path = row.parentChain;
+      res.path = CellPath(row);
       res.left  = row.subCells.get(pos.x-1);
       res.right = row.subCells.get(pos.x);
     }
@@ -293,7 +351,7 @@ struct TextCursor{  //TextCursor /////////////////////////////
 /// Used to store a TextCursor temporarily. After editing operations these cursors can be converted back to normal cursora.
 /// Also used to get a textual absolute path of the cursor location.
 struct TextCursorReference{ // TextCursorReference ////////////////////////////////////
-  Cell[] path;       //must end with a codeRow. Starts with a root container.  Normally: root module column row
+  CellPath path;       //must end with a codeRow. Starts with a root container.  Normally: root module column row
   Cell left, right;  //(null, null) is valid. -> That is an empty row.
 
   bool valid() const{
@@ -302,63 +360,23 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
 
   bool exists(){
     if(!valid) return false;
-    auto p = path;
+    if(!path.exists) return false;
 
-    //Note: It goes from parent to child and searches child in parent.subCells[]. Fails at any error.
-
-    auto parent = cast(Container)p.fetchFront;  if(!parent) return false;
-
-    bool checkChild(Cell c){ return c && parent && parent.subCellIndex(c)>=0; }
-
-    do{
-      auto act = cast(Container)p.fetchFront;
-      if(!checkChild(act)) return false;
-      parent = act;
-    }while(p.length);
-
-    return (parent && parent.subCells.empty) || //this means that the row was empty and the caret is at the beginning od the row.
-           checkChild(left) || checkChild(right);
+    auto parent = path.back.to!Container;
+    return parent.subCells.empty || //this means that the row was empty and the caret is at the beginning od the row.
+           left  && parent.subCellIndex(left )>=0 ||
+           right && parent.subCellIndex(right)>=0;
 
   }
 
   string toString(){
     if(!valid) return "";
-
-    auto p = path;
-    string res;
-
-    Container parent = null;
-    do{
-      auto act = cast(Container)p.fetchFront;
-      if(!act){ res ~= "?NULL?"; break; }
-
-      if(!parent){ //root element
-        if(auto cntr=cast(Container)act){
-          res ~= ""; //todo: expect Module after this
-        }else{
-          res ~= format!"?UNKNOWN_ROOT:%s?"(typeid(act).name); break;
-        }
-      }else{ //subsequent elements
-        auto idx = parent.subCellIndex(act);
-        if(idx<0){ res ~= format!"?LOST:%s?"((typeid(act).name)); break; }
-
-        if(auto col = cast(CodeColumn)act){
-          res ~= format!"[%d].Y"(idx); //todo: expect codeRow after this
-        }else if(auto row = cast(CodeRow)act){
-          res ~= format!"[%d].X"(idx); //todo: expect codeColumn or codeNode after this
-        }else if(auto mod = cast(Module)act){
-          res ~= mod.file.fullName;      //todo: except codecolumn after this
-        }else{
-          res ~= format!"?UNKNOWN:%s?"(typeid(act).name); break;  //todo: CodeNode handling
-        }
-      }
-
-      parent = act;
-    }while(p.length);
+    auto res = path.toString;
 
     //this special processing is for the caret. Decide the idx from the left and right cells.
     if(!left && !right) res ~= "[0]";
     else{
+      auto parent = path.back.to!Container;
       const leftIdx  = left  ? parent.subCellIndex(left ) : -1;
       const rightIdx = right ? parent.subCellIndex(right) : -1;
 
@@ -586,26 +604,31 @@ auto extendToWordsOrSpaces(TextSelection sel){
   return sel;
 }
 
-auto zeroLengthSelectionsToFullRows(TextSelection[] sel){
+auto zeroLengthSelectionsToFullRowsAndMerge(TextSelection[] sel){
   auto fullRows = sel .filter!"a.valid && a.isZeroLength"
                       .map!extendToFullRow.array;
 
-  return fullRows.length ? merge(sel~fullRows) : sel;
+  return merge(sel~fullRows); //always merge, because merge has a sort
 }
 
 /// input newLine is '\n'
 /// it only adds newLine when the last item doesn't have one at its end
 /// replaces all '\n' to specidied newLine
-string sourceTextJoin(R)(R r, string newLine){
-  bool needsNewLine;
-  string res;
-  foreach(string s; r){
-    if(chkClear(needsNewLine)) res ~= '\n';
-    res ~= s;
-    needsNewLine = !s.endsWith('\n');
+string sourceTextJoin(R)(R r, string newLine)
+{
+  string[] a = r.array;
+
+  foreach(i; 0..a.length.to!int-1){
+    const n0 = a[i  ].endsWith  (newLine),
+          n1 = a[i+1].startsWith(newLine);
+    if(n0 && n1){
+      a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
+    }else if(!n0 && !n1){  //add a newLine when there are 0
+      a[i] ~= newLine;
+    }
   }
-  if(newLine!="\n") res = res.replace("\n", newLine);
-  return res;
+
+  return a.join;
 }
 
 

@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -802,30 +802,58 @@ class Workspace : Container{ //this is a collection of opened modules
 
   // Editing ------------------------------------------------
 
-  @VERB("Ctrl+X Shift+Del"    ) void cut(bool doCopy=true){
-    textSelections = textSelections.sort.array.zeroLengthSelectionsToFullRows; //todo: on demand sorting
+  @VERB("Ctrl+X Shift+Del"    ) void cut(Flag!"copy" doCopy = Yes.copy, Flag!"fullRows" doFullRows = Yes.fullRows){
+
+    //prepare textSelections
+    textSelections = doFullRows ? textSelections.zeroLengthSelectionsToFullRowsAndMerge
+                                : textSelections.merge;
+
     auto savedSelections = textSelections.map!"a.toReference".array;
+
     if(doCopy) copy_impl(textSelections);
+
     cut_impl(textSelections, (left, right){
-      foreach(ref ss; savedSelections)
+      foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
         ss.replaceLatestRow(right, left);
     });
+
     textSelections = savedSelections.map!"a.fromReference".filter!"a.valid".array;
   }
 
-  protected void deleteAtLeastOne(int dir){
-    assert(dir.among(-1, 1), "Invalid param");
+  protected void deleteAtLeastOneChar(Flag!"toLeft" toLeft){
+    //extend zero length selections to the lefto or to the right with 1 char
+    const dir = toLeft ? -1 : 1;
+
     textSelections.each!((ref s){
       if(s.valid && s.isZeroLength)
         s.move(ivec2(dir, 0), true);
     });
-    cut(false);
+
+    cut(No.copy, No.fullRows);
   }
 
-  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRows); }
-  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOne(-1); }
-  @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOne( 1); }
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRowsAndMerge); }
+  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOneChar(Yes.toLeft); }
+  @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOneChar(No .toLeft); }
   //opt: A backspace is meg a Delete is qrvalassu (300ms) Asszem a Container.measure() miatt
+
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){
+    if(textSelections.filter!"a.valid".empty) return; //no target
+
+    auto lines = clipboard.asText.splitLines;
+    if(lines.empty) return; //nothing to do with an empty clipboard
+
+    cut(No.copy, No.fullRows);
+
+    if(textSelections.length==1){ //put all the clipboard into one place
+      NOTIMPL;
+    }else if(textSelections.length>1){ //cyclically paste the lines of the clipboard
+      foreach(ref ts, line; lockstep(textSelections, lines.cycle)){
+        LOG(ts, line);
+      }
+    }
+
+  }
 
   //todo: Ctrl+D word select and find
 
