@@ -351,6 +351,12 @@ class Workspace : Container{ //this is a collection of opened modules
     flags.targetSurface = 0;
     flags.noBackground = true;
     fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
+    needMeasure;
+  }
+
+  override void rearrange(){
+    super.rearrange;
+    static if(rearrangeLOG) LOG("rearranging", this);
   }
 
   @STORED @property{ //note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
@@ -663,11 +669,9 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void cut_impl(TextSelection[] textSelections, void delegate(CodeRow left, CodeRow right) onRowJoin){  // cut ////////////////////////////////////////
-    bool[Container] modifiedContainers;
 
     foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
       auto col = sel.codeColumn;
-      modifiedContainers[parentOf(col.parent)] = true; //todo: this should be the parent module.
       const st = sel.start,
             en = sel.end;
       foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
@@ -685,7 +689,7 @@ class Workspace : Container{ //this is a collection of opened modules
                   x1 = isLastRow  ? en.pos.x : rowCellCount+1;
             foreach_reverse(x; x0..x1){
               if(x>=0 && x<rowCellCount){
-                row.subCells = row.subCells.remove(x);
+                row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
               }else if(x==rowCellCount){ //newLine
                 if(auto nextRow = col.getRow(y+1)){
                   onRowJoin(row, nextRow);
@@ -697,14 +701,110 @@ class Workspace : Container{ //this is a collection of opened modules
               }else assert(0, "TextSelection out of range X");
             }
             row.refreshTabIdx;
+
+            row.needMeasure; //invalidate parents
           }
+
         }else assert(0, "TextSelection out of range Y");
       }
     }
-
-    modifiedContainers.keys.each!(c => c.measure); //todo: do a correct recursive refresh
-    //opt: this operation is much slower than the cursor movement. I guess this is the cause
   }
+
+  void paste_impl(Flag!"fromClipboard" fromClipboard, string input){ // paste //////////////////////////////////
+    if(textSelections.filter!"a.valid".empty) return; //no target
+
+    if(fromClipboard)
+      input = clipboard.asText;
+
+    auto lines = input.splitLines;
+    if(lines.empty) return; //nothing to do with an empty clipboard
+
+    cut(No.copy, No.fullRows);
+
+    TextSelectionReference[] savedSelections;
+
+    ///inserts text at cursor, moves the corsor to the end of the text
+    void simpleInsert(ref TextSelection ts, string str){
+      assert(ts.valid);  assert(ts.isZeroLength);  assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
+      if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
+
+        const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
+
+        row.needMeasure; //mark the parents
+
+        //adjust caret and save
+        ts.cursors[0].moveRight(insertedCnt);
+        ts.cursors[1] = ts.cursors[0];
+        savedSelections ~= ts.toReference;
+      }else assert("Row out if range");
+    }
+
+    void multiInsert(ref TextSelection ts, string[] lines ){
+      assert(ts.valid);  assert(ts.isZeroLength);  assert(lines.length>=2);
+      if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
+        assert(ts.caret.pos.x>=0 && ts.caret.pos.x<=row.subCells.length);
+
+        //break the row into 2 parts
+        //transfer the end of (first)row into a lastRow
+        auto lastRow = new CodeRow(ts.codeColumn);
+        lastRow.subCells = row.subCells[ts.caret.pos.x..$];
+        lastRow.adoptSubCells;
+        row.subCells = row.subCells[0..ts.caret.pos.x];
+
+        //insert at the end of the first row
+        row.insertText(row.cellCount, lines.front);
+        row.refreshTabIdx;
+        row.needMeasure;
+
+        //insert extra rows in the middle
+        CodeRow[] midRows;
+        foreach(line; lines[1..$-1])
+          midRows ~= new CodeRow(ts.codeColumn, line);
+
+        //insert at the beginning of the last row
+        const insertedCnt = lastRow.insertText(0, lines.back);
+        lastRow.refreshTabIdx;
+        lastRow.needMeasure;
+
+        ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
+                               ~ (cast(Cell[])midRows ~ lastRow)
+                               ~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
+
+        //adjust caret and save as reference
+        ts.cursors[0].pos.y += lines.length.to!int-1;
+        ts.cursors[0].pos.x = insertedCnt;
+        ts.cursors[1] = ts.cursors[0];
+        savedSelections ~= ts.toReference;
+
+        //todo:update caret
+      }else assert("Row out if range");
+    }
+
+    ///insert all lines into the selection
+    void fullInsert(ref TextSelection ts){
+      if(lines.length==1){ //simple text without newline
+        simpleInsert(ts, lines[0]);
+      }else if(lines.length>1){ //insert multiline text
+        multiInsert(ts, lines);
+      }
+    }
+
+    if(textSelections.length==1){ //put all the clipboard into one place
+      fullInsert(textSelections[0]);
+    }else if(textSelections.length>1){
+      if(lines.length>textSelections.length){ //clone the full clipboard into all selections.
+        foreach_reverse(ref ts; textSelections)
+          fullInsert(ts);
+      }else{ //cyclically paste the lines of the clipboard
+        foreach_reverse(ref ts, line; lockstep(textSelections, lines.cycle.take(textSelections.length)))
+          simpleInsert(ts, line);
+      }
+    }
+
+    measure;
+    textSelections = savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
+  }
+
 
   // Module operations ------------------------------------------------
   Nullable!bounds2 scrollInBoundsRequest;
@@ -757,7 +857,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+Home"                     ) void cursorTop        (bool sel=false){ cursorOp(ivec2(TextCursor.home)        , sel); }
   @VERB("Ctrl+End"                      ) void cursorBottom     (bool sel=false){ cursorOp(ivec2(TextCursor.end )        , sel); }
 
-  @VERB("Shift+Left"                    ) void cursorLeftSelect       (){ cursorLeft       (true); }
+  @VERB("Shift+Left"                    ) void cursorLeftSelect       (){ cursorLeft       (true); }  //bug: shift+left many times, then Down: nem a caret ala' ugrik, hanem a cursors[0] ala'
   @VERB("Shift+Right"                   ) void cursorRightSelect      (){ cursorRight      (true); }
   @VERB("Shift+Ctrl+Left"               ) void cursorWordLeftSelect   (){ cursorWordLeft   (true); }
   @VERB("Shift+Ctrl+Right"              ) void cursorWordRightSelect  (){ cursorWordRight  (true); }
@@ -773,7 +873,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
   @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
 
-  @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shring/extend Ast Selection
+  @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shrink/extend Ast Selection
   @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
   @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){  }
 
@@ -817,6 +917,7 @@ class Workspace : Container{ //this is a collection of opened modules
         ss.replaceLatestRow(right, left);
     });
 
+    measure;
     textSelections = savedSelections.map!"a.fromReference".filter!"a.valid".array;
   }
 
@@ -833,66 +934,17 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRowsAndMerge); }
+  //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen,
+  //akkor sorokon dolgozik. A sorokon tolgozas feltetele az, hogy a target is zeroLength legyen.
+
   @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOneChar(Yes.toLeft); }
   @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOneChar(No .toLeft); }
   //opt: A backspace is meg a Delete is qrvalassu (300ms) Asszem a Container.measure() miatt
 
-  @VERB("Ctrl+V Shift+Ins"    ) void paste            (Flag!"fromClipboard" fromClipboard = Yes.fromClipboard, string input=""){
-    if(textSelections.filter!"a.valid".empty) return; //no target
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ paste_impl(Yes.fromClipboard, ""); }
 
-    if(fromClipboard)
-      input = clipboard.asText;
-
-    auto lines = input.splitLines;
-    if(lines.empty) return; //nothing to do with an empty clipboard
-
-    cut(No.copy, No.fullRows);
-
-    bool[Container] modifiedContainers; //todo: recursive refresh
-
-    ///inserts text at cursor, moves the corsor to the end of the text
-    void simpleInsert(ref TextSelection ts, string str){
-      assert(ts.valid);
-      assert(ts.isZeroLength);
-      assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
-      if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
-
-        const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
-
-        ts.cursors[0].moveRight(insertedCnt);
-        ts.cursors[1] = ts.cursors[0];
-
-        modifiedContainers[parentOf(ts.codeColumn.parent)] = true; //todo: this should be the parent module only, not the whole Workspace.
-      }
-
-      auto tmpRow = new CodeColumn(ts.codeColumn, str);
-    }
-
-    ///insert all lines into the selection
-    void fullInsert(ref TextSelection ts){
-      assert(ts.valid && ts.isZeroLength);
-      if(lines.length==1){ //simple text without newline
-        simpleInsert(ts, lines[0]);
-      }else if(lines.length>1){ //insert multiline text
-        NOTIMPL;
-      }
-    }
-
-    if(textSelections.length==1){ //put all the clipboard into one place
-      fullInsert(textSelections[0]);
-    }else if(textSelections.length>1){
-      if(lines.length>textSelections.length){ //clone the full clipboard into all selections.
-        foreach_reverse(ref ts; textSelections)
-          fullInsert(ts);
-      }else{ //cyclically paste the lines of the clipboard
-        foreach_reverse(ref ts, line; lockstep(textSelections, lines.cycle.take(textSelections.length)))
-          simpleInsert(ts, line);
-      }
-    }
-
-    modifiedContainers.keys.each!(c => c.measure); //todo: do a correct recursive refresh
-    //opt: this operation is much slower than the cursor movement. I guess this is the cause
-  }
+  @VERB("Tab"                 ) void insertTab        (){ paste_impl(No.fromClipboard, "\t"); } //bug: Nem jo! Space-t csinal belole!!!
+  @VERB("Enter"               ) void insertNewLine    (){ paste_impl(No.fromClipboard, "\n"); }
 
   //todo: Ctrl+D word select and find
 
@@ -913,7 +965,7 @@ class Workspace : Container{ //this is a collection of opened modules
     if(!im.wantKeys && frmMain.isForeground){
       callVerbs(this);
 
-      //todo: single window inly
+      //todo: single window only
       string unprocessed;
       foreach(ch; mainWindow.inputChars.unTag.byDchar){
         if(ch==9 && ch==10){
@@ -923,7 +975,7 @@ class Workspace : Container{ //this is a collection of opened modules
           try{
             //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
             auto s = ch.to!string;
-            paste(No.fromClipboard, s);
+            paste_impl(No.fromClipboard, s);
           }catch(Exception){
             unprocessed ~= ch;
           }
@@ -953,6 +1005,67 @@ class Workspace : Container{ //this is a collection of opened modules
 
     moduleSelectionManager.update(!im.wantMouse && mainWindow.isForeground && view.isMouseInside && lod.moduleLevel, view, modules);
     textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
+
+    //todo: updateModules could go here
+    measure;
+
+    /+void processNeedRefresh(Container act){
+      if(act.flags.needRefresh){
+        act.flags.needRefresh = false;
+
+        /*if(act.flags._measureOnlyOnce){
+          act.flags._measured = false;
+          LOG("clear measured", this);
+        }*/
+
+        if(auto ws = cast(Workspace)act){
+          ws.modules.each!(a => processNeedRefresh(a)); //recursive
+          //ws.rearrange;
+
+          //todo: this is done by outside. Make the rearrange change notification here.
+        }else if(auto mod = cast(Module)act){
+          processNeedRefresh(mod.code); //recursive
+
+          mod.innerSize = mod.code.outerSize;
+        }else if(auto col = cast(CodeColumn)act){
+          col.subContainers.each!(a => processNeedRefresh(a)); //recursive
+
+          //custom but fast column rearrange
+          float y = 0, maxw = 0;
+          foreach(ref sc; col.subCells){
+            sc.outerPos = vec2(0, y);
+            y += sc.outerHeight;
+            maxw.maximize(sc.outerWidth);
+          }
+          foreach(ref sc; col.subCells){
+            sc.outerWidth = maxw;
+          }
+          col.innerSize = vec2(maxw, y);
+
+        }else if(auto row = cast(CodeRow)act){
+          row.subContainers.each!(a => processNeedRefresh(a)); //recursive
+
+          row.refreshTabIdx;
+          //custom but fast row rearrange
+          float x = 0, maxh = 0;
+          foreach(ref sc; row.subCells){
+            sc.outerPos.x = x;
+            x += sc.outerWidth;
+            maxh.maximize(sc.outerHeight);
+          }
+          foreach(ref sc; row.subCells){
+            sc.outerPos.y = (maxh-sc.outerHeight)*.5f;
+          }
+          row.innerSize = vec2(x + newLineGlyphWidth, max(maxh, DefaultFontHeight));
+
+        }else{
+          raise("Unhandled:"~act.text);
+        }
+      }
+    }
+
+    processNeedRefresh(this);+/
+
 
     //detect textSelection change
     const selectionChanged = textSelectionsHash.chkSet(textSelections.hashOf);
@@ -1318,13 +1431,13 @@ class Workspace : Container{ //this is a collection of opened modules
                   fade(row.subCells[x].outerBounds);
                 }
               }else{ //newLine
-                static Glyph gLF; if(!gLF) gLF = new Glyph("\u240A\u2936\u23CE"d[1], tsNormal);
-                gLF.bkColor = row.bkColor;  gLF.fontColor = clGray;
+                auto g = newLineGlyph;
+                g.bkColor = row.bkColor;  g.fontColor = clGray;
                 dr.alpha = 1;
-                gLF.outerPos = row.newLineBounds.topLeft;
-                gLF.draw(dr);
+                g.outerPos = row.newLinePos;
+                g.draw(dr);
 
-                fade(gLF.outerBounds);
+                fade(g.outerBounds);
               }
             }
 

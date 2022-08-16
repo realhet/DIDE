@@ -5,11 +5,22 @@ import het, het.ui, het.tokenizer, dideui, buildsys;
 //version identifiers: AnimatedCursors
 enum MaxAnimatedCursors = 100;
 
+enum rearrangeLOG = false;
+
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
+
+
+Glyph newLineGlyph(){ // newLineGlyph /////////////////////////////////////////////
+  import std.concurrency;
+  __gshared Glyph g;
+  return initOnce!g(new Glyph("\u240A\u2936\u23CE"d[1], tsNormal));
+}
+
+enum newLineGlyphWidth = DefaultFontHeight*10/18;
 
 // LOD //////////////////////////////////////////
 
@@ -91,16 +102,9 @@ struct CharFetcher{
 
 // parent stuff: worldPos, parentChain ////////////////////////////
 
-Container parentOf(Cell cell){
-  if(auto r = cast(CodeRow   )cell) return r.parent;
-  if(auto c = cast(CodeColumn)cell) return c.parent;
-  if(auto n = cast(CodeNode  )cell) return n.parent;
-  return null;
-}
-
 vec2 worldOuterPos(Cell cell){
   if(!cell) return vec2(0);
-  if(auto parent = parentOf(cell)) return worldInnerPos(parent)+cell.outerPos;
+  if(auto parent = cell.getParent) return worldInnerPos(parent)+cell.outerPos;
   return cell.outerPos;
 }
 
@@ -115,16 +119,26 @@ bounds2 worldInnerBounds(Cell cell){
   return bounds2(p, p+cell.innerSize);
 }
 
+void visitCellAndParents(Cell act, void delegate(Cell c) fun){
+  while(act){
+    fun(act);
+    act = act.getParent;
+  }
+}
+
+void visitCellAndParents(Cell act, bool delegate(Cell c) fun){
+  while(act){
+    if(!fun(act)) break; //it can break
+    act = act.getParent;
+  }
+}
+
 struct CellPath{//CellPath ///////////////////////////////
   Cell[] path;
   alias path this;
 
   this(Cell act){
-    while(act){
-      path ~= act;
-      act = parentOf(act);
-    }
-
+    visitCellAndParents(act, (c){ path ~= c; });
     path = path.retro.array;
   }
 
@@ -676,6 +690,9 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
 class CodeRow: Row{
   CodeColumn parent;
 
+  override Container getParent(){ return parent; }
+  override void setParent(Container p){ parent = enforce(cast(CodeColumn)p); }
+
   int index(){ return parent.subCellIndex(this); }
 
   auto glyphs() { return subCells.map!(c => cast(Glyph)c); } //can return nulls
@@ -696,6 +713,7 @@ class CodeRow: Row{
 
     padding = "0 4";
 
+    needMeasure;
     flags.wordWrap       = false;
     flags.clipSubCells   = true;
     flags.cullSubCells   = true;
@@ -703,7 +721,8 @@ class CodeRow: Row{
     flags.dontHideSpaces = true;
     bkColor = clCodeBackground;
     outerHeight = DefaultFontHeight;
-    super();
+
+    super(); //todo: remove this. I think it's implicit.
   }
 
   this(CodeColumn parent_, string line, ubyte[] syntax){
@@ -722,8 +741,9 @@ class CodeRow: Row{
 
     static TextStyle style; //it is needed by appendCode/applySyntax
     this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); }, style, DefaultIndentSize);
-
     adjustCharWidths;
+
+    needMeasure;
   }
 
   /// Returns inserted count
@@ -746,12 +766,17 @@ class CodeRow: Row{
 
     subCells ~= after;
 
-    if(str.canFind('\t')) refreshTabIdx;
-    //todo: elastic tabs
-
+    refreshTabIdx;
     adjustCharWidths;
 
+    needMeasure;
+
     return insertedCnt;
+  }
+
+  override void rearrange(){
+    super.rearrange;
+    static if(rearrangeLOG) LOG("rearranging", this);
   }
 
   protected{
@@ -856,11 +881,13 @@ class CodeRow: Row{
   }
 
   bounds2 newLineBounds(){
-    auto bnd = bounds2(vec2(0), vec2(max(innerHeight, DefaultFontHeight))*vec2(.5f, 1));
-    if(cellCount)
-      bnd += vec2(subCells.back.outerRight, 0);
-    //todo: vertical align
-    return bnd;
+    const p = newLinePos;
+    return bounds2(p, p+vec2(newLineGlyphWidth, DefaultFontHeight));
+  }
+
+  vec2 newLinePos(){
+    assert(innerHeight>=DefaultFontHeight);
+    return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f);
   }
 
 }
@@ -869,6 +896,9 @@ class CodeRow: Row{
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
   //note: this is basically the CodeBlock
   Container parent;
+
+  override Container getParent(){ return parent; }
+  override void setParent(Container p){ parent = p; }
 
   auto const rows(){ return cast(CodeRow[])subCells; }
   int rowCount() const{ return cast(int)subCells.length; }
@@ -937,6 +967,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     flags.columnElasticTabs = true;
     bkColor = clCodeBackground;
 
+    needMeasure;
   }
 
   this(Container parent, SourceCode src){
@@ -956,12 +987,18 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     if(subCells.empty)
       appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
 
+    //this creates the tabs from spaces
     makeElasticTabs;
 
     spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
     rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
 
-    measure;
+    needMeasure;
+  }
+
+  override void rearrange(){
+    super.rearrange;
+    static if(rearrangeLOG) LOG("rearranging", this);
   }
 
   void makeElasticTabs(){
@@ -1138,6 +1175,14 @@ auto cachedFolderLabel(string folderPath){
 class CodeNode : Container{
   Container parent;
 
+  override Container getParent(){ return parent; }
+  override void setParent(Container p){ parent = p; }
+
+  override void rearrange(){
+    super.rearrange;
+    static if(rearrangeLOG) LOG("rearranging", this);
+  }
+
   this(Container parent){
     this.parent = parent;
   }
@@ -1147,14 +1192,14 @@ class CodeNode : Container{
   }
 }
 
+
 /// Module ///////////////////////////////////////////////
 class Module : CodeNode{ //this is any file in the project
-  Container parent; //to be able to have a root.
-  //todo: should be descended from a common CodeCode class.
   File file;
 
   DateTime loaded, saved, modified;
 
+  //these are the 2 subcells
   CodeColumn code;
   Container overlay;
 
@@ -1179,6 +1224,7 @@ class Module : CodeNode{ //this is any file in the project
       noBackground = true;
       //clipSubCells = false;
     }
+    overlay.needMeasure;
 
     void measureAndPropagateCodeSize(){ code.measure; innerSize = code.outerSize; overlay.outerSize = code.outerSize; }
 
@@ -1250,6 +1296,8 @@ class Module : CodeNode{ //this is any file in the project
 
     appendCell(enforce(code));
     appendCell(enforce(overlay));
+
+    needMeasure;
   }
 
 
