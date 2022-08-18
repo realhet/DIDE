@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -17,6 +17,13 @@
 //todo: het.math.cmp integration with std
 
 //todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
+
+//todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
+//todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
+
+//todo: Ctrl+ 1..9   Copy to clipboard[n]       Esetleg Ctrl+C+1..9
+//todo: Alt + 1..9   Paste from clipboard[n]
+//todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
@@ -670,10 +677,10 @@ class Workspace : Container{ //this is a collection of opened modules
 
   void cut_impl(TextSelection[] textSelections, void delegate(CodeRow left, CodeRow right) onRowJoin){  // cut ////////////////////////////////////////
 
-    foreach_reverse(sel; textSelections) if(!sel.isZeroLength){
-      auto col = sel.codeColumn;
+    foreach_reverse(sel; textSelections) if(!sel.isZeroLength)if(auto col = sel.codeColumn){
       const st = sel.start,
             en = sel.end;
+
       foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
         if(auto row = col.getRow(y)){
           const rowCellCount = row.cellCount;
@@ -681,7 +688,6 @@ class Workspace : Container{ //this is a collection of opened modules
           const isFirstRow = y==st.pos.y,
                 isLastRow  = y==en.pos.y,
                 isMidRow   = !isFirstRow && !isLastRow;
-
           if(isMidRow){ //delete whole row
             col.subCells = col.subCells.remove(y);
           }else{ //delete partial row
@@ -693,24 +699,33 @@ class Workspace : Container{ //this is a collection of opened modules
               }else if(x==rowCellCount){ //newLine
                 if(auto nextRow = col.getRow(y+1)){
                   onRowJoin(row, nextRow);
+
                   row.append(nextRow.subCells);
+                  row.adoptSubCells;
+
                   nextRow.subCells = [];
                   col.subCells = col.subCells.remove(y+1);
-                  //todo: set the new parent of the CodeNodes
                 }else assert(0, "TextSelection out of range NL");
               }else assert(0, "TextSelection out of range X");
             }
             row.refreshTabIdx;
-
-            row.needMeasure; //invalidate parents
+            row.refresh;
           }
 
         }else assert(0, "TextSelection out of range Y");
+      }//for y
+
+      if(st.pos.x==0 && en.pos.x==0){
+        if(auto r = col.getRow(st.pos.y-1)) r.setChangedRemovedNext;
+        if(auto r = col.getRow(st.pos.y  )) r.setChangedRemovedPrev;
+      }else{
+        if(auto r = col.getRow(st.pos.y  )) r.setChangedModified;
       }
-    }
+
+    }else assert(0, "TextSelection invalid CodeColumn");
   }
 
-  void paste_impl(Flag!"fromClipboard" fromClipboard, string input){ // paste //////////////////////////////////
+  void paste_impl(Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste //////////////////////////////////
     if(textSelections.filter!"a.valid".empty) return; //no target
 
     if(fromClipboard)
@@ -727,10 +742,9 @@ class Workspace : Container{ //this is a collection of opened modules
     void simpleInsert(ref TextSelection ts, string str){
       assert(ts.valid);  assert(ts.isZeroLength);  assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
+        row.setChangedModified;
 
         const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
-
-        row.needMeasure; //mark the parents
 
         //adjust caret and save
         ts.cursors[0].moveRight(insertedCnt);
@@ -744,30 +758,34 @@ class Workspace : Container{ //this is a collection of opened modules
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
         assert(ts.caret.pos.x>=0 && ts.caret.pos.x<=row.subCells.length);
 
+        //handle leadingTab duplication
+        const extraLeadingTabs = "\t".replicate(duplicateTabs ? row.leadingTabCount : 0);
+
         //break the row into 2 parts
         //transfer the end of (first)row into a lastRow
-        auto lastRow = new CodeRow(ts.codeColumn);
-        lastRow.subCells = row.subCells[ts.caret.pos.x..$];
-        lastRow.adoptSubCells;
-        row.subCells = row.subCells[0..ts.caret.pos.x];
+        auto lastRow = row.splitRow(ts.caret.pos.x);
+        if(lastRow.cellCount) row.setChangedModified;
+        lastRow.setChangedCreated;
 
         //insert at the end of the first row
-        row.insertText(row.cellCount, lines.front);
-        row.refreshTabIdx;
-        row.needMeasure;
+        if(row.insertText(row.cellCount, lines.front)) row.setChangedModified;
 
-        //insert extra rows in the middle
-        CodeRow[] midRows;
-        foreach(line; lines[1..$-1])
-          midRows ~= new CodeRow(ts.codeColumn, line);
+        //create extra rows in the middle
+        Cell[] midRows;
+        foreach(line; lines[1..$-1]){
+          auto r = new CodeRow(ts.codeColumn, line);
+          r.setChangedCreated;
+          midRows ~= r;
+        }
 
         //insert at the beginning of the last row
-        const insertedCnt = lastRow.insertText(0, lines.back);
-        lastRow.refreshTabIdx;
-        lastRow.needMeasure;
+        const insertedCnt = lastRow.insertText(0, extraLeadingTabs ~ lines.back);
+        if(insertedCnt) lastRow.setChangedModified;
 
+        //insert modified rows into column
         ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
-                               ~ (cast(Cell[])midRows ~ lastRow)
+                               ~ midRows
+                               ~ lastRow
                                ~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
 
         //adjust caret and save as reference
@@ -830,10 +848,10 @@ class Workspace : Container{ //this is a collection of opened modules
       }else if(textSelections.length==1) with(textSelections[0]){
         if(valid && !isZeroLength){
           cursors[0] = cursors[1];
-          //todo: scroll in
           scrollInBoundsRequest = worldBounds(textSelections);
         }else{
           textSelections = [];
+          if(modules.length) scrollInBoundsRequest = modules.map!"a.outerBounds".fold!"a|b";
         }
       }
     }
@@ -937,14 +955,15 @@ class Workspace : Container{ //this is a collection of opened modules
   //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen,
   //akkor sorokon dolgozik. A sorokon tolgozas feltetele az, hogy a target is zeroLength legyen.
 
-  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOneChar(Yes.toLeft); }
+  //todo: paste replace leading spaces with tabs. !!! -> Not good when pasting string literals.
+
+  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOneChar(Yes.toLeft); } //todo: delete leading tabs in one step.
   @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOneChar(No .toLeft); }
-  //opt: A backspace is meg a Delete is qrvalassu (300ms) Asszem a Container.measure() miatt
 
   @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ paste_impl(Yes.fromClipboard, ""); }
 
-  @VERB("Tab"                 ) void insertTab        (){ paste_impl(No.fromClipboard, "\t"); } //bug: Nem jo! Space-t csinal belole!!!
-  @VERB("Enter"               ) void insertNewLine    (){ paste_impl(No.fromClipboard, "\n"); }
+  @VERB("Tab"                 ) void insertTab        (){ paste_impl(No.fromClipboard, "\t"); }
+  @VERB("Enter"               ) void insertNewLine    (){ paste_impl(No.fromClipboard, "\n", Yes.duplicateTabs); }
 
   //todo: Ctrl+D word select and find
 
@@ -990,81 +1009,20 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
-    updateOpenQueue(1);
 
-    //update buildresults if needed (compilation progress or layer mask change)
-    size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
-    buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
-    if(buildStateChanged){
-      updateModuleBuildStates(buildResult);
-      convertBuildMessagesToSearchResults; //opt: limit this by change detection
-    }
+    // Start of possible modifications ----------------------------------------------------
 
-    //keyboard and mouse handling
     handleKeyboard;
-
+    updateOpenQueue(1);
     moduleSelectionManager.update(!im.wantMouse && mainWindow.isForeground && view.isMouseInside && lod.moduleLevel, view, modules);
     textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
 
-    //todo: updateModules could go here
+    // End of modifications ----------------------------------------------------
     measure;
+/*    foreach(m; modules){
+      if(m.flags.
+    }*/
 
-    /+void processNeedRefresh(Container act){
-      if(act.flags.needRefresh){
-        act.flags.needRefresh = false;
-
-        /*if(act.flags._measureOnlyOnce){
-          act.flags._measured = false;
-          LOG("clear measured", this);
-        }*/
-
-        if(auto ws = cast(Workspace)act){
-          ws.modules.each!(a => processNeedRefresh(a)); //recursive
-          //ws.rearrange;
-
-          //todo: this is done by outside. Make the rearrange change notification here.
-        }else if(auto mod = cast(Module)act){
-          processNeedRefresh(mod.code); //recursive
-
-          mod.innerSize = mod.code.outerSize;
-        }else if(auto col = cast(CodeColumn)act){
-          col.subContainers.each!(a => processNeedRefresh(a)); //recursive
-
-          //custom but fast column rearrange
-          float y = 0, maxw = 0;
-          foreach(ref sc; col.subCells){
-            sc.outerPos = vec2(0, y);
-            y += sc.outerHeight;
-            maxw.maximize(sc.outerWidth);
-          }
-          foreach(ref sc; col.subCells){
-            sc.outerWidth = maxw;
-          }
-          col.innerSize = vec2(maxw, y);
-
-        }else if(auto row = cast(CodeRow)act){
-          row.subContainers.each!(a => processNeedRefresh(a)); //recursive
-
-          row.refreshTabIdx;
-          //custom but fast row rearrange
-          float x = 0, maxh = 0;
-          foreach(ref sc; row.subCells){
-            sc.outerPos.x = x;
-            x += sc.outerWidth;
-            maxh.maximize(sc.outerHeight);
-          }
-          foreach(ref sc; row.subCells){
-            sc.outerPos.y = (maxh-sc.outerHeight)*.5f;
-          }
-          row.innerSize = vec2(x + newLineGlyphWidth, max(maxh, DefaultFontHeight));
-
-        }else{
-          raise("Unhandled:"~act.text);
-        }
-      }
-    }
-
-    processNeedRefresh(this);+/
 
 
     //detect textSelection change
@@ -1098,6 +1056,14 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
+    //update buildresults if needed (compilation progress or layer mask change)
+    size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
+    buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
+    if(buildStateChanged){
+      updateModuleBuildStates(buildResult);
+      convertBuildMessagesToSearchResults; //opt: limit this by change detection
+    }
+
     updateLastKnownModulePositions;
   }
 
@@ -1118,6 +1084,13 @@ class Workspace : Container{ //this is a collection of opened modules
 
     if(fileToClose) closeModule(fileToClose);
   }}
+
+  //! Save/Undo/History system ////////////////////////////////////////////////
+
+  // 3 levels
+  // 1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal meg lenne 2 extra: removedNextRow, removedPrevRow)
+  // 2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. Innentol nem idovonal van, hanem graph.
+  // 3. Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori allapotot. Ezt kesobb delta codinggal tomoriteni kell.
 
 
   //! UI /////////////////////////////////////////////////////////
@@ -1265,7 +1238,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
     //always draw these
     color = clSearchHighLight;
-    foreach(sr; searchResults){
+    foreach(sr; searchResults) if(sr.cells.length){
       auto r = sr.bounds;
       if(bnd.overlaps(r)){
         r.topLeft     -= vec2(extra);
@@ -1731,6 +1704,10 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   void drawOverlay(Drawing dr){
     //dr.mmGrid(view);
+
+    if(workspace.flags.changedModified) foreach(m; workspace.modules) if(m.flags.changedModified){
+      LOG(m.file);
+    }
   }
 
   override void afterPaint(){ // afterPaint //////////////////////////////////

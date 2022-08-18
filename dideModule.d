@@ -690,6 +690,8 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
 class CodeRow: Row{
   CodeColumn parent;
 
+  DateTime rearrangeTime;
+
   override Container getParent(){ return parent; }
   override void setParent(Container p){ parent = enforce(cast(CodeColumn)p); }
 
@@ -713,7 +715,7 @@ class CodeRow: Row{
 
     padding = "0 4";
 
-    needMeasure;
+    needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
     flags.wordWrap       = false;
     flags.clipSubCells   = true;
     flags.cullSubCells   = true;
@@ -740,10 +742,10 @@ class CodeRow: Row{
     internal_setSubCells([]);
 
     static TextStyle style; //it is needed by appendCode/applySyntax
-    this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); }, style, DefaultIndentSize);
-    adjustCharWidths;
+    this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/);
 
-    needMeasure;
+    //tabIdx if refreshed by appendCode
+    refresh;
   }
 
   /// Returns inserted count
@@ -760,23 +762,64 @@ class CodeRow: Row{
     const cnt0 = subCells.length;
 
     static TextStyle style; //it is needed by appendCode/applySyntax
-    this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); }, style, DefaultIndentSize);
+    this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/);
 
     const insertedCnt = (subCells.length-cnt0).to!int;
 
     subCells ~= after;
 
     refreshTabIdx;
-    adjustCharWidths;
-
-    needMeasure;
+    refresh;
 
     return insertedCnt;
   }
 
+  /// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
+  CodeRow splitRow(int x){
+    assert(x>=0 && x<=cellCount);
+
+    auto nextRow = new CodeRow(parent);
+    nextRow.subCells = this.subCells[x..$];
+    nextRow.adoptSubCells;
+    this.subCells = this.subCells[0..x];
+
+    foreach(a; only(this, nextRow)){
+      a.refreshTabIdx;
+      a.refresh;
+    }
+
+    only(this, nextRow).each!"a.refreshTabIdx";
+    only(this, nextRow).each!"a.refresh";
+
+    return nextRow;
+  }
+
+  ///must be called after the code changed. It tracks elasticTabs, and realigns if needed
+  void refresh(){
+    if(needMeasure){
+
+      //extend up and down along elastic tabs
+      auto i = index; //opt: this index calculation is slow. Feed index from the inside
+      assert(i>=0);
+
+      //simple but unefficient criteria: has any tabs or not
+      foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
+      foreach(a; parent.rows[i+1..$]    .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
+    }
+  }
+
   override void rearrange(){
+
+    assert(verifyTabIdx, "tabIdxInternal check fail");
+
+    adjustCharWidths;
+
     super.rearrange;
     static if(rearrangeLOG) LOG("rearranging", this);
+
+    rearrangeTime = now;
+
+    //opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
   }
 
   protected{
@@ -874,9 +917,50 @@ class CodeRow: Row{
     }else{
       super.draw(dr);
 
-      /*dr.fontHeight = 18;
-      dr.color = clFuchsia;
-      dr.textOut(outerPos.x, outerPos.y, getIndex.text);*/
+      //visualize tabs
+      //opt: these calculations operqations should be cached. Seems not that slow however
+      //todo: only display this when there is an editor cursor active in the codeColumn (or in the module)
+      dr.translate(innerPos); dr.alpha = .4f;
+      scope(exit){ dr.pop; dr.alpha = 1; }
+      dr.color = clGray;
+
+      if(tabIdxInternal.length){
+        dr.lineWidth = .5f;
+        foreach(ti; tabIdxInternal){
+          auto g = cast(Glyph)subCells[ti];
+          dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
+          //const y = g.outerPos.y + g.outerHeight*.5f;
+          //dr.vLine(g.outerRight, y-2, y+2);
+          //dr.hLine(g.outerLeft+1, y, g.outerRight-1);
+        }
+      }
+
+      //visualize spaces
+      dr.pointSize = 1;
+      foreach(a; glyphs.filter!(a => a && a.ch==' ')) dr.point(a.outerBounds.center);
+    }
+
+    void drawDot(RGB color, float y){
+      dr.color = color;
+      dr.pointSize = -6;
+      dr.point(innerPos + vec2(0, innerHeight * y));
+    }
+
+    //visualize changed/created/modified
+    if(int a = (flags.changedModified?1:0) | (flags.changedCreated?2:0)){
+      enum palette = [clBlack, clYellow, clLime, avg(clYellow, clLime)];
+      drawDot(palette[a], .5);
+    }
+
+    //visualize removed places
+    if(flags.changedRemovedPrev) drawDot(clRed, 0);
+    if(flags.changedRemovedNext) drawDot(clRed, 1);
+
+    if(now-rearrangeTime < 1*second){
+      dr.color = clGold;
+      dr.alpha = (1-(now-rearrangeTime).value(second)).sqr*.5f;
+      dr.fillRect(outerBounds);
+      dr.alpha = 1;
     }
   }
 
@@ -967,7 +1051,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     flags.columnElasticTabs = true;
     bkColor = clCodeBackground;
 
-    needMeasure;
+    needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
   }
 
   this(Container parent, SourceCode src){
