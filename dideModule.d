@@ -749,22 +749,20 @@ class CodeRow: Row{
   }
 
   /// Returns inserted count
-  int insertText(int at, string str){
-
-    if(str.empty) return 0;
+  int insertSomething(int at, void delegate() appendFun){
     enforce(at>=0 && at<=subCells.length, "Out of bounds");
 
     auto after = subCells[at..$];
     subCells = subCells[0..at];
 
-    auto syntax = [ubyte(0)].replicate(str.length);
-
     const cnt0 = subCells.length;
 
-    static TextStyle style; //it is needed by appendCode/applySyntax
-    this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/);
+    appendFun();
 
     const insertedCnt = (subCells.length-cnt0).to!int;
+    if(insertedCnt) flags.changedCreated = true;
+    //todo: refactor change tracking: changedCreated, changedRemoved, changedModified = changedCreated && changedRemoved, changed = changedCreated || changedRemoved;
+    //      it must be line based
 
     subCells ~= after;
 
@@ -772,6 +770,16 @@ class CodeRow: Row{
     refresh;
 
     return insertedCnt;
+  }
+
+  /// Returns inserted count
+  int insertText(int at, string str){
+    if(str.empty) return 0;
+    return insertSomething(at, {
+      static TextStyle style; //it is needed by appendCode/applySyntax
+      auto syntax = [ubyte(0)].replicate(str.length);
+      this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/);
+    });
   }
 
   /// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
@@ -783,9 +791,13 @@ class CodeRow: Row{
     nextRow.adoptSubCells;
     this.subCells = this.subCells[0..x];
 
-    foreach(a; only(this, nextRow)){
-      a.refreshTabIdx;
-      a.refresh;
+    //complex inheritance of changed flags
+    this.flags.changedModified = true;
+    nextRow.flags.changedModified = true;
+    nextRow.flags.changedCreated = this.flags.changedCreated;
+    if(this.flags.changedRemovedNext){
+      this.flags.changedRemovedNext = false;
+      nextRow.flags.changedRemovedNext = true;
     }
 
     only(this, nextRow).each!"a.refreshTabIdx";
@@ -814,7 +826,12 @@ class CodeRow: Row{
 
     adjustCharWidths;
 
+    innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
+
     super.rearrange;
+
+    innerSize = max(innerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+
     static if(rearrangeLOG) LOG("rearranging", this);
 
     rearrangeTime = now;
@@ -1081,7 +1098,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
   override void rearrange(){
+    innerSize = vec2(0);  flags.autoWidth = true; flags.autoHeight = true;
+
     super.rearrange;
+
+    innerSize = max(innerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+
     static if(rearrangeLOG) LOG("rearranging", this);
   }
 
@@ -1256,7 +1278,7 @@ auto cachedFolderLabel(string folderPath){
 }
 
 // CodeNode //////////////////////////////////////////
-class CodeNode : Container{
+class CodeNode : Row{
   Container parent;
 
   override Container getParent(){ return parent; }
@@ -1269,6 +1291,7 @@ class CodeNode : Container{
 
   this(Container parent){
     this.parent = parent;
+    needMeasure; //enables on-demand measure
   }
 
   ~this(){
@@ -1414,6 +1437,17 @@ class Module : CodeNode{ //this is any file in the project
     super.draw(dr);
   }
 
+  override void rearrange(){
+    innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
+    super.rearrange;
+    innerSize = code.outerSize.max(code.outerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+    overlay.outerPos = vec2(0);
+
+    static if(rearrangeLOG) LOG("rearranging", this);
+
+  }
+
+
   override void onDraw(Drawing dr){
     /*if(lod.moduleLevel){
       dr.color = clBlack;
@@ -1424,3 +1458,21 @@ class Module : CodeNode{ //this is any file in the project
   }
 }
 
+
+class CodeComment : CodeNode{
+  CodeColumn contents;
+
+  this(CodeRow parent){
+    super(parent);
+
+    flags.cullSubCells = true;
+
+    auto ts = tsSyntax(SyntaxKind.Comment);
+
+    bkColor = avg(ts.fontColor, ts.bkColor);
+    this.setRoundBorder(16);
+    padding = "8";
+
+    appendStr("Hello World!", ts);
+  }
+}

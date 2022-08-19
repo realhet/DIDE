@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -964,6 +964,20 @@ class Workspace : Container{ //this is a collection of opened modules
 
   @VERB("Tab"                 ) void insertTab        (){ paste_impl(No.fromClipboard, "\t"); }
   @VERB("Enter"               ) void insertNewLine    (){ paste_impl(No.fromClipboard, "\n", Yes.duplicateTabs); }
+
+
+  @VERB("F1"                  ) void testInsert       (){
+    auto r = findModule(File(`c:\D\libs\het\Utils.d`)).code.getRow(100).enforce;
+    r.insertSomething(10, {
+      foreach(i; 0..3)
+        r.append(new CodeComment(r));
+    });
+  }
+
+  @VERB("F2"                  ) void testInsert2       (){
+    auto r = findModule(File(`c:\D\libs\het\Utils.d`)).code.getRow(100).enforce;
+    r.needMeasure;
+  }
 
   //todo: Ctrl+D word select and find
 
