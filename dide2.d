@@ -329,7 +329,7 @@ class Workspace : Container{ //this is a collection of opened modules
   ContainerSelectionManager!Module moduleSelectionManager;
   TextSelectionManager textSelectionManager;
 
-  bool searchBoxVisible = false;
+  bool searchBoxVisible, searchBoxActivate_request;
   string searchText;
 
   struct MarkerLayer{
@@ -353,6 +353,8 @@ class Workspace : Container{ //this is a collection of opened modules
   size_t textSelectionsHash;
 
   FileDialog fileDialog;
+
+  Nullable!bounds2 scrollInBoundsRequest;
 
   this(){
     flags.targetSurface = 0;
@@ -668,14 +670,46 @@ class Workspace : Container{ //this is a collection of opened modules
     textSelections = merge(textSelections ~ newTextSelections);
   }
 
-  bool copy_impl(TextSelection[] textSelections){  // copy ///////////////////////////////////////
+  void scrollInAllModules(){
+    if(modules.length) scrollInBoundsRequest = modules.map!"a.outerBounds".fold!"a|b";
+  }
+
+  void cancelSelection_impl(){ // cancelSelection_impl //////////////////////////////////////
+    if(lod.moduleLevel){
+      deselectAllModules;
+    }
+
+    if(lod.codeLevel){
+      if(textSelections.length>1){
+        textSelections.length = 1;
+        with(textSelections[0]){
+          scrollInBoundsRequest = worldBounds(textSelections);
+        }
+        //todo: scroll in
+      }else if(textSelections.length==1) with(textSelections[0]){
+        if(valid && !isZeroLength){
+          cursors[0] = cursors[1];
+          scrollInBoundsRequest = worldBounds(textSelections);
+        }else{
+          textSelections = [];
+          scrollInAllModules;
+        }
+      }
+    }
+  }
+
+  bool copy_impl(TextSelection[] textSelections){  // copy_impl ///////////////////////////////////////
     auto copiedSourceText = textSelections.exportSourceText;
     bool valid = copiedSourceText.length>0;
     if(valid) clipboard.asText = copiedSourceText;
     return valid;
   }
 
-  void cut_impl(TextSelection[] textSelections, void delegate(CodeRow left, CodeRow right) onRowJoin){  // cut ////////////////////////////////////////
+  auto cut_impl(TextSelection[] textSelections){  // cut_impl ////////////////////////////////////////
+    textSelections = textSelections.merge;
+    //todo: assert checking if the selection is merged... on demand merge.
+
+    auto savedSelections = textSelections.map!"a.toReference".array;
 
     foreach_reverse(sel; textSelections) if(!sel.isZeroLength)if(auto col = sel.codeColumn){
       const st = sel.start,
@@ -698,7 +732,9 @@ class Workspace : Container{ //this is a collection of opened modules
                 row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
               }else if(x==rowCellCount){ //newLine
                 if(auto nextRow = col.getRow(y+1)){
-                  onRowJoin(row, nextRow);
+
+                  foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
+                    ss.replaceLatestRow(nextRow, row);
 
                   row.append(nextRow.subCells);
                   row.adoptSubCells;
@@ -710,31 +746,26 @@ class Workspace : Container{ //this is a collection of opened modules
             }
             row.refreshTabIdx;
             row.refresh;
+            row.setChangedRemoved;
           }
 
         }else assert(0, "TextSelection out of range Y");
       }//for y
-
-      if(st.pos.x==0 && en.pos.x==0){
-        if(auto r = col.getRow(st.pos.y-1)) r.setChangedRemovedNext;
-        if(auto r = col.getRow(st.pos.y  )) r.setChangedRemovedPrev;
-      }else{
-        if(auto r = col.getRow(st.pos.y  )) r.setChangedModified;
-      }
-
     }else assert(0, "TextSelection invalid CodeColumn");
+
+    return savedSelections.map!"a.fromReference".filter!"a.valid".array;
   }
 
-  void paste_impl(Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste //////////////////////////////////
-    if(textSelections.filter!"a.valid".empty) return; //no target
+  auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste //////////////////////////////////
+    if(textSelections.filter!"a.valid".empty) return textSelections; //no target
 
     if(fromClipboard)
       input = clipboard.asText;
 
     auto lines = input.splitLines;
-    if(lines.empty) return; //nothing to do with an empty clipboard
+    if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 
-    cut(No.copy, No.fullRows);
+    textSelections = cut_impl(textSelections);
 
     TextSelectionReference[] savedSelections;
 
@@ -742,7 +773,6 @@ class Workspace : Container{ //this is a collection of opened modules
     void simpleInsert(ref TextSelection ts, string str){
       assert(ts.valid);  assert(ts.isZeroLength);  assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
-        row.setChangedModified;
 
         const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
 
@@ -764,23 +794,20 @@ class Workspace : Container{ //this is a collection of opened modules
         //break the row into 2 parts
         //transfer the end of (first)row into a lastRow
         auto lastRow = row.splitRow(ts.caret.pos.x);
-        if(lastRow.cellCount) row.setChangedModified;
-        lastRow.setChangedCreated;
 
         //insert at the end of the first row
-        if(row.insertText(row.cellCount, lines.front)) row.setChangedModified;
+        row.insertText(row.cellCount, lines.front);
 
         //create extra rows in the middle
         Cell[] midRows;
         foreach(line; lines[1..$-1]){
-          auto r = new CodeRow(ts.codeColumn, line);
+          auto r = new CodeRow(ts.codeColumn, line); //todo: this should be insertText
           r.setChangedCreated;
           midRows ~= r;
         }
 
         //insert at the beginning of the last row
         const insertedCnt = lastRow.insertText(0, extraLeadingTabs ~ lines.back);
-        if(insertedCnt) lastRow.setChangedModified;
 
         //insert modified rows into column
         ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
@@ -819,46 +846,34 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
-    measure;
-    textSelections = savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
+    return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
   }
 
 
-  // Module operations ------------------------------------------------
-  Nullable!bounds2 scrollInBoundsRequest;
+  //! Keyboard mapping ///////////////////////////////////////
 
-  @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
-  @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-  @VERB("Ctrl+A"                        ) void selectAllModules     () { modules.each!(m => m.flags.selected = true);} //todo: selectAll for the editors
-  @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); }
-  @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; }
-  @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
-  @VERB("Esc"                           ) void cancelSelection      () {
-    if(lod.moduleLevel){
-      deselectAllModules;
-    }
+  // Navigation ---------------------------------------------
 
-    if(lod.codeLevel){
-      if(textSelections.length>1){
-        textSelections.length = 1;
-        with(textSelections[0]){
-          scrollInBoundsRequest = worldBounds(textSelections);
-        }
-        //todo: scroll in
-      }else if(textSelections.length==1) with(textSelections[0]){
-        if(valid && !isZeroLength){
-          cursors[0] = cursors[1];
-          scrollInBoundsRequest = worldBounds(textSelections);
-        }else{
-          textSelections = [];
-          if(modules.length) scrollInBoundsRequest = modules.map!"a.outerBounds".fold!"a|b";
-        }
-      }
-    }
-  }
+  @VERB("Ctrl+Up"             ) void scrollLineUp           (){ scrollV( DefaultFontHeight); }
+  @VERB("Ctrl+Down"           ) void scrollLineDown         (){ scrollV(-DefaultFontHeight); }
+  @VERB("Alt+PgUp"            ) void scrollPageUp           (){ scrollV( frmMain.clientHeight*.9); }
+  @VERB("Alt+PgDn"            ) void scrollPageDown         (){ scrollV(-frmMain.clientHeight*.9); }
+  @VERB("Ctrl+="              ) void zoomIn                 (){ zoom( .5); }
+  @VERB("Ctrl+-"              ) void zoomOut                (){ zoom(-.5); }
 
-  /+todo: uzemmod fuggest megoldani: A Ctrl+A ha editing van, akkor az editalt modulra vonatkozzon, tavoli nezetben viszont a kivalasztott modulokra. Ezt a kettot valahogy ossze kellene egysegesiteni.
-          nem vilagos, hogy a ctrl+W az mire vonatkozik...+/
+  @HOLD("Ctrl+Num8"           ) void holdScrollUp           (){ scrollV( scrollSpeed); }
+  @HOLD("Ctrl+Num2"           ) void holdScrollDown         (){ scrollV(-scrollSpeed); }
+  @HOLD("Ctrl+Num4"           ) void holdScrollLeft         (){ scrollH( scrollSpeed); }
+  @HOLD("Ctrl+Num6"           ) void holdScrollRight        (){ scrollH(-scrollSpeed); }
+  @HOLD("Ctrl+Num+"           ) void holdZoomIn             (){ zoom( zoomSpeed); }
+  @HOLD("Ctrl+Num-"           ) void holdZoomOut            (){ zoom(-zoomSpeed); }
+
+  @HOLD("Alt+Ctrl+Num8"       ) void holdScrollUp_slow      (){ scrollV( scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num2"       ) void holdScrollDown_slow    (){ scrollV(-scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num4"       ) void holdScrollLeft_slow    (){ scrollH( scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num6"       ) void holdScrollRight_slow   (){ scrollH(-scrollSpeed/8); }
+  @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
+  @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
 
   // Cursor and text selection ----------------------------------------
 
@@ -891,80 +906,33 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
   @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
 
+  @VERB("Ctrl+A"                        ) void selectAllText          (){ NOTIMPL; }
   @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shrink/extend Ast Selection
   @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
-  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){  }
-
-  // Navigation ---------------------------------------------
-
-  @VERB("Ctrl+Up"             ) void scrollLineUp           (){ scrollV( DefaultFontHeight); }
-  @VERB("Ctrl+Down"           ) void scrollLineDown         (){ scrollV(-DefaultFontHeight); }
-  @VERB("Alt+PgUp"            ) void scrollPageUp           (){ scrollV( frmMain.clientHeight*.9); }
-  @VERB("Alt+PgDn"            ) void scrollPageDown         (){ scrollV(-frmMain.clientHeight*.9); }
-  @VERB("Ctrl+="              ) void zoomIn                 (){ zoom( .5); }
-  @VERB("Ctrl+-"              ) void zoomOut                (){ zoom(-.5); }
-
-  @HOLD("Ctrl+Num8"           ) void holdScrollUp           (){ scrollV( scrollSpeed); }
-  @HOLD("Ctrl+Num2"           ) void holdScrollDown         (){ scrollV(-scrollSpeed); }
-  @HOLD("Ctrl+Num4"           ) void holdScrollLeft         (){ scrollH( scrollSpeed); }
-  @HOLD("Ctrl+Num6"           ) void holdScrollRight        (){ scrollH(-scrollSpeed); }
-  @HOLD("Ctrl+Num+"           ) void holdZoomIn             (){ zoom( zoomSpeed); }
-  @HOLD("Ctrl+Num-"           ) void holdZoomOut            (){ zoom(-zoomSpeed); }
-
-  @HOLD("Alt+Ctrl+Num8"       ) void holdScrollUp_slow      (){ scrollV( scrollSpeed/8); }
-  @HOLD("Alt+Ctrl+Num2"       ) void holdScrollDown_slow    (){ scrollV(-scrollSpeed/8); }
-  @HOLD("Alt+Ctrl+Num4"       ) void holdScrollLeft_slow    (){ scrollH( scrollSpeed/8); }
-  @HOLD("Alt+Ctrl+Num6"       ) void holdScrollRight_slow   (){ scrollH(-scrollSpeed/8); }
-  @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
-  @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
+  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ NOTIMPL; }
 
   // Editing ------------------------------------------------
 
-  @VERB("Ctrl+X Shift+Del"    ) void cut(Flag!"copy" doCopy = Yes.copy, Flag!"fullRows" doFullRows = Yes.fullRows){
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRows); }
+  //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
+  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = textSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  textSelections = cut_impl(sel); }
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelections = paste_impl(textSelections, Yes.fromClipboard, ""); }
+  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = textSelections.zeroLengthSelectionsToOneLeft ;  textSelections = cut_impl(sel); } //todo: delete leading tabs in one step.
+  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = textSelections.zeroLengthSelectionsToOneRight;  textSelections = cut_impl(sel); }
+  @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\t"); }
+  @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
+  @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }
 
-    //prepare textSelections
-    textSelections = doFullRows ? textSelections.zeroLengthSelectionsToFullRowsAndMerge
-                                : textSelections.merge;
+  // Module and File operations ------------------------------------------------
 
-    auto savedSelections = textSelections.map!"a.toReference".array;
+  @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
+  @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
+  @VERB("Ctrl+Shift+A"                  ) void selectAllModules     () { textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
+  @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
+  @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
+  @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
 
-    if(doCopy) copy_impl(textSelections);
-
-    cut_impl(textSelections, (left, right){
-      foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
-        ss.replaceLatestRow(right, left);
-    });
-
-    measure;
-    textSelections = savedSelections.map!"a.fromReference".filter!"a.valid".array;
-  }
-
-  protected void deleteAtLeastOneChar(Flag!"toLeft" toLeft){
-    //extend zero length selections to the lefto or to the right with 1 char
-    const dir = toLeft ? -1 : 1;
-
-    textSelections.each!((ref s){
-      if(s.valid && s.isZeroLength)
-        s.move(ivec2(dir, 0), true);
-    });
-
-    cut(No.copy, No.fullRows);
-  }
-
-  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRowsAndMerge); }
-  //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen,
-  //akkor sorokon dolgozik. A sorokon tolgozas feltetele az, hogy a target is zeroLength legyen.
-
-  //todo: paste replace leading spaces with tabs. !!! -> Not good when pasting string literals.
-
-  @VERB("Backspace"           ) void deleteToLeft     (){ deleteAtLeastOneChar(Yes.toLeft); } //todo: delete leading tabs in one step.
-  @VERB("Del"                 ) void deleteFromRight  (){ deleteAtLeastOneChar(No .toLeft); }
-
-  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ paste_impl(Yes.fromClipboard, ""); }
-
-  @VERB("Tab"                 ) void insertTab        (){ paste_impl(No.fromClipboard, "\t"); }
-  @VERB("Enter"               ) void insertNewLine    (){ paste_impl(No.fromClipboard, "\n", Yes.duplicateTabs); }
-
+  @VERB("Ctrl+F"                        ) void searchBoxActivate() { searchBoxActivate_request = true; }
 
   @VERB("F1"                  ) void testInsert       (){
     auto r = findModule(File(`c:\D\libs\het\Utils.d`)).code.getRow(100).enforce;
@@ -1008,7 +976,7 @@ class Workspace : Container{ //this is a collection of opened modules
           try{
             //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
             auto s = ch.to!string;
-            paste_impl(No.fromClipboard, s);
+            textSelections = paste_impl(textSelections, No.fromClipboard, s);
           }catch(Exception){
             unprocessed ~= ch;
           }
@@ -1120,18 +1088,23 @@ class Workspace : Container{ //this is a collection of opened modules
 
   void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults){ with(im) Row({
     //Keyboard shortcuts
-    auto kcFind      = KeyCombo("Ctrl+F"),
-         kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
+    auto kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
          kcFindClose = KeyCombo("Esc"); //always
 
-    if(kcFind.pressed) searchBoxVisible = true; //this is needed for 1 frame latency of the Edit
-    //todo: focus on the edit when turned on
+    //activate searchbox
+    bool needFocus;
+    if(!searchBoxVisible && searchBoxActivate_request){
+      searchBoxVisible = needFocus = true;
+    }
+    searchBoxActivate_request = false;
+
     if(searchBoxVisible){
       width = fh*12;
 
       Text("Find ");
       .Container editContainer;
-      if(Edit(searchText, kcFind, { flex = 1; editContainer = actContainer; })){
+
+      if(Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; })){
         //refresh search results
         searchResults = modules.map!(m => m.search(searchText)).join;
       }
@@ -1153,9 +1126,8 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }else{
 
-      if(Btn(symbol("Zoom"       ), kcFind, hint("Start searching."))){
-        searchBoxVisible = true ; //todo: Focus the Edit control
-      }
+      if(Btn(symbol("Zoom"), hint("Start searching.")))
+        searchBoxActivate; //todo: this is a @VERB. Button should get the extra info from that VERB somehow.
     }
   });}
 
@@ -1719,9 +1691,9 @@ class FrmMain : GLWindow { mixin autoCreate;
   void drawOverlay(Drawing dr){
     //dr.mmGrid(view);
 
-    if(workspace.flags.changedModified) foreach(m; workspace.modules) if(m.flags.changedModified){
+    /*if(workspace.changed) foreach(m; workspace.modules) if(m.changed){
       LOG(m.file);
-    }
+    } */
   }
 
   override void afterPaint(){ // afterPaint //////////////////////////////////

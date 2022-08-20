@@ -20,7 +20,8 @@ Glyph newLineGlyph(){ // newLineGlyph //////////////////////////////////////////
   return initOnce!g(new Glyph("\u240A\u2936\u23CE"d[1], tsNormal));
 }
 
-enum newLineGlyphWidth = DefaultFontHeight*10/18;
+enum DefaultFontNewLineWidth = DefaultFontHeight*10/18;
+enum DefaultFontNewLineSize = vec2(DefaultFontNewLineWidth, DefaultFontHeight);
 
 // LOD //////////////////////////////////////////
 
@@ -618,12 +619,28 @@ auto extendToWordsOrSpaces(TextSelection sel){
   return sel;
 }
 
-auto zeroLengthSelectionsToFullRowsAndMerge(TextSelection[] sel){
+auto zeroLengthSelectionsToFullRows(TextSelection[] sel){
   auto fullRows = sel .filter!"a.valid && a.isZeroLength"
                       .map!extendToFullRow.array;
 
-  return merge(sel~fullRows); //always merge, because merge has a sort
+  return merge(sel ~ fullRows);
 }
+
+auto zeroLengthSelectionsToOne(TextSelection[] sel, Flag!"toLeft" toLeft){
+  const dir = toLeft ? -1 : 1;
+
+  auto a = sel.dup;
+  a.each!((ref s){
+    if(s.valid && s.isZeroLength)
+      s.move(ivec2(dir, 0), true);
+  });
+
+  return merge(a);
+}
+
+auto zeroLengthSelectionsToOneLeft (TextSelection[] sel){ return sel.zeroLengthSelectionsToOne(Yes.toLeft); }
+auto zeroLengthSelectionsToOneRight(TextSelection[] sel){ return sel.zeroLengthSelectionsToOne(No .toLeft); }
+
 
 /// input newLine is '\n'
 /// it only adds newLine when the last item doesn't have one at its end
@@ -727,6 +744,11 @@ class CodeRow: Row{
     super(); //todo: remove this. I think it's implicit.
   }
 
+  //fast content size calculations (after measure)
+  float contentInnerWidth () const { return subCells.length ? subCells.back.outerRight : DefaultFontNewLineWidth; }
+  float contentInnerHeight() const { return subCells.map!"a.outerHeight".maxElement(DefaultFontHeight); }
+  vec2 contentInnerSize() const { return vec2(contentInnerWidth, contentInnerHeight); }
+
   this(CodeColumn parent_, string line, ubyte[] syntax){
     assert(line.length==syntax.length);
     this(parent_);
@@ -760,9 +782,7 @@ class CodeRow: Row{
     appendFun();
 
     const insertedCnt = (subCells.length-cnt0).to!int;
-    if(insertedCnt) flags.changedCreated = true;
-    //todo: refactor change tracking: changedCreated, changedRemoved, changedModified = changedCreated && changedRemoved, changed = changedCreated || changedRemoved;
-    //      it must be line based
+    if(insertedCnt) setChangedCreated;
 
     subCells ~= after;
 
@@ -787,18 +807,14 @@ class CodeRow: Row{
     assert(x>=0 && x<=cellCount);
 
     auto nextRow = new CodeRow(parent);
+    nextRow.setChangedCreated;
+
     nextRow.subCells = this.subCells[x..$];
     nextRow.adoptSubCells;
     this.subCells = this.subCells[0..x];
 
-    //complex inheritance of changed flags
-    this.flags.changedModified = true;
-    nextRow.flags.changedModified = true;
-    nextRow.flags.changedCreated = this.flags.changedCreated;
-    if(this.flags.changedRemovedNext){
-      this.flags.changedRemovedNext = false;
-      nextRow.flags.changedRemovedNext = true;
-    }
+    if(nextRow.subCells.length)
+      this.setChangedRemoved;
 
     only(this, nextRow).each!"a.refreshTabIdx";
     only(this, nextRow).each!"a.refresh";
@@ -830,7 +846,7 @@ class CodeRow: Row{
 
     super.rearrange;
 
-    innerSize = max(innerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+    innerSize = max(innerSize, DefaultFontNewLineSize);
 
     static if(rearrangeLOG) LOG("rearranging", this);
 
@@ -964,14 +980,10 @@ class CodeRow: Row{
     }
 
     //visualize changed/created/modified
-    if(int a = (flags.changedModified?1:0) | (flags.changedCreated?2:0)){
-      enum palette = [clBlack, clYellow, clLime, avg(clYellow, clLime)];
-      drawDot(palette[a], .5);
+    if(auto m = changedMask){
+      enum palette = [clBlack, clLime, clRed, clYellow];
+      drawDot(palette[m], .5);
     }
-
-    //visualize removed places
-    if(flags.changedRemovedPrev) drawDot(clRed, 0);
-    if(flags.changedRemovedNext) drawDot(clRed, 1);
 
     if(now-rearrangeTime < 1*second){
       dr.color = clGold;
@@ -983,7 +995,7 @@ class CodeRow: Row{
 
   bounds2 newLineBounds(){
     const p = newLinePos;
-    return bounds2(p, p+vec2(newLineGlyphWidth, DefaultFontHeight));
+    return bounds2(p, p + DefaultFontNewLineSize);
   }
 
   vec2 newLinePos(){
@@ -1098,11 +1110,28 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
   override void rearrange(){
-    innerSize = vec2(0);  flags.autoWidth = true; flags.autoHeight = true;
+    //innerSize = vec2(0);  flags.autoWidth = true; flags.autoHeight = true;
 
-    super.rearrange;
+    if(rows.empty){
+      innerSize = DefaultFontNewLineSize;
+    }else{
+      //measure and spread rows vertically rows
+      float y=0, maxW=0;
+      const totalGap = rows.front.totalGapSize; //assume all rows have the same margin, padding, border settings
+      foreach(r; rows){
+        r.measure;
+        r.outerPos = vec2(0, y);
+        y += r.innerHeight+totalGap.y;
+      }
 
-    innerSize = max(innerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+      processElasticTabs(cast(Cell[])rows); //opt: apply this to a subset that has been remeasured
+
+      const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
+      innerSize = vec2(maxInnerWidth + totalGap.x, y);
+      //todo: this is not possible with the immediate UI because the autoWidth/autoHeigh information is lost. And there is no functions to return the required content size. The container should have a current size, a minimal required size and separate autoWidth flags.
+
+      foreach(r; rows) r.innerWidth = maxInnerWidth;
+    }
 
     static if(rearrangeLOG) LOG("rearranging", this);
   }
@@ -1439,8 +1468,14 @@ class Module : CodeNode{ //this is any file in the project
 
   override void rearrange(){
     innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
-    super.rearrange;
-    innerSize = code.outerSize.max(code.outerSize, vec2(DefaultFontHeight*.5f, DefaultFontHeight));
+
+    //super.rearrange;
+    foreach(a; only(code, overlay)){
+      a.measure;
+      a.outerPos = vec2(0);
+    }
+
+    innerSize = code.outerSize.max(code.outerSize, DefaultFontNewLineSize);
     overlay.outerPos = vec2(0);
 
     static if(rearrangeLOG) LOG("rearranging", this);
