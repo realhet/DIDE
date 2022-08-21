@@ -6,6 +6,7 @@ import het, het.ui, het.tokenizer, dideui, buildsys;
 enum MaxAnimatedCursors = 100;
 
 enum rearrangeLOG = false;
+enum rearrangeFlash = false;
 
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
@@ -13,15 +14,34 @@ __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
 
+// ChangeIndicator ////////////////////////////////////////////
 
-Glyph newLineGlyph(){ // newLineGlyph /////////////////////////////////////////////
-  import std.concurrency;
-  __gshared Glyph g;
-  return initOnce!g(new Glyph("\u240A\u2936\u23CE"d[1], tsNormal));
+struct ChangeIndicator{
+  vec2 pos;
+  float height;
+  ubyte thickness;
+  ubyte mask;
 }
 
-enum DefaultFontNewLineWidth = DefaultFontHeight*10/18;
-enum DefaultFontNewLineSize = vec2(DefaultFontNewLineWidth, DefaultFontHeight);
+Appender!(ChangeIndicator[]) globalChangeindicatorsAppender;
+
+void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask){
+  globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask);
+}
+
+void addGlobalChangeIndicator(Drawing dr, Container cntr){ with(cntr){
+  if(const mask = changedMask){
+    if      (cast(CodeRow    )cntr) addGlobalChangeIndicator(dr.inputTransform(outerPos), outerHeight, 6, mask);
+    else if (cast(CodeColumn )cntr) addGlobalChangeIndicator(dr.inputTransform(innerPos), innerHeight, 2, mask);
+  }
+}}
+
+void draw(Drawing dr, in ChangeIndicator[] arr){
+  enum palette = [clBlack, clLime, clRed, clYellow];
+  /+ pass 1 +/  dr.color = clBlack; foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)-3;                             dr.vLine(a.pos, a.pos.y+a.height); }
+  /+ pass 2 +/                      foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)  ; dr.color = palette[a.mask]; dr.vLine(a.pos, a.pos.y+a.height); }
+}
+
 
 // LOD //////////////////////////////////////////
 
@@ -132,6 +152,16 @@ void visitCellAndParents(Cell act, bool delegate(Cell c) fun){
     if(!fun(act)) break; //it can break
     act = act.getParent;
   }
+}
+
+Module moduleOf(Cell c){
+  Module res;
+  visitCellAndParents(c, (a){
+    if(auto m = cast(Module)a)
+      res = m;
+    return res is null;
+  });
+  return res;
 }
 
 struct CellPath{//CellPath ///////////////////////////////
@@ -562,19 +592,21 @@ TextSelection merge(TextSelection a, TextSelection b){
   return res;
 }
 
-TextSelection[] merge(TextSelection[] arr){
-  auto sorted = arr.sort.array;  //opt: on demand sorting
+TextSelection[] merge(R)(R input)
+if(isInputRange!R && is(ElementType!R==TextSelection))
+{
+  auto sorted = input.array.sort;  //opt: on demand sorting
 
-  arr = [];
+  TextSelection[] res;
   foreach(a; sorted){
-    if(arr.length && touches(a, arr.back)){
-      arr.back = merge(a, arr.back);
+    if(res.length && touches(a, res.back)){
+      res.back = merge(a, res.back);
     }else{
-      arr ~= a;
+      res ~= a;
     }
   }
 
-  return arr;
+  return res;
 }
 
 auto extendToFullRow(TextSelection sel){
@@ -707,7 +739,7 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
 class CodeRow: Row{
   CodeColumn parent;
 
-  DateTime rearrangeTime;
+  static if(rearrangeFlash) DateTime rearrangeTime;
 
   override Container getParent(){ return parent; }
   override void setParent(Container p){ parent = enforce(cast(CodeColumn)p); }
@@ -730,7 +762,7 @@ class CodeRow: Row{
     parent = enforce(parent_);
     id.value = this.identityStr;
 
-    padding = "0 4";
+    padding.left = padding.right = DefaultFontNewLineWidth;
 
     needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
     flags.wordWrap       = false;
@@ -743,11 +775,6 @@ class CodeRow: Row{
 
     super(); //todo: remove this. I think it's implicit.
   }
-
-  //fast content size calculations (after measure)
-  float contentInnerWidth () const { return subCells.length ? subCells.back.outerRight : DefaultFontNewLineWidth; }
-  float contentInnerHeight() const { return subCells.map!"a.outerHeight".maxElement(DefaultFontHeight); }
-  vec2 contentInnerSize() const { return vec2(contentInnerWidth, contentInnerHeight); }
 
   this(CodeColumn parent_, string line, ubyte[] syntax){
     assert(line.length==syntax.length);
@@ -850,7 +877,7 @@ class CodeRow: Row{
 
     static if(rearrangeLOG) LOG("rearranging", this);
 
-    rearrangeTime = now;
+    static if(rearrangeFlash) rearrangeTime = now;
 
     //opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
   }
@@ -939,7 +966,7 @@ class CodeRow: Row{
     return CaretPos(vec2(subCells[idx].outerLeft, y0), y1-y0);
   }
 
-  override void draw(Drawing dr){
+  override void draw(Drawing dr){ //draw ////////////////////////////////
     if(lod.level>1){
       const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength; //opt: this should be memoized
       if(lsCnt<subCells.length){
@@ -970,22 +997,14 @@ class CodeRow: Row{
 
       //visualize spaces
       dr.pointSize = 1;
-      foreach(a; glyphs.filter!(a => a && a.ch==' ')) dr.point(a.outerBounds.center);
-    }
-
-    void drawDot(RGB color, float y){
-      dr.color = color;
-      dr.pointSize = -6;
-      dr.point(innerPos + vec2(0, innerHeight * y));
+      foreach(a; glyphs.filter!(a => a && a.ch==' '))
+        dr.point(a.outerBounds.center); //todo: don't highlight single spaces only if there is a tab or character or end of line next to them.
     }
 
     //visualize changed/created/modified
-    if(auto m = changedMask){
-      enum palette = [clBlack, clLime, clRed, clYellow];
-      drawDot(palette[m], .5);
-    }
+    addGlobalChangeIndicator(dr, this/*, vec2(padding.left, innerHeight)*.5f*/);
 
-    if(now-rearrangeTime < 1*second){
+    static if(rearrangeFlash) if(now-rearrangeTime < 1*second){
       dr.color = clGold;
       dr.alpha = (1-(now-rearrangeTime).value(second)).sqr*.5f;
       dr.fillRect(outerBounds);
@@ -1110,7 +1129,9 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
   override void rearrange(){
-    //innerSize = vec2(0);  flags.autoWidth = true; flags.autoHeight = true;
+    //ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
+    auto rows = cast(Row[])subCells;
+    assert(rows.map!(a => cast(Row)a).all);
 
     if(rows.empty){
       innerSize = DefaultFontNewLineSize;
@@ -1228,6 +1249,13 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
   }
 
+  override void draw(Drawing dr){ // draw ///////////////////////////////////
+    super.draw(dr);
+
+    //visualize changed/created/modified
+    addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+  }
+
 }
 
 void test_CodeColumn(){
@@ -1316,6 +1344,13 @@ class CodeNode : Row{
   override void rearrange(){
     super.rearrange;
     static if(rearrangeLOG) LOG("rearranging", this);
+  }
+
+  override void draw(Drawing dr){
+    super.draw(dr);
+
+    //visualize changed/created/modified
+    addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
   }
 
   this(Container parent){
@@ -1483,31 +1518,63 @@ class Module : CodeNode{ //this is any file in the project
   }
 
 
-  override void onDraw(Drawing dr){
-    /*if(lod.moduleLevel){
-      dr.color = clBlack;
-      dr.alpha = .33;
-      dr.fillRect(0, 0, innerWidth, innerHeight);
-      dr.alpha = 1;
-    }*/
-  }
+/*  override void draw(Drawing dr){ // draw///////////////////////////////////
+    super.draw(dr);
+  }*/
 }
 
 
-class CodeComment : CodeNode{
+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
   CodeColumn contents;
 
   this(CodeRow parent){
     super(parent);
 
     flags.cullSubCells = true;
+    flags.yAlign = YAlign.top;
 
     auto ts = tsSyntax(SyntaxKind.Comment);
 
-    bkColor = avg(ts.fontColor, ts.bkColor);
-    this.setRoundBorder(16);
-    padding = "8";
+    const darkColor   = ts.bkColor,
+          brightColor = ts.fontColor,
+          halfColor   = avg(darkColor, brightColor);
 
-    appendStr("Hello World!", ts);
+    bkColor = halfColor;
+    this.setRoundBorder(8);
+    margin = "0.5";
+    padding = "1.5";
+    padding.right += 1.5;
+
+    ts.fontColor = darkColor;
+    ts.bkColor = halfColor;
+    appendStr("//", ts);
+
+    contents = new CodeColumn(this, "//This is a test comment");
+    contents.bkColor = darkColor;
+    contents.setRoundBorder(8);
+    contents.margin = "0 2";
+    contents.padding = "0 4";
+
+    subCells ~= contents;
+
+    needMeasure;
+  }
+
+  override void rearrange(){
+    {
+      const c = tsSyntax(SyntaxKind.Comment).bkColor;
+      foreach(r; contents.rows){
+        r.bkColor = c;
+        r.padding = "0 2";
+      }
+    }
+
+    innerSize = vec2(0);
+    flags.autoWidth = true;
+    flags.autoHeight = true;
+    //measureSubCells;
+    super.rearrange;
+
+    //innerSize = subCells.back.outerBottomRight;
   }
 }

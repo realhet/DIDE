@@ -238,6 +238,8 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       }
 
       scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
+      //todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
+      //todo: do this scrolling in the ModuleSelectionManager too.
     }
 
     void endMouseSelection(){
@@ -312,6 +314,9 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 }
 
 
+struct SelectionManager{
+}
+
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container{ //this is a collection of opened modules
   File file; //the file of the workspace
@@ -328,6 +333,9 @@ class Workspace : Container{ //this is a collection of opened modules
 
   ContainerSelectionManager!Module moduleSelectionManager;
   TextSelectionManager textSelectionManager;
+
+  TextSelection[] textSelections;
+  size_t textSelectionsHash;
 
   bool searchBoxVisible, searchBoxActivate_request;
   string searchText;
@@ -348,9 +356,6 @@ class Workspace : Container{ //this is a collection of opened modules
   //Restrict convertBuildResultToSearchResults calls.
   size_t lastBuildStateHash;
   bool buildStateChanged;
-
-  TextSelection[] textSelections;
-  size_t textSelectionsHash;
 
   FileDialog fileDialog;
 
@@ -455,6 +460,19 @@ class Workspace : Container{ //this is a collection of opened modules
   auto selectedModules(){ return modules.filter!(m => m.flags.selected).array; }
   auto unselectedModules(){ return modules.filter!(m => !m.flags.selected).array; }
   auto hoveredModule(){ return moduleSelectionManager.hoveredItem; }
+
+  /// modules that have cursors on them
+  auto editedModules(){
+    T0; scope(exit) LOG(DT);
+
+    bool[Module] res;
+
+    foreach(m; textSelections.map!(s => s.codeColumn.moduleOf))
+      if(m)
+        res[m]=true;
+
+    return res.keys;
+  }
 
   private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
@@ -670,11 +688,26 @@ class Workspace : Container{ //this is a collection of opened modules
     textSelections = merge(textSelections ~ newTextSelections);
   }
 
+  auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections){
+    return textSelections
+      .filter!"a.valid"  //just to make sure
+      .map!(sel => iota(sel.start.pos.y, sel.end.pos.y+1).map!(y => TextCursor(sel.codeColumn, ivec2(0, y)))) //create cursors in every lines at the start of the line
+      .joiner
+      .map!((c){ //move the cursor to the end of the line
+        c.moveRight(TextCursor.end);  //todo: it's not functional yet
+        return TextSelection([c, c]); //make a selection out of them
+      }).merge;   //merge it, because there can be duplicates
+  }
+
   void scrollInAllModules(){
     if(modules.length) scrollInBoundsRequest = modules.map!"a.outerBounds".fold!"a|b";
   }
 
   void cancelSelection_impl(){ // cancelSelection_impl //////////////////////////////////////
+    //auto em = editedModules;
+    //if(em.length>1)
+
+
     if(lod.moduleLevel){
       deselectAllModules;
     }
@@ -698,6 +731,8 @@ class Workspace : Container{ //this is a collection of opened modules
     }
   }
 
+  //todo: BOM handling for copy and paste. To be able to communicate with other apps.
+
   bool copy_impl(TextSelection[] textSelections){  // copy_impl ///////////////////////////////////////
     auto copiedSourceText = textSelections.exportSourceText;
     bool valid = copiedSourceText.length>0;
@@ -706,7 +741,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   auto cut_impl(TextSelection[] textSelections){  // cut_impl ////////////////////////////////////////
-    textSelections = textSelections.merge;
+    textSelections = textSelections.merge; //perf: 6000 sor, debug: 16ms
     //todo: assert checking if the selection is merged... on demand merge.
 
     auto savedSelections = textSelections.map!"a.toReference".array;
@@ -723,21 +758,25 @@ class Workspace : Container{ //this is a collection of opened modules
                 isLastRow  = y==en.pos.y,
                 isMidRow   = !isFirstRow && !isLastRow;
           if(isMidRow){ //delete whole row
-            col.subCells = col.subCells.remove(y);
+            col.subCells = col.subCells.remove(y); //opt: do this in a one run batch operation.
           }else{ //delete partial row
             const x0 = isFirstRow ? st.pos.x : 0,
                   x1 = isLastRow  ? en.pos.x : rowCellCount+1;
             foreach_reverse(x; x0..x1){
               if(x>=0 && x<rowCellCount){
                 row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
+                //row.setChangedRemoved;
               }else if(x==rowCellCount){ //newLine
                 if(auto nextRow = col.getRow(y+1)){
 
                   foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
                     ss.replaceLatestRow(nextRow, row);
 
-                  row.append(nextRow.subCells);
-                  row.adoptSubCells;
+                  if(nextRow.subCells.length){
+                    row.append(nextRow.subCells);
+                    row.adoptSubCells;
+                    //note: it seems logical, but not help in tracking. Always mark a cut with changedRemoved: row.setChangedCreated;
+                  }
 
                   nextRow.subCells = [];
                   col.subCells = col.subCells.remove(y+1);
@@ -753,10 +792,11 @@ class Workspace : Container{ //this is a collection of opened modules
       }//for y
     }else assert(0, "TextSelection invalid CodeColumn");
 
+    measure; //It's needed to calculate TextCursor.desiredX
     return savedSelections.map!"a.fromReference".filter!"a.valid".array;
   }
 
-  auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste //////////////////////////////////
+  auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
     if(textSelections.filter!"a.valid".empty) return textSelections; //no target
 
     if(fromClipboard)
@@ -837,7 +877,7 @@ class Workspace : Container{ //this is a collection of opened modules
     if(textSelections.length==1){ //put all the clipboard into one place
       fullInsert(textSelections[0]);
     }else if(textSelections.length>1){
-      if(lines.length>textSelections.length){ //clone the full clipboard into all selections.
+      if(lines.length>textSelections.length || duplicateTabs/+this means it is pasting newlines+/){ //clone the full clipboard into all selections.
         foreach_reverse(ref ts; textSelections)
           fullInsert(ts);
       }else{ //cyclically paste the lines of the clipboard
@@ -846,9 +886,9 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
+    measure; //It's needed to calculate TextCursor.desiredX
     return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
   }
-
 
   //! Keyboard mapping ///////////////////////////////////////
 
@@ -880,10 +920,10 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Left"                          ) void cursorLeft       (bool sel=false){ cursorOp(ivec2(-1,  0)                 , sel); }
   @VERB("Right"                         ) void cursorRight      (bool sel=false){ cursorOp(ivec2( 1,  0)                 , sel); }
   @VERB("Ctrl+Left"                     ) void cursorWordLeft   (bool sel=false){ cursorOp(ivec2(TextCursor.wordLeft , 0), sel); }
-  @VERB("Ctrl+Right"                    ) void cursorWordRight  (bool sel=false){ cursorOp(ivec2(TextCursor.wordRight, 0), sel); }
+  @VERB("Ctrl+Right"                    ) void cursorWordRight  (bool sel=false){ cursorOp(ivec2(TextCursor.wordRight, 0), sel); }   //bug: This is bugs inside a nested comment.
   @VERB("Home"                          ) void cursorHome       (bool sel=false){ cursorOp(ivec2(TextCursor.home     , 0), sel); }
   @VERB("End"                           ) void cursorEnd        (bool sel=false){ cursorOp(ivec2(TextCursor.end      , 0), sel); }
-  @VERB("Up"                            ) void cursorUp         (bool sel=false){ cursorOp(ivec2( 0, -1)                 , sel); }
+  @VERB("Up"                            ) void cursorUp         (bool sel=false){ cursorOp(ivec2( 0, -1)                 , sel); }   //bug: up/down/pgup/pgdn: MoveLeft at the top row, move right at the bottom row.
   @VERB("Down"                          ) void cursorDown       (bool sel=false){ cursorOp(ivec2( 0,  1)                 , sel); }
   @VERB("PgUp"                          ) void cursorPageUp     (bool sel=false){ cursorOp(ivec2( 0, -pageSize)          , sel); }
   @VERB("PgDn"                          ) void cursorPageDown   (bool sel=false){ cursorOp(ivec2( 0,  pageSize)          , sel); }
@@ -909,7 +949,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+A"                        ) void selectAllText          (){ NOTIMPL; }
   @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shrink/extend Ast Selection
   @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
-  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ NOTIMPL; }
+  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); }
 
   // Editing ------------------------------------------------
 
@@ -921,7 +961,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Del"                 ) void deleteFromRight  (){ auto sel = textSelections.zeroLengthSelectionsToOneRight;  textSelections = cut_impl(sel); }
   @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\t"); }
   @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
-  @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }
+  @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
   // Module and File operations ------------------------------------------------
 
@@ -935,11 +975,16 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+F"                        ) void searchBoxActivate() { searchBoxActivate_request = true; }
 
   @VERB("F1"                  ) void testInsert       (){
-    auto r = findModule(File(`c:\D\libs\het\Utils.d`)).code.getRow(100).enforce;
-    r.insertSomething(10, {
-      foreach(i; 0..3)
-        r.append(new CodeComment(r));
-    });
+    if(textSelections.length==1){
+      auto sel = textSelections.front;
+      if(sel.valid){
+        if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
+          row.insertSomething(sel.caret.pos.x, {
+            row.append(new CodeComment(row));
+          });
+        }
+      }
+    }
   }
 
   @VERB("F2"                  ) void testInsert2       (){
@@ -963,7 +1008,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void handleKeyboard(){
-    if(!im.wantKeys && frmMain.isForeground){
+    if(!im.wantKeys && frmMain.canProcessUserInput){
       callVerbs(this);
 
       //todo: single window only
@@ -996,7 +1041,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
     handleKeyboard;
     updateOpenQueue(1);
-    moduleSelectionManager.update(!im.wantMouse && mainWindow.isForeground && view.isMouseInside && lod.moduleLevel, view, modules);
+    moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside && lod.moduleLevel, view, modules);
     textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
 
     // End of modifications ----------------------------------------------------
@@ -1135,10 +1180,18 @@ class Workspace : Container{ //this is a collection of opened modules
     //todo: ennek nem itt a helye....
     auto hit = Btn({
       const hidden = markerLayers[bmt].visible ? 0 : .75f;
-      style.bkColor = bkColor = bmt.color.mix(clSilver, hidden);
-      style.fontColor = blackOrWhiteFor(bkColor).mix(clSilver, hidden);
 
-      Text(bmt.caption, " ", markerLayers[bmt].searchResults.length);
+      auto fade(RGB c){ return c.mix(clSilver, hidden); }
+
+      style.bkColor = bkColor = fade(bmt.color);
+      const highContrastFontColor = blackOrWhiteFor(bkColor);
+      style.fontColor = fade(highContrastFontColor);
+      Text(bmt.caption);
+
+      if(const len = markerLayers[bmt].searchResults.length){
+        style.fontColor = highContrastFontColor;
+        Text(" ", len.text);
+      }
     }, genericId(bmt));
 
     if(mainWindow.isForeground && hit.pressed){
@@ -1452,13 +1505,16 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
-    dr.alpha = blink;  //opt: culling
-    dr.lineWidth = -1-(blink)*3;
-    dr.color = clCaret;
-    foreach(s; textSelections)
-      s.caret.worldPos.draw(dr);
+    void drawCarets(RGB c, float shadow=0){
+      dr.alpha = blink;
+      dr.lineWidth = -1-(blink)*3 -shadow;
+      dr.color = c;
+      foreach(s; textSelections) //opt: culling
+        s.caret.worldPos.draw(dr);
+    }
 
-    dr.alpha = 1;
+    drawCarets(clBlack, 3);
+    drawCarets(clCaret);
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
@@ -1477,7 +1533,15 @@ class Workspace : Container{ //this is a collection of opened modules
       if(markerLayers[t].visible)
         drawSearchResults(dr, markerLayers[t].searchResults, t.color);
 
+    .draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear;
+
     drawTextSelections(dr, frmMain.view); //bug: this will not work for multiple workspace views!!!
+  }
+
+  override void draw(Drawing dr){
+    globalChangeindicatorsAppender.clear;
+
+    super.draw(dr);
   }
 
 
@@ -1598,7 +1662,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     view.updateSmartScroll;
     setLod(view.scale_anim);
 
-    if(isForeground) callVerbs(this);
+    if(canProcessUserInput) callVerbs(this);
 
     if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
