@@ -140,8 +140,7 @@ bounds2 worldInnerBounds(Cell cell){
   return bounds2(p, p+cell.innerSize);
 }
 
-auto moduleOf(Cell c){ return c.allParents!Module.frontOrNull; }
-auto moduleOf(in Cell c){ return cast(const)c.allParents!Module.frontOrNull; } //todo combined constness  //https://forum.dlang.org/post/enjppfrkksciptybmszi@forum.dlang.org
+auto moduleOf(inout Cell c) { return cast(inout)c.allParents!Module.frontOrNull; }
 
 auto moduleOf(TextCursor c){ return c.codeColumn.moduleOf; }
 auto moduleOf(TextSelection s){ return s.caret.codeColumn.moduleOf; }
