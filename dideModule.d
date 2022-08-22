@@ -140,37 +140,22 @@ bounds2 worldInnerBounds(Cell cell){
   return bounds2(p, p+cell.innerSize);
 }
 
-void visitCellAndParents(Cell act, void delegate(Cell c) fun){
-  while(act){
-    fun(act);
-    act = act.getParent;
-  }
-}
+auto moduleOf(Cell c){ return c.allParents!Module.frontOrNull; }
+auto moduleOf(in Cell c){ return cast(const)c.allParents!Module.frontOrNull; } //todo combined constness  //https://forum.dlang.org/post/enjppfrkksciptybmszi@forum.dlang.org
 
-void visitCellAndParents(Cell act, bool delegate(Cell c) fun){
-  while(act){
-    if(!fun(act)) break; //it can break
-    act = act.getParent;
-  }
-}
+auto moduleOf(TextCursor c){ return c.codeColumn.moduleOf; }
+auto moduleOf(TextSelection s){ return s.caret.codeColumn.moduleOf; }
 
-Module moduleOf(Cell c){
-  Module res;
-  visitCellAndParents(c, (a){
-    if(auto m = cast(Module)a)
-      res = m;
-    return res is null;
-  });
-  return res;
-}
+bool isReadOnly(in Cell c){ return c.thisAndAllParents!Container.map!"a.flags.readOnly".any; }
+bool isReadOnly(in TextCursor c){ return c.codeColumn.isReadOnly; }
+bool isReadOnly(in TextSelection s){ return s.caret.codeColumn.isReadOnly; }
 
 struct CellPath{//CellPath ///////////////////////////////
-  Cell[] path;
+  Cell[] path;     //todo: constness
   alias path this;
 
   this(Cell act){
-    visitCellAndParents(act, (c){ path ~= c; });
-    path = path.retro.array;
+    path = act.thisAndAllParents.array.retro.array;
   }
 
   ///It goes from parent to child and searches child in parent.subCells[]. Fails at any error.
@@ -242,7 +227,7 @@ bounds2 worldBounds(TextSelection ts){
                   : bounds2.init;
 }
 
-bounds2 worldBounds(TextSelection[] ts){
+bounds2 worldBounds(TextSelection[] ts){  //todo: constness
   return ts.map!worldBounds.fold!"a|b"(bounds2.init);
 }
 
@@ -741,7 +726,7 @@ class CodeRow: Row{
 
   static if(rearrangeFlash) DateTime rearrangeTime;
 
-  override Container getParent(){ return parent; }
+  override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = enforce(cast(CodeColumn)p); }
 
   int index(){ return parent.subCellIndex(this); }
@@ -1025,11 +1010,76 @@ class CodeRow: Row{
 }
 
 
+enum TextFormat{
+  plainText,             // unstructured text
+  plainD,                // unstructured D source
+  declarations,          // { D declarations              ; }        // before ':' there can be attributes or staticif: version: debug:
+  statements,            // { D statements                ; }        // before ':' there can be labels or case: default: conditions
+  structInitializer,     // { field initializers          , }        // before ':' there can be field identifiers
+  stringLiteral,         // ''w  ""w  ``w  r""w  q""w  q{}
+  comment,               // //\n  /**/  /+/++/+/
+  list,                  // ( , )
+  forList,               // ( , ; )
+  index                  // [ , ]
+}
+
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
   //note: this is basically the CodeBlock
   Container parent;
 
-  override Container getParent(){ return parent; }
+  enum defaultSpacesPerTab = 4; //default in std library
+  int spacesPerTab = defaultSpacesPerTab; //autodetected on load
+
+  /// Minimal constructor creating an empty codeColumn with 0 rows.
+  deprecated("Only needed for compile.err builder") this(Container parent){
+    this.parent = parent;
+    id.value = this.identityStr;  //id is not used anymore for this
+
+    needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
+    flags.wordWrap     = false;
+    flags.clipSubCells = true;
+    flags.cullSubCells = true;
+
+    flags.columnElasticTabs = true;
+    bkColor = clCodeBackground;
+
+
+  }
+
+  /// This is the normal constructor. This should be the only one.
+  this(Container parent, string sourceText){
+    this(parent);
+    setSourceText(sourceText);
+  }
+
+
+  deprecated("This lets the module extract SourceRegions") this(Container parent, SourceCode sourceCode){
+    this(parent);
+    setSourceCode(sourceCode);
+  }
+
+  void setSourceText(string sourceText){
+    setSourceCode(scoped!SourceCode(sourceText));
+  }
+
+  deprecated void setSourceCode(SourceCode src){
+    clearSubCells; needMeasure;
+
+    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
+    if(subCells.empty)
+      appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
+
+    //this creates the tabs from spaces
+    createElasticTabs;
+
+    spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
+    rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
+
+    needMeasure;
+  }
+
+
+  override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = p; }
 
   auto const rows(){ return cast(CodeRow[])subCells; }
@@ -1050,9 +1100,6 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
   @property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
-
-  enum defaultSpacesPerTab = 4; //default in std library
-  int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
   //index, location calculations
   int maxIdx() const{ //inclusive end position
@@ -1088,46 +1135,6 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
 
-  this(Container parent){
-    this.parent = parent;
-    id.value = this.identityStr;
-
-    flags.wordWrap     = false;
-    flags.clipSubCells = true;
-    flags.cullSubCells = true;
-
-    flags.columnElasticTabs = true;
-    bkColor = clCodeBackground;
-
-    needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
-  }
-
-  this(Container parent, SourceCode src){
-    this(parent);
-    id = "CodeColumns:"~src.file.fullName;
-    set(src);
-  }
-
-  this(Container parent, string str){
-    this(parent, scoped!SourceCode(str));
-  }
-
-  void set(SourceCode src){
-    clearSubCells;
-
-    src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
-    if(subCells.empty)
-      appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
-
-    //this creates the tabs from spaces
-    makeElasticTabs;
-
-    spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
-    rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
-
-    needMeasure;
-  }
-
   override void rearrange(){
     //ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
     auto rows = cast(Row[])subCells;
@@ -1157,7 +1164,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     static if(rearrangeLOG) LOG("rearranging", this);
   }
 
-  void makeElasticTabs(){
+  void createElasticTabs(){
     //const t0=QPS; scope(exit) print(QPS-t0);
 
     bool detectTab(int x, int y){
@@ -1338,7 +1345,7 @@ auto cachedFolderLabel(string folderPath){
 class CodeNode : Row{
   Container parent;
 
-  override Container getParent(){ return parent; }
+  override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = p; }
 
   override void rearrange(){
@@ -1355,6 +1362,8 @@ class CodeNode : Row{
 
   this(Container parent){
     this.parent = parent;
+    id = this.identityStr;
+
     needMeasure; //enables on-demand measure
   }
 
@@ -1376,9 +1385,31 @@ class Module : CodeNode{ //this is any file in the project
 
   ModuleBuildState buildState;
 
-  size_t linesOfCode(){ return code.subCells.length; } //todo: update this
   size_t sizeBytes;  //todo: update this
   bool isMainExe, isMainDll, isMainLib, isMain;
+
+  this(Container parent){
+    super(parent);
+    deprecated id = this.identityStr;
+
+    flags.cullSubCells = true;
+
+    bkColor = clModuleBorder;
+    this.setRoundBorder(16);
+    padding = "8";
+
+    loaded = now;
+  }
+
+  this(Container parent, File file_){
+    this(parent);
+
+    file = file_.actualFile;
+    //id = "Module:"~this.file.fullName;
+
+    reload;
+  }
+
 
   void reload(){
     clearSubCells;
@@ -1406,25 +1437,10 @@ class Module : CodeNode{ //this is any file in the project
       code = new CodeColumn(this);
       code.padding = "1";
 
-      //foreach(line; file.readLines) code.append(new CodeRow(line));
-
-      //todo: this is only working when it's called from update() only!!!!
-      //auto br = (cast(FrmMain)mainWindow).buildResult;
-      //auto markerLayerHideMask = (cast(FrmMain)mainWindow).workspace.markerLayerHideMask;
-
       import dide2; //todo: should not import main module.
       auto buildResult = global_getBuildResult;
       auto markerLayerHideMask = global_getMarkerLayerHideMask;
 
-/*  string dumpMessage(in BuildMessage bm, string indent=""){
-    string res = indent ~ bm.text ~"\n";
-
-    foreach(const v; messages.values)
-      if(v.parentLocation == bm.location)
-        res ~= dumpMessage(v, indent~"  ");
-
-    return res;
-  }*/
       foreach(file; buildResult.remainings.keys.sort){
         auto pragmas = buildResult.remainings[file];
         if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
@@ -1439,14 +1455,12 @@ class Module : CodeNode{ //this is any file in the project
         }
       });
 
-        //code.append(im.removeLastContainer); //a nasty trick to be able to call msg.UI;
-
-
       measureAndPropagateCodeSize;
 
       overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
     }else{
-      auto src = new SourceCode(this.file);
+      T0;
+      auto src = scoped!SourceCode(this.file);
 
       bool isMainSomething(string ext)(){
         return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
@@ -1463,6 +1477,8 @@ class Module : CodeNode{ //this is any file in the project
       overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
       foreach(k; src.bigComments.keys.sort)
         overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+
+      LOG(DT, file);
     }
 
     appendCell(enforce(code));
@@ -1471,27 +1487,7 @@ class Module : CodeNode{ //this is any file in the project
     needMeasure;
   }
 
-
-  this(Container parent){
-    super(parent);
-
-    flags.cullSubCells = true;
-
-    bkColor = clModuleBorder;
-    this.setRoundBorder(16);
-    padding = "8";
-
-    loaded = now;
-  }
-
-  this(Container parent, File file_){
-    this(parent);
-
-    file = file_.actualFile;
-    id = "Module:"~this.file.fullName;
-
-    reload;
-  }
+  size_t linesOfCode(){ return code.subCells.length; } //todo: update this. only good for unstructured code.
 
   override void draw(Drawing dr){
     overlay.flags.hidden = lod.codeLevel;

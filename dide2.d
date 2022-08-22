@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -476,12 +476,14 @@ class Workspace : Container{ //this is a collection of opened modules
 
   private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
+    invalidateTextSelections;
     modules = unselectedModules;
     updateSubCells;
   }
 
   private void closeAllModules_impl(){
     //todo: ask user to save if needed
+    invalidateTextSelections;
     clear;
   }
 
@@ -666,6 +668,7 @@ class Workspace : Container{ //this is a collection of opened modules
   int lineSize(){ return DefaultFontHeight; }
   int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); }
   void cursorOp(ivec2 dir, bool select){
+    textSelections = validTextSelections;
     foreach(ref ts; textSelections) ts.move(dir, select);
     textSelections = merge(textSelections);
   }
@@ -741,6 +744,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   auto cut_impl(TextSelection[] textSelections){  // cut_impl ////////////////////////////////////////
+    //opt: is is merging just for safety. validity check should do the merging
     textSelections = textSelections.merge; //perf: 6000 sor, debug: 16ms
     //todo: assert checking if the selection is merged... on demand merge.
 
@@ -797,7 +801,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
-    if(textSelections.filter!"a.valid".empty) return textSelections; //no target
+    if(textSelections.empty) return textSelections; //no target
 
     if(fromClipboard)
       input = clipboard.asText;
@@ -949,18 +953,18 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+A"                        ) void selectAllText          (){ NOTIMPL; }
   @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shrink/extend Ast Selection
   @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
-  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); }
+  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ textSelections = insertCursorAtEndOfEachLineSelected_impl(validTextSelections); }
 
   // Editing ------------------------------------------------
 
-  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelections.zeroLengthSelectionsToFullRows); }
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(validTextSelections.zeroLengthSelectionsToFullRows); }
   //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
-  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = textSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  textSelections = cut_impl(sel); }
-  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelections = paste_impl(textSelections, Yes.fromClipboard, ""); }
-  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = textSelections.zeroLengthSelectionsToOneLeft ;  textSelections = cut_impl(sel); } //todo: delete leading tabs in one step.
-  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = textSelections.zeroLengthSelectionsToOneRight;  textSelections = cut_impl(sel); }
-  @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\t"); }
-  @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(textSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
+  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = validTextSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  textSelections = cut_impl(sel); }
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelections = paste_impl(validTextSelections, Yes.fromClipboard, ""); }
+  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = validTextSelections.zeroLengthSelectionsToOneLeft ;  textSelections = cut_impl(sel); } //todo: delete leading tabs in one step.
+  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  textSelections = cut_impl(sel); }
+  @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\t"); }
+  @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
   @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
   // Module and File operations ------------------------------------------------
@@ -972,7 +976,7 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
 
-  @VERB("Ctrl+F"                        ) void searchBoxActivate() { searchBoxActivate_request = true; }
+  @VERB("Ctrl+F"                        ) void searchBoxActivate    () { searchBoxActivate_request = true; }
 
   @VERB("F1"                  ) void testInsert       (){
     if(textSelections.length==1){
@@ -981,6 +985,11 @@ class Workspace : Container{ //this is a collection of opened modules
         if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
           row.insertSomething(sel.caret.pos.x, {
             row.append(new CodeComment(row));
+
+            row.moduleOf.print;
+            (cast(const)row).moduleOf.print;
+            row.thisAndAllParents!(Cell).each!print;
+
           });
         }
       }
@@ -988,9 +997,11 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   @VERB("F2"                  ) void testInsert2       (){
-    auto r = findModule(File(`c:\D\libs\het\Utils.d`)).code.getRow(100).enforce;
-    r.needMeasure;
+    foreach(m; modules) m.reload;
+    invalidateTextSelections;
   }
+
+
 
   //todo: Ctrl+D word select and find
 
@@ -1035,22 +1046,70 @@ class Workspace : Container{ //this is a collection of opened modules
     }
   }
 
+  bool mustValidateTextSelections;
+
+  void invalidateTextSelections(){
+    mustValidateTextSelections = true;
+  }
+
+  auto validTextSelections(){
+
+    void validateTextSelections_internal(){
+
+      Cell cachedExistingModule;
+
+      bool isExistingModule(Cell c){
+        if(c is cachedExistingModule) return true; //opt: this is helping nothing compared to
+        if(auto m = cast(Module)c)
+          if(modules.canFind(m)){
+            cachedExistingModule = c;
+            return true;
+          }
+        return false;
+      }
+
+      bool validate(TextSelection sel){
+        if(!sel.valid) return false;
+        auto r = sel.toReference;
+        if(!r.cursors[0].exists) return false;  //opt: this is the bottleneck. It searches rows linearly insidt columns. Also searches chars inside rows linearly.
+        if(!r.cursors[1].exists) return false;
+
+        auto p = r.cursors[0].path;
+        if(p.length<2) return false;
+        if(p[0] !is this) return false;
+        if(!isExistingModule(p[1])) return false;
+
+        //todo: check if selection is inside row boundaries.
+        return true;
+      }
+
+      T0;
+      textSelections = textSelections.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
+      LOG(siFormat("TextSelections validate: %s ms", DT));
+    }
+
+    if(mustValidateTextSelections.chkClear)
+      validateTextSelections_internal;
+    return textSelections;
+  }
+
+
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
 
-    // Start of possible modifications ----------------------------------------------------
+    textSelections = validTextSelections; //just to make sure. (all verbs can validate by their own will)
 
+    //note: all verbs can optonally validate textSelections by accessing them from validTextSelections
+    //      all verbs can call invalidateTextSelections if it does something that affects them
     handleKeyboard;
     updateOpenQueue(1);
+
+    textSelections = validTextSelections; //this validation is required for the upcoming mouse handling and scene drawing routines.
+
+    measure; //measures all containers if needed, updates ElasticTabstops
+    // From here every positions and sizes are correct
+
     moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside && lod.moduleLevel, view, modules);
     textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
-
-    // End of modifications ----------------------------------------------------
-    measure;
-/*    foreach(m; modules){
-      if(m.flags.
-    }*/
-
-
 
     //detect textSelection change
     const selectionChanged = textSelectionsHash.chkSet(textSelections.hashOf);
