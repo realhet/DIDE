@@ -176,41 +176,50 @@ struct CellPath{//CellPath ///////////////////////////////
   }
 
   string toString(){ //todo: constness
-    auto path = this.path;
     if(path.empty) return "";
 
-    string res;
-    Container parent = null;
-    do{
-      auto act = cast(Container)path.fetchFront;
-      if(!act){ res ~= "?NULL?"; break; }
+    string res = path.slide!(No.withPartial)(2).map!((sl){
+      auto parent = cast(Container)sl[0],
+           child  = sl[1];
 
-      if(!parent){ //root element
-        if(auto cntr=cast(Container)act){
-          res ~= ""; //todo: expect Module after this
-        }else{
-          res ~= format!"?UNKNOWN_ROOT:%s?"(typeid(act).name); break;
-        }
-      }else{ //subsequent elements
-        auto idx = parent.subCellIndex(act);
-        if(idx<0){ res ~= format!"?LOST:%s?"((typeid(act).name)); break; }
+      if(!parent) return "?NullParent?";
+      if(!child) return "?NullChild?";
 
-        if(auto col = cast(CodeColumn)act){
-          res ~= format!"[%d].Y"(idx); //todo: expect codeRow after this
-        }else if(auto row = cast(CodeRow)act){
-          res ~= format!"[%d].X"(idx); //todo: expect codeColumn or codeNode after this
-        }else if(auto mod = cast(Module)act){
-          res ~= mod.file.fullName;      //todo: except codecolumn after this
-        }else{
-          res ~= format!"?UNKNOWN:%s?"(typeid(act).name); break;  //todo: CodeNode handling
-        }
+      if(auto col = cast(CodeColumn)child){
+        if(!cast(CodeNode)parent) return "?WrongColumnParent?";
+        assert(cast(CodeNode)parent);  //todo: put these assertions elsewhere
+        const indexAmongCodeColumns = parent.subCells.map!(a => cast(CodeColumn)a).filter!"a".countUntil(child);
+        if(indexAmongCodeColumns<0) return "?CantFindColumn?";
+        return format!"C%d|"(indexAmongCodeColumns);
+      }
+      if(auto row = cast(CodeRow)child){
+        if(!cast(CodeColumn)parent) return "?WrongRowParent?";
+        const idx = parent.subCellIndex(child);
+        if(idx<0) return "?CantFindRow?";
+        return idx.format!"R%d|";
+      }
+      if(auto mod = cast(Module)child){
+        if(!typeid(parent).name.endsWith(".Workspace")) return "?WrongModuleParent?";
+        return mod.file.fullName ~ "|";
+      }
+      if(auto cmt = cast(CodeNode)child){
+        if(!cast(CodeRow)parent) return "?WrongNodeParent?";
+        const idx = parent.subCellIndex(child);
+        if(idx<0) return "?CantFindNode?";
+        return format!"N%d|"(idx);
       }
 
-      parent = act;
-    }while(path.length);
+      return "?UnknownChild?";
+    }).join;
 
     return res;
   }
+
+  ///this is a better test than exists, as it checks the class types as well.
+  bool validate(){
+    return toString.canFind('?');
+  }
+
 }
 
 
@@ -404,7 +413,7 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
     auto res = path.toString;
 
     //this special processing is for the caret. Decide the idx from the left and right cells.
-    if(!left && !right) res ~= "[0]";
+    if(!left && !right) res ~= "X0";
     else{
       auto parent = path.back.to!Container;
       const leftIdx  = left  ? parent.subCellIndex(left ) : -1;
@@ -414,7 +423,7 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
       if     (rightIdx>=0) idx = rightIdx; //select one valid
       else if(leftIdx >=0) idx = leftIdx+1; //add 1, because it's on the left side of the caret!
 
-      if(idx>=0) res ~= format!"[%d]"(idx);
+      if(idx>=0) res ~= format!"X%d"(idx);
       else       res ~= format!"?LOST_LR?";
     }
 
