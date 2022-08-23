@@ -162,9 +162,14 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 
 struct TextSelectionManager{ // TextSelectionManager /////////////////////////////////////////
 
-  TextCursor cursorAtMouse, cursorToExtend;
-  TextSelection selectionAtMouse;
-  TextSelection[] selectionsWhenMouseWasPressed;
+  //note: these cursors MUST BE validated!!!!!
+  struct SELECTIONS{}
+  @SELECTIONS{
+    TextCursor cursorAtMouse, cursorToExtend;
+    TextSelection selectionAtMouse;
+    TextSelection[] selectionsWhenMouseWasPressed;
+  }
+
   bool mouseScrolling;
 
   Nullable!vec2 scrollInRequest;
@@ -172,10 +177,23 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
   DateTime lastMainMousePressTime;
 
   bool wordSelecting;
+  bool cursorToExtend_primary;
 
   ClickDetector cdMainMouseButton;
 
-  void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){
+  void validateSelections(Workspace workspace){
+    //validate all the cursors
+    static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
+      mixin(format!"%s = workspace.validate(%s);"(f, f));
+
+    LOG("todo: workspace change detection");
+  }
+
+  void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){  //todo: make textSelection functional, not a ref
+    //opt: only call this when the workspace changed (remove module, cut, paste)
+    validateSelections(workspace);
+
+
     scrollInRequest.nullify;
 
     //detect double click with LMB
@@ -185,7 +203,11 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
     if(doubleClick) wordSelecting = true;
 
     //check if a keycombo modifier with the main mouse button isactive
-    bool kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+    bool _kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+    const opSelectColumn        = _kc(mouseMappings.selectColumn        ),
+          opSelectColumnAdd     = _kc(mouseMappings.selectColumnAdd     ),
+          opSelectAdd           = _kc(mouseMappings.selectAdd           ),
+          opSelectExtend        = _kc(mouseMappings.selectExtend        );
 
     auto cursorAtMouse = workspace.cellLocationToTextCursor(workspace.locate(view.mousePos));
 
@@ -202,13 +224,20 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
           selectionsWhenMouseWasPressed = textSelections.dup;
 
           //extension cursor is the nearest selection.cursors[0]
-          if(!doubleClick)
-            cursorToExtend = selectionsWhenMouseWasPressed.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
-                                                          .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init)
-                                                          .cursors[0];
-          if(!cursorToExtend.valid) cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+          if(!doubleClick){
+            auto selectionToExtend = selectionsWhenMouseWasPressed
+                                     .filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
+                                     .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init);
 
-          selectionAtMouse = TextSelection([cursorAtMouse, cursorAtMouse]);
+            cursorToExtend = selectionToExtend.cursors[0];
+            cursorToExtend_primary = selectionToExtend.primary;
+          }
+          if(!cursorToExtend.valid){
+            cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+            cursorToExtend_primary = false;
+          }
+
+          selectionAtMouse = TextSelection(cursorAtMouse, false);
         }
       }
     }
@@ -227,7 +256,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
       bnd.high -= 1; //make sure it's inside
 
-      const restrictedMousePos = kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)
+      const restrictedMousePos = opSelectColumn || opSelectColumnAdd
                                  ? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
                                  : restrictPos_editor(view.mousePos, bnd); //text editor clamping for normal select
 
@@ -253,6 +282,12 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       endMouseSelection;
     }
 
+    auto getPrimaryCursor(){
+      auto a = selectionsWhenMouseWasPressed.filter!"a.primary";
+      if(!a.empty) return a.front.cursors[0];
+      return cursorToExtend;
+    }
+
     //combine selection with mouse selection
     if(selectionAtMouse.valid){
       //todo: for additive operations, only the selections on the most recent
@@ -260,9 +295,10 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       auto applyWordSelect   (TextSelection   s){ return wordSelecting ? s.extendToWordsOrSpaces : s; }
       auto applyWordSelectArr(TextSelection[] s){ return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
 
-      if(kc(mouseMappings.selectColumn) || kc(mouseMappings.selectColumnAdd)){
+      if(opSelectColumn || opSelectColumnAdd){
+
         //Column select
-        auto c0 = kc(mouseMappings.selectColumnAdd) ? selectionAtMouse.cursors[0] : cursorToExtend,
+        auto c0 = opSelectColumnAdd ? selectionAtMouse.cursors[0] : getPrimaryCursor,  //todo: primary
              c1 = selectionAtMouse.cursors[1];
         const downward = c0.pos.y<c1.pos.y,
               dir      = downward ? 1 : -1,
@@ -274,10 +310,10 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
         if(downward) a1 = a1.retro.array;
                 else a0 = a0.retro.array;
 
-        textSelections = iota(count).map!(i => TextSelection([a0[i], a1[i]])).array;
-        //textSelections[0].primary = true;//todo: mark primary
+        textSelections = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array;
+        assert(textSelections.isSorted);
 
-        if(!downward) textSelections = textSelections.retro.array; //make it sorted
+        if(opSelectColumn) (downward ? textSelections.front : textSelections.back).primary = true; //the first selection created is at the mosue, it must be the primary
 
         //if there are any nonZeroLength selections, remove all zeroLength carets
         if(textSelections.any!"!a.isZeroLength")
@@ -290,20 +326,25 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
         textSelections = applyWordSelectArr(textSelections);
 
-        if(kc(mouseMappings.selectColumnAdd)){ //Ctrl+Alt+Shift = add column selection
+        if(opSelectColumnAdd){ //Ctrl+Alt+Shift = add column selection
           textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
         }
 
-      }else if(kc(mouseMappings.selectAdd)){
+      }else if(opSelectAdd){
         auto s = applyWordSelect(selectionAtMouse);
         textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
-      }else if(kc(mouseMappings.selectExtend)){
-        auto s = applyWordSelect(TextSelection([cursorToExtend, selectionAtMouse.caret]));
+      }else if(opSelectExtend){
+        auto s = applyWordSelect(TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary));
         textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
       }else{
         auto s = applyWordSelect(selectionAtMouse);
-        textSelections = [s]; //todo: mark this as the primary selection. Extend will work on that.
+        textSelections = [s];
       }
+
+      //automatically mark primary for single selections
+      if(textSelections.length==1)
+        textSelections[0].primary = true;
+
 
       //add extra
 
@@ -401,7 +442,7 @@ class Workspace : Container{ //this is a collection of opened modules
       updateSubCells;
     }
 
-    void dropInvalidTextSelections(){
+    void dropInvalidTextSelections(){ //opt: this is redundant, just keep it to be safer
       bool isModuleExists(const TextSelection ts){
         return modules.map!(m => m.code).canFind(ts.cursors[0].codeColumn); //opt: linear. Also when a codeColumns dies, it should remove the textSelections too.
       }
@@ -660,7 +701,8 @@ class Workspace : Container{ //this is a collection of opened modules
       assert(x.inRange(0, row.cellCount));
       res.pos.x = x;
     }
-    return res;
+
+    return validate(res);
   }
 
   // textSelection, cursor movements /////////////////////////////
@@ -692,14 +734,18 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections){
-    return textSelections
+    auto res = textSelections
       .filter!"a.valid"  //just to make sure
       .map!(sel => iota(sel.start.pos.y, sel.end.pos.y+1).map!(y => TextCursor(sel.codeColumn, ivec2(0, y)))) //create cursors in every lines at the start of the line
       .joiner
       .map!((c){ //move the cursor to the end of the line
         c.moveRight(TextCursor.end);  //todo: it's not functional yet
-        return TextSelection([c, c]); //make a selection out of them
+        return TextSelection(c, c, false); //make a selection out of them
       }).merge;   //merge it, because there can be duplicates
+
+    if(res.length) res[0].primary = true;
+
+    return res;
   }
 
   void scrollInAllModules(){
@@ -710,6 +756,7 @@ class Workspace : Container{ //this is a collection of opened modules
     //auto em = editedModules;
     //if(em.length>1)
 
+    //todo: primary
 
     if(lod.moduleLevel){
       deselectAllModules;
@@ -988,7 +1035,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
             row.moduleOf.print;
             (cast(const)row).moduleOf.print;
-            row.thisAndAllParents!(Cell).each!print;
+            (cast(const)row).thisAndAllParents.each!print;
 
           });
         }
@@ -999,6 +1046,16 @@ class Workspace : Container{ //this is a collection of opened modules
   @VERB("F2"                  ) void testInsert2       (){
     foreach(m; modules) m.reload;
     invalidateTextSelections;
+  }
+
+  @VERB("F3"                  ) void testInsert3       (){
+    foreach(ts; validTextSelections){
+      auto s = ts.toReference.text;
+      print(s);
+      auto ts2 = TextSelection(s, &findModule);
+      enforce(ts2 == ts);
+      enforce(s == ts2.toReference.text);
+    }
   }
 
 
@@ -1052,45 +1109,50 @@ class Workspace : Container{ //this is a collection of opened modules
     mustValidateTextSelections = true;
   }
 
-  auto validTextSelections(){
+  auto validTextSelections(){ //it does on-demand validation for the current selection and the
+    if(mustValidateTextSelections.chkClear){
+      textSelections = validate(textSelections);
+    }
+    return textSelections;
+  }
 
-    void validateTextSelections_internal(){
 
-      Cell cachedExistingModule;
+  auto validate(TextCursor c){
+    return validate(TextSelection(c, c, false)).cursors[0];
+  }
 
-      bool isExistingModule(Cell c){
-        if(c is cachedExistingModule) return true; //opt: this is helping nothing compared to
-        if(auto m = cast(Module)c)
-          if(modules.canFind(m)){
-            cachedExistingModule = c;
-            return true;
-          }
-        return false;
-      }
+  auto validate(TextSelection s){
+    auto ts = validate([s]);
+    return ts.empty ? TextSelection.init : ts[0];
+  }
 
-      bool validate(TextSelection sel){
-        if(!sel.valid) return false;
-        auto r = sel.toReference;
-        if(!r.cursors[0].exists) return false;  //opt: this is the bottleneck. It searches rows linearly insidt columns. Also searches chars inside rows linearly.
-        if(!r.cursors[1].exists) return false;
+  auto validate(TextSelection[] textSelections){
+    Cell cachedExistingModule;
 
-        auto p = r.cursors[0].path;
-        if(p.length<2) return false;
-        if(p[0] !is this) return false;
-        if(!isExistingModule(p[1])) return false;
-
-        //todo: check if selection is inside row boundaries.
-        return true;
-      }
-
-      T0;
-      textSelections = textSelections.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
-      LOG(siFormat("TextSelections validate: %s ms", DT));
+    bool isExistingModule(Cell c){
+      if(c is cachedExistingModule) return true; //opt: this is helping nothing compared to
+      if(auto m = cast(Module)c)
+        if(modules.canFind(m)){
+          cachedExistingModule = c;
+          return true;
+        }
+      return false;
     }
 
-    if(mustValidateTextSelections.chkClear)
-      validateTextSelections_internal;
-    return textSelections;
+    bool validate(TextSelection sel){
+      if(!sel.valid) return false;
+      auto r = sel.toReference;
+      if(!r.valid) return false;
+
+      auto p = r.cursors[0].path;
+      if(p[0] !is this) return false;            //not this workspace
+      if(!isExistingModule(p[1])) return false;  //module died
+
+      //todo: check if selection is inside row boundaries.
+      return true;
+    }
+
+    return textSelections.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
   }
 
 
@@ -1308,8 +1370,10 @@ class Workspace : Container{ //this is a collection of opened modules
           Text("   ", crsr.text, "   ", crsr.toReference.text, "   ", crsr.worldPos.text, "   ", view.mousePos.text);
         }*/
 
-        foreach(sel; textSelections.take(3)){
-          Text("\n", sel.toReference.text, "\n    ", sel.toReference.fromReference.text);
+        if(textSelections.length>1){
+          Text(format!"  Multiple Text Selections: %d  "(textSelections.length));
+        }else if(textSelections.length==1){
+          Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text));
         }
       });
     }
@@ -1564,16 +1628,22 @@ class Workspace : Container{ //this is a collection of opened modules
       }
     }
 
+
+
     void drawCarets(RGB c, float shadow=0){
       dr.alpha = blink;
       dr.lineWidth = -1-(blink)*3 -shadow;
       dr.color = c;
-      foreach(s; textSelections) //opt: culling
-        s.caret.worldPos.draw(dr);
+      foreach(s; textSelections){ //opt: culling
+        if(s.primary && !shadow) dr.color = mix(clGold, c, .5f); //todo: clPrimaryCaret
+                            else dr.color = c;
+        s.caret.worldPos.draw(dr); //opt: cache the worldPositions
+      }
     }
 
     drawCarets(clBlack, 3);
     drawCarets(clCaret);
+
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////

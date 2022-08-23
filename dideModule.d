@@ -157,66 +157,54 @@ struct CellPath{//CellPath ///////////////////////////////
     path = act.thisAndAllParents.array.retro.array;
   }
 
-  ///It goes from parent to child and searches child in parent.subCells[]. Fails at any error.
-  bool exists(){
-    auto p = path;
+  static private string pathElementToString (Container parent, Cell child) {
+    if(!parent) return "?NullParent?";
+    if(!child) return "?NullChild?";
 
-    auto parent = cast(Container)p.fetchFront;  if(!parent) return false;
+    if(auto col = cast(CodeColumn)child){
+      if(!cast(CodeNode)parent) return "?WrongColumnParent?";
+      assert(cast(CodeNode)parent);  //todo: put these assertions elsewhere
+      const indexAmongCodeColumns = parent.subCells.map!(a => cast(CodeColumn)a).filter!"a".countUntil(child);
+      if(indexAmongCodeColumns<0) return "?CantFindColumn?";
+      return format!"C%d|"(indexAmongCodeColumns);
+    }
+    if(auto row = cast(CodeRow)child){
+      if(!cast(CodeColumn)parent) return "?WrongRowParent?";
+      const idx = parent.subCellIndex(child);
+      if(idx<0) return "?CantFindRow?";
+      return idx.format!"R%d|";
+    }
+    if(auto mod = cast(Module)child){
+      if(!typeid(parent).name.endsWith(".Workspace")) return "?WrongModuleParent?";
+      return mod.file.fullName ~ "|";
+    }
+    if(auto cmt = cast(CodeNode)child){
+      if(!cast(CodeRow)parent) return "?WrongNodeParent?";
+      const idx = parent.subCellIndex(child);
+      if(idx<0) return "?CantFindNode?";
+      return format!"N%d|"(idx);
+    }
 
-    bool checkChild(Cell c){ return c && parent && parent.subCellIndex(c)>=0; }
+    return "?UnknownChild?";
+  }
 
-    do{
-      auto act = cast(Container)p.fetchFront;
-      if(!checkChild(act)) return false;
-      parent = act;
-    }while(p.length);
+  static private bool isPathElementValid(Container parent, Cell child){
+    return !pathElementToString(parent, child).startsWith('?');
+  }
 
-    return true;
+  auto byPathElements(){
+    return path .slide!(No.withPartial)(2)
+                .map!(sl => tuple!("parent", "child")(cast(Container)sl[0], sl[1]) );
   }
 
   string toString(){ //todo: constness
     if(path.empty) return "";
-
-    string res = path.slide!(No.withPartial)(2).map!((sl){
-      auto parent = cast(Container)sl[0],
-           child  = sl[1];
-
-      if(!parent) return "?NullParent?";
-      if(!child) return "?NullChild?";
-
-      if(auto col = cast(CodeColumn)child){
-        if(!cast(CodeNode)parent) return "?WrongColumnParent?";
-        assert(cast(CodeNode)parent);  //todo: put these assertions elsewhere
-        const indexAmongCodeColumns = parent.subCells.map!(a => cast(CodeColumn)a).filter!"a".countUntil(child);
-        if(indexAmongCodeColumns<0) return "?CantFindColumn?";
-        return format!"C%d|"(indexAmongCodeColumns);
-      }
-      if(auto row = cast(CodeRow)child){
-        if(!cast(CodeColumn)parent) return "?WrongRowParent?";
-        const idx = parent.subCellIndex(child);
-        if(idx<0) return "?CantFindRow?";
-        return idx.format!"R%d|";
-      }
-      if(auto mod = cast(Module)child){
-        if(!typeid(parent).name.endsWith(".Workspace")) return "?WrongModuleParent?";
-        return mod.file.fullName ~ "|";
-      }
-      if(auto cmt = cast(CodeNode)child){
-        if(!cast(CodeRow)parent) return "?WrongNodeParent?";
-        const idx = parent.subCellIndex(child);
-        if(idx<0) return "?CantFindNode?";
-        return format!"N%d|"(idx);
-      }
-
-      return "?UnknownChild?";
-    }).join;
-
-    return res;
+    return byPathElements.map!(a => pathElementToString(a[])).join;
   }
 
-  ///this is a better test than exists, as it checks the class types as well.
-  bool validate(){
-    return toString.canFind('?');
+  bool valid(){ //todo: constness
+    return byPathElements.map!(a => isPathElementValid(a[])).all
+        && cast(CodeRow)path.backOrNull;
   }
 
 }
@@ -309,6 +297,22 @@ struct TextCursor{  //TextCursor /////////////////////////////
     desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right;
   }
 
+  void calcDesiredX_safe(){
+    if(!codeColumn || pos.x<=0){
+      desiredX = 0;
+    }else{
+      if(auto row = codeColumn.getRow(pos.y)){
+        if(row.cellCount==0){
+          desiredX = 0;
+        }else{
+          desiredX = row.subCells[pos.x-1].outerBounds.right;
+        }
+      }else{
+        desiredX = 0;
+      }
+    }
+  }
+
   void moveRight(int delta){
     if(!delta) return;
     if(delta==home){
@@ -392,19 +396,15 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
   CellPath path;       //must end with a codeRow. Starts with a root container.  Normally: root module column row
   Cell left, right;  //(null, null) is valid. -> That is an empty row.
 
-  bool valid() const{
-    return path.length && cast(CodeRow)path.back;
-  }
+  bool valid(){ //todo: constness
+    if(!path.valid) return false;
 
-  bool exists(){
-    if(!valid) return false;
-    if(!path.exists) return false;
+    auto parent = cast(CodeRow)path.back;
+    if(!parent) return false;
 
-    auto parent = path.back.to!Container;
-    return parent.subCells.empty || //this means that the row was empty and the caret is at the beginning od the row.
+    return parent.subCells.empty || //this means that the row was empty and the caret is at the beginning of the row.
            left  && parent.subCellIndex(left )>=0 ||
            right && parent.subCellIndex(right)>=0;
-
   }
 
   string toString(){
@@ -414,7 +414,9 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
     //this special processing is for the caret. Decide the idx from the left and right cells.
     if(!left && !right) res ~= "X0";
     else{
-      auto parent = path.back.to!Container;
+      auto parent = cast(CodeRow)path.back;
+      if(!parent) return "";
+
       const leftIdx  = left  ? parent.subCellIndex(left ) : -1;
       const rightIdx = right ? parent.subCellIndex(right) : -1;
 
@@ -423,7 +425,7 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
       else if(leftIdx >=0) idx = leftIdx+1; //add 1, because it's on the left side of the caret!
 
       if(idx>=0) res ~= format!"X%d"(idx);
-      else       res ~= format!"?LOST_LR?";
+      else       return ""; //it's lost
     }
 
     return res;
@@ -432,7 +434,7 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
   TextCursor fromReference(){
     TextCursor res;
 
-    if(exists && path.length>=2)
+    if(valid)
     if(auto col = cast(CodeColumn)path[$-2])
     if(auto row = cast(CodeRow)path[$-1]){
     if(row.parent is col)
@@ -466,6 +468,10 @@ struct TextCursorReference{ // TextCursorReference /////////////////////////////
 
 struct TextSelection{ //TextSelection ///////////////////////////////
   TextCursor[2] cursors;
+  bool primary;
+
+  this(TextCursor c0 , TextCursor c1 , bool primary){ cursors[0] = c0 ; cursors[1] = c1 ; this.primary = primary; }
+  this(TextCursor c  ,                 bool primary){ cursors[0] = c  ; cursors[1] = c  ; this.primary = primary; }
 
   ref caret(){ return cursors[1]; }
   ref const caret(){ return cursors[1]; }
@@ -548,10 +554,71 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   }
 
   auto toReference(){
-    return TextSelectionReference([cursors[0].toReference, cursors[1].toReference]);
+    return TextSelectionReference(cursors[0].toReference, cursors[1].toReference, primary);
   }
-}
 
+  this(string s, Module delegate(File) onFindModule){
+    try{
+      s = s.strip;
+      if(s!=""){
+
+        if(s.endsWith(TextSelectionReference.primaryMark)){
+          primary = true;
+          s = s.withoutEnding(TextSelectionReference.primaryMark);
+        }
+
+        Container parent;
+        CodeColumn codeColumn;
+
+        void step(Cell c){
+          c.enforce;
+          parent = c.to!Container;
+        }
+
+        int cidx = 0;
+        ivec2[2] pos;
+        foreach(partIdx, part; s.split('|')){
+          if(!partIdx){
+            step(onFindModule(File(part)));
+          }else if(part.startsWith('C')){
+            const idx = part[1..$].to!uint;
+            step(parent.subCells.map!(a => cast(CodeColumn)a).filter!"a".drop(idx).frontOrNull); //Parent is CodeNode. Only search amongst its child CodeColumns.
+          }else if(part.startsWith('R')){
+            const idx = part[1..$].to!uint;
+            codeColumn = enforce(cast(CodeColumn)parent);
+            step(parent.subCells.drop(idx).frontOrNull);
+            pos[cidx].y = idx;
+          }else if(part.startsWith('N')){
+            const idx = part[1..$].to!uint;
+            step(parent.subCells.drop(idx).frontOrNull);
+            pos[cidx].x = idx;
+          }else if(part.startsWith('X')){
+            const idx = part[1..$].to!uint;
+            enforce(cast(CodeRow)parent && idx>=0 && idx<=parent.cellCount); //special caret range checking
+            pos[cidx].x = idx;
+            parent = null; //the end of the cursor. It can restart after "=>".
+          }else if(part=="=>"){
+            enforce(cidx==0 && !parent);
+            cidx++;
+            parent = codeColumn;
+          }else enforce(0);
+        }
+
+        enforce(cidx.among(0, 1) && codeColumn);
+        if(cidx==0) pos[1] = pos[0];
+        foreach(i; 0..2){
+          cursors[i] = TextCursor(codeColumn, pos[i]);
+          cursors[i].calcDesiredX_unsafe;
+        }
+
+        enforce(valid); //just a light test
+      }
+    }catch(Exception e){
+      this = typeof(this).init;
+    }
+  }
+
+}
 
 int distance(TextSelection ts, TextCursor tc){ //todo: constness
   if(ts.valid && tc.valid && ts.codeColumn is tc.codeColumn){
@@ -564,8 +631,8 @@ int distance(TextSelection ts, TextCursor tc){ //todo: constness
   }
 }
 
-bool touches(TextSelection a, TextSelection b){
-
+bool touches(TextSelection a, TextSelection b){   //todo: there should be an intersects too: 2 selections can touch but if one is zeroLength is disappears.
+                                                  //todo: constness
   bool chk(){
     auto a0 = a.start, a1 = a.end;
     auto b0 = b.start, b1 = b.end;
@@ -580,7 +647,7 @@ bool touches(TextSelection a, TextSelection b){
 
 TextSelection merge(TextSelection a, TextSelection b){
   const backward = a.cursors[0]>a.cursors[1] || b.cursors[0]>b.cursors[1];
-  auto res = TextSelection([min(a.start, b.start), max(a.end, b.end)]);
+  auto res = TextSelection(min(a.start, b.start), max(a.end, b.end), a.primary || b.primary);
   if(backward) swap(res.cursors[0], res.cursors[1]);
   return res;
 }
@@ -703,7 +770,7 @@ bool hitTest(TextSelection[] ts, vec2 p){
 TextSelection useValidCursor(TextSelection ts){
   if(ts.valid) return ts;
   const i = ts.cursors[0].valid ? 0 : 1;
-  return TextSelection([ts.cursors[i], ts.cursors[i]]);
+  return TextSelection(ts.cursors[i], ts.cursors[i], ts.primary);
 }
 
 void animate(ref TextSelection sel, ){
@@ -715,13 +782,46 @@ void animate(ref TextSelection sel, ){
 
 struct TextSelectionReference{ // TextSelectionReference //////////////////////////////
   TextCursorReference[2] cursors;
+  bool primary;
+
+  this(TextCursorReference c0, TextCursorReference c1, bool primary){ cursors[0] = c0; cursors[1] = c1; this.primary = primary; }
+  this(TextSelection ts){ this = ts.toReference; }
 
   TextSelection fromReference(){
-    return TextSelection([cursors[0].fromReference, cursors[1].fromReference]).useValidCursor;
+    return TextSelection(cursors[0].fromReference, cursors[1].fromReference, primary).useValidCursor;
+  }
+
+  bool valid(){
+    if(!cursors[0].valid) return false;  //opt: this is the bottleneck. It searches rows linearly insidt columns. Also searches chars inside rows linearly.
+    if(!cursors[1].valid) return false;
+
+    if(cursors[0].path.length !=  cursors[1].path.length) return false; //not in the same depth
+    if(cursors[0].path[$-2]   !is cursors[1].path[$-2]  ) return false; //not in the same Column
+
+    assert(equal(cursors[0].path[0..$-1], cursors[1].path[0..$-1])); //check the whole path
+
+    return true;
   }
 
   void replaceLatestRow(CodeRow old, CodeRow new_){
     foreach(ref c; cursors) c.replaceLatestRow(old, new_);
+  }
+
+  private enum primaryMark = "*";
+
+  string toString(){
+    if(!valid) return "";
+
+    auto s0 = cursors[0].toString, s1 = cursors[1].toString;
+
+    auto primaryStr = primary ? primaryMark : "";
+
+    if(s0==s1) return s0 ~ primaryStr;
+          else return s0~"|=>|"~s1.split('|')[$-2..$].join('|') ~ primaryStr;
+  }
+
+  this(string s, Module delegate(File) onFindModule){
+    this = TextSelection(s, onFindModule).toReference;
   }
 
 }
