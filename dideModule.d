@@ -188,10 +188,6 @@ struct CellPath{//CellPath ///////////////////////////////
     return "?UnknownChild?";
   }
 
-  static private bool isPathElementValid(Container parent, Cell child){
-    return !pathElementToString(parent, child).startsWith('?');
-  }
-
   auto byPathElements(){
     return path .slide!(No.withPartial)(2)
                 .map!(sl => tuple!("parent", "child")(cast(Container)sl[0], sl[1]) );
@@ -202,11 +198,18 @@ struct CellPath{//CellPath ///////////////////////////////
     return byPathElements.map!(a => pathElementToString(a[])).join;
   }
 
+  static private bool isPathElementValid(Container parent, Cell child){
+    return !pathElementToString(parent, child).startsWith('?'); //opt: not so effective because of strings
+  }
+
   bool valid(){ //todo: constness
     return byPathElements.map!(a => isPathElementValid(a[])).all
         && cast(CodeRow)path.backOrNull;
   }
 
+  static private int pathElementToIntex(Container parent, Cell child){
+    return parent.subCellIndex(child);
+  }
 }
 
 
@@ -267,7 +270,23 @@ struct TextCursor{  //TextCursor /////////////////////////////
   @property bool isAtLineStart() const{ return pos.x<=0; }
   @property bool isAtLineEnd  () const{ return pos.x>=rowCharCount; }
 
-  int opCmp    (in TextCursor b) const{ return cmpChain(cmp(cast(long)cast(void*)codeColumn, cast(long)cast(void*)b.codeColumn), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); }
+  int opCmp    (in TextCursor b) const{
+    //simple case: they are on the same column or both invalid
+    if(codeColumn is b.codeColumn || !valid || !b.valid) return cmpChain(cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x));
+
+    //opt: multiColumn selection sorting is extremely slow. Maybe the hierarchical column order should be cached in an integer value.
+
+    //opt: this index searching is fucking slow. But this is the correct way to sort. Maybe it should be cached somehow...
+    auto order(in TextCursor c){
+      return c.codeColumn .thisAndAllParents!Container
+                          .array.retro
+                          .slide!(No.withPartial)(2)
+                          .map!(a => a[0].subCellIndex(a[1]));
+    }
+
+    return cmpChain(cmp(order(this), order(b)), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x));
+  }
+
   bool opEquals(in TextCursor b) const{ return codeColumn is b.codeColumn && pos == b.pos; }
 
   void moveRight_unsafe(){
@@ -377,9 +396,9 @@ struct TextCursor{  //TextCursor /////////////////////////////
     return localPos!true;
   }
 
-  auto toReference(){
+  auto toReference() const{
     TextCursorReference res;
-    if(valid) if(auto row = codeColumn.getRow(pos.y)){
+    if(valid) if(auto row = (cast()codeColumn).getRow(pos.y)){  //todo: fix constness!!
       res.path = CellPath(row);
       res.left  = row.subCells.get(pos.x-1);
       res.right = row.subCells.get(pos.x);
@@ -843,11 +862,16 @@ class CodeRow: Row{
   auto chars()  { return glyphs.map!"a ? a.ch : '\u26A0'"; }
   string sourceText() { return chars.to!string; }
 
-  private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
+  //todo: mode isSpace inside elastic tab detection, it's way too specialized
+  private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; } //this is for leadingTab detection
   private static bool isTab  (Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
-  private auto spaces() { return glyphs.map!(g => isSpace(g)); }
+  private auto isSpaces() { return glyphs.map!(g => isSpace(g)); }
   private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
   private auto leadingTabs  (){ return glyphs.until!(g => !isTab(g)  ); }
+
+  //this is for visualization
+  private auto leadingWhitespaces(){ return glyphs.until!(g => !(g && g.ch.among(' ', '\t'))); }
+  int leadingWhitespaceCount() { return cast(int)leadingWhitespaces.walkLength; }
 
   int leadingTabCount() { return cast(int)leadingTabs.walkLength; }
 
@@ -1061,16 +1085,33 @@ class CodeRow: Row{
 
   override void draw(Drawing dr){ //draw ////////////////////////////////
     if(lod.level>1){
-      const lsCnt = glyphs.until!(g => !g || !g.ch.among(' ', '\t')).walkLength; //opt: this should be memoized
-      if(lsCnt<subCells.length){
-        const r = bounds2(subCells[lsCnt].outerPos, subCells.back.outerBottomRight) + innerPos;
-        dr.color = avg(glyphs[lsCnt].bkColor, glyphs[lsCnt].fontColor);
-        dr.fillRect(r.inflated(vec2(0, -r.height/4)));
+
+      if(subCells.length){
+        const lwsCnt = leadingWhitespaceCount; //opt: this should be memoized
+        if(lwsCnt<subCells.length){
+          auto cell = subCells[lwsCnt];
+          const r = bounds2(cell.outerPos, subCells.back.outerBottomRight) + innerPos;
+
+          //decide row's average color. For simplicity choose the first char's color
+          if(auto glyph = cast(Glyph)cell){
+            dr.color = avg(glyph.bkColor, glyph.fontColor);
+          }else if(auto node = cast(CodeNode)cell){
+            dr.color = clGray; //todo: get colod of codeNode
+          }else{
+            assert(0, "Invalid class in CodeRow");
+          }
+
+          dr.fillRect(r.inflated(vec2(0, -r.height/4)));
+        }
+
+        //todo: Draw bigger subNodes.
       }
+
     }else{
       super.draw(dr);
 
-      //visualize tabs
+      //visualize tabs ---------------------------------------
+
       //opt: these calculations operqations should be cached. Seems not that slow however
       //todo: only display this when there is an editor cursor active in the codeColumn (or in the module)
       dr.translate(innerPos); dr.alpha = .4f;
@@ -1079,19 +1120,22 @@ class CodeRow: Row{
 
       if(tabIdxInternal.length){
         dr.lineWidth = .5f;
-        foreach(ti; tabIdxInternal){
-          auto g = cast(Glyph)subCells[ti];
-          dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
-          //const y = g.outerPos.y + g.outerHeight*.5f;
-          //dr.vLine(g.outerRight, y-2, y+2);
-          //dr.hLine(g.outerLeft+1, y, g.outerRight-1);
+        foreach(ti; tabIdxInternal){                         assert(ti.inRange(subCells));
+          auto g = cast(Glyph)subCells.get(ti);              assert(g, "tabIdxInternal fail");
+          if(g){
+            dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
+            //const y = g.outerPos.y + g.outerHeight*.5f;
+            //dr.vLine(g.outerRight, y-2, y+2);
+            //dr.hLine(g.outerLeft+1, y, g.outerRight-1);
+          }
         }
       }
 
-      //visualize spaces
+      //visualize spaces ------------------------------
       dr.pointSize = 1;
-      foreach(a; glyphs.filter!(a => a && a.ch==' '))
-        dr.point(a.outerBounds.center); //todo: don't highlight single spaces only if there is a tab or character or end of line next to them.
+      foreach(g; glyphs.filter!(a => a && a.ch==' ')){       assert(g);
+        dr.point(g.outerBounds.center); //todo: don't highlight single spaces only if there is a tab or character or end of line next to them.
+      }
     }
 
     //visualize changed/created/modified
@@ -1279,7 +1323,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
       if(cast(uint)y >= rowCount) return false;
       with(rows[y]){
         if(cast(uint)x >= cellCount) return false;
-        return spaces[x] && (x+1 >= cellCount || !spaces[x+1]);
+        return isSpaces[x] && (x+1 >= cellCount || !isSpaces[x+1]);
       }
     }
 
@@ -1301,7 +1345,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
       if(y0<y1) foreach(yy; y0..y1+1) with(rows[yy]) {
         visited[x+(long(yy)<<32)] = true;
 
-        int x0 = x; while(x0 > 0 && spaces[x0-1]) x0--;
+        int x0 = x; while(x0 > 0 && isSpaces[x0-1]) x0--;
         int x1 = x;
 
         int len = x1-x0+1;
@@ -1316,7 +1360,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
         //if(xStartMin>0) "------------------".print;
 
         foreach(yy; y0..y1+1) with(rows[yy]) {
-          int xStart = x; while(xStart > xStartMin && spaces[xStart-1]) xStart--;
+          int xStart = x; while(xStart > xStartMin && isSpaces[xStart-1]) xStart--;
           int xTab   = x+1-minLen;
 
           newTabs ~= TabInfo(yy, xStart, xTab);
@@ -1329,7 +1373,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     //scan through all the rows and initiate floodFills
     foreach(y, row; rows) with(row){
       int st = 0;
-      foreach(isSpace, len; spaces.group){
+      foreach(isSpace, len; isSpaces.group){
         const en = st + cast(int)len;
 
         if(isSpace && st>0){

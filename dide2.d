@@ -332,10 +332,10 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
       }else if(opSelectAdd){
         auto s = applyWordSelect(selectionAtMouse);
-        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
+        textSelections = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else if(opSelectExtend){
         auto s = applyWordSelect(TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary));
-        textSelections = selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s;
+        textSelections = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else{
         auto s = applyWordSelect(selectionAtMouse);
         textSelections = [s];
@@ -639,6 +639,8 @@ class Workspace : Container{ //this is a collection of opened modules
       lastModulePositions[m.file.hashOf] = m.outerPos;
   }
 
+  //todo: since all the code containers have parents, location() is not needed anymore
+
   override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0)){  //locate ////////////////////////////////
     ofs += innerPos;
     foreach_reverse(m; modules){
@@ -651,17 +653,17 @@ class Workspace : Container{ //this is a collection of opened modules
   CodeLocation cellLocationToCodeLocation(CellLocation[] st){
     auto a(T)(void delegate(T) f){ if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); } }
 
-    //opt: linear search...
+    //note: this works only at the first dept level
 
     CodeLocation res;
     a((Module m){
       res.file = m.file;
       a((CodeColumn col){
         a((CodeRow row){
-          if(auto line = col.subCells.countUntil(row)+1){
+          if(auto line = col.subCells.countUntil(row)+1){   //todo: parent.subcellindex/child.index
             res.line = line.to!int;
             a((Cell cell){
-              if(auto column = row.subCells.countUntil(cell)+1)
+              if(auto column = row.subCells.countUntil(cell)+1) //todo: parent.subcellindex/child.index
                 res.column = column.to!int;
             });
           }
@@ -672,7 +674,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   static CellLocation[] findLastCodeRow(CellLocation[] st){
-    foreach_reverse(i; 0..st.length){
+    foreach_reverse(i; 0..st.length){  //todo: functinal
       auto row = cast(CodeRow)st[i].cell;
       if(row) return st[i..$];
     }
@@ -684,6 +686,14 @@ class Workspace : Container{ //this is a collection of opened modules
     st = findLastCodeRow(st);
     if(auto row = cast(CodeRow)st.get(0).cell){
       auto cell = st.get(1).cell;
+
+      //try to find cell with smaller height than the row, vertically at x, if the mouse is not exactly inside the cell. Also snap from the sides.
+      if(!cell){
+        cell = row.subCellAtX(st[0].localPos.x, Yes.snapToNearest);
+        if(cell)
+          st  ~= CellLocation(cell, st[0].localPos-cell.innerPos); //pass in localPos inside the cell
+      }
+
       res.codeColumn = row.parent;
 
       res.desiredX = st[0].localPos.x;
@@ -1629,15 +1639,20 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
 
+    static orderCounter = 0;  orderCounter++;
 
     void drawCarets(RGB c, float shadow=0){
       dr.alpha = blink;
       dr.lineWidth = -1-(blink)*3 -shadow;
       dr.color = c;
-      foreach(s; textSelections){ //opt: culling
+      foreach(/*idx,*/ s; textSelections){ //opt: culling
         if(s.primary && !shadow) dr.color = mix(clGold, c, .5f); //todo: clPrimaryCaret
                             else dr.color = c;
+        //if((orderCounter & 15) == (idx & 15)) dr.lineWidth *=4;
         s.caret.worldPos.draw(dr); //opt: cache the worldPositions
+        //if((orderCounter & 15) == (idx & 15)) dr.lineWidth /=4;
+
+        //todo: visualize caret order nicely.
       }
     }
 
