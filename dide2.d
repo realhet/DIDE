@@ -75,6 +75,12 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
   //these are calculated after update. No notifications, just keep calling update frequently
   T hoveredItem;
 
+  ///must be called after an items removed
+  void validateItemReferences(T[] modules){
+    if(!modules.canFind(hoveredItem)) //opt: slow linear search
+      hoveredItem = null;
+  }
+
   void update(bool mouseEnabled, View2D view, T[] items){
 
     void selectNone()           { foreach(a; items) a.flags.selected = false; }
@@ -453,6 +459,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
     void updateSubCells(){
       dropInvalidTextSelections;
+      moduleSelectionManager.validateItemReferences(modules);
       subCells = cast(Cell[])modules;
     }
   }
@@ -500,9 +507,12 @@ class Workspace : Container{ //this is a collection of opened modules
     updateSubCells;
   }
 
-  auto selectedModules(){ return modules.filter!(m => m.flags.selected).array; }
-  auto unselectedModules(){ return modules.filter!(m => !m.flags.selected).array; }
-  auto hoveredModule(){ return moduleSelectionManager.hoveredItem; }
+  auto selectedModules()                { return modules.filter!(m => m.flags.selected).array; }
+  auto unselectedModules()              { return modules.filter!(m => !m.flags.selected).array; }
+  auto hoveredModule()                  { return moduleSelectionManager.hoveredItem; }
+  auto modulesWithTextSelection()       { return validTextSelections.map!(s => s.moduleOf).nonNulls.uniq; }
+  auto moduleWithPrimaryTextSelection() { return validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull; }
+
 
   /// modules that have cursors on them
   auto editedModules(){
@@ -810,13 +820,37 @@ class Workspace : Container{ //this is a collection of opened modules
 
   //todo: BOM handling for copy and paste. To be able to communicate with other apps.
 
+  bool requestModifyPermission(CodeColumn col){  //todo: constness
+    assert(col);
+    auto m = moduleOf(col);
+    return inputs["CapsLockState"].active;
+  }
+
+  bool requestDeletePermission(TextSelection ts){
+    auto res = requestModifyPermission(ts.codeColumn);
+    if(res){
+      LOG("DELETING", ts.toReference.text);
+    }
+    return res;
+  }
+
+  bool requestInsertPermission(TextSelection ts, string[] lines){
+    auto res = requestModifyPermission(ts.codeColumn);
+    if(res){
+      LOG("INSERITING", ts.toReference);
+    }
+    return res;
+  }
+
+  ///All operations must go through copy_impl or cut_impl. Those are calling requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
   bool copy_impl(TextSelection[] textSelections){  // copy_impl ///////////////////////////////////////
     auto copiedSourceText = textSelections.exportSourceText;
     bool valid = copiedSourceText.length>0;
-    if(valid) clipboard.asText = copiedSourceText;
+    if(valid) clipboard.asText = copiedSourceText;  //todo: BOM handling
     return valid;
   }
 
+  ///Ditto
   auto cut_impl(TextSelection[] textSelections){  // cut_impl ////////////////////////////////////////
     //opt: is is merging just for safety. validity check should do the merging
     textSelections = textSelections.merge; //perf: 6000 sor, debug: 16ms
@@ -824,7 +858,7 @@ class Workspace : Container{ //this is a collection of opened modules
 
     auto savedSelections = textSelections.map!"a.toReference".array;
 
-    foreach_reverse(sel; textSelections) if(!sel.isZeroLength)if(auto col = sel.codeColumn){
+    foreach_reverse(sel; textSelections) if(!sel.isZeroLength) if(requestDeletePermission(sel)) if(auto col = sel.codeColumn){
       const st = sel.start,
             en = sel.end;
 
@@ -840,13 +874,12 @@ class Workspace : Container{ //this is a collection of opened modules
           }else{ //delete partial row
             const x0 = isFirstRow ? st.pos.x : 0,
                   x1 = isLastRow  ? en.pos.x : rowCellCount+1;
+
             foreach_reverse(x; x0..x1){
               if(x>=0 && x<rowCellCount){
                 row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
-                //row.setChangedRemoved;
               }else if(x==rowCellCount){ //newLine
                 if(auto nextRow = col.getRow(y+1)){
-
                   foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
                     ss.replaceLatestRow(nextRow, row);
 
@@ -861,6 +894,7 @@ class Workspace : Container{ //this is a collection of opened modules
                 }else assert(0, "TextSelection out of range NL");
               }else assert(0, "TextSelection out of range X");
             }
+
             row.refreshTabIdx;
             row.refresh;
             row.setChangedRemoved;
@@ -878,7 +912,7 @@ class Workspace : Container{ //this is a collection of opened modules
     if(textSelections.empty) return textSelections; //no target
 
     if(fromClipboard)
-      input = clipboard.asText;
+      input = clipboard.asText;  //todo: BOM handling
 
     auto lines = input.splitLines;
     if(lines.empty) return textSelections; //nothing to do with an empty clipboard
@@ -890,53 +924,64 @@ class Workspace : Container{ //this is a collection of opened modules
     ///inserts text at cursor, moves the corsor to the end of the text
     void simpleInsert(ref TextSelection ts, string str){
       assert(ts.valid);  assert(ts.isZeroLength);  assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
+
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
 
-        const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
+        if(requestInsertPermission(ts, [str])){
+          const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
 
-        //adjust caret and save
-        ts.cursors[0].moveRight(insertedCnt);
-        ts.cursors[1] = ts.cursors[0];
+          //adjust caret and save
+          ts.cursors[0].moveRight(insertedCnt);
+          ts.cursors[1] = ts.cursors[0];
+        }
+
         savedSelections ~= ts.toReference;
       }else assert("Row out if range");
     }
 
     void multiInsert(ref TextSelection ts, string[] lines ){
       assert(ts.valid);  assert(ts.isZeroLength);  assert(lines.length>=2);
+
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
         assert(ts.caret.pos.x>=0 && ts.caret.pos.x<=row.subCells.length);
 
         //handle leadingTab duplication
-        const extraLeadingTabs = "\t".replicate(duplicateTabs ? row.leadingTabCount : 0);
-
-        //break the row into 2 parts
-        //transfer the end of (first)row into a lastRow
-        auto lastRow = row.splitRow(ts.caret.pos.x);
-
-        //insert at the end of the first row
-        row.insertText(row.cellCount, lines.front);
-
-        //create extra rows in the middle
-        Cell[] midRows;
-        foreach(line; lines[1..$-1]){
-          auto r = new CodeRow(ts.codeColumn, line); //todo: this should be insertText
-          r.setChangedCreated;
-          midRows ~= r;
+        if(duplicateTabs && row.leadingTabCount){
+          lines = lines.dup;
+          lines.back = "\t".replicate(row.leadingTabCount) ~ lines.back;
         }
 
-        //insert at the beginning of the last row
-        const insertedCnt = lastRow.insertText(0, extraLeadingTabs ~ lines.back);
+        if(requestInsertPermission(ts, lines)){
+          //break the row into 2 parts
+          //transfer the end of (first)row into a lastRow
+          auto lastRow = row.splitRow(ts.caret.pos.x);
 
-        //insert modified rows into column
-        ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
-                               ~ midRows
-                               ~ lastRow
-                               ~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
+          //insert at the end of the first row
+          row.insertText(row.cellCount, lines.front);
 
-        //adjust caret and save as reference
-        ts.cursors[0].pos.y += lines.length.to!int-1;
-        ts.cursors[0].pos.x = insertedCnt;
-        ts.cursors[1] = ts.cursors[0];
+          //create extra rows in the middle
+          Cell[] midRows;
+          foreach(line; lines[1..$-1]){
+            auto r = new CodeRow(ts.codeColumn, line); //todo: this should be insertText
+            r.setChangedCreated;
+            midRows ~= r;
+          }
+
+          //insert at the beginning of the last row
+          const insertedCnt = lastRow.insertText(0, lines.back);
+
+          //insert modified rows into column
+          ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
+                                 ~ midRows
+                                 ~ lastRow
+                                 ~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
+
+          //adjust caret and save as reference
+          ts.cursors[0].pos.y += lines.length.to!int-1;
+          ts.cursors[0].pos.x = insertedCnt;
+          ts.cursors[1] = ts.cursors[0];
+        }
+
         savedSelections ~= ts.toReference;
 
         //todo:update caret
@@ -1076,12 +1121,9 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   @VERB("F3"                  ) void testInsert3       (){
-    bool[Module] affectedModules;
-    foreach(ts; validTextSelections) affectedModules[ts.codeColumn.allParents!Module.frontOrNull] = true;
-
     const savedSelections = textSelections.map!(a => a.toReference.text).array;
 
-    foreach(m; affectedModules.keys) if(m) m.resyntax;
+    foreach(m; modulesWithTextSelection) if(m) m.resyntax;
 
     textSelections = savedSelections.map!(a => TextSelection(a, &findModule)).array; //todo: selectionHash changing!!! Maybe it uses pointer value, that's not good!
   }
