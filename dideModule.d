@@ -31,15 +31,16 @@ void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in
 
 void addGlobalChangeIndicator(Drawing dr, Container cntr){ with(cntr){
   if(const mask = changedMask){
-    if      (cast(CodeRow    )cntr) addGlobalChangeIndicator(dr.inputTransform(outerPos), outerHeight, 6, mask);
-    else if (cast(CodeColumn )cntr) addGlobalChangeIndicator(dr.inputTransform(innerPos), innerHeight, 2, mask);
+    enum ofs = vec2(-4, 0);
+    if      (cast(CodeRow    )cntr) addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask);
+    else if (cast(CodeColumn )cntr) addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask);
   }
 }}
 
 void draw(Drawing dr, in ChangeIndicator[] arr){
   enum palette = [clBlack, clLime, clRed, clYellow];
-  /+ pass 1 +/  dr.color = clBlack; foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)-3;                             dr.vLine(a.pos, a.pos.y+a.height); }
-  /+ pass 2 +/                      foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)  ; dr.color = palette[a.mask]; dr.vLine(a.pos, a.pos.y+a.height); }
+  /+ pass 1 +/  dr.color = clBlack; foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)-1.5f;                             dr.vLine(a.pos, a.pos.y+a.height); }
+  /+ pass 2 +/                      foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)     ; dr.color = palette[a.mask]; dr.vLine(a.pos, a.pos.y+a.height); }
 }
 
 
@@ -879,8 +880,6 @@ class CodeRow: Row{
     parent = enforce(parent_);
     id.value = this.identityStr;
 
-    padding.left = padding.right = DefaultFontNewLineWidth;
-
     needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
     flags.wordWrap       = false;
     flags.clipSubCells   = true;
@@ -888,9 +887,6 @@ class CodeRow: Row{
     flags.rowElasticTabs = false;
     flags.dontHideSpaces = true;
     bkColor = clCodeBackground;
-    outerHeight = DefaultFontHeight;
-
-    super(); //todo: remove this. I think it's implicit.
   }
 
   this(CodeColumn parent_, string line, ubyte[] syntax){
@@ -990,7 +986,7 @@ class CodeRow: Row{
 
     super.rearrange;
 
-    innerSize = max(innerSize, DefaultFontNewLineSize);
+    innerSize = max(innerSize, DefaultFontEmptyEditorSize);
 
     static if(rearrangeLOG) LOG("rearranging", this);
 
@@ -1191,11 +1187,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     flags.wordWrap     = false;
     flags.clipSubCells = true;
     flags.cullSubCells = true;
-
     flags.columnElasticTabs = true;
+
     bkColor = clCodeBackground;
-
-
+    this.setRoundBorder(8);
+    margin = "0.5";
+    padding = "0.5 4";
   }
 
   /// This is the normal constructor. This should be the only one.
@@ -1205,7 +1202,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
 
-  deprecated("This lets the module extract SourceRegions") this(Container parent, SourceCode sourceCode){
+  deprecated("This lets the module extract SourceRegions from this SourceCode first") this(Container parent, SourceCode sourceCode){
     this(parent);
     setSourceCode(sourceCode);
   }
@@ -1230,6 +1227,32 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     needMeasure;
   }
 
+  void resyntax(SourceCode src){
+    assert(subCells.length>0);
+
+    static TextStyle style; //it is needed by appendCode/applySyntax
+
+    int maxIdx = 0; //1 line is a MUST
+    src.foreachLine( (int idx, string line, ubyte[] syntax){
+      if(idx<subCells.length){
+        auto row = rows[idx];
+        if(!row.updateSyntax(line, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/)){
+          WARN("Resyntax: Row was changed!  TODO!!! Implement to update the row.");
+        }
+      }else{
+        WARN("Resyntax: There was not enough existing lines in the CodeColumn");
+        appendCell(new CodeRow(this, line, syntax));
+      }
+      maxIdx = idx;
+    });
+
+    if(subCells.length>maxIdx+1){
+      WARN("Resyntax: There was too much lines in the CodeColumn");
+      subCells.length = maxIdx+1;
+      needMeasure;
+    }
+
+  }
 
   override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = p; }
@@ -1293,11 +1316,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     assert(rows.map!(a => cast(Row)a).all);
 
     if(rows.empty){
-      innerSize = DefaultFontNewLineSize;
+      innerSize = DefaultFontEmptyEditorSize;
     }else{
       //measure and spread rows vertically rows
       float y=0, maxW=0;
       const totalGap = rows.front.totalGapSize; //assume all rows have the same margin, padding, border settings
+      assert(!totalGap);
       foreach(r; rows){
         r.measure;
         r.outerPos = vec2(0, y);
@@ -1497,10 +1521,35 @@ auto cachedFolderLabel(string folderPath){
 class CodeNode : Row{
   Container parent;
 
+  auto subColumns(){ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
+
+  this(Container parent){
+    this.parent = parent;
+    id = this.identityStr;
+
+    needMeasure; //enables on-demand measure
+    flags.wordWrap       = false;
+    flags.clipSubCells   = true;
+    flags.cullSubCells   = true;
+    flags.rowElasticTabs = true;
+    flags.dontHideSpaces = true;
+
+    this.setRoundBorder(8);
+    margin = "0.5";
+    padding = "1 1.5";
+  }
+
+  ~this(){
+    parent = null;
+  }
+
   override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = p; }
 
   override void rearrange(){
+    innerSize = vec2(0);
+    flags.autoWidth = true;
+    flags.autoHeight = true;
     super.rearrange;
     static if(rearrangeLOG) LOG("rearranging", this);
   }
@@ -1512,16 +1561,6 @@ class CodeNode : Row{
     addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
   }
 
-  this(Container parent){
-    this.parent = parent;
-    id = this.identityStr;
-
-    needMeasure; //enables on-demand measure
-  }
-
-  ~this(){
-    parent = null;
-  }
 }
 
 
@@ -1541,14 +1580,10 @@ class Module : CodeNode{ //this is any file in the project
   bool isMainExe, isMainDll, isMainLib, isMain;
 
   this(Container parent){
-    super(parent);
-    deprecated id = this.identityStr;
-
-    flags.cullSubCells = true;
-
     bkColor = clModuleBorder;
-    this.setRoundBorder(16);
-    padding = "8";
+    super(parent);
+
+    flags.clipSubCells = false; //to show labels
 
     loaded = now;
   }
@@ -1562,12 +1597,66 @@ class Module : CodeNode{ //this is any file in the project
     reload;
   }
 
+  void resetModuleTypeFlags(){
+    isMain = isMainExe = isMainDll = isMainLib = false;
+  }
+
+  void detectModuleTypeFlags(SourceCode src){
+    bool isMainSomething(string ext)(){
+      return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
+    }
+    isMainExe = isMainSomething!"exe";
+    isMainDll = isMainSomething!"dll";
+    isMainLib = isMainSomething!"lib";
+    isMain = isMainExe || isMainDll || isMainLib;
+  }
+
+  void updateBigComments(SourceCode src){
+    assert(overlay);
+    overlay.subCells.clear;
+    overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
+    foreach(k; src.bigComments.keys.sort)
+      overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+  }
+
+  protected void measureAndPropagateCodeSize(){
+    code.measure;
+    innerSize = code.outerSize;  //todo: try to put this into rearrange()
+    overlay.outerSize = code.outerSize;
+  }
+
+  void resyntax(){
+
+    T0; Time[] t;
+    auto txt = code.sourceText;
+    t~=DT;
+    auto src = scoped!SourceCode(txt);
+    t~=DT;
+
+    detectModuleTypeFlags(src);
+
+    //code = new CodeColumn(this, src);
+    assert(code);
+    //code.setSourceCode(src);
+    code.resyntax(src);
+    t~=DT;
+    measureAndPropagateCodeSize;
+    t~=DT;
+
+    updateBigComments(src);
+
+    //subCells = [code, overlay];
+    t~=DT;
+    print(t);
+  }
+
 
   void reload(){
     clearSubCells;
 
     modified = file.modified;
     sizeBytes = file.size;
+    resetModuleTypeFlags;
 
     overlay = new Container;
     overlay.id = "Overlay:"~file.fullName;
@@ -1579,10 +1668,6 @@ class Module : CodeNode{ //this is any file in the project
       //clipSubCells = false;
     }
     overlay.needMeasure;
-
-    void measureAndPropagateCodeSize(){ code.measure; innerSize = code.outerSize; overlay.outerSize = code.outerSize; }
-
-    isMain = isMainExe = isMainDll = isMainLib = false;
 
     if(file.extIs(".err")){
 
@@ -1613,23 +1698,10 @@ class Module : CodeNode{ //this is any file in the project
     }else{
       T0;
       auto src = scoped!SourceCode(this.file);
-
-      bool isMainSomething(string ext)(){
-        return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
-      }
-      isMainExe = isMainSomething!"exe";
-      isMainDll = isMainSomething!"dll";
-      isMainLib = isMainSomething!"lib";
-      isMain = isMainExe || isMainDll || isMainLib;
-
+      detectModuleTypeFlags(src);
       code = new CodeColumn(this, src);
-
       measureAndPropagateCodeSize;
-
-      overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-      foreach(k; src.bigComments.keys.sort)
-        overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
-
+      updateBigComments(src);
       LOG(DT, file);
     }
 
@@ -1658,7 +1730,7 @@ class Module : CodeNode{ //this is any file in the project
       a.outerPos = vec2(0);
     }
 
-    innerSize = code.outerSize.max(code.outerSize, DefaultFontNewLineSize);
+    innerSize = code.outerSize.max(code.outerSize, DefaultFontEmptyEditorSize);
     overlay.outerPos = vec2(0);
 
     static if(rearrangeLOG) LOG("rearranging", this);
@@ -1678,30 +1750,40 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
   this(CodeRow parent){
     super(parent);
 
-    flags.cullSubCells = true;
-    flags.yAlign = YAlign.top;
+    //flags.yAlign = YAlign.top;
 
-    auto ts = tsSyntax(SyntaxKind.Comment);
+//    auto ts = tsSyntax(SyntaxKind.Comment);
+    auto ts = tsSyntax(SyntaxKind.Symbol);
 
     const darkColor   = ts.bkColor,
           brightColor = ts.fontColor,
           halfColor   = avg(darkColor, brightColor);
 
     bkColor = halfColor;
-    this.setRoundBorder(8);
-    margin = "0.5";
-    padding = "1.5";
-    padding.right += 1.5;
+    border.color = bkColor;
 
     ts.fontColor = darkColor;
     ts.bkColor = halfColor;
-    appendStr("//", ts);
+    ts.bold = true;
+//    appendStr("//"~smallSpace, ts);
+    appendStr("if", ts);
+
+    contents = new CodeColumn(this, "1+1//This is a test comment");
+    contents.bkColor = darkColor;
+
+    subCells ~= contents;
+
+    appendStr("\nthen\t", ts);
 
     contents = new CodeColumn(this, "//This is a test comment");
     contents.bkColor = darkColor;
-    contents.setRoundBorder(8);
-    contents.margin = "0 2";
-    contents.padding = "0 4";
+
+    subCells ~= contents;
+
+    appendStr("\nelse\t", ts);
+
+    contents = new CodeColumn(this, "//This is a test comment");
+    contents.bkColor = darkColor;
 
     subCells ~= contents;
 
@@ -1713,16 +1795,24 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
       const c = tsSyntax(SyntaxKind.Comment).bkColor;
       foreach(r; contents.rows){
         r.bkColor = c;
-        r.padding = "0 2";
       }
     }
 
-    innerSize = vec2(0);
-    flags.autoWidth = true;
-    flags.autoHeight = true;
     //measureSubCells;
     super.rearrange;
 
     //innerSize = subCells.back.outerBottomRight;
+  }
+
+  override void draw(Drawing dr){
+    super.draw(dr);
+
+    /*dr.lineWidth = -1;
+    dr.color = clBlue; dr.drawRect(outerBounds);
+    dr.color = clYellow; dr.drawRect(innerBounds);
+
+    dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
+    dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
+    dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
   }
 }

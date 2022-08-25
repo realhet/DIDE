@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -186,7 +186,8 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
     static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
       mixin(format!"%s = workspace.validate(%s);"(f, f));
 
-    LOG("todo: workspace change detection");
+    static bool once;
+    if(once.chkSet) LOG("todo: workspace change detection");
   }
 
   void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){  //todo: make textSelection functional, not a ref
@@ -209,7 +210,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
           opSelectAdd           = _kc(mouseMappings.selectAdd           ),
           opSelectExtend        = _kc(mouseMappings.selectExtend        );
 
-    auto cursorAtMouse = workspace.cellLocationToTextCursor(workspace.locate(view.mousePos));
+    auto cursorAtMouse = workspace.createCursorAt(view.mousePos);
 
     //initiate mouse operations
     if(!im.wantMouse){
@@ -260,7 +261,8 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
                                  ? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
                                  : restrictPos_editor(view.mousePos, bnd); //text editor clamping for normal select
 
-      auto restrictedCursorAtMouse = workspace.cellLocationToTextCursor(workspace.locate(restrictedMousePos));
+      auto restrictedCursorAtMouse = workspace.createCursorAt(restrictedMousePos);
+
 
       if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn){
         selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
@@ -650,6 +652,17 @@ class Workspace : Container{ //this is a collection of opened modules
     return [];
   }
 
+  CellLocation[] locate_snapToRow(in vec2 mouse){
+    auto st = locate(mouse);
+
+    if(st.length) with(st.back) if(auto col = cast(CodeColumn)cell){
+      const ofs = calcSnapOffsetFromPadding;
+      if(ofs) st = locate(mouse+ofs);
+    }
+
+    return st;
+  }
+
   CodeLocation cellLocationToCodeLocation(CellLocation[] st){
     auto a(T)(void delegate(T) f){ if(auto x = cast(T)st.get(0).cell){ st.popFront; f(x); } }
 
@@ -681,7 +694,7 @@ class Workspace : Container{ //this is a collection of opened modules
     return [];
   }
 
-  TextCursor cellLocationToTextCursor(CellLocation[] st){ //todo: TextCursor should contain the codeRow, not the textSelection.
+  TextCursor cellLocationToTextCursor(CellLocation[] st){
     TextCursor res;
     st = findLastCodeRow(st);
     if(auto row = cast(CodeRow)st.get(0).cell){
@@ -713,6 +726,10 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     return validate(res);
+  }
+
+  TextCursor createCursorAt(vec2 p){
+    return cellLocationToTextCursor(locate_snapToRow(p));
   }
 
   // textSelection, cursor movements /////////////////////////////
@@ -1059,13 +1076,14 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   @VERB("F3"                  ) void testInsert3       (){
-    foreach(ts; validTextSelections){
-      auto s = ts.toReference.text;
-      print(s);
-      auto ts2 = TextSelection(s, &findModule);
-      enforce(ts2 == ts);
-      enforce(s == ts2.toReference.text);
-    }
+    bool[Module] affectedModules;
+    foreach(ts; validTextSelections) affectedModules[ts.codeColumn.allParents!Module.frontOrNull] = true;
+
+    const savedSelections = textSelections.map!(a => a.toReference.text).array;
+
+    foreach(m; affectedModules.keys) if(m) m.resyntax;
+
+    textSelections = savedSelections.map!(a => TextSelection(a, &findModule)).array; //todo: selectionHash changing!!! Maybe it uses pointer value, that's not good!
   }
 
 
@@ -1359,7 +1377,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }}
 
   void UI_mouseLocationHint(View2D view){ with(im){
-    auto st = locate(view.mousePos);
+    auto st = locate_snapToRow(view.mousePos);
     if(st.length){
       Row({ padding="0 8"; }, "\u2316 ", {
         const loc = cellLocationToCodeLocation(st);
@@ -1518,7 +1536,8 @@ class Workspace : Container{ //this is a collection of opened modules
     const near       = lod.zoomFactor.smoothstep(0.02, 0.1);
     const clSelected = mix(mix(RGB(0x404040), clGray, near*.66f),
                            mix(clWhite      , clGray, near*.66f), blink);
-    const clCaret    = clWhite;
+    const clCaret        = clSilver;
+    const clPrimaryCaret = clWhite;
     const alpha = mix(0.75f, .4f, near);
 
     const cullBounds = view.subScreenBounds_anim;
@@ -1646,7 +1665,7 @@ class Workspace : Container{ //this is a collection of opened modules
       dr.lineWidth = -1-(blink)*3 -shadow;
       dr.color = c;
       foreach(/*idx,*/ s; textSelections){ //opt: culling
-        if(s.primary && !shadow) dr.color = mix(clGold, c, .5f); //todo: clPrimaryCaret
+        if(s.primary && !shadow) dr.color = clPrimaryCaret; //todo: clPrimaryCaret
                             else dr.color = c;
         //if((orderCounter & 15) == (idx & 15)) dr.lineWidth *=4;
         s.caret.worldPos.draw(dr); //opt: cache the worldPositions
@@ -1818,18 +1837,13 @@ class FrmMain : GLWindow { mixin autoCreate;
       workspace.UI_SearchBox(view);
     });
 
-    if(0) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(1) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({
         Text(hitTestManager.lastHitStack.map!(a => "["~a.id~"]").join(` `));
         NL;
         if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text);
 
-
-        foreach_reverse(m; workspace.modules){
-          foreach(loc; m.locate(view.mousePos)){
-            Text("\n", loc.text);
-          }
-        }
+        Text("\n", workspace.locate_snapToRow(view.mousePos).text);
       });
     });
 
