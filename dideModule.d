@@ -146,7 +146,7 @@ auto moduleOf(inout Cell c) { return cast(inout)c.allParents!Module.frontOrNull;
 auto moduleOf(TextCursor c){ return c.codeColumn.moduleOf; }
 auto moduleOf(TextSelection s){ return s.caret.codeColumn.moduleOf; }
 
-bool isReadOnly(in Cell c){ return c.thisAndAllParents!Container.map!"a.flags.readOnly".any; }
+bool isReadOnly(in Cell c){ return c.thisAndAllParents!Module.map!"a.isReadOnly".any; }
 bool isReadOnly(in TextCursor c){ return c.codeColumn.isReadOnly; }
 bool isReadOnly(in TextSelection s){ return s.caret.codeColumn.isReadOnly; }
 
@@ -553,9 +553,11 @@ struct TextSelection{ //TextSelection ///////////////////////////////
           auto row = codeColumn.rows[crsr.pos.y];
 
           if(crsr.pos.x<row.cellCount){//highlighted chars
-            auto g = row.glyphs[crsr.pos.x];
-            if(g){
+            auto cell = row.subCells[crsr.pos.x];
+            if(auto g = cast(Glyph)cell){
               res ~= g.ch;
+            }else if(auto n = cast(CodeNode)cell){
+              res ~= n.sourceText;
             }else{
               raise("NOT IMPL"); //todo: structured editor
             }
@@ -775,10 +777,9 @@ string sourceTextJoin(R)(R r, string newLine)
 }
 
 
-string exportSourceText(TextSelection[] ts){
+string sourceText(TextSelection[] ts){
   return ts
     .filter!"a.valid && !a.isZeroLength"
-    .array.sort.array      //opt: on demand sorting
     .map!"a.sourceText"
     .sourceTextJoin(DefaultNewLine);
 }
@@ -1320,8 +1321,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     }else{
       //measure and spread rows vertically rows
       float y=0, maxW=0;
-      const totalGap = rows.front.totalGapSize; //assume all rows have the same margin, padding, border settings
-      assert(!totalGap);
+      const totalGap = rows.front.totalGapSize; //note: assume all rows have the same margin, padding, border settings
       foreach(r; rows){
         r.measure;
         r.outerPos = vec2(0, y);
@@ -1546,6 +1546,8 @@ class CodeNode : Row{
   override inout(Container) getParent() inout { return parent; }
   override void setParent(Container p){ parent = p; }
 
+  abstract string sourceText();
+
   override void rearrange(){
     innerSize = vec2(0);
     flags.autoWidth = true;
@@ -1564,7 +1566,112 @@ class CodeNode : Row{
 }
 
 
+// Undo/History System ////////////////////////////////////
+/+
+
+     ----------------------> o.item[0] --------------------------->
+                              .item[n] --------------------------->
+        doModifications ->
+      <- unDoModifivations
+                              o.when
+
+   ---X---> loaded -----> modified --Y--> saved --X---> loaded --------->
+   X = unable to nndo, must go bact to the latest 'loaded' event
+   Y = nothing to undo
++/
+
+
+struct UndoManager{
+
+  struct Record{
+    string where;
+    string what;  //empty means delete.  Non-empty means insert.
+  }
+
+  enum EventType { loaded, saved, modified }
+
+  class Event{
+    DateTime id; //unique ID
+    EventType type;
+    Record[] modifications;
+    Event[] items;
+
+    this(DateTime id, EventType type, string where, string what){
+      this.id = id;
+      this.type = type;
+      modifications ~= Record(where, what);
+    }
+
+    override int opCmp(in Object b) const { auto bb = cast(Event)b;  return cmp(id, bb ? bb.id : DateTime.init); }
+
+    string modificationSummary(){
+      final switch(type){
+        case EventType.loaded: return "Loaded";
+        case EventType.saved : return "Saved";
+        case EventType.modifiec:
+      }
+    }
+
+    override string toString() const{ return format!"UndoEvent(%s, %s, items:%d, %s)"(id, type, modificationSummary); }
+  }
+
+  Event[DateTime] allEvents;
+
+  private DateTime latestId; //used for unique id generation
+
+  Event actEvent;
+
+  Event oldestEvent(){ return allEvents.byValue.minElement(null); }
+  Event newestEvent(){ return allEvents.byValue.maxElement(null); }
+
+  void justLoaded   ()                          { addEvent(EventType.loaded   , "", "" ); }  //todo: fileName, fileContents for history
+  void justSaved    ()                          { addEvent(EventType.saved    , "", "" ); }
+  void justModified (string where, string what) { addEvent(EventType.modified , where, what); }
+
+  void addEvent(EventType type, string where, string what){
+    latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
+
+    const maxUndoFusionDuration = 2*second;
+    const fusion =  type == EventType.modified
+                 && actEvent
+                 && actEvent.items.empty //must not have any items depending on it!
+                 && actEvent.type==EventType.modified
+                 && latestId-actEvent.id < maxUndoFusionDuration;
+
+    if(fusion){
+      assert(actEvent);
+      assert(actEvent.type == EventType.modified);
+      actEvent.id = latestId;
+      actEvent.modifications ~= Record(where, what);
+
+      print("UndoEvent Fusion: ", actEvent);
+    }else{
+      if(!actEvent){
+        assert(allEvents.empty);
+      }
+
+      auto e = new Event(latestId, type, where, what);
+      allEvents[e.id] = e;
+
+      if(actEvent) actEvent.items ~= e;
+
+      actEvent = e; //this is the new act
+
+      print("UndoEvent Added: ", actEvent);
+    }
+  }
+}
+
+
+
+
+
 /// Module ///////////////////////////////////////////////
+interface WorkspaceInterface{
+  @property bool isReadOnly();
+}
+
+
 class Module : CodeNode{ //this is any file in the project
   File file;
 
@@ -1575,9 +1682,12 @@ class Module : CodeNode{ //this is any file in the project
   Container overlay;
 
   ModuleBuildState buildState;
+  bool isCompiling;
 
   size_t sizeBytes;  //todo: update this
-  bool isMainExe, isMainDll, isMainLib, isMain;
+  bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
+
+  UndoManager undoManager;
 
   this(Container parent){
     bkColor = clModuleBorder;
@@ -1597,8 +1707,18 @@ class Module : CodeNode{ //this is any file in the project
     reload;
   }
 
+  override string sourceText(){
+    return code.sourceText;
+  }
+
+  ///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
+  bool isReadOnly(){
+    //return inputs["ScrollLockState"].active;
+    return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly;
+  }
+
   void resetModuleTypeFlags(){
-    isMain = isMainExe = isMainDll = isMainLib = false;
+    isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
   }
 
   void detectModuleTypeFlags(SourceCode src){
@@ -1609,6 +1729,9 @@ class Module : CodeNode{ //this is any file in the project
     isMainDll = isMainSomething!"dll";
     isMainLib = isMainSomething!"lib";
     isMain = isMainExe || isMainDll || isMainLib;
+
+    isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); //todo: detect compiler import path correctly
+    isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); //todo: periodically chenck if file is exists and other attributes in the IDE
   }
 
   void updateBigComments(SourceCode src){
@@ -1788,6 +1911,11 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
     subCells ~= contents;
 
     needMeasure;
+  }
+
+  override string sourceText(){
+    NOTIMPL;
+    return "";
   }
 
   override void rearrange(){

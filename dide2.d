@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -24,6 +24,8 @@
 //todo: Ctrl+ 1..9   Copy to clipboard[n]       Esetleg Ctrl+C+1..9
 //todo: Alt + 1..9   Paste from clipboard[n]
 //todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
+
+enum LogRequestPermissions = true;
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
@@ -367,7 +369,7 @@ struct SelectionManager{
 }
 
 /// Workspace ///////////////////////////////////////////////
-class Workspace : Container{ //this is a collection of opened modules
+class Workspace : Container, WorkspaceInterface { //this is a collection of opened modules
   File file; //the file of the workspace
   enum defaultExt = ".dide";
 
@@ -415,6 +417,10 @@ class Workspace : Container{ //this is a collection of opened modules
     flags.noBackground = true;
     fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
     needMeasure;
+  }
+
+  override @property bool isReadOnly(){
+    return frmMain.building;
   }
 
   override void rearrange(){
@@ -601,7 +607,7 @@ class Workspace : Container{ //this is a collection of opened modules
   }
 
   void convertBuildMessagesToSearchResults(){
-    auto br = (cast(FrmMain)mainWindow).buildResult;
+    auto br = frmMain.buildResult;
 
     auto outFile = File(`virtual:\compile.err`);
     auto output = br.dump;
@@ -820,92 +826,148 @@ class Workspace : Container{ //this is a collection of opened modules
 
   //todo: BOM handling for copy and paste. To be able to communicate with other apps.
 
+  // Undo/Redo/History ///////////////////////////////////////////
+
+  // request edit permissions //////////////////////////////////////
+
   bool requestModifyPermission(CodeColumn col){  //todo: constness
     assert(col);
+    if(isReadOnly) return false;
     auto m = moduleOf(col);
-    return inputs["CapsLockState"].active;
+    return !m.isReadOnly;
   }
 
   bool requestDeletePermission(TextSelection ts){
     auto res = requestModifyPermission(ts.codeColumn);
     if(res){
-      LOG("DELETING", ts.toReference.text);
+      static if(LogRequestPermissions) print(EgaColor.ltRed("DEL"), ts.toReference.text, ts.sourceText.quoted);
+
+      auto m = moduleOf(ts).enforce;
+      m.undoManager.justModified(ts.toReference.text, ts.sourceText);
     }
     return res;
   }
 
-  bool requestInsertPermission(TextSelection ts, string[] lines){
+  private struct CollectedInsertRecord{
+    int stage;
+    TextSelection textSelection;
+    string contents;
+    void reset(){ this = typeof(this).init; }
+  }
+  private CollectedInsertRecord collectedInsertRecord;
+
+  bool requestInsertPermission_prepare(TextSelection ts, string str){
     auto res = requestModifyPermission(ts.codeColumn);
+
     if(res){
-      LOG("INSERITING", ts.toReference);
+      auto m = moduleOf(ts).enforce;
+      static if(LogRequestPermissions) print(EgaColor.ltGreen("INS0"), ts.toReference, str.quoted);
+      with(collectedInsertRecord){
+        enforce(stage==0, "collectedInsertRecord.stage inconsistency 1");
+        stage = 1;
+        textSelection = ts;
+        contents = str;
+      }
     }
     return res;
+  }
+
+  void requestInsertPermission_finish(TextSelection ts){
+    auto m = moduleOf(ts).enforce;
+    with(collectedInsertRecord){
+      enforce(stage==1, "collectedInsertRecord.stage inconsistency 2");
+      static if(LogRequestPermissions) print(EgaColor.ltCyan("INS1"), ts.toReference);
+
+      textSelection.cursors[1] = ts.cursors[1];
+      m.undoManager.justModified(textSelection.toReference.text, contents);
+      reset;
+    }
   }
 
   ///All operations must go through copy_impl or cut_impl. Those are calling requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
   bool copy_impl(TextSelection[] textSelections){  // copy_impl ///////////////////////////////////////
-    auto copiedSourceText = textSelections.exportSourceText;
+    assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
+
+    auto copiedSourceText = textSelections.sourceText;
     bool valid = copiedSourceText.length>0;
     if(valid) clipboard.asText = copiedSourceText;  //todo: BOM handling
     return valid;
   }
 
   ///Ditto
-  auto cut_impl(TextSelection[] textSelections){  // cut_impl ////////////////////////////////////////
-    //opt: is is merging just for safety. validity check should do the merging
-    textSelections = textSelections.merge; //perf: 6000 sor, debug: 16ms
-    //todo: assert checking if the selection is merged... on demand merge.
+  auto cut_impl(TextSelection[] textSelections, bool* returnSuccess=null){  // cut_impl ////////////////////////////////////////
+    assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
 
     auto savedSelections = textSelections.map!"a.toReference".array;
 
-    foreach_reverse(sel; textSelections) if(!sel.isZeroLength) if(requestDeletePermission(sel)) if(auto col = sel.codeColumn){
-      const st = sel.start,
-            en = sel.end;
+    if(returnSuccess !is null) *returnSuccess = true; //todo: terrible way to
 
-      foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
-        if(auto row = col.getRow(y)){
-          const rowCellCount = row.cellCount;
+    void cutOne(TextSelection sel){
+      if(!sel.isZeroLength) if(auto col = sel.codeColumn){
+        const st = sel.start,
+              en = sel.end;
 
-          const isFirstRow = y==st.pos.y,
-                isLastRow  = y==en.pos.y,
-                isMidRow   = !isFirstRow && !isLastRow;
-          if(isMidRow){ //delete whole row
-            col.subCells = col.subCells.remove(y); //opt: do this in a one run batch operation.
-          }else{ //delete partial row
-            const x0 = isFirstRow ? st.pos.x : 0,
-                  x1 = isLastRow  ? en.pos.x : rowCellCount+1;
+        foreach_reverse(y; st.pos.y..en.pos.y+1){ //todo: this loop is in the draw routine as well. Must refactor and reuse
+          if(auto row = col.getRow(y)){
+            const rowCellCount = row.cellCount;
 
-            foreach_reverse(x; x0..x1){
-              if(x>=0 && x<rowCellCount){
-                row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
-              }else if(x==rowCellCount){ //newLine
-                if(auto nextRow = col.getRow(y+1)){
-                  foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
-                    ss.replaceLatestRow(nextRow, row);
+            const isFirstRow = y==st.pos.y,
+                  isLastRow  = y==en.pos.y,
+                  isMidRow   = !isFirstRow && !isLastRow;
+            if(isMidRow){ //delete whole row
+              col.subCells = col.subCells.remove(y); //opt: do this in a one run batch operation.
+            }else{ //delete partial row
+              const x0 = isFirstRow ? st.pos.x : 0,
+                    x1 = isLastRow  ? en.pos.x : rowCellCount+1;
 
-                  if(nextRow.subCells.length){
-                    row.append(nextRow.subCells);
-                    row.adoptSubCells;
-                    //note: it seems logical, but not help in tracking. Always mark a cut with changedRemoved: row.setChangedCreated;
-                  }
+              foreach_reverse(x; x0..x1){
+                if(x>=0 && x<rowCellCount){
+                  row.subCells = row.subCells.remove(x);  //opt: this is not so fast. It removes 1 by 1.
+                }else if(x==rowCellCount){ //newLine
+                  if(auto nextRow = col.getRow(y+1)){
+                    foreach(ref ss; savedSelections)   //opt: must not go througn all selection. It could binary search the start position to iterate.
+                      ss.replaceLatestRow(nextRow, row);
 
-                  nextRow.subCells = [];
-                  col.subCells = col.subCells.remove(y+1);
-                }else assert(0, "TextSelection out of range NL");
-              }else assert(0, "TextSelection out of range X");
+                    if(nextRow.subCells.length){
+                      row.append(nextRow.subCells);
+                      row.adoptSubCells;
+                      //note: it seems logical, but not help in tracking. Always mark a cut with changedRemoved: row.setChangedCreated;
+                    }
+
+                    nextRow.subCells = [];
+                    col.subCells = col.subCells.remove(y+1);
+                  }else assert(0, "TextSelection out of range NL");
+                }else assert(0, "TextSelection out of range X");
+              }
+
+              row.refreshTabIdx;
+              row.refresh;
+              row.setChangedRemoved;
             }
 
-            row.refreshTabIdx;
-            row.refresh;
-            row.setChangedRemoved;
-          }
+          }else assert(0, "TextSelection out of range Y");
+        }//for y
+      }else assert(0, "TextSelection invalid CodeColumn");
+    }
 
-        }else assert(0, "TextSelection out of range Y");
-      }//for y
-    }else assert(0, "TextSelection invalid CodeColumn");
+    foreach_reverse(sel; textSelections)
+      if(!sel.isZeroLength)
+        if(requestDeletePermission(sel)){
+          cutOne(sel);
+        }else{
+          if(returnSuccess !is null)     //todo: maybe it would be better to handle readOnlyness with an exception...
+            *returnSuccess = false;
+        }
 
     measure; //It's needed to calculate TextCursor.desiredX
     return savedSelections.map!"a.fromReference".filter!"a.valid".array;
+  }
+
+  bool cut_impl2(TextSelection[] sel, ref TextSelection[] res){    //todo: constness for input
+    bool success;
+    auto tmp = cut_impl(sel, &success);
+    if(success) res = tmp;
+    return success;
   }
 
   auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
@@ -917,22 +979,27 @@ class Workspace : Container{ //this is a collection of opened modules
     auto lines = input.splitLines;
     if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 
-    textSelections = cut_impl(textSelections);
+    if(!cut_impl2(textSelections, /+writes into this if successful -> +/textSelections))  //todo: this is terrible. Must refactor.
+      return textSelections;
 
     TextSelectionReference[] savedSelections;
 
     ///inserts text at cursor, moves the corsor to the end of the text
     void simpleInsert(ref TextSelection ts, string str){
-      assert(ts.valid);  assert(ts.isZeroLength);  assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
+      assert(ts.valid);
+      assert(ts.isZeroLength);
+      assert(ts.caret.pos.y.inRange(ts.codeColumn.subCells));
 
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
 
-        if(requestInsertPermission(ts, [str])){
+        if(requestInsertPermission_prepare(ts, str)){
           const insertedCnt = row.insertText(ts.caret.pos.x, str); //todo: shift adjust selections that are on this row
 
           //adjust caret and save
           ts.cursors[0].moveRight(insertedCnt);
           ts.cursors[1] = ts.cursors[0];
+
+          requestInsertPermission_finish(ts);
         }
 
         savedSelections ~= ts.toReference;
@@ -940,7 +1007,9 @@ class Workspace : Container{ //this is a collection of opened modules
     }
 
     void multiInsert(ref TextSelection ts, string[] lines ){
-      assert(ts.valid);  assert(ts.isZeroLength);  assert(lines.length>=2);
+      assert(ts.valid);
+      assert(ts.isZeroLength);
+      assert(lines.length>=2);
 
       if(auto row = ts.codeColumn.getRow(ts.caret.pos.y)){
         assert(ts.caret.pos.x>=0 && ts.caret.pos.x<=row.subCells.length);
@@ -951,7 +1020,7 @@ class Workspace : Container{ //this is a collection of opened modules
           lines.back = "\t".replicate(row.leadingTabCount) ~ lines.back;
         }
 
-        if(requestInsertPermission(ts, lines)){
+        if(requestInsertPermission_prepare(ts, lines.join(DefaultNewLine))){
           //break the row into 2 parts
           //transfer the end of (first)row into a lastRow
           auto lastRow = row.splitRow(ts.caret.pos.x);
@@ -980,6 +1049,8 @@ class Workspace : Container{ //this is a collection of opened modules
           ts.cursors[0].pos.y += lines.length.to!int-1;
           ts.cursors[0].pos.x = insertedCnt;
           ts.cursors[1] = ts.cursors[0];
+
+          requestInsertPermission_finish(ts);
         }
 
         savedSelections ~= ts.toReference;
@@ -1078,10 +1149,10 @@ class Workspace : Container{ //this is a collection of opened modules
 
   @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(validTextSelections.zeroLengthSelectionsToFullRows); }
   //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
-  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = validTextSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  textSelections = cut_impl(sel); }
+  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = validTextSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  cut_impl2(sel, textSelections); }
   @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelections = paste_impl(validTextSelections, Yes.fromClipboard, ""); }
-  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = validTextSelections.zeroLengthSelectionsToOneLeft ;  textSelections = cut_impl(sel); } //todo: delete leading tabs in one step.
-  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  textSelections = cut_impl(sel); }
+  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = validTextSelections.zeroLengthSelectionsToOneLeft ;  cut_impl2(sel, textSelections); } //todo: delete all leading tabs when the cursor is right after them
+  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  cut_impl2(sel, textSelections); }
   @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\t"); }
   @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
   @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
@@ -1730,7 +1801,7 @@ class Workspace : Container{ //this is a collection of opened modules
       drawMainModuleOutlines(dr);
     }
 
-    if(lod.moduleLevel || (cast(FrmMain)mainWindow).building) drawModuleBuildStates(dr);
+    if(lod.moduleLevel || frmMain.building) drawModuleBuildStates(dr);
 
     drawModuleLoadingHighlights(dr, clWhite);
 
