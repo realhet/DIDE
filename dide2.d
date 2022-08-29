@@ -843,7 +843,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       static if(LogRequestPermissions) print(EgaColor.ltRed("DEL"), ts.toReference.text, ts.sourceText.quoted);
 
       auto m = moduleOf(ts).enforce;
-      m.undoManager.justModified(ts.toReference.text, ts.sourceText);
+      m.undoManager.justRemoved(ts.toReference.text, ts.sourceText);
     }
     return res;
   }
@@ -879,7 +879,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       static if(LogRequestPermissions) print(EgaColor.ltCyan("INS1"), ts.toReference);
 
       textSelection.cursors[1] = ts.cursors[1];
-      m.undoManager.justModified(textSelection.toReference.text, contents);
+      m.undoManager.justInserted(textSelection.toReference.text, contents);
       reset;
     }
   }
@@ -1468,7 +1468,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   void UI_selectedModulesHint(){ with(im){
     auto sm = selectedModules;
-    void stats(){ Row(format!"(%d LOC, %sB)"(sm.map!(m => m.linesOfCode).sum, shortSizeText!" "(sm.map!(m => m.sizeBytes).sum))); }
+    void stats(){ Row(format!"(%d LOC, %sB)"(sm.map!(m => m.linesOfCode).sum, shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum))); }
     if(sm.length==1){
       auto m = sm.front;
       Row({ padding="0 8"; }, "Selected module: ", { CodeLocation(m.file).UI; },
@@ -1950,7 +1950,7 @@ class FrmMain : GLWindow { mixin autoCreate;
       workspace.UI_SearchBox(view);
     });
 
-    if(1) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(0) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({
         Text(hitTestManager.lastHitStack.map!(a => "["~a.id~"]").join(` `));
         NL;
@@ -1958,6 +1958,14 @@ class FrmMain : GLWindow { mixin autoCreate;
 
         Text("\n", workspace.locate_snapToRow(view.mousePos).text);
       });
+    });
+
+    if(1) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      foreach(m; modulesWithTextSelection) if(m.undoManager.hasAnyModifications){
+        Container({
+          actContainer.appendCell(m.undoManager.createUI);
+        });
+      }
     });
 
     void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }

@@ -510,6 +510,8 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   @property bool isAtLineStart() const{ return start.isAtLineStart; }
   @property bool isAtLineEnd  () const{ return end  .isAtLineEnd  ; }
 
+  @property int calcLength() { return valid ? abs(codeColumn.pos2idx(cursors[0].pos) - codeColumn.pos2idx(cursors[1].pos)) : 0; } //todo: constness
+
   int opCmp(const TextSelection b) const{
     return cmpChain(cmp(cast(size_t)(cast(void*)cursors[0].codeColumn), cast(size_t)(cast(void*)b.cursors[0].codeColumn)), //todo: structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
                     cmp(start, b.start),
@@ -1566,7 +1568,7 @@ class CodeNode : Row{
 }
 
 
-// Undo/History System ////////////////////////////////////
+//! Undo/History System ////////////////////////////////////
 /+
 
      ----------------------> o.item[0] --------------------------->
@@ -1586,6 +1588,7 @@ struct UndoManager{
   struct Record{
     string where;
     string what;  //empty means delete.  Non-empty means insert.
+    bool isInsert;
   }
 
   enum EventType { loaded, saved, modified }
@@ -1596,42 +1599,124 @@ struct UndoManager{
     Record[] modifications;
     Event[] items;
 
-    this(DateTime id, EventType type, string where, string what){
+    Event parent;
+
+    this(Event parent, DateTime id, EventType type, string where, string what, bool isInsert){
+      this.parent = parent;
       this.id = id;
       this.type = type;
-      modifications ~= Record(where, what);
+      modifications ~= Record(where, what, isInsert);
     }
 
     override int opCmp(in Object b) const { auto bb = cast(Event)b;  return cmp(id, bb ? bb.id : DateTime.init); }
 
-    string modificationSummary(){
+    string summaryText(string insMark = "(+)", string delMark = "(-)", string moreMark="...", bool isQuoted=true)(int maxStrLen = 20) const{
       final switch(type){
         case EventType.loaded: return "Loaded";
         case EventType.saved : return "Saved";
-        case EventType.modifiec:
+        case EventType.modified:{
+          string res;
+          int actStrLen, actMode; // 1:ins, -1:del
+          foreach(const m; modifications){
+            const nextMode = m.isInsert ? 1 : -1;
+            if(actMode.chkSet(nextMode)){
+              const s = actMode>0 ? insMark : delMark;
+              res ~= s;
+              //no, because it could be a markup symbol: actStrLen += cast(int)s.walkLength;
+            }
+
+            //todo: detect backspace (text selections are going backwards, and reverse order)
+            foreach(ch; m.what){
+              if(ch<32){
+                static if(isQuoted){
+                  const s = ch.text.quoted[1..$-1];
+                  res ~= s;
+                  actStrLen += s.length.to!int;
+
+                  //compact \r\n into \n
+                  if(res.endsWith(`\r\n`)){
+                    res = res[0..$-4]~`\n`;
+                    actStrLen -= 2;
+                  }
+                }else{
+                  res ~= ('\u2400'+ch); //visual control chars
+                  actStrLen += 1;
+                }
+              }else{
+                res ~= ch; actStrLen++;
+              }
+
+              if(actStrLen>=maxStrLen) return res ~ moreMark;
+            }
+          }
+          return res;
+        }
       }
     }
 
-    override string toString() const{ return format!"UndoEvent(%s, %s, items:%d, %s)"(id, type, modificationSummary); }
+    override string toString() const{ return format!"UndoEvent(%s, %s, items:%d)"(id, summaryText, items.length); }
+
+    Container createUI(Event actEvent){
+      static bool tsInitialized;
+      static TextStyle tsEvent;
+      if(tsInitialized.chkSet){
+        tsEvent = tsNormal; //opt: save this
+      }
+
+      auto outer = new Row;
+
+      Row inner; with(inner = new Row){
+        padding = "2";
+        margin = "4";
+        border = "1 normal black";
+
+        auto ts = tsEvent;
+        inner.appendMarkupLine(this.id.text~"\n"~summaryText!(tag("style fontColor=green"), tag("style fontColor=red"), tag("style fontColor=black")~"\u2026", false), ts);
+      }
+
+      Row innerWithArrow; with(innerWithArrow = new Row){
+        appendCell(inner);
+        innerWithArrow.appendStr(this is actEvent ?  "\U0001F846" : "\u2b95", tsEvent); //arrow
+      }
+      inner = innerWithArrow;
+
+      outer.appendCell(inner);
+
+      if(items.length==1){
+        outer.appendCell(items[0].createUI(actEvent)); //recursive
+      }else if(items.length>1){
+        auto col = new Column;
+        outer.appendCell(col);
+
+        foreach(item; items)
+          col.appendCell(item.createUI(actEvent)); //recursive
+      }
+
+      return outer;
+    }
+
   }
 
   Event[DateTime] allEvents;
 
   private DateTime latestId; //used for unique id generation
 
-  Event actEvent;
+  Event actEvent, rootEvent;
 
   Event oldestEvent(){ return allEvents.byValue.minElement(null); }
   Event newestEvent(){ return allEvents.byValue.maxElement(null); }
 
-  void justLoaded   ()                          { addEvent(EventType.loaded   , "", "" ); }  //todo: fileName, fileContents for history
-  void justSaved    ()                          { addEvent(EventType.saved    , "", "" ); }
-  void justModified (string where, string what) { addEvent(EventType.modified , where, what); }
+  bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
 
-  void addEvent(EventType type, string where, string what){
+  void justLoaded   ()                          { addEvent(EventType.loaded   , "", "" , false); }  //todo: fileName, fileContents for history
+  void justSaved    ()                          { addEvent(EventType.saved    , "", "" , false); }
+  void justInserted (string where, string what) { addEvent(EventType.modified , where, what, true ); }
+  void justRemoved  (string where, string what) { addEvent(EventType.modified , where, what, false); }
+
+  void addEvent(EventType type, string where, string what, bool isInsert){
     latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
 
-    const maxUndoFusionDuration = 2*second;
+    const maxUndoFusionDuration = 1*second;
     const fusion =  type == EventType.modified
                  && actEvent
                  && actEvent.items.empty //must not have any items depending on it!
@@ -1642,7 +1727,7 @@ struct UndoManager{
       assert(actEvent);
       assert(actEvent.type == EventType.modified);
       actEvent.id = latestId;
-      actEvent.modifications ~= Record(where, what);
+      actEvent.modifications ~= Record(where, what, isInsert);
 
       print("UndoEvent Fusion: ", actEvent);
     }else{
@@ -1650,18 +1735,23 @@ struct UndoManager{
         assert(allEvents.empty);
       }
 
-      auto e = new Event(latestId, type, where, what);
+      auto e = new Event(actEvent, latestId, type, where, what, isInsert);
       allEvents[e.id] = e;
 
       if(actEvent) actEvent.items ~= e;
 
       actEvent = e; //this is the new act
 
+      if(!rootEvent) rootEvent = e;
+
       print("UndoEvent Added: ", actEvent);
     }
   }
-}
 
+  Container createUI(){
+    return rootEvent ? rootEvent.createUI(actEvent) : null;
+  }
+}
 
 
 
