@@ -1703,17 +1703,21 @@ struct UndoManager{
 
   Event actEvent, rootEvent;
 
+  protected bool executing; //when executing, disable the recording of events.
+
   Event oldestEvent(){ return allEvents.byValue.minElement(null); }
   Event newestEvent(){ return allEvents.byValue.maxElement(null); }
 
   bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
 
-  void justLoaded   ()                          { addEvent(EventType.loaded   , "", "" , false); }  //todo: fileName, fileContents for history
-  void justSaved    ()                          { addEvent(EventType.saved    , "", "" , false); }
-  void justInserted (string where, string what) { addEvent(EventType.modified , where, what, true ); }
-  void justRemoved  (string where, string what) { addEvent(EventType.modified , where, what, false); }
+  void justLoaded   (File file, string contents) { addEvent(EventType.loaded   , file.fullName, contents, false); }  //todo: fileName, fileContents for history
+  void justSaved    (File file, string contents) { addEvent(EventType.saved    , file.fullName, ""      , false); }
+  void justInserted (string where, string what)  { addEvent(EventType.modified , where, what, true ); }
+  void justRemoved  (string where, string what)  { addEvent(EventType.modified , where, what, false); }
 
   void addEvent(EventType type, string where, string what, bool isInsert){
+    if(executing) return;
+
     latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
 
     const maxUndoFusionDuration = 1*second;
@@ -1748,6 +1752,40 @@ struct UndoManager{
     }
   }
 
+  bool canUndo(){
+    return actEvent && actEvent !is rootEvent; //rootEvent must be a Load event. That can't be cancelled.
+  }
+
+  void undo(void delegate(in Record) execute){
+    assert(!executing);
+
+    if(!canUndo) return;
+
+    LOG("UNDOING");
+    executing = true; scope(exit) executing = false;
+
+    bool again;
+    do{
+      again = false;
+      final switch(actEvent.type){
+        case EventType.modified: actEvent.modifications.retro.each!execute; break;
+        case EventType.saved: again = true; break; //nothing happened, "save event" is it's just a marking for the user
+        case EventType.loaded: break; //todo: kitalalni, hogy itt mi legyen. Ez a reload funkcio lenne.
+      }
+      actEvent = actEvent.parent;
+    }while(again && canUndo);
+  }
+
+  bool canRedo(){
+    return actEvent && actEvent.items.length;
+  }
+
+  void redo(){
+    if(!canRedo) return;
+    actEvent = actEvent.items.back;
+  }
+
+
   Container createUI(){
     return rootEvent ? rootEvent.createUI(actEvent) : null;
   }
@@ -1779,17 +1817,22 @@ class Module : CodeNode{ //this is any file in the project
 
   UndoManager undoManager;
 
-  this(Container parent){
+  /*this(Container parent){
     bkColor = clModuleBorder;
     super(parent);
 
     flags.clipSubCells = false; //to show labels
 
     loaded = now;
-  }
+  }*/
 
   this(Container parent, File file_){
-    this(parent);
+    bkColor = clModuleBorder;
+    super(parent);
+
+    flags.clipSubCells = false; //to show labels
+
+    loaded = now;
 
     file = file_.actualFile;
     //id = "Module:"~this.file.fullName;
@@ -1911,6 +1954,7 @@ class Module : CodeNode{ //this is any file in the project
     }else{
       T0;
       auto src = scoped!SourceCode(this.file);
+      undoManager.justLoaded(src.file, src.sourceText);
       detectModuleTypeFlags(src);
       code = new CodeColumn(this, src);
       measureAndPropagateCodeSize;

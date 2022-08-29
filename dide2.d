@@ -517,7 +517,12 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   auto unselectedModules()              { return modules.filter!(m => !m.flags.selected).array; }
   auto hoveredModule()                  { return moduleSelectionManager.hoveredItem; }
   auto modulesWithTextSelection()       { return validTextSelections.map!(s => s.moduleOf).nonNulls.uniq; }
-  auto moduleWithPrimaryTextSelection() { return validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull; }
+
+  auto moduleWithPrimaryTextSelection() {
+    auto res = validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull;
+    if(!res) res = validTextSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
+    return res;
+  }
 
 
   /// modules that have cursors on them
@@ -1155,7 +1160,26 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  cut_impl2(sel, textSelections); }
   @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\t"); }
   @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
-  @VERB("Esc"                 ) void cancelSelection  () { if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+  @VERB("Esc"                 ) void cancelSelection  (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+
+  void executeUndo(in UndoManager.Record rec){
+    print("Undoing", rec);
+
+    auto ts = TextSelection(rec.where, &findModule);
+    if(ts.valid){
+      if(rec.isInsert){
+        textSelections = [ts];
+        cut_impl2(textSelections, textSelections);
+      }else{
+        auto ts2 = ts; ts2.cursors[] = ts.start;
+        paste_impl([ts2], No.fromClipboard, rec.what);
+        textSelections = [ts];
+      }
+    }else WARN("Invalid ts: "~rec.where.text);
+  }
+
+  @VERB("Ctrl+Z"              ) void undo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.undo(&executeUndo); }
+  @VERB("Ctrl+Y"              ) void redo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.redo; }
 
   // Module and File operations ------------------------------------------------
 
@@ -1961,8 +1985,9 @@ class FrmMain : GLWindow { mixin autoCreate;
     });
 
     if(1) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
-      foreach(m; modulesWithTextSelection) if(m.undoManager.hasAnyModifications){
+      if(auto m = moduleWithPrimaryTextSelection){
         Container({
+          flags.hScrollState = ScrollState.auto_;
           actContainer.appendCell(m.undoManager.createUI);
         });
       }
