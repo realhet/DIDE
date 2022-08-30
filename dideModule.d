@@ -849,6 +849,35 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
 
 }
 
+/// a.b|1|4|5|=>|2|3* -> a.b|1|2|3*
+string reduceTextSelectionReferenceStringToStart(string src){
+
+  __gshared unittested = false; //todo: unittest nicely
+  if(chkSet(unittested)){
+    alias f = reduceTextSelectionReferenceStringToStart;
+    enforce(f("a|b|c*"          )=="a|b|c*"     );
+    enforce(f("a|b|c|=>|b|e*"   )=="a|b|c*"     );
+    enforce(f("a|b|c|=>|a"      )=="a|b|a"      );
+  }
+
+  const isPrimary = src.endsWith('*');
+  if(isPrimary) src = src[0..$-1];
+
+  auto parts = src.split('|');
+
+  if(auto fs = parts.findSplit(only("=>"))){
+    const trailLen = fs[2].length;
+    if(fs[0].length>=trailLen){
+      if(cmp(fs[0][$-trailLen..$], fs[2])<0) parts = fs[0];
+                                        else parts = fs[0][0..$-trailLen] ~ fs[2];
+    }
+  }
+
+  auto res = parts.join('|');
+
+  if(isPrimary) res ~= "*";
+  return res;
+}
 
 /// CodeRow ////////////////////////////////////////////////
 
@@ -1585,6 +1614,8 @@ class CodeNode : Row{
 
 struct UndoManager{
 
+  private uint lastUndoGroupId;
+
   struct Record{
     string where;
     string what;  //empty means delete.  Non-empty means insert.
@@ -1710,22 +1741,23 @@ struct UndoManager{
 
   bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
 
-  void justLoaded   (File file, string contents) { addEvent(EventType.loaded   , file.fullName, contents, false); }  //todo: fileName, fileContents for history
-  void justSaved    (File file, string contents) { addEvent(EventType.saved    , file.fullName, ""      , false); }
-  void justInserted (string where, string what)  { addEvent(EventType.modified , where, what, true ); }
-  void justRemoved  (string where, string what)  { addEvent(EventType.modified , where, what, false); }
+  void justLoaded   (File file, string contents) { addEvent(0, EventType.loaded   , file.fullName, contents, false); }  //todo: fileName, fileContents for history
+  void justSaved    (File file, string contents) { addEvent(0, EventType.saved    , file.fullName, ""      , false); }
+  void justInserted (uint undoGroupId, string where, string what)  { addEvent(undoGroupId, EventType.modified , where, what, true ); }
+  void justRemoved  (uint undoGroupId, string where, string what)  { addEvent(undoGroupId, EventType.modified , where, what, false); }
 
-  void addEvent(EventType type, string where, string what, bool isInsert){
+  void addEvent(uint undoGroupId, EventType type, string where, string what, bool isInsert){
     if(executing) return;
 
     latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
 
-    const maxUndoFusionDuration = 1*second;
+    //fusion of modification operations in the same cut or copy batch operation. Must preserve order because of textSelections! The order is reversed.
     const fusion =  type == EventType.modified
                  && actEvent
-                 && actEvent.items.empty //must not have any items depending on it!
-                 && actEvent.type==EventType.modified
-                 && latestId-actEvent.id < maxUndoFusionDuration;
+                 && actEvent.type == EventType.modified
+                 && lastUndoGroupId == undoGroupId;
+
+    lastUndoGroupId = undoGroupId; //latch it, for change detection in the next addEvent operation
 
     if(fusion){
       assert(actEvent);
@@ -1780,19 +1812,30 @@ struct UndoManager{
     return actEvent && actEvent.items.length;
   }
 
-  void redo(){
+  void redo(void delegate(in Record) execute){
     if(!canRedo) return;
-    actEvent = actEvent.items.back;
-  }
 
+    LOG("REDOING");
+    executing = true; scope(exit) executing = false;
+
+    bool again;
+    do{
+      actEvent = actEvent.items.back; //choose different path optionally
+
+      again = false;
+      final switch(actEvent.type){
+        case EventType.modified: actEvent.modifications.each!execute; break; //it's in reverse text selection order.
+        case EventType.saved: again = true; break; //nothing happened, "save event" is it's just a marking for the user
+        case EventType.loaded: break; //todo: kitalalni, hogy itt mi legyen. Ez a reload funkcio lenne.
+      }
+    }while(again && canRedo);
+
+  }
 
   Container createUI(){
     return rootEvent ? rootEvent.createUI(actEvent) : null;
   }
 }
-
-
-
 
 /// Module ///////////////////////////////////////////////
 interface WorkspaceInterface{

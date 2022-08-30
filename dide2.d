@@ -835,33 +835,35 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   // request edit permissions //////////////////////////////////////
 
-  bool requestModifyPermission(CodeColumn col){  //todo: constness
+  protected uint undoGroupId; //this value is incremented by every cut or paste batch operation. Theis controls undoOperation fuson, in order to preserve the order of multiselect cut and paste operations. (cursors are only vanid if they are in order.)
+
+  protected bool requestModifyPermission(CodeColumn col){  //todo: constness
     assert(col);
     if(isReadOnly) return false;
     auto m = moduleOf(col);
     return !m.isReadOnly;
   }
 
-  bool requestDeletePermission(TextSelection ts){
+  protected bool requestDeletePermission(TextSelection ts){
     auto res = requestModifyPermission(ts.codeColumn);
     if(res){
       static if(LogRequestPermissions) print(EgaColor.ltRed("DEL"), ts.toReference.text, ts.sourceText.quoted);
 
       auto m = moduleOf(ts).enforce;
-      m.undoManager.justRemoved(ts.toReference.text, ts.sourceText);
+      m.undoManager.justRemoved(undoGroupId, ts.toReference.text, ts.sourceText);
     }
     return res;
   }
 
-  private struct CollectedInsertRecord{
+  protected struct CollectedInsertRecord{
     int stage;
     TextSelection textSelection;
     string contents;
     void reset(){ this = typeof(this).init; }
   }
-  private CollectedInsertRecord collectedInsertRecord;
+  protected CollectedInsertRecord collectedInsertRecord;
 
-  bool requestInsertPermission_prepare(TextSelection ts, string str){
+  protected bool requestInsertPermission_prepare(TextSelection ts, string str){
     auto res = requestModifyPermission(ts.codeColumn);
 
     if(res){
@@ -877,14 +879,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     return res;
   }
 
-  void requestInsertPermission_finish(TextSelection ts){
+  protected void requestInsertPermission_finish(TextSelection ts){
     auto m = moduleOf(ts).enforce;
     with(collectedInsertRecord){
       enforce(stage==1, "collectedInsertRecord.stage inconsistency 2");
       static if(LogRequestPermissions) print(EgaColor.ltCyan("INS1"), ts.toReference);
 
       textSelection.cursors[1] = ts.cursors[1];
-      m.undoManager.justInserted(textSelection.toReference.text, contents);
+      m.undoManager.justInserted(undoGroupId, textSelection.toReference.text, contents);
       reset;
     }
   }
@@ -901,6 +903,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   ///Ditto
   auto cut_impl(TextSelection[] textSelections, bool* returnSuccess=null){  // cut_impl ////////////////////////////////////////
+    undoGroupId++;
+
     assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
 
     auto savedSelections = textSelections.map!"a.toReference".array;
@@ -976,6 +980,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
+    undoGroupId++;
+
     if(textSelections.empty) return textSelections; //no target
 
     if(fromClipboard)
@@ -1163,23 +1169,72 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Esc"                 ) void cancelSelection  (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
   void executeUndo(in UndoManager.Record rec){
-    print("Undoing", rec);
 
-    auto ts = TextSelection(rec.where, &findModule);
-    if(ts.valid){
-      if(rec.isInsert){
-        textSelections = [ts];
-        cut_impl2(textSelections, textSelections);
-      }else{
-        auto ts2 = ts; ts2.cursors[] = ts.start;
-        paste_impl([ts2], No.fromClipboard, rec.what);
-        textSelections = [ts];
+    TextSelection ts;
+    bool decodeTs(string where){
+      ts = TextSelection(where, &findModule);
+      bool res = ts.valid;
+      if(!res) WARN("Invalid ts: "~where);
+      return res;
+    }
+
+    if(rec.isInsert){ //Undoing insert operation
+      print("Undoing INS", rec);
+      if(decodeTs(rec.where)){
+        auto tsRef = ts.toReference;
+        cut_impl([ts]);
+        textSelections = [tsRef.fromReference];
       }
-    }else WARN("Invalid ts: "~rec.where.text);
+    }else{ //Undoing delete operation
+      print("Undoing DEL", rec);
+
+      if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
+        paste_impl([ts], No.fromClipboard, rec.what);
+        if(decodeTs(rec.where)){
+          textSelections = [ts];
+        }
+      }
+    }
   }
 
+  void executeRedo(in UndoManager.Record rec){
+
+    TextSelection ts;
+    bool decodeTs(string where){
+      ts = TextSelection(where, &findModule);
+      bool res = ts.valid;
+      if(!res) WARN("Invalid ts: "~where);
+      return res;
+    }
+
+    if(rec.isInsert){ //Redoing insert operation
+      print("Redoing INS", rec);
+      if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
+        paste_impl([ts], No.fromClipboard, rec.what);
+        if(decodeTs(rec.where)){
+          textSelections = [ts];
+        }
+      }
+
+    }else{ //Redoing delete operation
+      print("Redoing DEL", rec);
+
+      if(decodeTs(rec.where)){
+        auto tsRef = ts.toReference;
+        cut_impl([ts]);
+        textSelections = [tsRef.fromReference];
+      }
+    }
+  }
+
+//todo: Syntax highligh -> ha valtozik a font felkoversege, akkor igazitsa ujra az adott sort!
+//todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+//todo: UndoRedo: kerjen engedelyt valtoztatashoz!
+//todo: UndoRedo: lehessen megadni egy idointervallumot: Ha fel masopercen belul van az elozo undo, akkor azt is csinalja meg! A redo elagazasokon save/load-okon viszont mindig alljon meg. Kesobb az undograph megjelenites is legyen ilyen intelligens. A mostanu debughoz nem kellett, hogy az legyen.
+//todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+
   @VERB("Ctrl+Z"              ) void undo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.undo(&executeUndo); }
-  @VERB("Ctrl+Y"              ) void redo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.redo; }
+  @VERB("Ctrl+Y"              ) void redo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.redo(&executeRedo); }
 
   // Module and File operations ------------------------------------------------
 
@@ -1218,7 +1273,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("F3"                  ) void testInsert3       (){
     const savedSelections = textSelections.map!(a => a.toReference.text).array;
 
-    foreach(m; modulesWithTextSelection) if(m) m.resyntax;
+    foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
 
     textSelections = savedSelections.map!(a => TextSelection(a, &findModule)).array; //todo: selectionHash changing!!! Maybe it uses pointer value, that's not good!
   }
