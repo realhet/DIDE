@@ -1168,7 +1168,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
   @VERB("Esc"                 ) void cancelSelection  (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
-  void executeUndo(in UndoManager.Record rec){
+  protected void executeUndoRedoRecord(bool isUndo)(in bool isInsert, in TextModificationRecord rec){
 
     TextSelection ts;
     bool decodeTs(string where){
@@ -1178,27 +1178,55 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       return res;
     }
 
-    if(rec.isInsert){ //Undoing insert operation
-      print("Undoing INS", rec);
-      if(decodeTs(rec.where)){
-        auto tsRef = ts.toReference;
-        cut_impl([ts]);
-        textSelections = [tsRef.fromReference];
-      }
-    }else{ //Undoing delete operation
-      print("Undoing DEL", rec);
-
-      if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
-        paste_impl([ts], No.fromClipboard, rec.what);
+    if(isUndo){
+      if(isInsert){ //Undoing insert operation
+        print("Undoing INS", rec);
         if(decodeTs(rec.where)){
-          textSelections = [ts];
+          auto tsRef = ts.toReference;
+          cut_impl([ts]);
+          textSelections = [tsRef.fromReference];
+        }
+      }else{ //Undoing delete operation
+        print("Undoing DEL", rec);
+
+        if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
+          paste_impl([ts], No.fromClipboard, rec.what);
+          if(decodeTs(rec.where)){
+            textSelections = [ts];
+          }
+        }
+      }
+    }else{
+      if(isInsert){ //Redoing insert operation
+        print("Redoing INS", rec);
+        if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
+          paste_impl([ts], No.fromClipboard, rec.what);
+          if(decodeTs(rec.where)){
+            textSelections = [ts];
+          }
+        }
+
+      }else{ //Redoing delete operation
+        print("Redoing DEL", rec);
+
+        if(decodeTs(rec.where)){
+          auto tsRef = ts.toReference;
+          cut_impl([ts]);
+          textSelections = [tsRef.fromReference];
         }
       }
     }
   }
 
-  void executeRedo(in UndoManager.Record rec){
+  protected void executeUndoRedo(bool isUndo)(in TextModification tm){
+    static if(isUndo) auto r = tm.modifications.retro; else auto r = tm.modifications;
+    r.each!(m => executeUndoRedoRecord!isUndo(tm.isInsert, m));
+  }
 
+  void executeUndo(in TextModification tm){ executeUndoRedo!true (tm); }
+  void executeRedo(in TextModification tm){ executeUndoRedo!false(tm); }
+
+/*
     TextSelection ts;
     bool decodeTs(string where){
       ts = TextSelection(where, &findModule);
@@ -1225,7 +1253,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
         textSelections = [tsRef.fromReference];
       }
     }
-  }
+  }  */
 
 //todo: Syntax highligh -> ha valtozik a font felkoversege, akkor igazitsa ujra az adott sort!
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!

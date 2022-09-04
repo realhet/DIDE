@@ -851,13 +851,20 @@ struct TextSelectionReference{ // TextSelectionReference ///////////////////////
 
 /// a.b|1|4|5|=>|2|3* -> a.b|1|2|3*
 string reduceTextSelectionReferenceStringToStart(string src){
+  //todo: This nasty text fiddling workaround function could be avoided if the start cursor was stored in the delete/insert operation's undo record, not the whole textSelection. The end cursor of the text selection could be invalid, thus rendering the whole textSelection invalid. But the start cursor is always valid.
 
   __gshared unittested = false; //todo: unittest nicely
   if(chkSet(unittested)){
     alias f = reduceTextSelectionReferenceStringToStart;
-    enforce(f("a|b|c*"          )=="a|b|c*"     );
-    enforce(f("a|b|c|=>|b|e*"   )=="a|b|c*"     );
-    enforce(f("a|b|c|=>|a"      )=="a|b|a"      );
+    enforce(f("a|b|c5*"           )=="a|b|c5*"    );
+    enforce(f("a|b1|c1|=>|b1|e2*" )=="a|b1|c1*"   );
+    enforce(f("a|b|a0000|=>|a001" )=="a|b|a0000"  );
+    enforce(f("a|b|a0001|=>|0"    )=="a|b|0"      );
+  }
+
+  int toNum(string s){
+    if(s.empty) return -1;
+    return (s.front.isDigit ? s : s[1..$]).to!int.ifThrown(-1);
   }
 
   const isPrimary = src.endsWith('*');
@@ -868,8 +875,8 @@ string reduceTextSelectionReferenceStringToStart(string src){
   if(auto fs = parts.findSplit(only("=>"))){
     const trailLen = fs[2].length;
     if(fs[0].length>=trailLen){
-      if(cmp(fs[0][$-trailLen..$], fs[2])<0) parts = fs[0];
-                                        else parts = fs[0][0..$-trailLen] ~ fs[2];
+      if(cmp(fs[0][$-trailLen..$].map!toNum, fs[2].map!toNum)<0) parts = fs[0];
+                                                            else parts = fs[0][0..$-trailLen] ~ fs[2];
     }
   }
 
@@ -1611,32 +1618,32 @@ class CodeNode : Row{
    Y = nothing to undo
 +/
 
+struct TextModificationRecord{ string where, what; }
+
+struct TextModification{
+  bool isInsert;
+  TextModificationRecord[] modifications; //Must preserve order!!!!
+}
 
 struct UndoManager{
 
   private uint lastUndoGroupId;
-
-  struct Record{
-    string where;
-    string what;  //empty means delete.  Non-empty means insert.
-    bool isInsert;
-  }
 
   enum EventType { loaded, saved, modified }
 
   class Event{
     DateTime id; //unique ID
     EventType type;
-    Record[] modifications;
+    TextModification[] modifications;
     Event[] items;
 
     Event parent;
 
-    this(Event parent, DateTime id, EventType type, string where, string what, bool isInsert){
+    this(Event parent, DateTime id, EventType type, bool isInsert, string where, string what){
       this.parent = parent;
       this.id = id;
       this.type = type;
-      modifications ~= Record(where, what, isInsert);
+      modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
     }
 
     override int opCmp(in Object b) const { auto bb = cast(Event)b;  return cmp(id, bb ? bb.id : DateTime.init); }
@@ -1657,7 +1664,7 @@ struct UndoManager{
             }
 
             //todo: detect backspace (text selections are going backwards, and reverse order)
-            foreach(ch; m.what){
+            foreach(mr; m.modifications) foreach(ch; mr.what){
               if(ch<32){
                 static if(isQuoted){
                   const s = ch.text.quoted[1..$-1];
@@ -1749,38 +1756,35 @@ struct UndoManager{
   void addEvent(uint undoGroupId, EventType type, string where, string what, bool isInsert){
     if(executing) return;
 
-    latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
-
-    //fusion of modification operations in the same cut or copy batch operation. Must preserve order because of textSelections! The order is reversed.
-    const fusion =  type == EventType.modified
-                 && actEvent
-                 && actEvent.type == EventType.modified
-                 && lastUndoGroupId == undoGroupId;
-
-    lastUndoGroupId = undoGroupId; //latch it, for change detection in the next addEvent operation
-
-    if(fusion){
-      assert(actEvent);
-      assert(actEvent.type == EventType.modified);
-      actEvent.id = latestId;
-      actEvent.modifications ~= Record(where, what, isInsert);
-
-      print("UndoEvent Fusion: ", actEvent);
+    //append latest event in the same group
+    const extendLastGroup = type==EventType.modified
+                          && actEvent && actEvent.type==EventType.modified
+                          && actEvent.modifications.length
+                          && lastUndoGroupId==undoGroupId;
+    if(extendLastGroup){
+      assert(actEvent.modifications.back.isInsert==isInsert);
+      actEvent.modifications.back.modifications ~= TextModificationRecord(where, what);
     }else{
-      if(!actEvent){
-        assert(allEvents.empty);
+      lastUndoGroupId = undoGroupId;
+
+      latestId.actualize; //a new unique Id. This garantees that all child is newer than the parent. Takes 150ns to get the precise system time.
+
+      //fusion of modification.
+      const fusion =  type == EventType.modified
+                   && actEvent
+                   && actEvent.type == EventType.modified
+                   && latestId-actEvent.id < 1*second;
+      if(fusion){
+        actEvent.id = latestId;
+        actEvent.modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
+      }else{
+        if(!actEvent) assert(allEvents.empty);
+        auto e = new Event(actEvent, latestId, type, isInsert, where, what);
+        allEvents[e.id] = e;
+        if(actEvent) actEvent.items ~= e;
+        actEvent = e; //this is the new act
+        if(!rootEvent) rootEvent = e;
       }
-
-      auto e = new Event(actEvent, latestId, type, where, what, isInsert);
-      allEvents[e.id] = e;
-
-      if(actEvent) actEvent.items ~= e;
-
-      actEvent = e; //this is the new act
-
-      if(!rootEvent) rootEvent = e;
-
-      print("UndoEvent Added: ", actEvent);
     }
   }
 
@@ -1788,7 +1792,7 @@ struct UndoManager{
     return actEvent && actEvent !is rootEvent; //rootEvent must be a Load event. That can't be cancelled.
   }
 
-  void undo(void delegate(in Record) execute){
+  void undo(void delegate(in TextModification) execute){
     assert(!executing);
 
     if(!canUndo) return;
@@ -1812,7 +1816,7 @@ struct UndoManager{
     return actEvent && actEvent.items.length;
   }
 
-  void redo(void delegate(in Record) execute){
+  void redo(void delegate(in TextModification) execute){
     if(!canRedo) return;
 
     LOG("REDOING");
