@@ -8,6 +8,8 @@ enum MaxAnimatedCursors = 100;
 enum rearrangeLOG = false;
 enum rearrangeFlash = false;
 
+enum LogModuleLoadPerformance = false;
+
 __gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 
@@ -141,7 +143,7 @@ bounds2 worldInnerBounds(Cell cell){
   return bounds2(p, p+cell.innerSize);
 }
 
-auto moduleOf(inout Cell c) { return cast(inout)c.allParents!Module.frontOrNull; }
+auto moduleOf(inout Cell c) { return cast(inout)(c ? c.allParents!Module.frontOrNull : null); }
 
 auto moduleOf(TextCursor c){ return c.codeColumn.moduleOf; }
 auto moduleOf(TextSelection s){ return s.caret.codeColumn.moduleOf; }
@@ -1217,6 +1219,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   enum defaultSpacesPerTab = 4; //default in std library
   int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
+  deprecated("In the end, multithreaded resyntax wont require this.") DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
+
   /// Minimal constructor creating an empty codeColumn with 0 rows.
   deprecated("Only needed for compile.err builder") this(Container parent){
     this.parent = parent;
@@ -1267,29 +1271,22 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   }
 
   void resyntax(SourceCode src){
+    //note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
     assert(subCells.length>0);
 
     static TextStyle style; //it is needed by appendCode/applySyntax
 
-    int maxIdx = 0; //1 line is a MUST
     src.foreachLine( (int idx, string line, ubyte[] syntax){
       if(idx<subCells.length){
         auto row = rows[idx];
         if(!row.updateSyntax(line, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/)){
-          WARN("Resyntax: Row was changed!  TODO!!! Implement to update the row.");
+          return false;
         }
       }else{
-        WARN("Resyntax: There was not enough existing lines in the CodeColumn");
-        appendCell(new CodeRow(this, line, syntax));
+        return false;
       }
-      maxIdx = idx;
+      return true;
     });
-
-    if(subCells.length>maxIdx+1){
-      WARN("Resyntax: There was too much lines in the CodeColumn");
-      subCells.length = maxIdx+1;
-      needMeasure;
-    }
 
   }
 
@@ -1773,7 +1770,7 @@ struct UndoManager{
       const fusion =  type == EventType.modified
                    && actEvent
                    && actEvent.type == EventType.modified
-                   && latestId-actEvent.id < 1*second;
+                   && latestId-actEvent.id < .5*second;
       if(fusion){
         actEvent.id = latestId;
         actEvent.modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
@@ -1797,7 +1794,6 @@ struct UndoManager{
 
     if(!canUndo) return;
 
-    LOG("UNDOING");
     executing = true; scope(exit) executing = false;
 
     bool again;
@@ -1819,7 +1815,6 @@ struct UndoManager{
   void redo(void delegate(in TextModification) execute){
     if(!canRedo) return;
 
-    LOG("REDOING");
     executing = true; scope(exit) executing = false;
 
     bool again;
@@ -1929,28 +1924,20 @@ class Module : CodeNode{ //this is any file in the project
   }
 
   void resyntax(){
-
-    T0; Time[] t;
     auto txt = code.sourceText;
-    t~=DT;
     auto src = scoped!SourceCode(txt);
-    t~=DT;
 
+    resyntax(src);
+  }
+
+  //call it with a freshly parsed SourceCode object
+  void resyntax(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
     detectModuleTypeFlags(src);
 
-    //code = new CodeColumn(this, src);
-    assert(code);
-    //code.setSourceCode(src);
     code.resyntax(src);
-    t~=DT;
     measureAndPropagateCodeSize;
-    t~=DT;
 
     updateBigComments(src);
-
-    //subCells = [code, overlay];
-    t~=DT;
-    print(t);
   }
 
 
@@ -2006,7 +1993,7 @@ class Module : CodeNode{ //this is any file in the project
       code = new CodeColumn(this, src);
       measureAndPropagateCodeSize;
       updateBigComments(src);
-      LOG(DT, file);
+      static if(LogModuleLoadPerformance) LOG(DT, file);
     }
 
     appendCell(enforce(code));

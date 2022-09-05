@@ -25,7 +25,9 @@
 //todo: Alt + 1..9   Paste from clipboard[n]
 //todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
 
-enum LogRequestPermissions = true;
+//todo: unstructured syntax highlight optimization: save and reuse tokenizer internal state on each source code blocks. No need to process ALL the source when the position of the modification is known.
+
+enum LogRequestPermissions = false;
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
@@ -364,9 +366,80 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
 }
 
+// SyntaxHighlightWorker ////////////////////////////////////////////
 
-struct SelectionManager{
+class SyntaxHighlightWorker{
+
+  static struct Job{
+    DateTime changeId; //must be a globally unique id, also sorted by chronology
+    string resourceId; //only one object allowed with the same referenceId
+    string sourceText;
+
+    SourceCode sourceCode; //result
+
+    bool valid() const{ return !changeId.isNull; }
+    bool opCast(b:bool)() const{ return valid; }
+  }
+
+  private int destroyLevel;
+  private Job[] inputQueue, outputQueue;
+
+  void addJob(DateTime changeId, string resourceId, string sourceText){
+    synchronized(this)
+      inputQueue = inputQueue.remove!(j => j.resourceId==resourceId) ~ Job(changeId, resourceId, sourceText);
+  }
+
+  Job getResult(){
+    Job res;
+    synchronized(this)
+      if(outputQueue.length)
+        res = outputQueue.fetchFront;
+    return res;
+  }
+
+  private Job _workerGetJob(){
+    Job res;
+    synchronized(this)
+      if(inputQueue.length)
+        res = inputQueue.fetchBack;
+    return res;
+  }
+
+  private void _workerCompleteJob(Job job){
+    synchronized(this)
+      outputQueue ~= job;
+  }
+
+  static private void worker(shared SyntaxHighlightWorker shw_){
+    auto shw = cast()shw_;
+    while(shw.destroyLevel==0){
+      if(auto job = shw._workerGetJob){
+        //LOG("Working on Job: " ~ job.changeId.text ~ " " ~job.resourceId);
+        job.sourceCode = new SourceCode(job.sourceText);
+        //LOG("parsed");
+        shw._workerCompleteJob(job);
+      }else{
+        //LOG("Worker Idling");
+        sleep(10);
+      }
+    }
+    shw.destroyLevel = 2;
+    //LOG("Worker finished");
+  }
+
+  this(){
+    spawn(&worker, cast(shared)this);
+  }
+
+  ~this(){
+    destroyLevel = 1;
+    while(destroyLevel==1){
+      //LOG("Waiting for worker thread to finish");
+      sleep(10); //todo: it's slow... rewrite to message based
+    }
+  }
 }
+
 
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container, WorkspaceInterface { //this is a collection of opened modules
@@ -412,11 +485,21 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   Nullable!bounds2 scrollInBoundsRequest;
 
+  struct ResyntaxEntry{ CodeColumn what; DateTime when; }
+  ResyntaxEntry[] resyntaxQueue;
+
+  SyntaxHighlightWorker syntaxHighlightWorker;
+
   this(){
     flags.targetSurface = 0;
     flags.noBackground = true;
     fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
+    syntaxHighlightWorker = new SyntaxHighlightWorker;
     needMeasure;
+  }
+
+  ~this(){
+    syntaxHighlightWorker.destroy;
   }
 
   override @property bool isReadOnly(){
@@ -522,20 +605,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     auto res = validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull;
     if(!res) res = validTextSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
     return res;
-  }
-
-
-  /// modules that have cursors on them
-  auto editedModules(){
-    T0; scope(exit) LOG(DT);
-
-    bool[Module] res;
-
-    foreach(m; textSelections.map!(s => s.codeColumn.moduleOf))
-      if(m)
-        res[m]=true;
-
-    return res.keys;
   }
 
   private void closeSelectedModules_impl(){
@@ -891,6 +960,81 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }
 
+  //Resyntax queue ////////////////////////////////////////////////////////
+
+  void needResyntax(Cell cell){
+    //LOG(cell.text);
+
+    static DateTime resyntaxNow;
+    if(auto col = cell.thisAndAllParents!CodeColumn.frontOrNull){
+      resyntaxNow.actualize;
+
+      //fast update last item if possible
+      if(resyntaxQueue.map!"a.what".backOrNull is col){
+        resyntaxQueue.back.when = resyntaxNow;
+        col.lastResyntaxTime = resyntaxNow;
+        return;
+      }
+
+      //remove if alreay exists
+      resyntaxQueue = resyntaxQueue.remove!(e => e.what is col);
+
+      resyntaxQueue ~= ResyntaxEntry(col, resyntaxNow);
+      col.lastResyntaxTime = resyntaxNow;
+
+    }else assert(0, "Unhandled type");
+  }
+
+  void UI_ResyntaxQueue(){ with(im){
+    foreach(e; resyntaxQueue)Row({
+      Row(e.when.text, { width = fh*9; });
+      if(auto col = cast(CodeColumn)e.what){
+        auto tc = TextCursor(col, ivec2(0, 0));
+        Row(tc.toReference.text);
+      }
+    });
+  }}
+
+  bool resyntaxNowOrLater(Cell cell, DateTime changedId, Flag!"later" later){
+    if(auto col = cast(CodeColumn)cell){
+      if(later){
+        syntaxHighlightWorker.addJob(changedId, TextCursor(col, ivec2(0)).toReference.text, col.sourceText);
+      }else{
+        if(auto mod = col.moduleOf){
+          mod.resyntax;
+        }else assert(0, "Unable to resyntax: No module");
+      }
+      return true;
+    }else assert(0, "Unable to resyntax: No CodeColumn");
+    return false;
+  }
+
+  /// returns true if any work done or queued
+  bool updateResyntaxQueue(){
+
+    if(auto job = syntaxHighlightWorker.getResult){
+      auto selRef = TextSelectionReference(job.resourceId, &findModule); //todo: This string -> Object mapping is not flexible. Should work for Cursor and also for Column or Row or Node
+      if(selRef.valid){
+        auto sel = selRef.fromReference;
+        if(sel.valid){
+          auto col = sel.codeColumn;
+          auto mod = col.moduleOf;
+          enforce(mod && mod.code is col, "syntaxHighlightWorker.getResult: only codeColumns that has a Module parent are supported");
+
+          static DateTime lastOutdatedResyncTime;
+          if(col.lastResyntaxTime==job.changeId || now-lastOutdatedResyncTime > .25*second){
+            mod.resyntax(job.sourceCode);
+            lastOutdatedResyncTime = now;
+          }
+        }
+      }
+    }
+
+    if(resyntaxQueue.empty) return false;
+    auto act = resyntaxQueue.fetchBack;
+    return resyntaxNowOrLater(act.what, act.when, Yes.later);
+  }
+
   ///All operations must go through copy_impl or cut_impl. Those are calling requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
   bool copy_impl(TextSelection[] textSelections){  // copy_impl ///////////////////////////////////////
     assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
@@ -956,6 +1100,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
           }else assert(0, "TextSelection out of range Y");
         }//for y
+
+        needResyntax(col);
       }else assert(0, "TextSelection invalid CodeColumn");
     }
 
@@ -1011,6 +1157,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           ts.cursors[1] = ts.cursors[0];
 
           requestInsertPermission_finish(ts);
+          needResyntax(ts.codeColumn);
         }
 
         savedSelections ~= ts.toReference;
@@ -1062,6 +1209,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           ts.cursors[1] = ts.cursors[0];
 
           requestInsertPermission_finish(ts);
+          needResyntax(ts.codeColumn);
         }
 
         savedSelections ~= ts.toReference;
@@ -1178,16 +1326,18 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       return res;
     }
 
+    //todo: refactor these 4 if paths
+
     if(isUndo){
       if(isInsert){ //Undoing insert operation
-        print("Undoing INS", rec);
+        //print("Undoing INS", rec);
         if(decodeTs(rec.where)){
           auto tsRef = ts.toReference;
           cut_impl([ts]);
           textSelections = [tsRef.fromReference];
         }
       }else{ //Undoing delete operation
-        print("Undoing DEL", rec);
+        //print("Undoing DEL", rec);
 
         if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
           paste_impl([ts], No.fromClipboard, rec.what);
@@ -1198,7 +1348,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       }
     }else{
       if(isInsert){ //Redoing insert operation
-        print("Redoing INS", rec);
+        //print("Redoing INS", rec);
         if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
           paste_impl([ts], No.fromClipboard, rec.what);
           if(decodeTs(rec.where)){
@@ -1207,7 +1357,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
         }
 
       }else{ //Redoing delete operation
-        print("Redoing DEL", rec);
+        //print("Redoing DEL", rec);
 
         if(decodeTs(rec.where)){
           auto tsRef = ts.toReference;
@@ -1412,6 +1562,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     //      all verbs can call invalidateTextSelections if it does something that affects them
     handleKeyboard;
     updateOpenQueue(1);
+    updateResyntaxQueue;
 
     textSelections = validTextSelections; //this validation is required for the upcoming mouse handling and scene drawing routines.
 
@@ -2022,6 +2173,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   override void onDestroy(){
     if(initialized) workspace.saveWorkspace(workspaceFile);
+    workspace.destroy;
     destroyBuildSystem;
   }
 
@@ -2067,7 +2219,8 @@ class FrmMain : GLWindow { mixin autoCreate;
       });
     });
 
-    if(1) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    //undo debug
+    if(0) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       if(auto m = moduleWithPrimaryTextSelection){
         Container({
           flags.hScrollState = ScrollState.auto_;
@@ -2075,6 +2228,13 @@ class FrmMain : GLWindow { mixin autoCreate;
         });
       }
     });
+
+    if(0) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      Column({
+        UI_ResyntaxQueue;
+      });
+    });
+
 
     void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }
 
