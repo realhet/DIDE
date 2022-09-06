@@ -375,6 +375,12 @@ struct TextCursor{  //TextCursor /////////////////////////////
 
   void move(ivec2 delta){
     if(!delta) return;
+
+    if(!delta.x){ //handle clipping in the y direction.  Generate home/end
+      if(delta.y<0 && pos.y<=0) delta = ivec2(home);
+      if(delta.y>0 && pos.y>=codeColumn.rowCount-1) delta = ivec2(end);
+    }
+
     if(delta==ivec2(home)){
       pos = ivec2(0); desiredX = 0; //this needed to skip the possible stop right after the leading tabs in the first line
     }else{
@@ -534,10 +540,16 @@ struct TextSelection{ //TextSelection ///////////////////////////////
     if(!isShift && cursors[0]!=cursors[1]){
       caret = delta.y.cmpChain(delta.x)<0 ? start : end; //collapse selection if it is a non-shift move
 
-      //if it is only a left/right move, then stop at the end of the selection.
-      if(!delta.y && delta.x){
-        if(delta.x.among(TextCursor.wordLeft, TextCursor.wordRight)) delta.x = 0; //wordLeft/wordRight stops at the end of the selection
-        else delta.x -= sign(delta.x); //normal left/right also wordLeft/wordRight stops at the end of the selection
+      static void restrict(ref int x, int y){
+        if(!y && x){
+          if(x.among(TextCursor.wordLeft, TextCursor.wordRight, TextCursor.home, TextCursor.end)) x = 0; //wordLeft/wordRight/home/end stops at the end of the selection
+          else x -= sign(x);
+        }
+      }
+
+      with(delta){
+        restrict(x, y);
+        restrict(y, x);
       }
     }
     caret.move(delta);
@@ -578,6 +590,19 @@ struct TextSelection{ //TextSelection ///////////////////////////////
     return false;
     //todo: hitTest
   }
+
+  private auto reduce(string what)(){
+    if(!valid) return typeof(this).init;
+    auto res = this;
+    res.cursors[] = mixin("res."~what);
+    return res;
+  }
+
+  auto reduceToStart  (){ return reduce!"start"; }
+  auto reduceToEnd    (){ return reduce!"end"; }
+  auto reduceToCaret  (){ return reduce!"caret"; }
+  auto reduceToCursor0(){ return reduce!"cursors[0]"; }
+  auto reduceToCursor1(){ return reduce!"cursors[1]"; }
 
   auto toReference(){
     return TextSelectionReference(cursors[0].toReference, cursors[1].toReference, primary);
@@ -1770,7 +1795,7 @@ struct UndoManager{
       const fusion =  type == EventType.modified
                    && actEvent
                    && actEvent.type == EventType.modified
-                   && latestId-actEvent.id < .5*second;
+                   && latestId-actEvent.id < .75*second;
       if(fusion){
         actEvent.id = latestId;
         actEvent.modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
