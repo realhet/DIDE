@@ -18,11 +18,16 @@ const clModuleText = clBlack;
 
 // ChangeIndicator ////////////////////////////////////////////
 
-struct ChangeIndicator{
+struct ChangeIndicator{ //todo: this is quite similar to CaretPos
   vec2 pos;
   float height;
   ubyte thickness;
   ubyte mask;
+
+  vec2    top   () const{ return pos; }
+  vec2    center() const{ return pos + vec2(0, height/2); }
+  vec2    bottom() const{ return pos + vec2(0, height); }
+  bounds2 bounds() const{ return bounds2(top, bottom); }
 }
 
 Appender!(ChangeIndicator[]) globalChangeindicatorsAppender;
@@ -41,8 +46,28 @@ void addGlobalChangeIndicator(Drawing dr, Container cntr){ with(cntr){
 
 void draw(Drawing dr, in ChangeIndicator[] arr){
   enum palette = [clBlack, clLime, clRed, clYellow];
-  /+ pass 1 +/  dr.color = clBlack; foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)-1.5f;                             dr.vLine(a.pos, a.pos.y+a.height); }
-  /+ pass 2 +/                      foreach_reverse(const a; arr){ dr.lineWidth = -float(a.thickness)     ; dr.color = palette[a.mask]; dr.vLine(a.pos, a.pos.y+a.height); }
+
+  //const clamper = RectClamper(im.getView, 5);
+
+  void drawPass(int pass)(in ChangeIndicator ci){
+    static if(pass==1){
+      dr.lineWidth = -float(ci.thickness)-1.5f;
+      //opted out: dr.color = clBlack;
+    }
+    static if(pass==2){
+      dr.lineWidth = -float(ci.thickness);
+      dr.color = palette[ci.mask];
+    }
+
+    //if(clamper.overlaps(ci.bounds)){
+      dr.vLine(ci.pos, ci.pos.y + ci.height);
+    //}else{
+    //  dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
+    //}
+  }
+
+  /+ pass 1 +/  dr.color = clBlack; foreach_reverse(const a; arr) drawPass!1(a);
+  /+ pass 2 +/                      foreach_reverse(const a; arr) drawPass!2(a);
 }
 
 
@@ -238,6 +263,7 @@ static struct CaretPos{ // CaretPos ///////////////////////////////////
   vec2 pos;
   float height=0;
   bool valid()const{ return height>0; }
+  bool opCast(B:bool)() const{ return valid; }
 
   void draw(Drawing dr){
     if(valid){
@@ -249,6 +275,11 @@ static struct CaretPos{ // CaretPos ///////////////////////////////////
       }
     }
   }
+
+  vec2    top   () const{ return pos; }
+  vec2    center() const{ return pos + vec2(0, height/2); }
+  vec2    bottom() const{ return pos + vec2(0, height); }
+  bounds2 bounds() const{ return bounds2(top, bottom); }
 }
 
 
@@ -507,6 +538,7 @@ struct TextSelection{ //TextSelection ///////////////////////////////
   auto codeColumn(){ return cursors[0].codeColumn; }
 
   @property bool valid() const{ return cursors[].map!"a.valid".all && cursors[0].codeColumn is cursors[1].codeColumn; }
+  bool opCast(B:bool)() const{ return valid; }
 
   @property auto start() const{ return min(cursors[0], cursors[1]); }
   @property auto end  () const{ return max(cursors[0], cursors[1]); }
@@ -1335,6 +1367,10 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
     return "";
   }
 
+  TextCursor homeCursor(){ return TextCursor(this, ivec2(0)); }
+  TextCursor endCursor(){ auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; }
+  TextSelection allSelection(bool primary){ return TextSelection(homeCursor, endCursor, primary); }
+
   @property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
 
   //index, location calculations
@@ -1640,6 +1676,21 @@ class CodeNode : Row{
    Y = nothing to undo
 +/
 
+string encodePrevAndNextSourceText(string prev, string act){  //todo: ezt kiprobalni jsonnal is, hogy van-e egyaltalan ennek a manualis cuccnak valami ertelme
+  return prev.length.to!string~"\\"~prev~act;
+}
+
+string[2] decodePrevAndNextSourceText(string s){
+  auto a = s.splitter("\\");
+  if(!a.empty) try{
+    auto snum = a.front;
+    const prevLen = snum.to!size_t;
+    s = s[snum.length+1..$];
+    if(prevLen<=s.length) return [s[0..prevLen], s[prevLen..$]];
+  }catch(Exception){ }
+  return typeof(return).init;
+}
+
 struct TextModificationRecord{ string where, what; }
 
 struct TextModification{
@@ -1648,6 +1699,8 @@ struct TextModification{
 }
 
 struct UndoManager{
+  //bug: UndoManager is sticking to a module. If the module is renamed, I don't know what happens...
+  //opt: Loaded event is wasting a lot of memory. It should use differential text coding. And zip.
 
   private uint lastUndoGroupId;
 
@@ -1814,7 +1867,7 @@ struct UndoManager{
     return actEvent && actEvent !is rootEvent; //rootEvent must be a Load event. That can't be cancelled.
   }
 
-  void undo(void delegate(in TextModification) execute){
+  void undo(void delegate(in TextModification) execute, void delegate(string where, string what) reload){
     assert(!executing);
 
     if(!canUndo) return;
@@ -1827,7 +1880,7 @@ struct UndoManager{
       final switch(actEvent.type){
         case EventType.modified: actEvent.modifications.retro.each!execute; break;
         case EventType.saved: again = true; break; //nothing happened, "save event" is it's just a marking for the user
-        case EventType.loaded: break; //todo: kitalalni, hogy itt mi legyen. Ez a reload funkcio lenne.
+        case EventType.loaded: reload(actEvent.modifications[0].modifications[0].where, actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[0]);  break; //todo: ugly and needs range checking
       }
       actEvent = actEvent.parent;
     }while(again && canUndo);
@@ -1837,7 +1890,7 @@ struct UndoManager{
     return actEvent && actEvent.items.length;
   }
 
-  void redo(void delegate(in TextModification) execute){
+  void redo(void delegate(in TextModification) execute, void delegate(string where, string what) reload){
     if(!canRedo) return;
 
     executing = true; scope(exit) executing = false;
@@ -1850,7 +1903,7 @@ struct UndoManager{
       final switch(actEvent.type){
         case EventType.modified: actEvent.modifications.each!execute; break; //it's in reverse text selection order.
         case EventType.saved: again = true; break; //nothing happened, "save event" is it's just a marking for the user
-        case EventType.loaded: break; //todo: kitalalni, hogy itt mi legyen. Ez a reload funkcio lenne.
+        case EventType.loaded: reload(actEvent.modifications[0].modifications[0].where, actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]); break; //todo: ugly and needs range check
       }
     }while(again && canRedo);
 
@@ -1908,7 +1961,7 @@ class Module : CodeNode{ //this is any file in the project
   }
 
   override string sourceText(){
-    return code.sourceText;
+    return code ? code.sourceText : "";
   }
 
   ///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
@@ -1938,8 +1991,10 @@ class Module : CodeNode{ //this is any file in the project
     assert(overlay);
     overlay.subCells.clear;
     overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-    foreach(k; src.bigComments.keys.sort)
-      overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+    foreach(k; src.bigComments.keys.sort){
+      if(inRange(k-1, code.subCells))//range chenking is needed in case it is from an outdated background resyntax operation.
+        overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
+    }
   }
 
   protected void measureAndPropagateCodeSize(){
@@ -1966,7 +2021,7 @@ class Module : CodeNode{ //this is any file in the project
   }
 
 
-  void reload(){
+  void reload(Flag!"useContents" useContents = No.useContents, string contents=""){
     clearSubCells;
 
     modified = file.modified;
@@ -2012,8 +2067,10 @@ class Module : CodeNode{ //this is any file in the project
       overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
     }else{
       T0;
-      auto src = scoped!SourceCode(this.file);
-      undoManager.justLoaded(src.file, src.sourceText);
+      auto prevSourceText = sourceText;
+      SourceCode src = useContents ? new SourceCode(contents, this.file)
+                                   : new SourceCode(this.file);
+      undoManager.justLoaded(src.file, encodePrevAndNextSourceText(prevSourceText, src.sourceText));
       detectModuleTypeFlags(src);
       code = new CodeColumn(this, src);
       measureAndPropagateCodeSize;

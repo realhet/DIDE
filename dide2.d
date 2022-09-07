@@ -27,6 +27,11 @@
 
 //todo: unstructured syntax highlight optimization: save and reuse tokenizer internal state on each source code blocks. No need to process ALL the source when the position of the modification is known.
 
+//todo: unstructured view: fake local syntax highlight addig, amig a bacground syntax highlighter el nem keszul.
+//todo: unstructured view: immediate syntax highlight for smalles modules.
+
+//todo: save/restore buildsystem cache on start/exit
+
 enum LogRequestPermissions = false;
 
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
@@ -601,6 +606,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   auto hoveredModule()                  { return moduleSelectionManager.hoveredItem; }
   auto modulesWithTextSelection()       { return validTextSelections.map!(s => s.moduleOf).nonNulls.uniq; }
 
+  auto primaryTextSelection(){
+    auto a = validTextSelections.filter!"a.primary";
+    return a.empty ? TextSelection.init : a.front;
+  }
+
+  auto primaryCaret(){
+    return primaryTextSelection.caret;
+  }
+
   auto moduleWithPrimaryTextSelection() {
     auto res = validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull;
     if(!res) res = validTextSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
@@ -960,94 +974,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }
 
-  // execute undo/redo //////////////////////////////////////////////////
-
-  protected void executeUndoRedoRecord(in bool isUndo, in bool isInsert, in TextModificationRecord rec){
-
-    TextSelection ts;
-    bool decodeTs(bool reduceToStart){
-      string where = rec.where;
-      if(reduceToStart) where = where.reduceTextSelectionReferenceStringToStart;
-      ts = TextSelection(where, &findModule);
-      bool res = ts.valid;
-      if(!res) WARN("Invalid ts: "~where);
-      return res;
-    }
-
-    const isCut = isUndo==isInsert;
-
-    if(decodeTs(!isCut)){
-
-      if(isCut) cut_impl([ts]);
-           else paste_impl([ts], No.fromClipboard, rec.what);
-
-      if(decodeTs(!isCut))
-        textSelections = [ts];
-    }
-
-  }
-
-  protected void executeUndoRedoRecord(bool isUndo)(in bool isInsert, in TextModificationRecord rec){
-
-    TextSelection ts;
-    bool decodeTs(string where){
-      ts = TextSelection(where, &findModule);
-      bool res = ts.valid;
-      if(!res) WARN("Invalid ts: "~where);
-      return res;
-    }
-
-    //todo: refactor these 4 if paths
-
-    if(isUndo){
-      if(isInsert){ //Undoing insert operation
-        //print("Undoing INS", rec);
-        if(decodeTs(rec.where)){
-          auto tsRef = ts.toReference;
-          cut_impl([ts]);
-          textSelections = [tsRef.fromReference];
-        }
-      }else{ //Undoing delete operation
-        //print("Undoing DEL", rec);
-
-        if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
-          paste_impl([ts], No.fromClipboard, rec.what);
-          if(decodeTs(rec.where)){
-            textSelections = [ts];
-          }
-        }
-      }
-    }else{
-      if(isInsert){ //Redoing insert operation
-        //print("Redoing INS", rec);
-        if(decodeTs(rec.where.reduceTextSelectionReferenceStringToStart)){
-          paste_impl([ts], No.fromClipboard, rec.what);
-          if(decodeTs(rec.where)){
-            textSelections = [ts];
-          }
-        }
-
-      }else{ //Redoing delete operation
-        //print("Redoing DEL", rec);
-
-        if(decodeTs(rec.where)){
-          auto tsRef = ts.toReference;
-          cut_impl([ts]);
-          textSelections = [tsRef.fromReference];
-        }
-      }
-    }
-  }
-
-
-  protected void executeUndoRedo(bool isUndo)(in TextModification tm){
-    static if(isUndo) auto r = tm.modifications.retro; else auto r = tm.modifications;
-    r.each!(m => executeUndoRedoRecord(isUndo, tm.isInsert, m));
-  }
-
-  void executeUndo(in TextModification tm){ executeUndoRedo!true (tm); }
-  void executeRedo(in TextModification tm){ executeUndoRedo!false(tm); }
-
   //Resyntax queue ////////////////////////////////////////////////////////
 
   void needResyntax(Cell cell){
@@ -1119,6 +1045,12 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
 
     if(resyntaxQueue.empty) return false;
+
+    //limit the frequency of slow sourceText() calls
+    static DateTime lastResyntaxLaterTime;
+    if(now-lastResyntaxLaterTime < .25*second) return false;
+    lastResyntaxLaterTime = now;
+
     auto act = resyntaxQueue.fetchBack;
     return resyntaxNowOrLater(act.what, act.when, Yes.later);
   }
@@ -1134,7 +1066,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   ///Ditto
-  auto cut_impl(TextSelection[] textSelections, bool* returnSuccess=null){  // cut_impl ////////////////////////////////////////
+  auto cut_impl(bool dontMeasure=false)(TextSelection[] textSelections, bool* returnSuccess=null){  // cut_impl ////////////////////////////////////////
     undoGroupId++;
 
     assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
@@ -1193,27 +1125,32 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       }else assert(0, "TextSelection invalid CodeColumn");
     }
 
-    foreach_reverse(sel; textSelections)
-      if(!sel.isZeroLength)
+    foreach_reverse(sel; textSelections){
+      if(!sel.isZeroLength){
         if(requestDeletePermission(sel)){
           cutOne(sel);
         }else{
           if(returnSuccess !is null)     //todo: maybe it would be better to handle readOnlyness with an exception...
             *returnSuccess = false;
         }
+      }
+    }
 
-    measure; //It's needed to calculate TextCursor.desiredX
+    static if(!dontMeasure)
+      measure; //It's needed to calculate TextCursor.desiredX
+    //opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
+
     return savedSelections.map!"a.fromReference".filter!"a.valid".array;
   }
 
-  bool cut_impl2(TextSelection[] sel, ref TextSelection[] res){    //todo: constness for input
+  bool cut_impl2(bool dontMeasure=false)(TextSelection[] sel, ref TextSelection[] res){    //todo: constness for input
     bool success;
-    auto tmp = cut_impl(sel, &success);
+    auto tmp = cut_impl!dontMeasure(sel, &success);
     if(success) res = tmp;
     return success;
   }
 
-  auto paste_impl(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
+  auto paste_impl(bool dontMeasure=false)(TextSelection[] textSelections, Flag!"fromClipboard" fromClipboard, string input, Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs){ // paste_impl //////////////////////////////////
     if(textSelections.empty) return textSelections; //no target
 
     if(fromClipboard)
@@ -1222,14 +1159,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     auto lines = input.splitLines;
     if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 
-    if(!cut_impl2(textSelections, /+writes into this if successful -> +/textSelections))  //todo: this is terrible. Must refactor.
+    if(!cut_impl2!dontMeasure(textSelections, /+writes into this if successful -> +/textSelections))  //todo: this is terrible. Must refactor.
       return textSelections;
 
     //from here it's paste -------------------------------------------------
-
     undoGroupId++;
 
     TextSelectionReference[] savedSelections;
+
+    //todo: insertText with fake local syntax highlighting. until the background syntax highlighter finishes.
 
     ///inserts text at cursor, moves the corsor to the end of the text
     void simpleInsert(ref TextSelection ts, string str){
@@ -1329,8 +1267,63 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       }
     }
 
-    measure; //It's needed to calculate TextCursor.desiredX
+    static if(!dontMeasure)
+      measure; //It's needed to calculate TextCursor.desiredX
+    //opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
+
     return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
+  }
+
+  // execute undo/redo //////////////////////////////////////////////////
+
+  protected void executeUndoRedoRecord(in bool isUndo, in bool isInsert, in TextModificationRecord rec){
+
+    TextSelection ts;
+    bool decodeTs(bool reduceToStart){
+      string where = rec.where;
+      if(reduceToStart) where = where.reduceTextSelectionReferenceStringToStart;
+      ts = TextSelection(where, &findModule);
+      bool res = ts.valid;
+      if(!res) WARN("Invalid ts: "~where);
+      return res;
+    }
+
+    const isCut = isUndo==isInsert;
+
+    if(decodeTs(!isCut)){
+
+      if(isCut) cut_impl!true([ts]);
+           else paste_impl!true([ts], No.fromClipboard, rec.what);
+
+      if(decodeTs(isCut))
+        textSelections = [ts];
+    }
+
+  }
+
+  protected void executeUndoRedo(bool isUndo)(in TextModification tm){
+    static if(isUndo) auto r = tm.modifications.retro; else auto r = tm.modifications;
+    r.each!(m => executeUndoRedoRecord(isUndo, tm.isInsert, m));
+  }
+
+  protected void execute_undo(in TextModification tm){ executeUndoRedo!true (tm); }
+  protected void execute_redo(in TextModification tm){ executeUndoRedo!false(tm); }
+
+  protected void execute_reload(string where, string what){
+    if(auto m=findModule(File(where))){
+      m.reload(Yes.useContents, what);
+      //selectAll
+      textSelections = [m.code.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
+      invalidateTextSelections;
+    }else assert(0, "execute_reload: module lost: "~where.quoted);
+    //todo: somehow signal bact to the undo manager, if an undo operation is failed
+  }
+
+  void undoRedo_impl(string what)(){
+    if(auto m = moduleWithPrimaryTextSelection){
+      mixin(q{ m.undoManager.#(&execute_#, &execute_reload); }.replace("#", what));
+      invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
+    }
   }
 
   //! Keyboard mapping ///////////////////////////////////////
@@ -1402,6 +1395,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = validTextSelections.zeroLengthSelectionsToOneLeft ;  cut_impl2(sel, textSelections); } //todo: delete all leading tabs when the cursor is right after them
   @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  cut_impl2(sel, textSelections); }
   @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\t"); }
+  //todo: tab and shift+tab when multiple lines are selected
   @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
   @VERB("Esc"                 ) void cancelSelection  (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
@@ -1409,19 +1403,36 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 //todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 
-  @VERB("Ctrl+Z"              ) void undo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.undo(&executeUndo); }
-  @VERB("Ctrl+Y"              ) void redo             (){ if(auto m = moduleWithPrimaryTextSelection) m.undoManager.redo(&executeRedo); }
+  @VERB("Ctrl+Z"              ) void undo             (){ undoRedo_impl!"undo"; }
+  @VERB("Ctrl+Y"              ) void redo             (){ undoRedo_impl!"redo"; }
 
   // Module and File operations ------------------------------------------------
 
-  @VERB("Ctrl+O"                        ) void openModule           () { fileDialog.openMulti.each!(f => queueModule         (f)); }
-  @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive  () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-  @VERB("Ctrl+Shift+A"                  ) void selectAllModules     () { textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
-  @VERB(""                              ) void deselectAllModules   () { modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
-  @VERB("Ctrl+W"                        ) void closeSelectedModules () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
-  @VERB("Ctrl+Shift+W"                  ) void closeAllModules      () { closeAllModules_impl; }
+  @VERB("Ctrl+O"                        ) void openModule                   () { fileDialog.openMulti.each!(f => queueModule         (f)); }
+  @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive          () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
+  @VERB("Alt+O"                         ) void revertSelectedModules        () { selectedModules.each!(m => m.reload); invalidateTextSelections; }
+  @VERB("Alt+S"                         ) void saveSelectedModules          () { NOTIMPL; }
+  @VERB("Ctrl+S"                        ) void saveSelectedModulesIfChanged () { NOTIMPL; }
+  @VERB("Ctrl+Shift+S"                  ) void saveAllModulesIfChanged      () { NOTIMPL; }
+  @VERB("Ctrl+W"                        ) void closeSelectedModules         () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
+  @VERB("Ctrl+Shift+W"                  ) void closeAllModules              () { closeAllModules_impl; }
 
-  @VERB("Ctrl+F"                        ) void searchBoxActivate    () { searchBoxActivate_request = true; }
+  @VERB("Ctrl+Shift+A"                  ) void selectAllModules             () { textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
+  @VERB(""                              ) void deselectAllModules           () { modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
+
+  @VERB("Ctrl+F"                        ) void searchBoxActivate            () { searchBoxActivate_request = true; }
+  @VERB("F3"                            ) void gotoNextFind                 () { NOTIMPL; }
+  @VERB("Shift+F3"                      ) void gotoPrevFind                 () { NOTIMPL; }
+
+  @VERB("F8"                            ) void gotoNextError                () { NOTIMPL; }
+  @VERB("Shift+F8"                      ) void gotoPrevError                () { NOTIMPL; }
+
+  @VERB("Ctrl+F2"                       ) void killProcessAndResetDebugger  () { NOTIMPL; } //nonstandard
+  @VERB("F9"                            ) void compileAndRun                () { NOTIMPL; } //nonstandard F5
+  @VERB("Shift+F9"                      ) void rebuild                      () { NOTIMPL; }
+//  @VERB("F5"                            ) void toggleBreakpoint             () { NOTIMPL; }
+//  @VERB("F10"                           ) void stepOver                     () { NOTIMPL; }
+//  @VERB("F11"                           ) void stepInto                     () { NOTIMPL; }
 
   @VERB("F1"                  ) void testInsert       (){
     if(textSelections.length==1){
@@ -1442,8 +1453,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   @VERB("F2"                  ) void testInsert2       (){
-    foreach(m; modules) m.reload;
-    invalidateTextSelections;
   }
 
   @VERB("F3"                  ) void testInsert3       (){
@@ -1553,8 +1562,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
-
-    textSelections = validTextSelections; //just to make sure. (all verbs can validate by their own will)
+    textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
 
     //note: all verbs can optonally validate textSelections by accessing them from validTextSelections
     //      all verbs can call invalidateTextSelections if it does something that affects them
@@ -1562,9 +1570,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     updateOpenQueue(1);
     updateResyntaxQueue;
 
-    textSelections = validTextSelections; //this validation is required for the upcoming mouse handling and scene drawing routines.
+    measure;   //measures all containers if needed, updates ElasticTabstops
+    textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling and scene drawing routines.
 
-    measure; //measures all containers if needed, updates ElasticTabstops
     // From here every positions and sizes are correct
 
     moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside && lod.moduleLevel, view, modules);
@@ -1779,44 +1787,31 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   //! draw routines ////////////////////////////////////////////////////
 
   void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
-    auto view = im.getView;
     const
       arrowSize = 12+3*blink,
       arrowThickness = arrowSize*.2f,
 
       far = lod.level>1,
       extra = lod.pixelSize*2*blink,
-      bnd = view.subScreenBounds_anim,
-      bndInner = bnd.inflated(-lod.pixelSize*arrowThickness*2),
-      bndInnerSizeHalf = bndInner.size/2,
-      center = bnd.center;
 
-    color = clSearchHighLight;
+      clamper = RectClamper(im.getView, arrowThickness*2);
 
-    bool isVisible(T)(in T b){ return bnd.overlaps(b); }
+    bool isVisible(in bounds2 b){ return clamper.overlaps(b); }
 
     //always draw these
     color = clSearchHighLight;
-    foreach(sr; searchResults) if(sr.cells.length){
-      auto r = sr.bounds;
-      if(bnd.overlaps(r)){
-        r.topLeft     -= vec2(extra);
-        r.bottomRight += vec2(extra); //todo: inflate
-        fillRect(r);
+    lineWidth = -arrowThickness;
+    arrowStyle = ArrowStyle.arrow;
+
+    foreach(sr; searchResults) if(auto b = sr.bounds){
+      if(isVisible(b)){
+        fillRect(b.inflated(extra));
       }else{
-        dr.lineWidth = -arrowThickness;
-        dr.arrowStyle = ArrowStyle.arrow;
-
-        auto v = r.center-center;
-        if(v.x >  bndInnerSizeHalf.x) v *=  bndInnerSizeHalf.x/v.x;
-        if(v.x < -bndInnerSizeHalf.x) v *= -bndInnerSizeHalf.x/v.x;
-        if(v.y >  bndInnerSizeHalf.y) v *=  bndInnerSizeHalf.y/v.y;
-        if(v.y < -bndInnerSizeHalf.y) v *= -bndInnerSizeHalf.y/v.y;
-
-        dr.line(center+v*.99f, center+v);
-        dr.arrowStyle = ArrowStyle.none;
+        line(clamper.clampArrow(b.center));
       }
     }
+
+    arrowStyle = ArrowStyle.none;
 
     //later pass, draw the columns as highlighted so this will always visible
     if(!far){
@@ -1902,12 +1897,13 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   void drawTextSelections(Drawing dr, View2D view){ //drawTextSelections ////////////////////////////
     scope(exit) dr.alpha = 1;
 
-    const near       = lod.zoomFactor.smoothstep(0.02, 0.1);
-    const clSelected = mix(mix(RGB(0x404040), clGray, near*.66f),
-                           mix(clWhite      , clGray, near*.66f), blink);
-    const clCaret        = clSilver;
-    const clPrimaryCaret = clWhite;
-    const alpha = mix(0.75f, .4f, near);
+    const
+      near       = lod.zoomFactor.smoothstep(0.02, 0.1),
+      clSelected = mix(mix(RGB(0x404040), clGray, near*.66f),
+                       mix(clWhite, clGray, near*.66f), blink),
+      clCaret        = clSilver,
+      clPrimaryCaret = clWhite,
+      alpha = mix(0.75f, .4f, near);
 
     const cullBounds = view.subScreenBounds_anim;
 
@@ -2027,25 +2023,38 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
 
 
-    static orderCounter = 0;  orderCounter++;
+    {
+      const clamper = RectClamper(view, 7*blink+2);
 
-    void drawCarets(RGB c, float shadow=0){
-      dr.alpha = blink;
-      dr.lineWidth = -1-(blink)*3 -shadow;
-      dr.color = c;
-      foreach(/*idx,*/ s; textSelections){ //opt: culling
-        if(s.primary && !shadow) dr.color = clPrimaryCaret; //todo: clPrimaryCaret
-                            else dr.color = c;
-        //if((orderCounter & 15) == (idx & 15)) dr.lineWidth *=4;
-        s.caret.worldPos.draw(dr); //opt: cache the worldPositions
-        //if((orderCounter & 15) == (idx & 15)) dr.lineWidth /=4;
+      auto getCaretWorldPos(TextSelection ts){
+        CaretPos res = ts.caret.worldPos;
 
-        //todo: visualize caret order nicely.
+        if(!clamper.overlaps(res.bounds)){
+          res.pos = clamper.clamp(res.center);
+          res.height = lod.pixelSize;
+        }
+
+        return res;
+      }
+
+      auto carets = textSelections.map!getCaretWorldPos.array;
+
+      void drawCarets(RGB c, float shadow=0){
+        dr.alpha = blink;
+        dr.lineWidth = -1-(blink)*3 -shadow;
+        dr.color = c;
+        foreach(cwp; carets) cwp.draw(dr);
+      }
+
+      drawCarets(clBlack, 3); //shadow
+      drawCarets(clCaret);    //inner
+
+      //primary
+      if(auto ts = primaryTextSelection){
+        dr.color = clPrimaryCaret;
+        getCaretWorldPos(ts).draw(dr);
       }
     }
-
-    drawCarets(clBlack, 3);
-    drawCarets(clCaret);
 
   }
 
@@ -2218,7 +2227,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     });
 
     //undo debug
-    if(0) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(1) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       if(auto m = moduleWithPrimaryTextSelection){
         Container({
           flags.hScrollState = ScrollState.auto_;
