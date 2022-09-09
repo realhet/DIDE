@@ -1701,6 +1701,7 @@ struct TextModification{
 struct UndoManager{
   //bug: UndoManager is sticking to a module. If the module is renamed, I don't know what happens...
   //opt: Loaded event is wasting a lot of memory. It should use differential text coding. And zip.
+  //todo: also store the textSelections in the undoevents
 
   private uint lastUndoGroupId;
 
@@ -1923,7 +1924,8 @@ interface WorkspaceInterface{
 class Module : CodeNode{ //this is any file in the project
   File file;
 
-  DateTime loaded, saved, modified;
+  DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
+  size_t sizeBytes;  //todo: update this form the outside
 
   //these are the 2 subcells
   CodeColumn code;
@@ -1932,7 +1934,6 @@ class Module : CodeNode{ //this is any file in the project
   ModuleBuildState buildState;
   bool isCompiling;
 
-  size_t sizeBytes;  //todo: update this
   bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
 
   UndoManager undoManager;
@@ -1952,7 +1953,7 @@ class Module : CodeNode{ //this is any file in the project
 
     flags.clipSubCells = false; //to show labels
 
-    loaded = now;
+    fileLoaded = now;
 
     file = file_.actualFile;
     //id = "Module:"~this.file.fullName;
@@ -2024,7 +2025,7 @@ class Module : CodeNode{ //this is any file in the project
   void reload(Flag!"useContents" useContents = No.useContents, string contents=""){
     clearSubCells;
 
-    modified = file.modified;
+    fileModified = file.modified;
     sizeBytes = file.size;
     resetModuleTypeFlags;
 
@@ -2108,6 +2109,14 @@ class Module : CodeNode{ //this is any file in the project
 
     static if(rearrangeLOG) LOG("rearranging", this);
 
+  }
+
+  void save(){
+    if(isReadOnly) return;
+    sourceText.saveTo(file, Yes.onlyIfChanged);
+    clearChanged;
+    fileModified = file.modified; //opt: slow
+    fileSaved = now;
   }
 
 

@@ -85,9 +85,10 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
   T hoveredItem;
 
   ///must be called after an items removed
-  void validateItemReferences(T[] modules){
-    if(!modules.canFind(hoveredItem)) //opt: slow linear search
+  void validateItemReferences(T[] items){
+    if(!items.canFind(hoveredItem)) //opt: slow linear search
       hoveredItem = null;
+    //todo: maybe use a hovered containerflag.
   }
 
   void update(bool mouseEnabled, View2D view, T[] items){
@@ -196,21 +197,37 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
   ClickDetector cdMainMouseButton;
 
-  void validateSelections(Workspace workspace){
-    //validate all the cursors
-    static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
-      mixin(format!"%s = workspace.validate(%s);"(f, f));
+  int mouseTravelDistance;
 
-    static bool once;
-    if(once.chkSet) LOG("todo: workspace change detection");
+  private bool mustValidateInternalSelections;
+
+  void invalidateInternalSelections(){
+    mustValidateInternalSelections = true;
   }
 
-  void update(View2D view, ref TextSelection[] textSelections, Workspace workspace, in Workspace.MouseMappings mouseMappings){  //todo: make textSelection functional, not a ref
-    //opt: only call this when the workspace changed (remove module, cut, paste)
-    validateSelections(workspace);
+  void validateInternalSelections(Workspace workspace){
+    if(mustValidateInternalSelections.chkClear){
 
+      //validate all the cursors market with @SELECTIONS UDA
+      static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
+        mixin(format!"%s = workspace.validate(%s);"(f, f));
+
+      PING2;
+    }
+  }
+
+  void update(View2D view, Workspace workspace, in Workspace.MouseMappings mouseMappings){  //todo: make textSelection functional, not a ref
+    //opt: only call this when the workspace changed (remove module, cut, paste)
+    validateInternalSelections(workspace);
 
     scrollInRequest.nullify;
+
+    //detect mouse travel
+    if(inputs[mouseMappings.main].down){
+      mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
+    }else{
+      mouseTravelDistance = 0;
+    }
 
     //detect double click with LMB
     cdMainMouseButton.update(inputs[mouseMappings.main].down);
@@ -234,10 +251,10 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       if(frmMain.isForeground && view.isMouseInside && inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
 
       if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs[mouseMappings.main].pressed){
-        if(textSelections.hitTest(view.mousePos)){ //todo: start dragging
-
+        if(workspace.textSelectionsGet.hitTest(view.mousePos)){
+          //todo: start dragging the selection contents and paste on mouse button release
         }else if(cursorAtMouse.valid){ //start selecting with mouse
-          selectionsWhenMouseWasPressed = textSelections.dup;
+          selectionsWhenMouseWasPressed = workspace.textSelectionsGet.dup;
 
           //extension cursor is the nearest selection.cursors[0]
           if(!doubleClick){
@@ -283,7 +300,8 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
         selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
       }
 
-      scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
+      if(mouseTravelDistance>4)
+        scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
       //todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
       //todo: do this scrolling in the ModuleSelectionManager too.
     }
@@ -312,6 +330,8 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       auto applyWordSelect   (TextSelection   s){ return wordSelecting ? s.extendToWordsOrSpaces : s; }
       auto applyWordSelectArr(TextSelection[] s){ return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
 
+      TextSelection[] ts; //the new text selection
+
       if(opSelectColumn || opSelectColumnAdd){
 
         //Column select
@@ -327,45 +347,43 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
         if(downward) a1 = a1.retro.array;
                 else a0 = a0.retro.array;
 
-        textSelections = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array;
-        assert(textSelections.isSorted);
+        ts = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array;
+        assert(ts.isSorted);
 
-        if(opSelectColumn) (downward ? textSelections.front : textSelections.back).primary = true; //the first selection created is at the mosue, it must be the primary
+        if(opSelectColumn) (downward ? ts.front : ts.back).primary = true; //the first selection created is at the mosue, it must be the primary
 
         //if there are any nonZeroLength selections, remove all zeroLength carets
-        if(textSelections.any!"!a.isZeroLength")
-          textSelections = textSelections.remove!"a.isZeroLength";
+        if(ts.any!"!a.isZeroLength")
+          ts = ts.remove!"a.isZeroLength";
 
         //if all are carets, remove those at line ends
 
-        if(textSelections.all!"a.isZeroLength" && !textSelections.all!"a.isAtLineStart" && !textSelections.all!"a.isAtLineEnd")
-          textSelections = textSelections.remove!"a.isAtLineEnd";
+        if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
+          ts = ts.remove!"a.isAtLineEnd";
 
-        textSelections = applyWordSelectArr(textSelections);
+        ts = applyWordSelectArr(ts);
 
         if(opSelectColumnAdd){ //Ctrl+Alt+Shift = add column selection
-          textSelections = merge(selectionsWhenMouseWasPressed ~ textSelections);
+          ts = merge(selectionsWhenMouseWasPressed ~ ts);
         }
 
       }else if(opSelectAdd){
         auto s = applyWordSelect(selectionAtMouse);
-        textSelections = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
+        ts = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else if(opSelectExtend){
         auto s = applyWordSelect(TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary));
-        textSelections = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
+        ts = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else{
         auto s = applyWordSelect(selectionAtMouse);
-        textSelections = [s];
+        ts = [s];
       }
+       //todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
 
       //automatically mark primary for single selections
-      if(textSelections.length==1)
-        textSelections[0].primary = true;
+      if(ts.length==1)
+        ts[0].primary = true;
 
-
-      //add extra
-
-      //todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
+      workspace.textSelectionsSet = ts;
     }
   }
 
@@ -463,7 +481,13 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   ContainerSelectionManager!Module moduleSelectionManager;
   TextSelectionManager textSelectionManager;
 
-  TextSelection[] textSelections;
+  protected TextSelection[] textSelections_internal;
+  bool mustValidateTextSelections;
+  @property{
+    auto textSelectionsGet(){ validateTextSelectionsIfNeeded; return textSelections_internal; }
+    void textSelectionsSet()(TextSelection[] ts){ textSelections_internal = ts; invalidateTextSelections; }
+  }
+
   size_t textSelectionsHash;
 
   bool searchBoxVisible, searchBoxActivate_request;
@@ -544,15 +568,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       updateSubCells;
     }
 
-    void dropInvalidTextSelections(){ //opt: this is redundant, just keep it to be safer
-      bool isModuleExists(const TextSelection ts){
-        return modules.map!(m => m.code).canFind(ts.cursors[0].codeColumn); //opt: linear. Also when a codeColumns dies, it should remove the textSelections too.
-      }
-      textSelections = textSelections.filter!(ts => isModuleExists(ts)).array;
-    }
-
     void updateSubCells(){
-      dropInvalidTextSelections;
+      invalidateTextSelections;
       moduleSelectionManager.validateItemReferences(modules);
       subCells = cast(Cell[])modules;
     }
@@ -560,7 +577,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   void clear(){
     modules = [];
-    textSelections = [];
+    textSelectionsSet = [];
     updateSubCells;
   }
 
@@ -604,11 +621,20 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   auto selectedModules()                { return modules.filter!(m => m.flags.selected).array; }
   auto unselectedModules()              { return modules.filter!(m => !m.flags.selected).array; }
   auto hoveredModule()                  { return moduleSelectionManager.hoveredItem; }
-  auto modulesWithTextSelection()       { return validTextSelections.map!(s => s.moduleOf).nonNulls.uniq; }
+  auto modulesWithTextSelection()       { return textSelectionsGet.map!(s => s.moduleOf).nonNulls.uniq; }
 
   auto primaryTextSelection(){
-    auto a = validTextSelections.filter!"a.primary";
-    return a.empty ? TextSelection.init : a.front;
+    {
+      auto a = textSelectionsGet.filter!"a.primary";
+      if(!a.empty) return a.front;
+    }
+
+    {
+      auto a = textSelectionsGet;         //choose the first if none is marked with the primary flag.
+      if(!a.empty) return a.front;
+    }
+
+    return TextSelection.init;
   }
 
   auto primaryCaret(){
@@ -616,10 +642,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   auto moduleWithPrimaryTextSelection() {
-    auto res = validTextSelections.filter!"a.primary".map!moduleOf.frontOrNull;
-    if(!res) res = validTextSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
+    auto res = textSelectionsGet.filter!"a.primary".map!moduleOf.frontOrNull;
+    if(!res) res = textSelectionsGet.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
     return res;
   }
+
+  auto changedModules            (){ modules       .filter!"a.changed"; }
+  auto projectModules            (){ return mainModule ? allFilesFromModule(mainModule.file).map!(f => findModule(f)).nonNulls.array : []; }
+  auto changedProjectModules     (){ return projectModules.filter!"a.changed"; }
+  void saveChangedProjectModules (){ changedProjectModules.each!"a.save"; }
 
   private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
@@ -642,7 +673,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   bool loadModule(in File file, vec2 targetPos){
     if(!file.exists) return false;
     if(auto m = findModule(file)){
-      m.loaded = now; //it's just a flash indicator
+      m.fileLoaded = now; //it's just a flash indicator
       frmMain.view.smartScrollTo(m.outerBounds);
       return false; //no loading was issued
     }
@@ -841,9 +872,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   int lineSize(){ return DefaultFontHeight; }
   int pageSize(){ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); }
   void cursorOp(ivec2 dir, bool select){
-    textSelections = validTextSelections;
-    foreach(ref ts; textSelections) ts.move(dir, select);
-    textSelections = merge(textSelections);
+    auto arr = textSelectionsGet;
+    foreach(ref ts; arr) ts.move(dir, select);
+    textSelectionsSet = merge(arr); //todo: maybe merge should reside in validateTextSelections
   }
 
   void scrollV(float dy){ frmMain.view.scrollV(dy); }
@@ -855,13 +886,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   float wheelSpeed = 0.375f;
 
   void insertCursor(int dir){
-    auto newTextSelections = textSelections.dup;
-    foreach(ref ts; newTextSelections){
-      ts.cursors[0].move(ivec2(0, dir));
-      ts.cursors[1].move(ivec2(0, dir));
-    }
+    auto prev = textSelectionsGet,
+         next = prev.dup;
 
-    textSelections = merge(textSelections ~ newTextSelections);
+    foreach(ref ts; next)
+      foreach(ref tc; ts.cursors)  //note: It is important to move the cursors separately here.  Don't let TextSelection.move do cursor collapsing.
+        tc.move(ivec2(0, dir));
+
+    textSelectionsSet = merge(prev ~ next);
   }
 
   auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections){
@@ -889,13 +921,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     //todo: primary
 
-    if(lod.moduleLevel){
+/*    if(lod.moduleLevel){
       deselectAllModules;
     }
 
     if(lod.codeLevel){
-      if(textSelections.length>1){
-        textSelections.length = 1;
+      auto ts =
+      if(textSelectionsGet.length>1){
+        textSelectionsSet.length = 1;
         with(textSelections[0]){
           scrollInBoundsRequest = worldBounds(textSelections);
         }
@@ -909,7 +942,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           scrollInAllModules;
         }
       }
-    }
+    }*/
+
+
   }
 
   //todo: BOM handling for copy and paste. To be able to communicate with other apps.
@@ -1296,7 +1331,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
            else paste_impl!true([ts], No.fromClipboard, rec.what);
 
       if(decodeTs(isCut))
-        textSelections = [ts];
+        textSelectionsSet = [ts];
     }
 
   }
@@ -1313,8 +1348,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     if(auto m=findModule(File(where))){
       m.reload(Yes.useContents, what);
       //selectAll
-      textSelections = [m.code.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
-      invalidateTextSelections;
+      textSelectionsSet = [m.code.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
     }else assert(0, "execute_reload: module lost: "~where.quoted);
     //todo: somehow signal bact to the undo manager, if an undo operation is failed
   }
@@ -1381,23 +1415,26 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Ctrl+Alt+Up"                   ) void insertCursorAbove      (){ insertCursor(-1); }
   @VERB("Ctrl+Alt+Down"                 ) void insertCursorBelow      (){ insertCursor( 1); }
 
-  @VERB("Ctrl+A"                        ) void selectAllText          (){ NOTIMPL; }
   @VERB("Shift+Alt+Left"                ) void shrinkAstSelection     (){  }  //todo: shrink/extend Ast Selection
   @VERB("Shift+Alt+Right"               ) void extendAstSelection     (){  }
-  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ textSelections = insertCursorAtEndOfEachLineSelected_impl(validTextSelections); }
+  @VERB("Shift+Alt+I"                   ) void insertCursorAtEndOfEachLineSelected (){ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
+
+  @VERB("Ctrl+A"                        ) void selectAllText          (){ textSelectionsSet = modulesWithTextSelection.map!(m => m.code.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
+  @VERB("Ctrl+Shift+A"                  ) void selectAllModules       (){ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
+  @VERB(""                              ) void deselectAllModules     (){ modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
+  @VERB("Esc"                           ) void cancelSelection        (){ cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
   // Editing ------------------------------------------------
 
-  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(validTextSelections.zeroLengthSelectionsToFullRows); }
+  @VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows); }
   //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
-  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ auto sel = validTextSelections.zeroLengthSelectionsToFullRows;  copy_impl(sel);  cut_impl2(sel, textSelections); }
-  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelections = paste_impl(validTextSelections, Yes.fromClipboard, ""); }
-  @VERB("Backspace"           ) void deleteToLeft     (){ auto sel = validTextSelections.zeroLengthSelectionsToOneLeft ;  cut_impl2(sel, textSelections); } //todo: delete all leading tabs when the cursor is right after them
-  @VERB("Del"                 ) void deleteFromRight  (){ auto sel = validTextSelections.zeroLengthSelectionsToOneRight;  cut_impl2(sel, textSelections); }
-  @VERB("Tab"                 ) void insertTab        (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\t"); }
+  @VERB("Ctrl+X Shift+Del"    ) void cut              (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;  copy_impl(s1);  cut_impl2(s1, s2);  textSelectionsSet = s2; }
+  @VERB("Backspace"           ) void deleteToLeft     (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft , s2;                  cut_impl2(s1, s2);  textSelectionsSet = s2; } //todo: delete all leading tabs when the cursor is right after them
+  @VERB("Del"                 ) void deleteFromRight  (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2;                  cut_impl2(s1, s2);  textSelectionsSet = s2; } //bug: ha readonly, akkor NE tunjon el a kirzor!
+  @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard, ""); }
+  @VERB("Tab"                 ) void insertTab        (){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); }
   //todo: tab and shift+tab when multiple lines are selected
-  @VERB("Enter"               ) void insertNewLine    (){ textSelections = paste_impl(validTextSelections, No.fromClipboard, "\n", Yes.duplicateTabs); }
-  @VERB("Esc"                 ) void cancelSelection  (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+  @VERB("Enter"               ) void insertNewLine    (){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs); }
 
 
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
@@ -1410,15 +1447,12 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   @VERB("Ctrl+O"                        ) void openModule                   () { fileDialog.openMulti.each!(f => queueModule         (f)); }
   @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive          () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-  @VERB("Alt+O"                         ) void revertSelectedModules        () { selectedModules.each!(m => m.reload); invalidateTextSelections; }
+  @VERB("Alt+O"                         ) void revertSelectedModules        () { preserveTextSelections({  selectedModules.each!(m => m.reload);  }); }
   @VERB("Alt+S"                         ) void saveSelectedModules          () { NOTIMPL; }
   @VERB("Ctrl+S"                        ) void saveSelectedModulesIfChanged () { NOTIMPL; }
-  @VERB("Ctrl+Shift+S"                  ) void saveAllModulesIfChanged      () { NOTIMPL; }
+  @VERB("Ctrl+Shift+S"                  ) void saveAllModulesIfChanged      () { foreach(m; modules) if(m.changed) m.save; }
   @VERB("Ctrl+W"                        ) void closeSelectedModules         () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules              () { closeAllModules_impl; }
-
-  @VERB("Ctrl+Shift+A"                  ) void selectAllModules             () { textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
-  @VERB(""                              ) void deselectAllModules           () { modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
 
   @VERB("Ctrl+F"                        ) void searchBoxActivate            () { searchBoxActivate_request = true; }
   @VERB("F3"                            ) void gotoNextFind                 () { NOTIMPL; }
@@ -1427,16 +1461,18 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("F8"                            ) void gotoNextError                () { NOTIMPL; }
   @VERB("Shift+F8"                      ) void gotoPrevError                () { NOTIMPL; }
 
-  @VERB("Ctrl+F2"                       ) void killProcessAndResetDebugger  () { NOTIMPL; } //nonstandard
-  @VERB("F9"                            ) void compileAndRun                () { NOTIMPL; } //nonstandard F5
-  @VERB("Shift+F9"                      ) void rebuild                      () { NOTIMPL; }
+  @VERB("F9"                            ) void run                          (){ with(frmMain) if(ready && !running){ saveChangedProjectModules; run;     } }
+  @VERB("Shift+F9"                      ) void rebuild                      (){ with(frmMain) if(ready && !running){ saveChangedProjectModules; rebuild; } }
+  @VERB("Ctrl+F2"                       ) void kill                         (){ with(frmMain) if(building || running) cancelBuildAndResetApp; }
+
 //  @VERB("F5"                            ) void toggleBreakpoint             () { NOTIMPL; }
 //  @VERB("F10"                           ) void stepOver                     () { NOTIMPL; }
 //  @VERB("F11"                           ) void stepInto                     () { NOTIMPL; }
 
   @VERB("F1"                  ) void testInsert       (){
-    if(textSelections.length==1){
-      auto sel = textSelections.front;
+    auto ts = textSelectionsGet;
+    if(ts.length==1){
+      auto sel = ts.front;
       if(sel.valid){
         if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
           row.insertSomething(sel.caret.pos.x, {
@@ -1456,14 +1492,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   @VERB("F3"                  ) void testInsert3       (){
-    const savedSelections = textSelections.map!(a => a.toReference.text).array;
-
     foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
-
-    textSelections = savedSelections.map!(a => TextSelection(a, &findModule)).array; //todo: selectionHash changing!!! Maybe it uses pointer value, that's not good!
   }
 
-
+  void preserveTextSelections(void delegate() fun){ //todo: preserve module selections too
+    const savedTextSelections = textSelectionsGet.map!(a => a.toReference.text).array;
+    scope(exit) textSelectionsSet = savedTextSelections.map!(a => TextSelection(a, &findModule)).array;
+    if(fun) fun();
+  }
 
   //todo: Ctrl+D word select and find
 
@@ -1494,7 +1530,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           try{
             //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
             auto s = ch.to!string;
-            textSelections = paste_impl(textSelections, No.fromClipboard, s);
+            textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, s);
           }catch(Exception){
             unprocessed ~= ch;
           }
@@ -1508,17 +1544,17 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }
 
-  bool mustValidateTextSelections;
-
   void invalidateTextSelections(){
+    PING0;
     mustValidateTextSelections = true;
+    textSelectionManager.invalidateInternalSelections;
   }
 
-  auto validTextSelections(){ //it does on-demand validation for the current selection and the
+  void validateTextSelectionsIfNeeded(){
     if(mustValidateTextSelections.chkClear){
-      textSelections = validate(textSelections);
+      PING1;
+      textSelections_internal = validate(textSelections_internal);
     }
-    return textSelections;
   }
 
 
@@ -1531,7 +1567,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     return ts.empty ? TextSelection.init : ts[0];
   }
 
-  auto validate(TextSelection[] textSelections){
+  auto validate(TextSelection[] arr){
     Cell cachedExistingModule;
 
     bool isExistingModule(Cell c){
@@ -1557,12 +1593,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       return true;
     }
 
-    return textSelections.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
+    return arr.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
   }
 
+  const mouseMappings = MouseMappings.init;
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
-    textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
+
+    //textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
 
     //note: all verbs can optonally validate textSelections by accessing them from validTextSelections
     //      all verbs can call invalidateTextSelections if it does something that affects them
@@ -1571,15 +1609,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     updateResyntaxQueue;
 
     measure;   //measures all containers if needed, updates ElasticTabstops
-    textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling and scene drawing routines.
+    //textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling and scene drawing routines.
 
     // From here every positions and sizes are correct
 
     moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside && lod.moduleLevel, view, modules);
-    textSelectionManager  .update(view, textSelections, this, MouseMappings.init);
+    textSelectionManager  .update(view, this, mouseMappings);
 
     //detect textSelection change
-    const selectionChanged = textSelectionsHash.chkSet(textSelections.hashOf);
+    const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
 
     //focus at selection
     if(!scrollInBoundsRequest.isNull){
@@ -1589,21 +1627,22 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       const p = textSelectionManager.scrollInRequest.get;
       frmMain.view.scrollZoom(bounds2(p, p));
     }else if(selectionChanged){
-      frmMain.view.scrollZoom(worldBounds(textSelections)); //todo: focus the extents of the changed areas, not just the carets... This should be controlled by the direction of the operation...
+      if(!inputs[mouseMappings.main].down) //don't focus to changed selection when the main mouse button is held down
+        frmMain.view.scrollZoom(worldBounds(textSelectionsGet)); //todo: maybe it is problematic when the selection can't fit on the current screen
     }
     scrollInBoundsRequest.nullify;
 
     //animate cursors
     version(AnimatedCursors){
-      if(textSelections.length<=MaxAnimatedCursors){
+      if(textSelectionsGet.length<=MaxAnimatedCursors){
         const animT = calcAnimationT(application.deltaTime.value(second), .5, .25),
               maxDist = 1.0f;
 
-        foreach(ref ts; textSelections){
+        foreach(ref ts; textSelectionsGet){
           foreach(ref cr; ts.cursors[]) with(cr){
            targetPos = localPos.pos; //todo: animate height as well
            if(animatedPos.x.isnan) animatedPos = targetPos;
-                                 else animatedPos.follow(targetPos, animT, maxDist);
+                              else animatedPos.follow(targetPos, animT, maxDist);
           }
         }
       }
@@ -1775,10 +1814,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           Text("   ", crsr.text, "   ", crsr.toReference.text, "   ", crsr.worldPos.text, "   ", view.mousePos.text);
         }*/
 
-        if(textSelections.length>1){
-          Text(format!"  Multiple Text Selections: %d  "(textSelections.length));
-        }else if(textSelections.length==1){
-          Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text));
+        if(textSelectionsGet.length>1){
+          Text(format!"  Multiple Text Selections: %d  "(textSelectionsGet.length));
+        }else if(textSelectionsGet.length==1){
+          Text(format!"  Text Selection: %s  "(textSelectionsGet[0].toReference.text));
         }
       });
     }
@@ -1822,10 +1861,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }}
 
   /// A flashing effect, when right after the module was loaded.
-  void drawModuleLoadingHighlights(Drawing dr, RGB c){
+  void drawModuleLoadingHighlights(string field)(Drawing dr, RGB c){
     const t0 = now;
     foreach(m; modules){
-      const dt = (t0-m.loaded).value(2.5f*second);
+      const dt = (t0-mixin("m."~field)).value(2.5f*second);
       if(dt<1)
         drawHighlight(dr, m, c, sqr(1-dt));
     }
@@ -1909,7 +1948,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     dr.color = clSelected;
     dr.alpha = alpha;
-    foreach(sel; textSelections) if(!sel.isZeroLength){
+    foreach(sel; textSelectionsGet) if(!sel.isZeroLength){
       auto col = sel.codeColumn;
       const colInnerPos = worldInnerPos(col), //opt: group selections by codeColumn.
             colInnerBounds = bounds2(colInnerPos, colInnerPos+col.innerSize);
@@ -1986,13 +2025,13 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     //caret trail
     version(AnimatedCursors){
-      if(textSelections.length <= MaxAnimatedCursors){
+      if(textSelectionsGet.length <= MaxAnimatedCursors){
         dr.alpha = blink/2;
         dr.lineWidth = -1-(blink)*3;
         dr.color = clCaret;
         //opt: culling
         //opt: limit max munber of animated cursors
-        foreach(s; textSelections){
+        foreach(s; textSelectionsGet){
           CaretPos[3] cp;
           cp[0] = s.caret.worldPos;
           cp[1..3] = cp[0];
@@ -2037,7 +2076,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
         return res;
       }
 
-      auto carets = textSelections.map!getCaretWorldPos.array;
+      auto carets = textSelectionsGet.map!getCaretWorldPos.array;
 
       void drawCarets(RGB c, float shadow=0){
         dr.alpha = blink;
@@ -2068,7 +2107,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     if(lod.moduleLevel || frmMain.building) drawModuleBuildStates(dr);
 
-    drawModuleLoadingHighlights(dr, clWhite);
+    drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  );
+    drawModuleLoadingHighlights!"fileSaved" (dr, clYellow);
 
     foreach_reverse(t; EnumMembers!BuildMessageType)
       if(markerLayers[t].visible)
@@ -2118,6 +2158,7 @@ class FrmMain : GLWindow { mixin autoCreate;
   bool building()   const{ return buildSystemWorkerState.building; }
   bool ready()      const{ return !buildSystemWorkerState.building; }
   bool cancelling() const{ return buildSystemWorkerState.cancelling; }
+  bool running()    const{ return false; } //todo: debugServer
 
   void initBuildSystem(){
     buildResult = new BuildResult;
@@ -2157,18 +2198,12 @@ class FrmMain : GLWindow { mixin autoCreate;
     //todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
   }
 
-  @VERB("F9") void run(){
-    launchBuildSystem!"run";
-  }
-
-  @VERB("Shift+F9") void rebuild(){
-    launchBuildSystem!"rebuild";
-  }
-
-  @VERB("Ctrl+F2" ) void cancelBuildAndResetApp(){
+  void run(){ launchBuildSystem!"run"; }
+  void rebuild(){ launchBuildSystem!"rebuild"; }
+  void cancelBuildAndResetApp(){
     if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel);
     //todo: kill app
-    //todo:
+    //todo: debugServer
   }
 
   override void onCreate(){ //onCreate //////////////////////////////////
