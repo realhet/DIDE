@@ -49,7 +49,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 }
 
 static void UI_BuildMessageContents(CodeLocation location, string title, void delegate() contents){ with(im){ //UI_BuildMessageContents///////////////////////////////
-  location.UI;
+  location.UI;   //opt: this is FUCKING slow
   if(title!="") Text(bold(" "~title~" "));
   if(contents) contents();
 }}
@@ -71,8 +71,7 @@ static void UI_CompilerOutput(File file, string text){ //UI_CompilerOutput//////
 
 void UI(in CodeLocation cl){ with(cl) with(im) //CodeLocation.UI //////////////////////
   UI_InnerBlockFrame(clSilver, clBlack, {
-    auto ext = file.ext;
-    if(ext!="") Text(tag(format!`img "icon:\%s" height=%f`(ext, fh-2)));
+    FileIcon_small(file.ext);
 
     Text(file.fullName);
     if(column) Text(format!("(%s,%s)")(line, column));

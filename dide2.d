@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -58,7 +58,6 @@ size_t allocatedSize(in Cell c){
   }
   return res;
 }
-
 
 
 struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager ///////////////////////////////////////////////
@@ -725,6 +724,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }
 
+  ErrorListModule errorList;
+
   void convertBuildMessagesToSearchResults(){
     auto br = frmMain.buildResult;
 
@@ -732,11 +733,16 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     auto output = br.dump;
     outFile.write(output);
 
-    if(auto m = findModule(outFile)){
+    T0;
+    //opt: in debug mode this is terribly slow.
+    errorList = new ErrorListModule(null, File.init);
+    LOG(siFormat("errorList create %s ms", DT));
+
+    /*if(auto m = findModule(outFile)){
       m.reload;
     }else{
       loadModule(outFile);
-    }
+    }*/
 
     auto buildMessagesAsSearchResults(BuildMessageType type){ //todo: opt
       Container.SearchResult[] res;
@@ -1072,7 +1078,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
           static DateTime lastOutdatedResyncTime;
           if(col.lastResyntaxTime==job.changeId || now-lastOutdatedResyncTime > .25*second){
-            mod.resyntax(job.sourceCode);
+            mod.resyntax_src(job.sourceCode);
             lastOutdatedResyncTime = now;
           }
         }
@@ -1793,6 +1799,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }}
 
   void UI_mouseLocationHint(View2D view){ with(im){
+    if(!view.isMouseInside) return;
     auto st = locate_snapToRow(view.mousePos);
     if(st.length){
       Row({ padding="0 8"; }, "\u2316 ", {
@@ -2262,7 +2269,7 @@ class FrmMain : GLWindow { mixin autoCreate;
     });
 
     //undo debug
-    if(1) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(0) with(im) with(workspace) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       if(auto m = moduleWithPrimaryTextSelection){
         Container({
           flags.hScrollState = ScrollState.auto_;
@@ -2276,6 +2283,30 @@ class FrmMain : GLWindow { mixin autoCreate;
         UI_ResyntaxQueue;
       });
     });
+
+    //error list
+    if(1) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      height = 200;
+
+      auto siz = innerSize;
+      Container({
+        outerSize = siz;
+        with(flags){
+          clipSubCells = true;
+          vScrollState = ScrollState.auto_;
+          wordWrap = false;
+          hScrollState = ScrollState.auto_;
+        }
+        if(auto el = workspace.errorList){
+          el.parent = actContainer;
+          actContainer.appendCell(el);
+        }
+      });
+
+    });
+
+
+
 
 
     void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }

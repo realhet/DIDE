@@ -1269,6 +1269,37 @@ enum TextFormat{
   index                  // [ , ]
 }
 
+// ErrorList ////////////////////////////////////////////
+
+auto createErrorListCodeColumn(Container parent){
+  auto code = new CodeColumn(parent);
+  code.padding = "1";
+
+  import dide2; //todo: should not import main module.
+  auto buildResult = global_getBuildResult;
+  auto markerLayerHideMask = global_getMarkerLayerHideMask;
+
+  foreach(file; buildResult.remainings.keys.sort){
+    auto pragmas = buildResult.remainings[file];
+    if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
+  }
+
+  with(im) code.append({
+    foreach(loc; buildResult.messages.keys.sort){
+      auto msg = buildResult.messages[loc];
+      if(msg.parentLocation) continue;
+      if((1<<msg.type) & markerLayerHideMask) continue;
+      msg.UI(buildResult.subMessagesOf(msg.location));
+    }
+  });
+
+  return code;
+}
+
+//auto createErrorListModule(Container parent){
+//  auto Module = new Module()
+//}
+
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
   //note: this is basically the CodeBlock
   Container parent;
@@ -1920,7 +1951,6 @@ interface WorkspaceInterface{
   @property bool isReadOnly();
 }
 
-
 class Module : CodeNode{ //this is any file in the project
   File file;
 
@@ -2008,11 +2038,11 @@ class Module : CodeNode{ //this is any file in the project
     auto txt = code.sourceText;
     auto src = scoped!SourceCode(txt);
 
-    resyntax(src);
+    resyntax_src(src);
   }
 
   //call it with a freshly parsed SourceCode object
-  void resyntax(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
+  void resyntax_src(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
     detectModuleTypeFlags(src);
 
     code.resyntax(src);
@@ -2041,32 +2071,15 @@ class Module : CodeNode{ //this is any file in the project
     overlay.needMeasure;
 
     if(file.extIs(".err")){
+      //todo: deprecated compile.err
 
-      code = new CodeColumn(this);
-      code.padding = "1";
-
-      import dide2; //todo: should not import main module.
-      auto buildResult = global_getBuildResult;
-      auto markerLayerHideMask = global_getMarkerLayerHideMask;
-
-      foreach(file; buildResult.remainings.keys.sort){
-        auto pragmas = buildResult.remainings[file];
-        if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-      }
-
-      with(im) code.append({
-        foreach(loc; buildResult.messages.keys.sort){
-          auto msg = buildResult.messages[loc];
-          if(msg.parentLocation) continue;
-          if((1<<msg.type) & markerLayerHideMask) continue;
-          msg.UI(buildResult.subMessagesOf(msg.location));
-        }
-      });
+      code = createErrorListCodeColumn(this);
 
       measureAndPropagateCodeSize;
 
       overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
     }else{
+
       T0;
       auto prevSourceText = sourceText;
       SourceCode src = useContents ? new SourceCode(contents, this.file)
@@ -2077,6 +2090,7 @@ class Module : CodeNode{ //this is any file in the project
       measureAndPropagateCodeSize;
       updateBigComments(src);
       static if(LogModuleLoadPerformance) LOG(DT, file);
+
     }
 
     appendCell(enforce(code));
@@ -2123,6 +2137,48 @@ class Module : CodeNode{ //this is any file in the project
 /*  override void draw(Drawing dr){ // draw///////////////////////////////////
     super.draw(dr);
   }*/
+}
+
+
+class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
+  this(Container parent, File file_){
+    super(parent, file_);
+  }
+
+  override bool isReadOnly(){ return true; }
+
+  override void resyntax(){ }
+  override void resyntax_src(SourceCode src){ }
+
+  override void reload(Flag!"useContents" useContents = No.useContents, string contents=""){
+    clearSubCells;
+
+    fileModified = now;
+    sizeBytes = 0; //todo: note this has no file.
+    resetModuleTypeFlags;
+
+    overlay = new Container;
+    overlay.id = "Overlay:"~file.fullName;
+    with(overlay.flags){
+      noHitTest = true;
+      dontSearch = true;
+      dontLocate = true;
+      noBackground = true;
+      //clipSubCells = false;
+    }
+    overlay.needMeasure;
+
+    code = createErrorListCodeColumn(this);
+
+    measureAndPropagateCodeSize;
+
+    overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
+
+    appendCell(enforce(code));
+    appendCell(enforce(overlay));
+
+    needMeasure;
+  }
 }
 
 
