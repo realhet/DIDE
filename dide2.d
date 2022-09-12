@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -90,11 +90,17 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
     //todo: maybe use a hovered containerflag.
   }
 
-  void update(bool mouseEnabled, View2D view, T[] items){
+  private static void select(alias op)(T[] items, T selectItem=null){
+    foreach(a; items)
+      a.flags.selected = a.flags.selected.unaryFun!op;
+      if(selectItem) select!"true"([selectItem]);
+  }
 
-    void selectNone()           { foreach(a; items) a.flags.selected = false; }
-    void selectOnly(T item)     { selectNone; if(item) item.flags.selected = true; }
-    void selectHoveredOnly()    { selectOnly(hoveredItem); }
+
+  void update(bool mouseEnabled, View2D view, T[] items, bool anyTextSelected, void delegate() onResetTextSelection){
+
+    void selectNone()           { select!"false"(items); }
+    void selectOnly(T item)     { select!"false"(items, item); }
     void saveOldSelected()      { foreach(a; items) a.flags.oldSelected = a.flags.selected; }
 
     // acquire mouse positions
@@ -130,8 +136,12 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 
     if(LMB_pressed && mouseEnabled){ // Left Mouse pressed //
       if(hoveredItem){
-        if(modNone){ if(!hoveredItem.flags.selected) selectHoveredOnly;  mouseOp = MouseOp.move; }
-        if(modShift || modCtrl || modShiftCtrl) hoveredItem.flags.selected = !hoveredItem.flags.selected;
+        if(!anyTextSelected){
+          if(modNone){ if(!hoveredItem.flags.selected) selectOnly(hoveredItem);  mouseOp = MouseOp.move; }
+          if(modShift || modCtrl || modShiftCtrl) hoveredItem.flags.selected = !hoveredItem.flags.selected;
+        }else{
+          //any mouse operation goes to text selection
+        }
       }else{
         mouseOp = MouseOp.rectSelect;
         saveOldSelected;
@@ -165,7 +175,9 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 
 
     if(LMB_released){ // left mouse released //
-
+      if(mouseOp == MouseOp.rectSelect){
+        onResetTextSelection();
+      }
       //...                                               ou
 
       mouseOp = MouseOp.idle;
@@ -215,7 +227,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
     }
   }
 
-  void update(View2D view, Workspace workspace, in Workspace.MouseMappings mouseMappings){  //todo: make textSelection functional, not a ref
+  void update(View2D view, Workspace workspace, in Workspace.MouseMappings mouseMappings, bool anyTextSelections){  //todo: make textSelection functional, not a ref
     //opt: only call this when the workspace changed (remove module, cut, paste)
     validateInternalSelections(workspace);
 
@@ -249,27 +261,36 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
       if(frmMain.isForeground && view.isMouseInside && inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
 
-      if(frmMain.isForeground && view.isMouseInside && lod.codeLevel) if(inputs[mouseMappings.main].pressed){
+      if(frmMain.isForeground && view.isMouseInside /+&& lod.codeLevel+/) if(inputs[mouseMappings.main].pressed){
         if(workspace.textSelectionsGet.hitTest(view.mousePos)){
           //todo: start dragging the selection contents and paste on mouse button release
         }else if(cursorAtMouse.valid){ //start selecting with mouse
           selectionsWhenMouseWasPressed = workspace.textSelectionsGet.dup;
 
-          //extension cursor is the nearest selection.cursors[0]
-          if(!doubleClick){
-            auto selectionToExtend = selectionsWhenMouseWasPressed
-                                     .filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
-                                     .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init);
+          if(!anyTextSelections){
+            if(doubleClick){
+              selectionAtMouse = TextSelection(cursorAtMouse, false);
+              wordSelecting = false;
+            }else{
+              //single click goes to module selection
+            }
+          }else{
+            //extension cursor is the nearest selection.cursors[0]
+            if(!doubleClick){
+              auto selectionToExtend = selectionsWhenMouseWasPressed
+                                       .filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
+                                       .minElement!(a => distance(a, cursorAtMouse))(TextSelection.init);
 
-            cursorToExtend = selectionToExtend.cursors[0];
-            cursorToExtend_primary = selectionToExtend.primary;
-          }
-          if(!cursorToExtend.valid){
-            cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
-            cursorToExtend_primary = false;
-          }
+              cursorToExtend = selectionToExtend.cursors[0];
+              cursorToExtend_primary = selectionToExtend.primary;
+            }
+            if(!cursorToExtend.valid){
+              cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+              cursorToExtend_primary = false;
+            }
 
-          selectionAtMouse = TextSelection(cursorAtMouse, false);
+            selectionAtMouse = TextSelection(cursorAtMouse, false);
+          }
         }
       }
     }
@@ -917,11 +938,47 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     return res;
   }
 
+
+  void scrollInModules(Module[] m){
+    if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b";
+  }
+
   void scrollInAllModules(){
-    if(modules.length) scrollInBoundsRequest = modules.map!"a.outerBounds".fold!"a|b";
+    scrollInModules(modules);
+  }
+
+  void scrollInModule(Module m){
+    if(m) scrollInModules([m]);
   }
 
   void cancelSelection_impl(){ // cancelSelection_impl //////////////////////////////////////
+    auto ts = textSelectionsGet;
+    auto mp = moduleWithPrimaryTextSelection;
+
+    void selectPrimaryModule(){
+      textSelectionsSet = [];
+      foreach(m; modules) m.flags.selected = m is mp;
+      scrollInModule(mp);
+    }
+
+    //multiTextSelect -> primaryTextSelect
+    if(ts.length>1){
+      if(auto pts = primaryTextSelection) textSelectionsSet = [pts];
+                                     else selectPrimaryModule; //just for safety
+      return;
+    }
+
+    if(ts.length>0){
+      selectPrimaryModule;
+      return;
+    }
+
+    //deselect everything, zoom all
+    textSelectionsSet = [];
+    deselectAllModules;
+    scrollInAllModules;
+
+
     //auto em = editedModules;
     //if(em.length>1)
 
@@ -951,6 +1008,26 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }*/
 
 
+  }
+
+  void selectSearchResults(SearchResult[] arr){
+
+    //todo: use this as a revalidator after the modules were changed under the search results. Maybe verify the search results while drawing. Cache the last change or something.
+
+    TextSelection conv(SearchResult sr){
+      if(sr.cells.length) if(auto row = cast(CodeRow)sr.container) if(auto col = row.parent){
+        auto rowIdx = row.index,
+             st = row.subCellIndex(sr.cells.front), //todo: could find other cells as well. If the user edits the document for example.
+             en = row.subCellIndex(sr.cells.back);
+        if(rowIdx>=0 && st>=0 && en>=0){
+          auto ts = TextSelection(TextCursor(col, ivec2(st, rowIdx)), TextCursor(col, ivec2(en+1, rowIdx)), false);
+          return validate(ts);
+        }
+      }
+      return TextSelection.init;
+    }
+
+    textSelectionsSet = merge(arr.map!(a => conv(a)).filter!"a.valid".array);
   }
 
   //todo: BOM handling for copy and paste. To be able to communicate with other apps.
@@ -1428,7 +1505,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Ctrl+A"                        ) void selectAllText          (){ textSelectionsSet = modulesWithTextSelection.map!(m => m.code.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
   @VERB("Ctrl+Shift+A"                  ) void selectAllModules       (){ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
   @VERB(""                              ) void deselectAllModules     (){ modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
-  @VERB("Esc"                           ) void cancelSelection        (){ cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+  @VERB("Esc"                           ) void cancelSelection        (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
   // Editing ------------------------------------------------
 
@@ -1436,7 +1513,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.  Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
   @VERB("Ctrl+X Shift+Del"    ) void cut              (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;  copy_impl(s1);  cut_impl2(s1, s2);  textSelectionsSet = s2; }
   @VERB("Backspace"           ) void deleteToLeft     (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft , s2;                  cut_impl2(s1, s2);  textSelectionsSet = s2; } //todo: delete all leading tabs when the cursor is right after them
-  @VERB("Del"                 ) void deleteFromRight  (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2;                  cut_impl2(s1, s2);  textSelectionsSet = s2; } //bug: ha readonly, akkor NE tunjon el a kirzor!
+  @VERB("Del"                 ) void deleteFromRight  (){ TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2;                  cut_impl2(s1, s2);  textSelectionsSet = s2; } //bug: ha readonly, akkor NE tunjon el a kurzor! Sot, ha van non-readonly selecton is, akkor azt meg el is bassza.
   @VERB("Ctrl+V Shift+Ins"    ) void paste            (){ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard, ""); }
   @VERB("Tab"                 ) void insertTab        (){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); }
   //todo: tab and shift+tab when multiple lines are selected
@@ -1461,6 +1538,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules              () { closeAllModules_impl; }
 
   @VERB("Ctrl+F"                        ) void searchBoxActivate            () { searchBoxActivate_request = true; }
+  @VERB("Ctrl+Shift+L"                  ) void selectSearchResults          () { selectSearchResults(markerLayers[BuildMessageType.find].searchResults); }
   @VERB("F3"                            ) void gotoNextFind                 () { NOTIMPL; }
   @VERB("Shift+F3"                      ) void gotoPrevFind                 () { NOTIMPL; }
 
@@ -1619,11 +1697,17 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     // From here every positions and sizes are correct
 
-    moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside && lod.moduleLevel, view, modules);
-    textSelectionManager  .update(view, this, mouseMappings);
+    moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput && view.isMouseInside /+&& lod.moduleLevel+/, view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; });
+    textSelectionManager  .update(view, this, mouseMappings, textSelectionsGet.length>0);
 
     //detect textSelection change
     const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
+
+    //if there are any cursors, module selection if forced to modules with textSelections
+    if(textSelectionsGet.length){
+      foreach(m; modules) m.flags.selected = false;
+      foreach(m; modulesWithTextSelection) m.flags.selected = true;
+    }
 
     //focus at selection
     if(!scrollInBoundsRequest.isNull){
@@ -1656,6 +1740,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     //update buildresults if needed (compilation progress or layer mask change)
     size_t calcBuildStateHash(){ return modules.map!"tuple(a.file, a.outerPos)".array.hashOf(buildResult.lastUpdateTime.hashOf(markerLayerHideMask/+to filter compile.err+/)); }
+    //opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild all the layers with all the info, only move the affected layer items.
     buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
     if(buildStateChanged){
       updateModuleBuildStates(buildResult);
@@ -1704,8 +1789,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults){ with(im) Row({
     //Keyboard shortcuts
-    auto kcFindZoom  = KeyCombo("Enter"), //only when edit is focused
-         kcFindClose = KeyCombo("Esc"); //always
+    auto kcFindZoom         = KeyCombo("Enter"), //only when edit is focused
+         kcFindToSelection  = KeyCombo("Ctrl+Shift+L Alt+Enter"),
+         kcFindClose        = KeyCombo("Esc"); //always
 
     //activate searchbox
     bool needFocus;
@@ -1733,6 +1819,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
       if(Btn(symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""), enable(matchCnt>0), hint("Zoom screen on search results."))){
         zoomAt(view, searchResults);
+      }
+
+      if(Btn("Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""), enable(matchCnt>0), hint("Select search results."))){
+        selectSearchResults(searchResults);
       }
 
       if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box."))){
@@ -1838,7 +1928,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       arrowThickness = arrowSize*.2f,
 
       far = lod.level>1,
-      extra = lod.pixelSize*2*blink,
+      extra = lod.pixelSize* (2.5f*blink+.5f),
 
       clamper = RectClamper(im.getView, arrowThickness*2);
 
@@ -1851,8 +1941,16 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     foreach(sr; searchResults) if(auto b = sr.bounds){
       if(isVisible(b)){
-        fillRect(b.inflated(extra));
+        if(far){
+          fillRect(b.inflated(extra));
+        }else{
+          lineWidth = extra;
+          arrowStyle = ArrowStyle.none;
+          drawRect(b);
+        }
       }else{
+        lineWidth = -arrowThickness;
+        arrowStyle = ArrowStyle.arrow;
         line(clamper.clampArrow(b.center));
       }
     }
@@ -1860,11 +1958,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     arrowStyle = ArrowStyle.none;
 
     //later pass, draw the columns as highlighted so this will always visible
-    if(!far){
+    /*if(!far){
       foreach(sr; searchResults)
-        if(isVisible(sr.bounds))
+        if(isVisible(sr.bounds)){
+          dr.alpha = .5*blink;
           sr.drawHighlighted(dr, clSearchHighLight); //close lod
+        }
     }
+    dr.alpha = 1;*/
   }}
 
   /// A flashing effect, when right after the module was loaded.
@@ -1877,10 +1978,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }
 
-  protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
+  /*protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
     selectedModules.each!(m => drawHighlight(dr, m, clSelected, selectedAlpha));
     drawHighlight(dr, hoveredModule, clHovered, hoveredAlpha);
-  }}
+  }}*/
 
   protected void drawSelectionRect(Drawing dr, RGB clRect){
     if(auto bnd = moduleSelectionManager.selectionBounds) with(dr) {
@@ -2105,17 +2206,21 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   }
 
   override void onDraw(Drawing dr){ //onDraw //////////////////////////////
-    if(lod.moduleLevel){
-      drawSelectedModules(dr, clWhite, .3f, clWhite, .1f);
-      drawSelectionRect(dr, clWhite);
-      drawFolders(dr, clGray, clWhite);
-      drawMainModuleOutlines(dr);
+    if(textSelectionsGet.empty){ //select means module selection
+      foreach(m; modules) if(m.flags.selected) drawHighlight(dr, m, clAccent, .25);
+      drawHighlight(dr, hoveredModule, clWhite, .125);
+    }else{ //select means text editing
+      foreach(m; modules) if(!m.flags.selected) drawHighlight(dr, m, clGray, .25);
     }
 
     if(lod.moduleLevel || frmMain.building) drawModuleBuildStates(dr);
 
     drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  );
     drawModuleLoadingHighlights!"fileSaved" (dr, clYellow);
+
+    drawMainModuleOutlines(dr);
+    drawFolders(dr, clGray, clWhite);
+    drawSelectionRect(dr, clWhite);
 
     foreach_reverse(t; EnumMembers!BuildMessageType)
       if(markerLayers[t].visible)
@@ -2228,6 +2333,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 
   override void onUpdate(){ // onUpdate ////////////////////////////////////////
     //showFPS = true;
+    //im.focus
+    if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed)){ im.focusNothing; }
 
     updateBlink;
 
