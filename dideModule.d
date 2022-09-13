@@ -1402,6 +1402,18 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
   TextCursor endCursor(){ auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; }
   TextSelection allSelection(bool primary){ return TextSelection(homeCursor, endCursor, primary); }
 
+  TextSelection lineSelection(bool selectWholeLine)(int line, bool primary){
+    auto y = line-1;
+    if(y.inRange(rows)){
+      auto ts = TextSelection(TextCursor(this, ivec2(0, y)), primary);
+      if(selectWholeLine) ts.cursors[1].move(ivec2(TextCursor.end, 0));
+      return ts;
+    }
+    return TextSelection.init;
+  }
+
+  TextSelection lineSelection_home(int line, bool primary){ return lineSelection!false(line, primary); }
+
   @property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
 
   //index, location calculations

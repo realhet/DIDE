@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -65,7 +65,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 
   bounds2 getBounds(T item){ return item.outerBounds; }
 
-  enum MouseOp { idle, move, rectSelect }
+  enum MouseOp { idle, moveStart, move, rectSelect }
 
   MouseOp mouseOp;
 
@@ -96,8 +96,17 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
       if(selectItem) select!"true"([selectItem]);
   }
 
+  private int mouseTravelDistance;
+  private vec2 accumulatedMoveStartDelta;
 
   void update(bool mouseEnabled, View2D view, T[] items, bool anyTextSelected, void delegate() onResetTextSelection){
+
+    //detect mouse travel
+    if(inputs.LMB.down){
+      mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
+    }else{
+      mouseTravelDistance = 0;
+    }
 
     void selectNone()           { select!"false"(items); }
     void selectOnly(T item)     { select!"false"(items, item); }
@@ -137,7 +146,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
     if(LMB_pressed && mouseEnabled){ // Left Mouse pressed //
       if(hoveredItem){
         if(!anyTextSelected){
-          if(modNone){ if(!hoveredItem.flags.selected) selectOnly(hoveredItem);  mouseOp = MouseOp.move; }
+          if(modNone){ if(!hoveredItem.flags.selected) selectOnly(hoveredItem);  accumulatedMoveStartDelta = 0; mouseOp = MouseOp.moveStart; }
           if(modShift || modCtrl || modShiftCtrl) hoveredItem.flags.selected = !hoveredItem.flags.selected;
         }else{
           //any mouse operation goes to text selection
@@ -163,9 +172,17 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
       }
     }
 
+    if(mouseOp == MouseOp.moveStart && mouseTravelDistance>4){
+      mouseOp = MouseOp.move;
+    }
+
+    if(mouseOp == MouseOp.moveStart && mouseDelta) accumulatedMoveStartDelta += mouseDelta;
+
     if(mouseOp == MouseOp.move && mouseDelta){
       foreach(a; items) if(a.flags.selected){
-        a.outerPos += mouseDelta;
+        a.outerPos += mouseDelta + accumulatedMoveStartDelta;
+
+      accumulatedMoveStartDelta = 0;
 
         //todo: jelezni kell valahogy az elmozdulast!!!
         /*static if(is(a.cachedDrawing))
@@ -181,6 +198,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
       //...                                               ou
 
       mouseOp = MouseOp.idle;
+      accumulatedMoveStartDelta = 0;
     }
   }
 
@@ -234,7 +252,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
     scrollInRequest.nullify;
 
     //detect mouse travel
-    if(inputs[mouseMappings.main].down){
+    if(inputs[mouseMappings.main].down){ //todo: copy/paste
       mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
     }else{
       mouseTravelDistance = 0;
@@ -355,7 +373,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       if(opSelectColumn || opSelectColumnAdd){
 
         //Column select
-        auto c0 = opSelectColumnAdd ? selectionAtMouse.cursors[0] : getPrimaryCursor,  //todo: primary
+        auto c0 = opSelectColumnAdd ? selectionAtMouse.cursors[0] : getPrimaryCursor,  //bug: what if primary cursor is on another module
              c1 = selectionAtMouse.cursors[1];
         const downward = c0.pos.y<c1.pos.y,
               dir      = downward ? 1 : -1,
@@ -391,7 +409,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
         auto s = applyWordSelect(selectionAtMouse);
         ts = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else if(opSelectExtend){
-        auto s = applyWordSelect(TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary));
+        auto s = applyWordSelect(TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary));  //bug: what if primary cursor to extend is on another module
         ts = merge(selectionsWhenMouseWasPressed.filter!(a => !touches(a, s)).array ~ s);  //removes touched existing selections first.
       }else{
         auto s = applyWordSelect(selectionAtMouse);
@@ -664,6 +682,24 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   auto moduleWithPrimaryTextSelection() {
     auto res = textSelectionsGet.filter!"a.primary".map!moduleOf.frontOrNull;
     if(!res) res = textSelectionsGet.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
+    return res;
+  }
+
+  Module oneSelectedModule(){
+    if(selectedModules.take(2).walkLength==1)
+      return selectedModules.front;
+    return null;
+  }
+
+  Module expectOneSelectedModule(){
+    auto m = oneSelectedModule;
+    if(!m) flashError("This operation requires 1 selected module.");
+    return m;
+  }
+
+  Module[] selectedModulesOrAll(){
+    auto res = selectedModules.array;
+    if(res.empty) res = modules;
     return res;
   }
 
@@ -1010,7 +1046,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   }
 
-  void selectSearchResults(SearchResult[] arr){
+  void selectSearchResults(SearchResult[] arr){ // selectSearchResults ///////////////////////////
 
     //todo: use this as a revalidator after the modules were changed under the search results. Maybe verify the search results while drawing. Cache the last change or something.
 
@@ -1027,6 +1063,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       return TextSelection.init;
     }
 
+    //T0; scope(exit) DT.LOG;
     textSelectionsSet = merge(arr.map!(a => conv(a)).filter!"a.valid".array);
   }
 
@@ -1436,8 +1473,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     //todo: somehow signal bact to the undo manager, if an undo operation is failed
   }
 
-  void undoRedo_impl(string what)(){
-    if(auto m = moduleWithPrimaryTextSelection){
+  void undoRedo_impl(string what)(){ //todo: select the latest undo/redo operation if there are more than one modules selected. If no modules selected: select from all of them.
+    if(auto m = moduleWithPrimaryTextSelection){ //todo: undo should not remove textSelections on other modules.
       mixin(q{ m.undoManager.#(&execute_#, &execute_reload); }.replace("#", what));
       invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
     }
@@ -1523,8 +1560,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 //todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 
-  @VERB("Ctrl+Z"              ) void undo             (){ undoRedo_impl!"undo"; }
-  @VERB("Ctrl+Y"              ) void redo             (){ undoRedo_impl!"redo"; }
+  @VERB("Ctrl+Z"              ) void undo             (){ if(expectOneSelectedModule) undoRedo_impl!"undo"; }
+  @VERB("Ctrl+Y"              ) void redo             (){ if(expectOneSelectedModule) undoRedo_impl!"redo"; }
 
   // Module and File operations ------------------------------------------------
 
@@ -1541,6 +1578,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Ctrl+Shift+L"                  ) void selectSearchResults          () { selectSearchResults(markerLayers[BuildMessageType.find].searchResults); }
   @VERB("F3"                            ) void gotoNextFind                 () { NOTIMPL; }
   @VERB("Shift+F3"                      ) void gotoPrevFind                 () { NOTIMPL; }
+
+  @VERB("Ctrl+G"                        ) void gotoLine                     () { if(auto m = expectOneSelectedModule){ searchBoxActivate_request = true; searchText = ":"; } }
 
   @VERB("F8"                            ) void gotoNextError                () { NOTIMPL; }
   @VERB("Shift+F8"                      ) void gotoPrevError                () { NOTIMPL; }
@@ -1808,7 +1847,25 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
       if(Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; })){
         //refresh search results
-        searchResults = modules.map!(m => m.search(searchText)).join;
+        if(searchText.startsWith(':')){ //goto line
+          //todo: Ctrl+G not works inside Edit
+          //todo: hint text: Enter line number. Negative line number starts from the end of the module.
+          //todo: ez ugorhatna regionra is.
+          searchResults = [];
+          textSelectionsSet = [];
+          if(auto mod = expectOneSelectedModule) if(auto col  = mod.code) if(auto rowCount = col.cellCount){
+            if(auto line = searchText[1..$].to!int.ifThrown(0)){
+
+              if(line<0 && line>=-rowCount)
+                line = rowCount+line+1; //mirror if negative
+
+              if(auto ts = col.lineSelection_home(line, true))
+                textSelectionsSet = [ts];
+            }
+          }
+        }else{
+          searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join;
+        }
       }
 
       // display the number of matches. Also save the location of that number on the screen.
@@ -1919,6 +1976,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       });
     }
   }}
+
+  ///Brings up an error message on the center of the screen for a short duration
+  void flashError(string msg){
+    if(msg=="") return;
+    //todo: implement flashing error UI
+    beep;
+  }
+
 
   //! draw routines ////////////////////////////////////////////////////
 
@@ -2355,6 +2420,12 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     if(canProcessUserInput) callVerbs(this);
 
+    if(1) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+      Row({
+        BtnRow(mouseCursor);
+      });
+    });
+
     if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({ //todo: Panel should be a Row, not a Column...
         Row({ workspace.UI_ModuleBtns; flex = 1; });
@@ -2472,6 +2543,21 @@ class FrmMain : GLWindow { mixin autoCreate;
     view.subScreenArea = im.clientArea / clientSize;
 
     workspace.update(view, buildResult);
+
+    //update mouse cursor//////////////////////////
+    MouseCursor chooseMouseCursor(){ with(MouseCursor){
+      if(cancelling) return NO;
+      if(building) return APPSTARTING;
+      if(im.mouseOverUI || im.wantMouse) return ARROW; //todo: im.chooseMouseCursor
+      with(workspace.moduleSelectionManager){
+        if(mouseOp == MouseOp.move) return SIZEALL;
+        if(mouseOp == MouseOp.rectSelect) return CROSS;
+      }
+      if(workspace.textSelectionsGet.any) return IBEAM;
+      return ARROW;
+    }}
+
+    mouseCursor = chooseMouseCursor;
   }
 
   override void onPaint(){ // onPaint ///////////////////////////////////////
