@@ -1274,6 +1274,7 @@ enum TextFormat{
 auto createErrorListCodeColumn(Container parent){
   auto code = new CodeColumn(parent);
   code.padding = "1";
+  code.flags.dontStretchSubCells = true;
 
   import dide2; //todo: should not import main module.
   auto buildResult = global_getBuildResult;
@@ -1414,6 +1415,16 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
   TextSelection lineSelection_home(int line, bool primary){ return lineSelection!false(line, primary); }
 
+  TextSelection cellSelection(int line, int column, bool primary){
+    auto ts = lineSelection_home(line, primary);
+    if(ts){
+      auto dx = (column-1).clamp(0, rowCharCount(ts.cursors[0].pos.y));
+      if(dx) ts.move(ivec2(dx, 0), false);
+    }
+    return ts;
+  }
+
+
   @property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
 
   //index, location calculations
@@ -1473,7 +1484,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
       innerSize = vec2(maxInnerWidth + totalGap.x, y);
       //todo: this is not possible with the immediate UI because the autoWidth/autoHeigh information is lost. And there is no functions to return the required content size. The container should have a current size, a minimal required size and separate autoWidth flags.
 
-      foreach(r; rows) r.innerWidth = maxInnerWidth;
+      if(!flags.dontStretchSubCells)
+        foreach(r; rows) r.innerWidth = maxInnerWidth;
     }
 
     static if(rearrangeLOG) LOG("rearranging", this);

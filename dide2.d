@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -805,7 +805,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
       Container.SearchResult[] res;
 
       foreach(const msg; br.messages) if(msg.type==type){
-        if(auto mod = findModule(msg.location.file)){    //opt: bottleneck! linear search
+        if(auto mod = findModule(msg.location.file.withoutDMixin)){    //opt: bottleneck! linear search
           if((msg.location.line-1).inRange(mod.code.subCells)){
             Container.SearchResult sr;
             sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
@@ -1505,6 +1505,26 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @HOLD("Alt+Ctrl+Num+"       ) void holdZoomIn_slow        (){ zoom( zoomSpeed/8); }
   @HOLD("Alt+Ctrl+Num-"       ) void holdZoomOut_slow       (){ zoom(-zoomSpeed/8); }
 
+  // Navigation when there is no textSelection ////////////////////////////////////
+  @HOLD("W Num8 Up"           ) void holdScrollUp2           (){ if(textSelectionsGet.empty) scrollV( scrollSpeed); }
+  @HOLD("S Num2 Down"         ) void holdScrollDown2         (){ if(textSelectionsGet.empty) scrollV(-scrollSpeed); }
+  @HOLD("A Num4 Left"         ) void holdScrollLeft2         (){ if(textSelectionsGet.empty) scrollH( scrollSpeed); }
+  @HOLD("D Num6 Right"        ) void holdScrollRight2        (){ if(textSelectionsGet.empty) scrollH(-scrollSpeed); }
+  @HOLD("E Num+ PgUp"         ) void holdZoomIn2             (){ if(textSelectionsGet.empty) zoom( zoomSpeed); }
+  @HOLD("Q Num- PgDn"         ) void holdZoomOut2            (){ if(textSelectionsGet.empty) zoom(-zoomSpeed); }
+
+  //todo: this is redundant and ugly
+  //bug: When NumLockState=true && key==Num8: if the modifier is released after the key, KeyCombo will NEVER detect the release and is stuck!!!
+  @HOLD("Shift+W Shift+Num8 Shift+Up"       ) void holdScrollUp_slow2           (){ if(textSelectionsGet.empty) scrollV( scrollSpeed/8); }
+  @HOLD("Shift+S Shift+Num2 Shift+Down"     ) void holdScrollDown_slow2         (){ if(textSelectionsGet.empty) scrollV(-scrollSpeed/8); }
+  @HOLD("Shift+A Shift+Num4 Shift+Left"     ) void holdScrollLeft_slow2         (){ if(textSelectionsGet.empty) scrollH( scrollSpeed/8); }
+  @HOLD("Shift+D Shift+Num6 Shift+Right"    ) void holdScrollRight_slow2        (){ if(textSelectionsGet.empty) scrollH(-scrollSpeed/8); }
+  @HOLD("Shift+E Shift+Num+ Shift+PgUp"     ) void holdZoomIn_slow2             (){ if(textSelectionsGet.empty) zoom( zoomSpeed/8); }
+  @HOLD("Shift+Q Shift+Num- Shift+PgDn"     ) void holdZoomOut_slow2            (){ if(textSelectionsGet.empty) zoom(-zoomSpeed/8); }
+
+  @VERB("Home"                              ) void zoomAll2()  { if(textSelectionsGet.empty) frmMain.view.zoom(worldInnerBounds(this), 12); }
+  @VERB("Shift+Home"                        ) void zoomClose2(){ if(textSelectionsGet.empty) frmMain.view.scale = 1; }
+
   // Cursor and text selection ----------------------------------------
   @VERB("Left"                          ) void cursorLeft       (bool sel=false){ cursorOp(ivec2(-1,  0)                 , sel); }
   @VERB("Right"                         ) void cursorRight      (bool sel=false){ cursorOp(ivec2( 1,  0)                 , sel); }
@@ -1643,26 +1663,30 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     if(!im.wantKeys && frmMain.canProcessUserInput){
       callVerbs(this);
 
-      //todo: single window only
-      string unprocessed;
-      foreach(ch; mainWindow.inputChars.unTag.byDchar){
-        if(ch==9 && ch==10){
-          //if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-        }else if(ch>=32){
-          //cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-          try{
-            //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
-            auto s = ch.to!string;
-            textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, s);
-          }catch(Exception){
+      if(textSelectionsGet.empty){
+        mainWindow.inputChars = [];
+      }else{
+        //todo: single window only
+        string unprocessed;
+        foreach(ch; mainWindow.inputChars.unTag.byDchar){
+          if(ch==9 && ch==10){
+            //if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+          }else if(ch>=32){
+            //cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+            try{
+              //if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis from keyboard or clipboard! Maybe it's a bug.
+              auto s = ch.to!string;
+              textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, s);
+            }catch(Exception){
+              unprocessed ~= ch;
+            }
+
+          }else{
             unprocessed ~= ch;
           }
-
-        }else{
-          unprocessed ~= ch;
         }
+        mainWindow.inputChars = unprocessed;
       }
-      mainWindow.inputChars = unprocessed;
 
     }
   }
@@ -1719,6 +1743,37 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     return arr.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
   }
 
+  void updateCodeLocationJump(){
+    //jump to locations. A fucking nasty hack.
+    if(inputs.LMB.pressed){
+      auto hs = hitTestManager.lastHitStack;
+      if(!hs.empty){
+        string id = hs.back.id;
+        enum prefix = "CodeLocation:";
+        if(id.isWild(prefix~"*")){
+          string line = wild[0];
+          CodeLocation loc;
+          if(line.isWild(`?:\?*.d*(?*,?*)`)) try{  //todo: refactor this into CodeLocation struct
+            string fn = wild[0]~`:\`~wild[1]~`.d`;
+            //string mixinPostfix = wild[2];
+            loc = CodeLocation(File(fn), wild[3].to!int, wild[4].to!int);
+          }catch(Exception){ WARN("Invalid CodeLocation format: "~line.quoted); }
+
+          if(loc){
+            print("LOC:", loc);
+            if(auto mod = findModule(loc.file)){ //todo: load the module automatically
+              if(auto ts = mod.code.cellSelection(loc.line, loc.column, true)){
+                textSelectionsSet = [ts];
+                frmMain.view.origin = ts.caret.worldBounds.center; //todo: subScreenOrinig, not simple origin!!!
+              }else{ beep; WARN("selectCursor fail: "~loc.text); } //todo: at least select the line, or the module.
+            }else{ beep; WARN("Can't find module: "~loc.text); }
+          }
+        }
+      }
+    }
+  }
+
+
   const mouseMappings = MouseMappings.init;
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
@@ -1728,6 +1783,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     //note: all verbs can optonally validate textSelections by accessing them from validTextSelections
     //      all verbs can call invalidateTextSelections if it does something that affects them
     handleKeyboard;
+    updateCodeLocationJump;
     updateOpenQueue(1);
     updateResyntaxQueue;
 
@@ -1922,7 +1978,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }}
 
-  void UI_selectedModulesHint(){ with(im){
+  void UI_selectedModulesHint(){ with(im){ // UI_selectedModulesHint//////////////////////////
     auto sm = selectedModules;
     void stats(){ Row(format!"(%d LOC, %sB)"(sm.map!(m => m.linesOfCode).sum, shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum))); }
     if(sm.length==1){
@@ -1945,7 +2001,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     }
   }}
 
-  void UI_mouseLocationHint(View2D view){ with(im){
+  void UI_mouseLocationHint(View2D view){ with(im){ // UI_mouseLocationHint //////////////////////////
     if(!view.isMouseInside) return;
     auto st = locate_snapToRow(view.mousePos);
     if(st.length){
@@ -1975,6 +2031,141 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
         }
       });
     }
+  }}
+
+  auto UI_ErrorList(){ with(im){ // UI_ErrorList ////////////////////////////
+    /+with(im) Container(this.genericId, {
+      margin = "2";
+      border = "1 normal gray";
+      innerHeight = 8*DefaultFontHeight;
+      //innerHeight = 500;
+      bkColor = clWinBackground;
+
+      if(setupFun) setupFun();
+
+      const rowHeight = KarcFileEntry.thumbHeight + KarcFileEntry.totalPadding;
+
+      const totalHeight = mod.items.rowHeight*items.length;
+
+      //size placeholder
+      Container({ outerSize = vec2(0); outerPos = vec2(maxWidth, totalHeight); });
+
+      with(flags){
+        clipSubCells = true;
+        vScrollState = ScrollState.auto_;
+        wordWrap = false;
+        hScrollState = ScrollState.auto_;
+      }
+
+      flags.saveVisibleBounds = true;
+      auto visibleBounds = imstVisibleBounds(actId);
+
+      if(visibleBounds.height>0 && items.length){
+        int st = clamp((visibleBounds.top   /rowHeight).ifloor,  0, items.length.to!int-1);
+        int en = clamp((visibleBounds.bottom/rowHeight).iceil , st, items.length.to!int-1);
+
+        foreach(idx;  st..en+1){
+          auto selected(){ return idx==itemIdx; }
+
+          Row(genericId(idx), {
+            auto hit = hitTest(true/*enabled*/);
+
+            if(application.isForeground && hit.hover && (inputs.LMB.pressed || inputs.RMB.pressed)){
+
+              //todo: this mouse getting thing is fucking lame. actMousePos should be accessible at all times, and flags.targetSurface should be inherited.
+              const clientMouseX = im.actView.mousePos.x - hit.hitBounds.left - actContainer.topLeftGapSize.x,
+                    thumbOuterWidth = KarcFileEntry.thumbWidth + KarcFileEntry.totalPadding,
+                    clickedThumbIdx = (clientMouseX / thumbOuterWidth).ifloor,
+                    clickedThumbIdxValid = clickedThumbIdx.inRange(0, 1);
+
+              void doClickOnItem(){ clicked = true; itemIdx = idx; }
+
+              with(items[idx]) switch(karcCnt){
+                case 2:{
+                  doClickOnItem;
+                  if(clickedThumbIdxValid) sensorIdx = clickedThumbIdx;
+                  break;
+                }
+                case 1:{
+                  if(clickedThumbIdxValid && clickedThumbIdx!=anyKarcIdx){
+                    //beep; //no image present at that clicked slot
+                    //todo: do a little error animation
+                  }else{
+                    doClickOnItem;
+                    sensorIdx = anyKarcIdx;
+                  }
+                  break;
+                }
+                default: doClickOnItem;
+              }
+
+            }
+
+            style.bkColor = bkColor = mix(bkColor, clAccent, max(selected ? .5f:0, hit.hover_smooth*.25f));
+
+            items[idx].UI(sensorIdx);
+          });
+
+          with(lastContainer){
+            measure;
+            outerPos.y = idx*rowHeight;
+
+            maxWidth.maximize(outerWidth);
+
+            //todo: autoWidth wont reset automatically when setting outterWidth
+            flags.autoWidth = false;
+            outerWidth = maxWidth;
+          }
+        }
+      }
+    });
+
+    return clicked; +/
+
+
+    auto siz = innerSize;
+    Container({
+      outerSize = siz;
+      with(flags){
+        clipSubCells = true;
+        vScrollState = ScrollState.auto_;
+        hScrollState = ScrollState.auto_;
+      }
+
+      if(auto mod = errorList) if(auto col = mod.code){
+
+        //total size placeholder
+        Container({ outerPos = col.outerSize; outerSize = vec2(0); });
+
+        flags.saveVisibleBounds = true;
+        if(auto visibleBounds = imstVisibleBounds(actId)){
+          CodeRow[] visibleRows = col.rows.filter!(r => r.outerBounds.overlaps(visibleBounds) && r.subCells.length).array; //opt: binary search
+          actContainer.append(cast(Cell[])visibleRows); //note: append is important because it already has the spaceHolder Container.
+
+          /+print("-------------------------------");
+
+          //print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
+
+          void visitLocations(.Container act){
+            if(!act) return;
+
+            if(auto row = cast(.Row)act){
+              enum prefix = "CodeLocation:";
+              if(row.id.isWild(prefix~"*")){
+                print("LOC:", wild[0]);
+              }
+            }
+            foreach(sc; act.subContainers)
+              visitLocations(sc); //recursive
+          }
+          visitLocations(actContainer);
+          print("-------------------------------");+/
+
+        }
+
+      }else WARN("Invalid errorList");
+    });
+
   }}
 
   ///Brings up an error message on the center of the screen for a short duration
@@ -2420,7 +2611,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     if(canProcessUserInput) callVerbs(this);
 
-    if(1) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       Row({
         BtnRow(mouseCursor);
       });
@@ -2464,27 +2655,10 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     //error list
     if(1) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
-      height = 200;
+      outerHeight = 200;
 
-      auto siz = innerSize;
-      Container({
-        outerSize = siz;
-        with(flags){
-          clipSubCells = true;
-          vScrollState = ScrollState.auto_;
-          wordWrap = false;
-          hScrollState = ScrollState.auto_;
-        }
-        if(auto el = workspace.errorList){
-          el.parent = actContainer;
-          actContainer.appendCell(el);
-        }
-      });
-
+      workspace.UI_ErrorList;
     });
-
-
-
 
 
     void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }

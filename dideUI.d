@@ -71,11 +71,13 @@ static void UI_CompilerOutput(File file, string text){ //UI_CompilerOutput//////
 
 void UI(in CodeLocation cl){ with(cl) with(im) //CodeLocation.UI //////////////////////
   UI_InnerBlockFrame(clSilver, clBlack, {
+    auto s = cl.text;
+
+    actContainer.id = "CodeLocation:"~s;
+
     FileIcon_small(file.ext);
 
-    Text(file.fullName);
-    if(column) Text(format!("(%s,%s)")(line, column));
-          else if(line) Text(format!("(%s)")(line));
+    Text(s);
   });
 }
 
