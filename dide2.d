@@ -97,7 +97,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
   }
 
   private int mouseTravelDistance;
-  private vec2 accumulatedMoveStartDelta;
+  private vec2 accumulatedMoveStartDelta, mouseLast;
 
   void update(bool mouseEnabled, View2D view, T[] items, bool anyTextSelected, void delegate() onResetTextSelection){
 
@@ -112,9 +112,9 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
     void selectOnly(T item)     { select!"false"(items, item); }
     void saveOldSelected()      { foreach(a; items) a.flags.oldSelected = a.flags.selected; }
 
-    // acquire mouse positions
-    auto mouseAct = view.mousePos;
-    auto mouseDelta = mouseAct-view.mouseLast;
+    auto mouseAct = view.mousePos;//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
+    auto mouseDelta = mouseAct-mouseLast;
+    mouseLast = mouseAct;
 
     const LMB          = inputs.LMB.down,
           LMB_pressed  = inputs.LMB.pressed,
@@ -317,8 +317,9 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
       if(!inputs[mouseMappings.scroll]){
         mouseScrolling = false;
       }else{
-        if(const delta = inputs.mouseDelta)
+        if(const delta = inputs.mouseDelta){
           view.scroll(delta);
+        }
       }
     }
 
@@ -504,6 +505,9 @@ class SyntaxHighlightWorker{
 
 /// Workspace ///////////////////////////////////////////////
 class Workspace : Container, WorkspaceInterface { //this is a collection of opened modules
+  enum CodeLocationPrefix = "CodeLocation:",
+       MatchPrefix = "Match:";
+
   File file; //the file of the workspace
   enum defaultExt = ".dide";
 
@@ -582,6 +586,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     size_t markerLayerHideMask() const { size_t res; foreach(idx, const layer; markerLayers) if(!layer.visible) res |= 1 << idx; return res; }
     void markerLayerHideMask(size_t v) { foreach(idx, ref layer; markerLayers) layer.visible = ((1<<idx)&v)==0; }
   }
+
+  @STORED bool showErrorList;
 
   protected{//ModuleSettings is a temporal storage for saving and loading the workspace.
 
@@ -710,15 +716,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   private void closeSelectedModules_impl(){
     //todo: ask user to save if needed
-    invalidateTextSelections;
     modules = unselectedModules;
     updateSubCells;
+    invalidateTextSelections;
   }
 
   private void closeAllModules_impl(){
     //todo: ask user to save if needed
-    invalidateTextSelections;
     clear;
+    invalidateTextSelections;
   }
 
   bool loadModule(in File file){
@@ -804,13 +810,14 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     auto buildMessagesAsSearchResults(BuildMessageType type){ //todo: opt
       Container.SearchResult[] res;
 
-      foreach(const msg; br.messages) if(msg.type==type){
+      foreach(msgIdx, const msg; br.messages) if(msg.type==type){
         if(auto mod = findModule(msg.location.file.withoutDMixin)){    //opt: bottleneck! linear search
           if((msg.location.line-1).inRange(mod.code.subCells)){
             Container.SearchResult sr;
             sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
             sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
             sr.cells = sr.container.subCells;
+            sr.reference = CodeLocationPrefix~msg.location.text;
             res ~= sr;
           }else{
             //line not found in module
@@ -1588,9 +1595,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   @VERB("Ctrl+O"                        ) void openModule                   () { fileDialog.openMulti.each!(f => queueModule         (f)); }
   @VERB("Ctrl+Shift+O"                  ) void openModuleRecursive          () { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
   @VERB("Alt+O"                         ) void revertSelectedModules        () { preserveTextSelections({  selectedModules.each!(m => m.reload);  }); }
-  @VERB("Alt+S"                         ) void saveSelectedModules          () { NOTIMPL; }
-  @VERB("Ctrl+S"                        ) void saveSelectedModulesIfChanged () { NOTIMPL; }
-  @VERB("Ctrl+Shift+S"                  ) void saveAllModulesIfChanged      () { foreach(m; modules) if(m.changed) m.save; }
+  @VERB("Alt+S"                         ) void saveSelectedModules          () { selectedModules.each!"a.save"; }
+  @VERB("Ctrl+S"                        ) void saveSelectedModulesIfChanged () { selectedModules.filter!"a.changed".each!"a.save"; }
+  @VERB("Ctrl+Shift+S"                  ) void saveAllModulesIfChanged      () { modules.filter!"a.changed".each!"a.save"; }
   @VERB("Ctrl+W"                        ) void closeSelectedModules         () { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
   @VERB("Ctrl+Shift+W"                  ) void closeAllModules              () { closeAllModules_impl; }
 
@@ -1746,44 +1753,61 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
   void updateCodeLocationJump(){
     //jump to locations. A fucking nasty hack.
     if(inputs.LMB.pressed){
+      T0; scope(exit) DT.LOG;
       auto hs = hitTestManager.lastHitStack;
       if(!hs.empty){
-        string id = hs.back.id;
-        enum prefix = "CodeLocation:";
-        if(id.isWild(prefix~"*")){
-          string line = wild[0];
-          CodeLocation loc;
-          if(line.isWild(`?:\?*.d*(?*,?*)`)) try{  //todo: refactor this into CodeLocation struct
-            string fn = wild[0]~`:\`~wild[1]~`.d`;
-            //string mixinPostfix = wild[2];
-            loc = CodeLocation(File(fn), wild[3].to!int, wild[4].to!int);
-          }catch(Exception){ WARN("Invalid CodeLocation format: "~line.quoted); }
-
-          if(loc){
-            print("LOC:", loc);
-            if(auto mod = findModule(loc.file)){ //todo: load the module automatically
-              if(auto ts = mod.code.cellSelection(loc.line, loc.column, true)){
-                textSelectionsSet = [ts];
-                frmMain.view.origin = ts.caret.worldBounds.center; //todo: subScreenOrinig, not simple origin!!!
-              }else{ beep; WARN("selectCursor fail: "~loc.text); } //todo: at least select the line, or the module.
-            }else{ beep; WARN("Can't find module: "~loc.text); }
-          }
-        }
+        jumpTo(hs.back.id);
       }
     }
   }
 
+  Nullable!vec2 jumpRequest;
+
+  void jumpTo(in CodeLocation loc){
+    if(loc){
+      //print("LOC:", loc);
+      if(auto mod = findModule(loc.file)){ //todo: load the module automatically
+        if(auto ts = mod.code.cellSelection(loc.line, loc.column, true)){
+          textSelectionsSet = [ts]; //todo: doubleClick = zoomclose
+          with(frmMain.view){
+            if(scale<0.3f) scale = 1;
+            jumpRequest = nullable(vec2(ts.caret.worldBounds.center));
+          }
+        }else{ beep; WARN("selectCursor fail: "~loc.text); } //todo: at least select the line, or the module.
+      }else{ beep; WARN("Can't find module: "~loc.text); }
+    }
+  }
+
+  auto codeLocationFromStr(string s){
+    if(s.isWild(CodeLocationPrefix~"*")) s = wild[1];
+
+    CodeLocation loc;
+    if(s.isWild(`?:\?*.d*(?*,?*)`)) try{  //todo: refactor this into CodeLocation struct
+      string fn = wild[0]~`:\`~wild[1]~`.d`;
+      //string mixinPostfix = wild[2];
+      loc = CodeLocation(File(fn), wild[3].to!int, wild[4].to!int);
+    }catch(Exception){ WARN("Invalid CodeLocation format: "~s.quoted); }
+    return loc;
+  }
+
+
+  void jumpTo(string id){
+    if(id.isWild(CodeLocationPrefix~"*")){
+      jumpTo(codeLocationFromStr(wild[0]));
+    }else if(id.isWild(MatchPrefix~"*")){
+      NOTIMPL;
+    }
+  }
 
   const mouseMappings = MouseMappings.init;
 
   void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
-
     //textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
 
     //note: all verbs can optonally validate textSelections by accessing them from validTextSelections
     //      all verbs can call invalidateTextSelections if it does something that affects them
     handleKeyboard;
-    updateCodeLocationJump;
+    updateCodeLocationJump;  if(KeyCombo("MMB").pressed && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);
     updateOpenQueue(1);
     updateResyntaxQueue;
 
@@ -1799,23 +1823,27 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
 
     //if there are any cursors, module selection if forced to modules with textSelections
-    if(textSelectionsGet.length){
+    if(selectionChanged && textSelectionsGet.length){
       foreach(m; modules) m.flags.selected = false;
       foreach(m; modulesWithTextSelection) m.flags.selected = true;
     }
 
     //focus at selection
-    if(!scrollInBoundsRequest.isNull){
+    if(!jumpRequest.isNull){
+      with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin);
+    }else if(!scrollInBoundsRequest.isNull){
       const b = scrollInBoundsRequest.get;
       frmMain.view.scrollZoom(b);
     }else if(!textSelectionManager.scrollInRequest.isNull){
       const p = textSelectionManager.scrollInRequest.get;
       frmMain.view.scrollZoom(bounds2(p, p));
     }else if(selectionChanged){
-      if(!inputs[mouseMappings.main].down) //don't focus to changed selection when the main mouse button is held down
+      if(!inputs[mouseMappings.main].down){ //don't focus to changed selection when the main mouse button is held down
         frmMain.view.scrollZoom(worldBounds(textSelectionsGet)); //todo: maybe it is problematic when the selection can't fit on the current screen
+      }
     }
     scrollInBoundsRequest.nullify;
+    jumpRequest.nullify;
 
     //animate cursors
     version(AnimatedCursors){
@@ -2168,6 +2196,74 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   }}
 
+  auto findErrorListItemByLocation(string locStr){
+    if(auto mod = errorList) if(auto col = mod.code){
+
+    }
+  }
+
+
+  string lastNearestSearchResultReference;
+
+  Container mouseOverHintCntr;
+
+  ///must be called from root level
+  void UI_mouseOverHint(){ with(im){ //UI_mouseOverHint ///////////////////////
+    if(lastNearestSearchResultReference.chkSet(nearestSearchResult.reference)){
+      mouseOverHintCntr = null;
+
+      if(nearestSearchResult.reference!=""){
+
+        if(auto mod = errorList) if(auto col = mod.code){
+
+          const locationRef = nearestSearchResult.reference;
+          foreach(row; col.rows){
+            bool found = false;
+            void visitLocations(.Container act){      //todo: visitor pattern for cells/containers. Similar to the allParents() thing.
+              if(!act) return;
+
+              if(auto row = cast(.Row)act){
+                if(row.id==locationRef){
+                  found = true;
+                }
+              }
+              foreach(sc; act.subContainers)
+                visitLocations(sc); //recursive
+            }
+
+            visitLocations(row);
+
+            if(found){
+              Container({
+                border = row.border;
+                padding = row.padding;
+                bkColor = row.bkColor;
+                outerSize = row.outerSize;
+
+                actContainer.subCells = row.subCells;
+              });
+              mouseOverHintCntr = removeLastContainer;
+              break;
+            }
+          }
+
+        }
+
+        //if unable to generate a hint, display the SearchResult.reference:
+        if(!mouseOverHintCntr){
+          Text(nearestSearchResult.reference);
+          mouseOverHintCntr = removeLastContainer;
+        }
+
+      }
+    }
+
+    if(mouseOverHintCntr)
+      actContainer.append(mouseOverHintCntr);
+  }}
+
+
+
   ///Brings up an error message on the center of the screen for a short duration
   void flashError(string msg){
     if(msg=="") return;
@@ -2178,13 +2274,30 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
   //! draw routines ////////////////////////////////////////////////////
 
-  void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight){ with(dr){
+  SearchResult nearestSearchResult;  //todo: MMB jumps to nearestSearchResult
+  float nearestSearchResult_dist;
+  RGB nearestSearchResult_color, _nearestSearchResult_ActColor;
+
+  void resetNearestSearchResult(){
+    nearestSearchResult = SearchResult.init;
+    nearestSearchResult_dist = 1e30;
+  }
+
+  void updateNearestSearchResult(float dist, lazy const SearchResult sr){
+    if(dist<nearestSearchResult_dist){
+      nearestSearchResult_dist = dist;
+      nearestSearchResult = cast()sr; //todo: constness
+      nearestSearchResult_color = _nearestSearchResult_ActColor;
+    }
+  }
+
+  void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight, float extraThickness = 0){ with(dr){
     const
       arrowSize = 12+3*blink,
       arrowThickness = arrowSize*.2f,
 
       far = lod.level>1,
-      extra = lod.pixelSize* (2.5f*blink+.5f),
+      extra = lod.pixelSize* (2.5f*blink+.5f + extraThickness),
 
       clamper = RectClamper(im.getView, arrowThickness*2);
 
@@ -2192,11 +2305,19 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
     //always draw these
     color = clSearchHighLight;
-    lineWidth = -arrowThickness;
-    arrowStyle = ArrowStyle.arrow;
+    _nearestSearchResult_ActColor = clSearchHighLight;
 
-    foreach(sr; searchResults) if(auto b = sr.bounds){
+    auto mp = frmMain.view.mousePos;
+
+    static float distanceB(in vec2 p, in bounds2 b){
+      const dx = max(b.low.x - p.x, 0, p.x - b.high.x),
+            dy = max(b.low.y - p.y, 0, p.y - b.high.y);
+      return sqrt(dx*dx + dy*dy);
+    }
+
+    foreach(sr; searchResults) if(auto b = sr.bounds){ //todo: constness
       if(isVisible(b)){
+        updateNearestSearchResult(distanceB(mp, b), sr);
         if(far){
           fillRect(b.inflated(extra));
         }else{
@@ -2205,9 +2326,12 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
           drawRect(b);
         }
       }else{
-        lineWidth = -arrowThickness;
+        lineWidth = -arrowThickness -extraThickness;
         arrowStyle = ArrowStyle.arrow;
-        line(clamper.clampArrow(b.center));
+
+        const p = clamper.clampArrow(b.center);
+        line(p);
+        updateNearestSearchResult(distance(mp, p[1]), sr);
       }
     }
 
@@ -2478,9 +2602,18 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
     drawFolders(dr, clGray, clWhite);
     drawSelectionRect(dr, clWhite);
 
+
+    resetNearestSearchResult;
     foreach_reverse(t; EnumMembers!BuildMessageType)
       if(markerLayers[t].visible)
         drawSearchResults(dr, markerLayers[t].searchResults, t.color);
+
+    if(nearestSearchResult_dist > frmMain.view.invScale*24) nearestSearchResult = SearchResult.init;
+
+    if(nearestSearchResult.bounds){
+      drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f));
+    }
+
 
     .draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear;
 
@@ -2596,7 +2729,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
     updateBuildSystem;
 
-    if(initialized.chkSet){
+    if(application.tick>1 && initialized.chkSet){
       test_CodeColumn;
       if(workspaceFile.exists){
         workspace.loadWorkspace(workspaceFile);
@@ -2654,12 +2787,11 @@ class FrmMain : GLWindow { mixin autoCreate;
     });
 
     //error list
-    if(1) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+    if(workspace.showErrorList) with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";// border = "1 normal gray";
       outerHeight = 200;
 
       workspace.UI_ErrorList;
     });
-
 
     void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }
 
@@ -2695,11 +2827,11 @@ class FrmMain : GLWindow { mixin autoCreate;
           }
         });
         VLine;//---------------------------
+
         Row({ margin = "0 3"; flags.vAlign = VAlign.center;
+          if(Btn("ErrorList")) workspace.showErrorList.toggle;
+          if(Btn("Calc size")) print(workspace.allocatedSize);
           Text(now.text);
-          if(Btn("Calc size")){
-            print(workspace.allocatedSize);
-          }
         });
 
         //this applies YAlign.stretch
@@ -2717,6 +2849,15 @@ class FrmMain : GLWindow { mixin autoCreate;
     view.subScreenArea = im.clientArea / clientSize;
 
     workspace.update(view, buildResult);
+
+    //bottomRight hint
+    with(im) Panel(PanelPosition.bottomRight, {
+      margin = "0 24 24 0";
+      border = Border.init;
+      padding = "0";
+      flags.noBackground = true;
+      workspace.UI_mouseOverHint;
+    });
 
     //update mouse cursor//////////////////////////
     MouseCursor chooseMouseCursor(){ with(MouseCursor){

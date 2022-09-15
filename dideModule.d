@@ -1178,7 +1178,7 @@ class CodeRow: Row{
   }
 
   override void draw(Drawing dr){ //draw ////////////////////////////////
-    if(lod.level>1){
+    if(lod.level>1 && im.actTargetSurface==0){ //note: LOD is only enabled on the world view, not on the UI
 
       if(subCells.length){
         const lwsCnt = leadingWhitespaceCount; //opt: this should be memoized
