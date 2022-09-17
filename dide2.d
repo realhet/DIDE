@@ -31,9 +31,9 @@
 //todo: unstructured view: immediate syntax highlight for smalles modules.
 
 //todo: save/restore buildsystem cache on start/exit
-
-enum LogRequestPermissions = false;
-
+@("REGION=BLABLA"){
+	enum LogRequestPermissions = false;
+}
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 import buildsys, core.thread, std.concurrency;
 
@@ -98,7 +98,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 			if(selectItem) select!"true"([selectItem]);
 	}
 
-	private int mouseTravelDistance;
+	private float mouseTravelDistance = 0;
 	private vec2 accumulatedMoveStartDelta, mouseLast;
 
 	void update(bool mouseEnabled, View2D view, T[] items, bool anyTextSelected, void delegate() onResetTextSelection){
@@ -228,7 +228,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
 	ClickDetector cdMainMouseButton;
 
-	int mouseTravelDistance;
+	float mouseTravelDistance = 0;
 
 	private bool mustValidateInternalSelections;
 
@@ -1493,133 +1493,132 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	// Navigation ---------------------------------------------
 
-	@VERB("Ctrl+Up"	          )	void scrollLineUp	        (){	scrollV( DefaultFontHeight); }
-	@VERB("Ctrl+Down"		) void scrollLineDown		(){ scrollV(-DefaultFontHeight); }
-	@VERB("Alt+PgUp"		) void scrollPageUp	        (){ scrollV( frmMain.clientHeight*.9); }
-	@VERB("Alt+PgDn"		) void scrollPageDown		(){ scrollV(-frmMain.clientHeight*.9); }
-	@VERB("Ctrl+="		         )	void zoomIn	        (){ zoom(	.5); }
-	@VERB("Ctrl+-"		         )	void zoomOut	        (){ zoom(-.5); }
-
-	@HOLD("Ctrl+Num8"		         ) void holdScrollUp	       (){ scrollV( scrollSpeed); }
-	@HOLD("Ctrl+Num2"		         ) void holdScrollDown		      (){ scrollV(-scrollSpeed); }
-	@HOLD("Ctrl+Num4"		         ) void holdScrollLeft		      (){ scrollH( scrollSpeed); }
-	@HOLD("Ctrl+Num6"		         ) void holdScrollRight	       (){ scrollH(-scrollSpeed); }
-	@HOLD("Ctrl+Num+"		         ) void holdZoomIn	       (){ zoom( zoomSpeed); }
-	@HOLD("Ctrl+Num-"		         ) void holdZoomOut	       (){ zoom(-zoomSpeed); }
-
-	@HOLD("Alt+Ctrl+Num8"		     ) void holdScrollUp_slow	  (){ scrollV( scrollSpeed/8); }
-	@HOLD("Alt+Ctrl+Num2"		     ) void holdScrollDown_slow		 (){ scrollV(-scrollSpeed/8); }
-	@HOLD("Alt+Ctrl+Num4"		     ) void holdScrollLeft_slow		 (){ scrollH( scrollSpeed/8); }
-	@HOLD("Alt+Ctrl+Num6"		     ) void holdScrollRight_slow	  (){ scrollH(-scrollSpeed/8); }
-	@HOLD("Alt+Ctrl+Num+"		     ) void holdZoomIn_slow	  (){ zoom( zoomSpeed/8); }
-	@HOLD("Alt+Ctrl+Num-"		     ) void holdZoomOut_slow	  (){ zoom(-zoomSpeed/8); }
+	@VERB("Ctrl+Up"	) void scrollLineUp	(){ scrollV( DefaultFontHeight); }
+	@VERB("Ctrl+Down"	) void scrollLineDown	(){ scrollV(-DefaultFontHeight); }
+	@VERB("Alt+PgUp"	) void scrollPageUp	(){ scrollV( frmMain.clientHeight*.9); }
+	@VERB("Alt+PgDn"	) void scrollPageDown	(){ scrollV(-frmMain.clientHeight*.9); }
+	@VERB("Ctrl+="	) void zoomIn	(){ zoom ( .5); }
+	@VERB("Ctrl+-"	) void zoomOut	(){ zoom (-.5); }
+			
+	@HOLD("Ctrl+Num8"	) void holdScrollUp	(){ scrollV( scrollSpeed); }
+	@HOLD("Ctrl+Num2"	) void holdScrollDown	(){ scrollV(-scrollSpeed); }
+	@HOLD("Ctrl+Num4"	) void holdScrollLeft	(){ scrollH( scrollSpeed); }
+	@HOLD("Ctrl+Num6"	) void holdScrollRight	(){ scrollH(-scrollSpeed); }
+	@HOLD("Ctrl+Num+"	) void holdZoomIn	(){ zoom ( zoomSpeed); }
+	@HOLD("Ctrl+Num-"	) void holdZoomOut	(){ zoom (-zoomSpeed); }
+			
+	@HOLD("Alt+Ctrl+Num8"	) void holdScrollUp_slow	(){ scrollV( scrollSpeed/8); }
+	@HOLD("Alt+Ctrl+Num2"	) void holdScrollDown_slow	(){ scrollV(-scrollSpeed/8); }
+	@HOLD("Alt+Ctrl+Num4"	) void holdScrollLeft_slow	(){ scrollH( scrollSpeed/8); }
+	@HOLD("Alt+Ctrl+Num6"	) void holdScrollRight_slow	(){ scrollH(-scrollSpeed/8); }
+	@HOLD("Alt+Ctrl+Num+"	) void holdZoomIn_slow	(){ zoom ( zoomSpeed/8); }
+	@HOLD("Alt+Ctrl+Num-"	) void holdZoomOut_slow	(){ zoom (-zoomSpeed/8); }
 
 	// Navigation when there is	no textSelection ////////////////////////////////////
-	@HOLD("W Num8 Up"	) void holdScrollUp2	       (){	if(textSelectionsGet.empty) scrollV( scrollSpeed); }
-	@HOLD("S Num2 Down"	) void holdScrollDown2		(){ if(textSelectionsGet.empty) scrollV(-scrollSpeed); }
-	@HOLD("A Num4 Left"	) void holdScrollLeft2		(){ if(textSelectionsGet.empty) scrollH( scrollSpeed); }
-	@HOLD("D Num6 Right"	) void holdScrollRight2	       (){ if(textSelectionsGet.empty) scrollH(-scrollSpeed); }
-	@HOLD("E Num+ PgUp"	) void holdZoomIn2	       (){ if(textSelectionsGet.empty) zoom( zoomSpeed); }
-	@HOLD("Q Num- PgDn"	) void holdZoomOut2	       (){ if(textSelectionsGet.empty) zoom(-zoomSpeed); }
+	@HOLD("W Num8 Up"	) void holdScrollUp2	(){ if(textSelectionsGet.empty) scrollV( scrollSpeed); }
+	@HOLD("S Num2 Down"	) void holdScrollDown2	(){ if(textSelectionsGet.empty) scrollV(-scrollSpeed); }
+	@HOLD("A Num4 Left"	) void holdScrollLeft2	(){ if(textSelectionsGet.empty) scrollH( scrollSpeed); }
+	@HOLD("D Num6 Right"	) void holdScrollRight2	(){ if(textSelectionsGet.empty) scrollH(-scrollSpeed); }
+	@HOLD("E Num+ PgUp"	) void holdZoomIn2	(){ if(textSelectionsGet.empty) zoom ( zoomSpeed); }
+	@HOLD("Q Num- PgDn"	) void holdZoomOut2	(){ if(textSelectionsGet.empty) zoom (-zoomSpeed); }
 
 	//todo: this is redundant and ugly
-	//bug: When NumLockState=true && key==Num8: if the modifier is released after	the key, KeyCombo will NEVER detect the release and is stuck!!!
-	@HOLD("Shift+W Shift+Num8 Shift+Up"	   )	void holdScrollUp_slow2	(){ if(textSelectionsGet.empty) scrollV( scrollSpeed/8); }
-	@HOLD("Shift+S Shift+Num2 Shift+Down"		) void holdScrollDown_slow2	(){ if(textSelectionsGet.empty) scrollV(-scrollSpeed/8); }
-	@HOLD("Shift+A Shift+Num4 Shift+Left"		) void holdScrollLeft_slow2	(){ if(textSelectionsGet.empty) scrollH( scrollSpeed/8); }
-	@HOLD("Shift+D Shift+Num6 Shift+Right"	   ) void holdScrollRight_slow2	(){ if(textSelectionsGet.empty) scrollH(-scrollSpeed/8); }
-	@HOLD("Shift+E Shift+Num+ Shift+PgUp"		  ) void holdZoomIn_slow2	(){ if(textSelectionsGet.empty) zoom( zoomSpeed/8); }
-	@HOLD("Shift+Q Shift+Num- Shift+PgDn"		  ) void holdZoomOut_slow2	(){ if(textSelectionsGet.empty) zoom(-zoomSpeed/8); }
-
-	@VERB("Home"	                       ) void zoomAll2()  { if(textSelectionsGet.empty) frmMain.view.zoom(worldInnerBounds(this), 12); }
-	@VERB("Shift+Home"	                       ) void zoomClose2(){ if(textSelectionsGet.empty) frmMain.view.scale = 1; }
+	//bug: When NumLockState=true && key==Num8: if the modifier is released after the key, KeyCombo will NEVER detect the release and is stuck!!!
+	@HOLD("Shift+W Shift+Num8 Shift+Up"	) void holdScrollUp_slow2	(){ if(textSelectionsGet.empty) scrollV( scrollSpeed/8); }
+	@HOLD("Shift+S Shift+Num2 Shift+Down"	) void holdScrollDown_slow2	(){ if(textSelectionsGet.empty) scrollV(-scrollSpeed/8); }
+	@HOLD("Shift+A Shift+Num4 Shift+Left"	) void holdScrollLeft_slow2	(){ if(textSelectionsGet.empty) scrollH( scrollSpeed/8); }
+	@HOLD("Shift+D Shift+Num6 Shift+Right"	) void holdScrollRight_slow2	(){ if(textSelectionsGet.empty) scrollH(-scrollSpeed/8); }
+	@HOLD("Shift+E Shift+Num+ Shift+PgUp"	) void holdZoomIn_slow2	(){ if(textSelectionsGet.empty) zoom ( zoomSpeed/8); }
+	@HOLD("Shift+Q Shift+Num- Shift+PgDn"	) void holdZoomOut_slow2	(){ if(textSelectionsGet.empty) zoom (-zoomSpeed/8); }
+			
+	@VERB("Home"	) void zoomAll2()	{ if(textSelectionsGet.empty) frmMain.view.zoom(worldInnerBounds(this), 12); }
+	@VERB("Shift+Home"	) void zoomClose2()	{ if(textSelectionsGet.empty) frmMain.view.scale = 1; }
 
 	// Cursor and text selection ----------------------------------------
-	@VERB("Left"	                   ) void cursorLeft	 (bool sel=false){ cursorOp(ivec2(-1,	 0)	                ,	sel); }
-	@VERB("Right"	                   ) void cursorRight	 (bool sel=false){ cursorOp(ivec2( 1,	 0)		, sel); }
-	@VERB("Ctrl+Left"	                   ) void cursorWordLeft	 (bool sel=false){ cursorOp(ivec2(TextCursor.wordLeft , 0), sel); }
-	@VERB("Ctrl+Right"	                   ) void cursorWordRight	 (bool sel=false){ cursorOp(ivec2(TextCursor.wordRight, 0), sel); }   //bug: This is bugs inside a nested comment.
-	@VERB("Home"	                   ) void cursorHome	 (bool sel=false){ cursorOp(ivec2(TextCursor.home	    , 0), sel); }
-	@VERB("End"	                   ) void cursorEnd	 (bool sel=false){ cursorOp(ivec2(TextCursor.end	    , 0), sel); }
-	@VERB("Up"	                   )	void cursorUp	 (bool sel=false){ cursorOp(ivec2( 0, -1)		       , sel); }
-	@VERB("Down"		) void cursorDown	 (bool sel=false){ cursorOp(ivec2( 0,  1)	       , sel); }
-	@VERB("PgUp"		) void cursorPageUp	 (bool sel=false){ cursorOp(ivec2( 0, -pageSize)	       ,	sel); }
-	@VERB("PgDn"		) void cursorPageDown	 (bool sel=false){ cursorOp(ivec2( 0,  pageSize)		,	sel); }
-	@VERB("Ctrl+Home"	                   ) void cursorTop	 (bool sel=false){ cursorOp(ivec2(TextCursor.home)			,	sel); }
-	@VERB("Ctrl+End"	                   ) void cursorBottom	 (bool sel=false){ cursorOp(ivec2(TextCursor.end )			, sel); }
-
-	@VERB("Shift+Left"	   ) void cursorLeftSelect	 (){ cursorLeft	 (true); }
-	@VERB("Shift+Right"	   ) void cursorRightSelect	 (){ cursorRight	 (true); }
-	@VERB("Shift+Ctrl+Left"	   ) void cursorWordLeftSelect	 (){ cursorWordLeft	 (true); }
-	@VERB("Shift+Ctrl+Right"	   ) void cursorWordRightSelect	 (){ cursorWordRight	 (true); }
-	@VERB("Shift+Home"	   ) void cursorHomeSelect	 (){ cursorHome	 (true); }
-	@VERB("Shift+End"	   ) void cursorEndSelect	 (){ cursorEnd	 (true); }
-	@VERB("Shift+Up Shift+Ctrl+Up"	   ) void cursorUpSelect	 (){ cursorUp	 (true); }
-	@VERB("Shift+Down Shift+Ctrl+Down"	   ) void cursorDownSelect	 (){ cursorDown	 (true); }
-	@VERB("Shift+PgUp"		  ) void cursorPageUpSelect	 (){ cursorPageUp	 (true); }
-	@VERB("Shift+PgDn"		  ) void cursorPageDownSelect	 (){ cursorPageDown	 (true); }
-	@VERB("Shift+Ctrl+Home"	   ) void cursorTopSelect	 (){ cursorTop	 (true); }
-	@VERB("Shift+Ctrl+End"	   ) void cursorBottomSelect	 (){ cursorBottom	 (true); }
-
-	@VERB("Ctrl+Alt+Up"	                )	void insertCursorAbove	     (){ insertCursor(-1); }
-	@VERB("Ctrl+Alt+Down"		) void insertCursorBelow	     (){ insertCursor( 1); }
-
-	@VERB("Shift+Alt+Left"	              ) void shrinkAstSelection	    (){	 }  //todo: shrink/extend Ast Selection
-	@VERB("Shift+Alt+Right"	              ) void extendAstSelection	    (){	 }
-	@VERB("Shift+Alt+I"	              ) void insertCursorAtEndOfEachLineSelected (){ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
-
-	@VERB("Ctrl+A"	                 ) void selectAllText	    (){ textSelectionsSet = modulesWithTextSelection.map!(m => m.code.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
-	@VERB("Ctrl+Shift+A"	                 ) void selectAllModules	    (){ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
-	@VERB(""	                 ) void deselectAllModules		   (){ modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
-	@VERB("Esc"	                 ) void cancelSelection		   (){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+	@VERB("Left"	) void cursorLeft	(bool sel=false){ cursorOp(ivec2(-1	, 0	), sel); }
+	@VERB("Right"	) void cursorRight	(bool sel=false){ cursorOp(ivec2( 1	, 0	), sel); }
+	@VERB("Ctrl+Left"	) void cursorWordLeft	(bool sel=false){ cursorOp(ivec2(TextCursor.wordLeft	, 0	), sel); }
+	@VERB("Ctrl+Right"	) void cursorWordRight	(bool sel=false){ cursorOp(ivec2(TextCursor.wordRight	, 0	), sel); }  //bug: This is bugs inside a nested comment.
+	@VERB("Home"	) void cursorHome	(bool sel=false){ cursorOp(ivec2(TextCursor.home	, 0	), sel); }
+	@VERB("End"	) void cursorEnd	(bool sel=false){ cursorOp(ivec2(TextCursor.end	,	0	), sel); }
+	@VERB("Up"	) void cursorUp	(bool sel=false){ cursorOp(ivec2( 0	,-1	), sel); }		//todo: Dide2: textSelection. non zero length, Left/Right is good, Up/Down is not good. It should emulate a Left/Right selection collapse first. and go Up/Down after.
+	@VERB("Down"	) void cursorDown	(bool sel=false){ cursorOp(ivec2( 0	, 1	), sel); }
+	@VERB("PgUp"	) void cursorPageUp	(bool sel=false){ cursorOp(ivec2( 0	,-pageSize	), sel); }
+	@VERB("PgDn"	) void cursorPageDown	(bool sel=false){ cursorOp(ivec2( 0	, pageSize	), sel); }
+	@VERB("Ctrl+Home"	) void cursorTop	(bool sel=false){ cursorOp(ivec2(TextCursor.home		), sel); }
+	@VERB("Ctrl+End"	) void cursorBottom	(bool sel=false){ cursorOp(ivec2(TextCursor.end		), sel); }
+			
+	@VERB("Shift+Left"	) void cursorLeftSelect	(){ cursorLeft	(true); }
+	@VERB("Shift+Right"	) void cursorRightSelect	(){ cursorRight	(true); }
+	@VERB("Shift+Ctrl+Left"	) void cursorWordLeftSelect	(){ cursorWordLeft	(true); }
+	@VERB("Shift+Ctrl+Right"	) void cursorWordRightSelect	(){ cursorWordRight	(true); }
+	@VERB("Shift+Home"	) void cursorHomeSelect	(){ cursorHome	(true); }
+	@VERB("Shift+End"	) void cursorEndSelect	(){ cursorEnd	(true); }
+	@VERB("Shift+Up Shift+Ctrl+Up"	) void cursorUpSelect	(){ cursorUp	(true); }
+	@VERB("Shift+Down Shift+Ctrl+Down"	) void cursorDownSelect	(){ cursorDown	(true); }
+	@VERB("Shift+PgUp"	) void cursorPageUpSelect	(){ cursorPageUp	(true); }
+	@VERB("Shift+PgDn"	) void cursorPageDownSelect	(){ cursorPageDown	(true); }
+	@VERB("Shift+Ctrl+Home"	) void cursorTopSelect	(){ cursorTop	(true); }
+	@VERB("Shift+Ctrl+End"	) void cursorBottomSelect	(){ cursorBottom	(true); }
+			
+	@VERB("Ctrl+Alt+Up"	) void insertCursorAbove	(){ insertCursor(-1); }
+	@VERB("Ctrl+Alt+Down"	) void insertCursorBelow	(){ insertCursor( 1); }
+			
+	@VERB("Shift+Alt+Left"	) void shrinkAstSelection	(){ }  //todo: shrink/extend Ast Selection
+	@VERB("Shift+Alt+Right"	) void extendAstSelection	(){ }
+	@VERB("Shift+Alt+I"	) void insertCursorAtEndOfEachLineSelected	(){ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
+			
+	@VERB("Ctrl+A"	) void selectAllText	(){ textSelectionsSet = modulesWithTextSelection.map!(m => m.code.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
+	@VERB("Ctrl+Shift+A"	) void selectAllModules	(){ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
+	@VERB(""	) void deselectAllModules	(){ modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
+	@VERB("Esc"	) void cancelSelection	(){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 
 	// Editing ------------------------------------------------
 
-	@VERB("Ctrl+C Ctrl+Ins"     ) void copy             (){ copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows); }
-	//bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line.	Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
-	@VERB("Ctrl+X Shift+Del"		) void cut	 (){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;	copy_impl(s1);	 cut_impl2(s1, s2);	 textSelectionsSet = s2; }
-	@VERB("Backspace"	   ) void	deleteToLeft	 (){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft , s2;	 cut_impl2(s1, s2);	 textSelectionsSet = s2; } //todo: delete all leading tabs when the cursor is right after them
-	@VERB("Del"	   ) void deleteFromRight	 (){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2;	 cut_impl2(s1, s2);	 textSelectionsSet = s2; } //bug: ha readonly, akkor NE tunjon el a kurzor! Sot, ha van non-readonly selecton is, akkor azt meg el is bassza.
-	@VERB("Ctrl+V Shift+Ins"	   ) void paste	 (){ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard, ""); }
-	@VERB("Tab"	   ) void insertTab	 (){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); }
-	//todo: tab and shift+tab when multiple lines are selected
-	@VERB("Enter"               ) void insertNewLine    (){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs); }
+	@VERB("Ctrl+C Ctrl+Ins"	) void copy	(){ copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows); } //bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen.
+	@VERB("Ctrl+X Shift+Del"	) void cut	(){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToFullRows	, s2; copy_impl(s1);	 cut_impl2(s1, s2);	 textSelectionsSet = s2; }
+	@VERB("Backspace"	) void deleteToLeft	(){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft	, s2; cut_impl2(s1, s2);		 textSelectionsSet = s2; } //todo: delete all leading tabs when the cursor is right after them
+	@VERB("Del"	) void deleteFromRight	(){ TextSelection[]	s1 = textSelectionsGet.zeroLengthSelectionsToOneRight	, s2; cut_impl2(s1, s2);		 textSelectionsSet = s2; } //bug: ha readonly, akkor NE tunjon el a kurzor! Sot, ha van non-readonly selecton is, akkor azt meg el is bassza.
+			
+	@VERB("Ctrl+V Shift+Ins"	) void paste	(){ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard	, ""	); }
+	@VERB("Tab"	) void insertTab	(){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\t"	); } //todo: tab and shift+tab when multiple lines are selected
+	@VERB("Enter"	) void insertNewLine	(){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\n", Yes.duplicateTabs	); }
 
 
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 //todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 
-	@VERB("Ctrl+Z"		            ) void undo		           (){ if(expectOneSelectedModule) undoRedo_impl!"undo"; }
-	@VERB("Ctrl+Y"		            ) void redo		           (){ if(expectOneSelectedModule) undoRedo_impl!"redo"; }
+	@VERB("Ctrl+Z"	) void undo	(){ if(expectOneSelectedModule) undoRedo_impl!"undo"	; }
+	@VERB("Ctrl+Y"	) void redo	(){ if(expectOneSelectedModule) undoRedo_impl!"redo"	; }
 
 	// Module and File operations ------------------------------------------------
 
-	@VERB("Ctrl+O"	                 ) void openModule	() { fileDialog.openMulti.each!(f => queueModule         (f)); }
-	@VERB("Ctrl+Shift+O"		) void openModuleRecursive	() { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-	@VERB("Alt+O"		                ) void	revertSelectedModules	() { preserveTextSelections({  selectedModules.each!(m => m.reload);  }); }
-	@VERB("Alt+S"		                ) void	saveSelectedModules	() { selectedModules.each!"a.save"; }
-	@VERB("Ctrl+S"	                 ) void saveSelectedModulesIfChanged	() { selectedModules.filter!"a.changed".each!"a.save"; }
-	@VERB("Ctrl+Shift+S"	                 ) void saveAllModulesIfChanged	() { modules.filter!"a.changed".each!"a.save"; }
-	@VERB("Ctrl+W"	                 ) void closeSelectedModules	() { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
-	@VERB("Ctrl+Shift+W"	                 ) void closeAllModules	() { closeAllModules_impl; }
-
-	@VERB("Ctrl+F"	                 ) void searchBoxActivate	         () { searchBoxActivate_request = true; }
-	@VERB("Ctrl+Shift+L"	                 ) void selectSearchResults	         () { selectSearchResults(markerLayers[BuildMessageType.find].searchResults); }
-	@VERB("F3"	                 ) void gotoNextFind	         () { NOTIMPL; }
-	@VERB("Shift+F3"	                 ) void gotoPrevFind	         () { NOTIMPL; }
-
-	@VERB("Ctrl+G"                        ) void gotoLine                     () { if(auto m = expectOneSelectedModule){ searchBoxActivate_request = true; searchText = ":"; } }
-
-	@VERB("F8"	                     ) void gotoNextError	               () { NOTIMPL; }
-	@VERB("Shift+F8"	                     ) void gotoPrevError	               () { NOTIMPL; }
-
-	@VERB("F9"	                     ) void run	                     (){ with(frmMain) if(ready && !running){ saveChangedProjectModules; run;	} }
-	@VERB("Shift+F9"	                     ) void rebuild		(){ with(frmMain) if(ready && !running){ saveChangedProjectModules; rebuild;	} }
-	@VERB("Ctrl+F2"	                     ) void kill	                     (){	with(frmMain) if(building || running) cancelBuildAndResetApp; }
+	@VERB("Ctrl+O"	) void openModule	() { fileDialog.openMulti.each!(f => queueModule(f)); }
+	@VERB("Ctrl+Shift+O"	) void openModuleRecursive	() { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
+	@VERB("Alt+O"	) void revertSelectedModules	() { preserveTextSelections({  selectedModules.each!(m => m.reload);  }); }
+	@VERB("Alt+S"	) void saveSelectedModules	() { selectedModules.each!"a.save"; }
+	@VERB("Ctrl+S"	) void saveSelectedModulesIfChanged	() { selectedModules.filter!"a.changed".each!"a.save"; }
+	@VERB("Ctrl+Shift+S"	) void saveAllModulesIfChanged	() { modules.filter!"a.changed".each!"a.save"; }
+	@VERB("Ctrl+W"	) void closeSelectedModules	() { closeSelectedModules_impl; } //todo: this hsould work for selections and modules based on textSelections.empty
+	@VERB("Ctrl+Shift+W"	) void closeAllModules	() { closeAllModules_impl; }
+			
+	@VERB("Ctrl+F"	) void searchBoxActivate	() { searchBoxActivate_request = true; }
+	@VERB("Ctrl+Shift+L"	) void selectSearchResults	() { selectSearchResults(markerLayers[BuildMessageType.find].searchResults); }
+	@VERB("F3"	) void gotoNextFind	() { NOTIMPL; }
+	@VERB("Shift+F3"	) void gotoPrevFind	() { NOTIMPL; }
+			
+	@VERB("Ctrl+G"	) void gotoLine	() { if(auto m = expectOneSelectedModule){ searchBoxActivate_request = true; searchText = ":"; } }
+			
+	@VERB("F8"	) void gotoNextError	() { NOTIMPL; }
+	@VERB("Shift+F8"	) void gotoPrevError	() { NOTIMPL; }
+		
+	@VERB("F9"	) void run	(){ with(frmMain) if(ready && !running	){ saveChangedProjectModules; run; 	} }
+	@VERB("Shift+F9"	) void rebuild	(){ with(frmMain) if(ready && !running	){ saveChangedProjectModules; rebuild; 	} }
+	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} }
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"		                         ) void stepOver		           () { NOTIMPL; }
-//	 @VERB("F11"		                         ) void stepInto		           () { NOTIMPL; }
+//	 @VERB("F10"							                    ) void stepOver							      () { NOTIMPL; }
+//	 @VERB("F11"							                    ) void stepInto							      () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1660,11 +1659,11 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	struct MouseMappings{
 		string main	      = "LMB",
 					 scroll		= "MMB",   //todo: soft scroll/zoom, fast scroll
-					 menu		     =	"RMB",
-					 zoom		     =	"MW",
+					 menu						 =	"RMB",
+					 zoom						 =	"MW",
 					 selectAdd	      = "Alt",
-					 selectExtend		     = "Shift",
-					 selectColumn		     = "Shift+Alt",
+					 selectExtend						 = "Shift",
+					 selectColumn						 = "Shift+Alt",
 					 selectColumnAdd	      = "Ctrl+Shift+Alt";
 	}
 
@@ -2162,38 +2161,40 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 				hScrollState = ScrollState.auto_;
 			}
 
-			if(auto mod = errorList) if(auto col = mod.code){
-
-				//total size placeholder
-				Container({ outerPos = col.outerSize; outerSize = vec2(0); });
-
-				flags.saveVisibleBounds = true;
-				if(auto visibleBounds = imstVisibleBounds(actId)){
-					CodeRow[] visibleRows = col.rows.filter!(r => r.outerBounds.overlaps(visibleBounds) && r.subCells.length).array; //opt: binary search
-					actContainer.append(cast(Cell[])visibleRows); //note: append is important because it already has the spaceHolder Container.
-
-					/+print("-------------------------------");
-
-					//print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
-
-					void visitLocations(.Container act){
-						if(!act) return;
-
-						if(auto row = cast(.Row)act){
-							enum prefix = "CodeLocation:";
-							if(row.id.isWild(prefix~"*")){
-								print("LOC:", wild[0]);
+			if(auto mod = errorList){ 
+				if(auto col = mod.code){
+	
+					//total size placeholder
+					Container({ outerPos = col.outerSize; outerSize = vec2(0); });
+	
+					flags.saveVisibleBounds = true;
+					if(auto visibleBounds = imstVisibleBounds(actId)){
+						CodeRow[] visibleRows = col.rows.filter!(r => r.outerBounds.overlaps(visibleBounds) && r.subCells.length).array; //opt: binary search
+						actContainer.append(cast(Cell[])visibleRows); //note: append is important because it already has the spaceHolder Container.
+	
+						/+print("-------------------------------");
+	
+						//print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
+	
+						void visitLocations(.Container act){
+							if(!act) return;
+	
+							if(auto row = cast(.Row)act){
+								enum prefix = "CodeLocation:";
+								if(row.id.isWild(prefix~"*")){
+									print("LOC:", wild[0]);
+								}
 							}
+							foreach(sc; act.subContainers)
+								visitLocations(sc); //recursive
 						}
-						foreach(sc; act.subContainers)
-							visitLocations(sc); //recursive
+						visitLocations(actContainer);
+						print("-------------------------------");+/
+	
 					}
-					visitLocations(actContainer);
-					print("-------------------------------");+/
-
-				}
-
-			}else WARN("Invalid errorList");
+	
+				}else WARN("Invalid errorList");
+			}
 		});
 
 	}}
@@ -2655,6 +2656,9 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 	File workspaceFile;
 	bool initialized; //workspace has been loaded.
+	
+	string baseCaption;
+	bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
 
 	@VERB("Alt+F4")       void closeApp            (){ PostMessage(hwnd, WM_CLOSE, 0, 0); }
 
@@ -2724,6 +2728,9 @@ class FrmMain : GLWindow { mixin autoCreate;
 	}
 
 	override void onCreate(){ //onCreate //////////////////////////////////
+		baseCaption = appFile.nameWithoutExt.uc;
+		isSpecialVersion = baseCaption != "DIDE2";
+		
 		initBuildSystem;
 		workspace = new Workspace;
 		workspaceFile = appFile.otherExt(Workspace.defaultExt);
@@ -2753,7 +2760,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 		updateBuildSystem;
 
-		if(application.tick>2 && initialized.chkSet){
+		if(application.tick>5 && initialized.chkSet){
 			test_CodeColumn;
 			if(workspaceFile.exists){
 				workspace.loadWorkspace(workspaceFile);
@@ -2761,7 +2768,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 		}
 
 		invalidate; //todo: low power usage
-		caption = "DIDE2";
+		caption = format!"%s - [%s]%s %s"(baseCaption, workspace.mainModuleFile.fullName, workspace.modules.any!"a.changed" ? "CHG" : "", dbgsrv.pingLedStateText);
+		
 		//view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down && !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
 		view.updateSmartScroll;
 		setLod(view.scale_anim);

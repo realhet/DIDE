@@ -5,6 +5,8 @@
 !.gitignore
 !README.md
 !*.d
+!*.dide2*.png
+!*.dide2*.ico
 !Dlang grammar official.txt
 !DLang grammar extra data.txt
 
