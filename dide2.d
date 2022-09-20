@@ -31,7 +31,9 @@
 //todo: unstructured view: immediate syntax highlight for smalles modules.
 
 //todo: save/restore buildsystem cache on start/exit
-@("REGION=BLABLA"){
+//todo: nem letezo modul import forditasakor CRASH
+
+@(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
 }
 import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
@@ -1390,10 +1392,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 					const insertedCnt = lastRow.insertText(0, lines.back);
 
 					//insert modified rows into column
-					ts.codeColumn.subCells = ts.codeColumn.subCells[0..ts.caret.pos.y+1]
-																 ~ midRows
-																 ~ lastRow
-																 ~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
+					ts.codeColumn.subCells	= ts.codeColumn.subCells[0..ts.caret.pos.y+1]
+						~ midRows
+						~ lastRow
+						~ ts.codeColumn.subCells[ts.caret.pos.y+1..$];
 
 					//adjust caret and save as reference
 					ts.cursors[0].pos.y += lines.length.to!int-1;
@@ -1533,6 +1535,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			
 	@VERB("Home"	) void zoomAll2()	{ if(textSelectionsGet.empty) frmMain.view.zoom(worldInnerBounds(this), 12); }
 	@VERB("Shift+Home"	) void zoomClose2()	{ if(textSelectionsGet.empty) frmMain.view.scale = 1; }
+	
 
 	// Cursor and text selection ----------------------------------------
 	@VERB("Left"	) void cursorLeft	(bool sel=false){ cursorOp(ivec2(-1	, 0	), sel); }
@@ -1582,7 +1585,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			
 	@VERB("Ctrl+V Shift+Ins"	) void paste	(){ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard	, ""	); }
 	@VERB("Tab"	) void insertTab	(){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\t"	); } //todo: tab and shift+tab when multiple lines are selected
-	@VERB("Enter"	) void insertNewLine	(){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\n", Yes.duplicateTabs	); }
+	@VERB("Enter"	) void insertNewLine	(){ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\n", Yes.duplicateTabs	); } //todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 
 
 //todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
@@ -1595,7 +1598,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	@VERB("Ctrl+O"	) void openModule	() { fileDialog.openMulti.each!(f => queueModule(f)); }
 	@VERB("Ctrl+Shift+O"	) void openModuleRecursive	() { fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }
-	@VERB("Alt+O"	) void revertSelectedModules	() { preserveTextSelections({  selectedModules.each!(m => m.reload);  }); }
+	@VERB("Alt+O"	) void revertSelectedModules	() { preserveTextSelections({  foreach(m; selectedModules){ m.reload; m.fileLoaded = now; } }); }
 	@VERB("Alt+S"	) void saveSelectedModules	() { selectedModules.each!"a.save"; }
 	@VERB("Ctrl+S"	) void saveSelectedModulesIfChanged	() { selectedModules.filter!"a.changed".each!"a.save"; }
 	@VERB("Ctrl+Shift+S"	) void saveAllModulesIfChanged	() { modules.filter!"a.changed".each!"a.save"; }
@@ -1617,8 +1620,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} }
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"							                    ) void stepOver							      () { NOTIMPL; }
-//	 @VERB("F11"							                    ) void stepInto							      () { NOTIMPL; }
+//	 @VERB("F10"														             ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"														             ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1800,6 +1803,31 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		}
 	}
 
+	void handleXBox(){
+		static DateTime t0;
+		const df = (now - t0).value((1.0f/60)*second).clamp(0, 10); //1 = 60FPS
+		t0 = now;
+		
+		if(!frmMain.isForeground) return;
+		
+		const ss = df*32, zs = df*.18f;
+		if(auto a = inputs.xiRX.value)	scrollH	(-a*ss);
+		if(auto a = inputs.xiRY.value)	scrollV	( a*ss);
+		if(auto a = inputs.xiLY.value){
+			{//move mosuse to subScreen center
+				const p = frmMain.view.subScreenClientCenter;
+				mouseLock(mix(winMousePos, frmMain.clientToScreen(p), .125f));
+				mouseUnlock;
+			}
+			
+			{//zoom around mouse
+				//const p = frmMain.view.subScreenClientCenter;
+				const p = frmMain.screenToClient(winMousePos);
+				frmMain.view.zoomAround(vec2(p), a*zs); //todo: ivec2 is not implicitly converted to vec2
+			}
+		}
+	}
+
 	const mouseMappings = MouseMappings.init;
 
 	void update(View2D view, in BuildResult buildResult){ //update ////////////////////////////////////
@@ -1807,8 +1835,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 		//note:	all verbs can optonally validate textSelections by accessing them from validTextSelections
 		//	all verbs can call invalidateTextSelections if it does something that affects them
+		handleXBox;
 		handleKeyboard;
-		updateCodeLocationJump;  if(KeyCombo("MMB").pressed && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);
+		updateCodeLocationJump;  if(KeyCombo("MMB").released/+pressed is not good because when I pan I don't see where the mouse is.+/ && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);
 		updateOpenQueue(1);
 		updateResyntaxQueue;
 
@@ -2418,7 +2447,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			dr.color = m.buildState.color;
 			dr.lineWidth = -4;
 			//if(m.buildState==compiling) dr.drawRect(m.outerBounds);
-			dr.alpha = m.buildState==compiling ? mix(.25f, .75f, blink) : .25f;
+			dr.alpha = m.buildState==compiling ? mix(.15f, .55f, blink) : .15f;
 			dr.fillRect(m.outerBounds);
 		}
 		dr.alpha = 1;
@@ -2591,7 +2620,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	override void onDraw(Drawing dr){ //onDraw //////////////////////////////
 		if(textSelectionsGet.empty){ //select means module selection
 			foreach(m; modules) if(m.flags.selected) drawHighlight(dr, m, clAccent, .25);
-			drawHighlight(dr, hoveredModule, clWhite, .125);
+			if(!lod.codeLevel) drawHighlight(dr, hoveredModule, clWhite, .125);
 		}else{ //select means text editing
 			foreach(m; modules) if(!m.flags.selected) drawHighlight(dr, m, clGray, .25);
 		}

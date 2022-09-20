@@ -77,8 +77,8 @@ struct LodStruct {
 	float zoomFactor=1, pixelSize=1;
 	int level;
 
-	bool codeLevel	   = true; //level 0
-	bool moduleLevel	   = false; //level 1/*code text visible*/, 2/*code text invisible*/
+	bool codeLevel	   =	true; //level 0
+	bool moduleLevel		= false; //level 1/*code text visible*/, 2/*code text invisible*/
 }
 
 __gshared const LodStruct lod;
@@ -1135,7 +1135,7 @@ class CodeRow: Row{
 
 			auto normalizeLeadingSpaces(Cell[] sc){
 				(cast(Glyph[])sc) .until!(a => !(isSpace(a) && a.outerWidth!=NormalSpaceWidth))
-													.each!(a => a.outerWidth = NormalSpaceWidth);
+					.each!(a => a.outerWidth = NormalSpaceWidth);
 				return sc;
 			}
 
@@ -1256,16 +1256,16 @@ class CodeRow: Row{
 
 
 enum TextFormat{
-	plainText,	    // unstructured text
-	plainD,	    // unstructured D source
-	declarations,	    // { D declarations	         ; }	       // before ':' there can be attributes or staticif: version: debug:
-	statements,	    // { D statements	         ; }	       // before ':' there can be labels or case: default: conditions
-	structInitializer,	    // { field initializers	         , }	       // before ':' there can be field identifiers
-	stringLiteral,	    // ''w  ""w  ``w  r""w  q""w  q{}
-	comment,	    // //\n  /**/  /+/++/+/
-	list,	    // ( , )
-	forList,	    // ( , ; )
-	index	    // [ , ]
+	plainText,		// unstructured text
+	plainD,	    //	unstructured D source
+	declarations,	    // {	D declarations	         ; }	       // before ':' there can be attributes or staticif: version: debug:
+	statements,	    // { D	statements	         ; }	       // before	':' there can be labels or case: default: conditions
+	structInitializer,		// { field initializers	         , }		// before ':' there can be field identifiers
+	stringLiteral,	    //	''w  ""w  ``w  r""w  q""w  q{}
+	comment,		// //\n	/**/  /+/++/+/
+	list,	    //	( , )
+	forList,		// ( , ; )
+	index	    //	[ , ]
 }
 
 // ErrorList ////////////////////////////////////////////
@@ -1299,6 +1299,7 @@ auto createErrorListCodeColumn(Container parent){
 //auto createErrorListModule(Container parent){
 //  auto Module = new Module()
 //}
+
 
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
@@ -1360,14 +1361,23 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 	void resyntax(SourceCode src){
 		//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
+		
+		//todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
+		//todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
+		
 		assert(subCells.length>0);
-
+		
 		static TextStyle style; //it is needed by appendCode/applySyntax
-
+		
 		src.foreachLine( (int idx, string line, ubyte[] syntax){
 			if(idx<subCells.length){
 				auto row = rows[idx];
-				if(!row.updateSyntax(line, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/)){
+				bool wasWidthChange;
+				if(row.updateSyntax(line, syntax, (ubyte s){ applySyntax(style, s); }, style, wasWidthChange/+, must paste tabs!!! DefaultIndentSize+/)){
+					if(wasWidthChange){
+						row.needMeasure;
+					}
+				}else{
 					return false;
 				}
 			}else{
@@ -1375,7 +1385,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			}
 			return true;
 		});
-
+	
 	}
 
 	override inout(Container) getParent() inout { return parent; }
@@ -1388,8 +1398,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 	auto getRow(int rowIdx){ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
 
-	int rowCharCount(int rowIdx) const{  //todo: it's ugly because of the constness. Make it nicer.
-		if(rowIdx.inRange(subCells)) return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
+	int rowCharCount(int rowIdx) const{	//todo: it's ugly because of the constness. Make it nicer.
+		if(rowIdx.inRange(subCells)) return	cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
 		return 0;
 	}
 
@@ -1555,7 +1565,11 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 					if(len==1 && st>0 && chars[st-1].among('[', '('))	canGoDown = true; //todo: the tabs below this one should inherit the indent of this first line
 					else	canGoUp = canGoDown = canGoDown = len>=2;
-
+					
+					/+const leftChar = st>0 ? chars[st-1] : '\0';
+					const rightChar = en+1<len ? chars[en+1] : '\0';
+					if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;+/
+					
 					flood(en-1, cast(int)y, canGoUp, canGoDown, leadingSpaces.walkLength);
 				}
 
@@ -1878,8 +1892,8 @@ struct UndoManager{
 
 	bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
 
-	void justLoaded	(File file, string contents) { addEvent(0, EventType.loaded	  , file.fullName, contents, false); }  //todo: fileName, fileContents for history
-	void justSaved	(File file, string contents) { addEvent(0, EventType.saved	  , file.fullName, ""      , false); }
+	void justLoaded	(File file, string contents) { addEvent(0, EventType.loaded		, file.fullName, contents, false); }  //todo: fileName, fileContents for history
+	void justSaved	(File file, string contents) { addEvent(0, EventType.saved	  ,	file.fullName, ""      , false); }
 	void justInserted	(uint undoGroupId, string where, string what)	 { addEvent(undoGroupId, EventType.modified , where, what, true ); }
 	void justRemoved	(uint undoGroupId, string where, string what)	 { addEvent(undoGroupId, EventType.modified , where, what, false); }
 
