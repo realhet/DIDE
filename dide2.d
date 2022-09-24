@@ -799,7 +799,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		auto outFile = File(`virtual:\compile.err`);
 		auto output = br.dump;
 		outFile.write(output);
-
+		//LOG(output);
+		
 		T0;
 		//opt: in debug mode this is terribly slow.
 		errorList = new ErrorListModule(null, File.init);
@@ -815,6 +816,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			Container.SearchResult[] res;
 
 			foreach(msgIdx, const msg; br.messages) if(msg.type==type){
+				
 				if(auto mod = findModule(msg.location.file.withoutDMixin)){    //opt: bottleneck! linear search
 					if((msg.location.line-1).inRange(mod.code.subCells)){
 						Container.SearchResult sr;
@@ -1617,11 +1619,11 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		
 	@VERB("F9"	) void run	(){ with(frmMain) if(ready && !running	){ saveChangedProjectModules; run; 	} }
 	@VERB("Shift+F9"	) void rebuild	(){ with(frmMain) if(ready && !running	){ saveChangedProjectModules; rebuild; 	} }
-	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} }
+	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"														             ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"														             ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																		         ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																		         ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1837,7 +1839,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		//	all verbs can call invalidateTextSelections if it does something that affects them
 		handleXBox;
 		handleKeyboard;
-		updateCodeLocationJump;  if(KeyCombo("MMB").released/+pressed is not good because when I pan I don't see where the mouse is.+/ && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);
+		updateCodeLocationJump;  if(KeyCombo("MMB").released/+pressed is not good because when I pan I don't see where the mouse is.+/ && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);  //todo: only do this when there was no lmouseTravelSinceLastPress
 		updateOpenQueue(1);
 		updateResyntaxQueue;
 
