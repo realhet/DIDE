@@ -171,7 +171,7 @@ struct StructureScanner{
 						//pragma(msg, caseState, "\n", transitions.map!(a => a.format!"  %s").join("\n"));
 						if(log){
 							print("------------------------------------");
-							print("SRC:", EgaColor!().yellow(src.quoted));
+							print("SRC:", EgaColor.yellow(src.quoted));
 							print("State:", state, "Stack:", stack.retro);
 							print("Looking for:", transitions.map!"a.token");
 						}
@@ -262,11 +262,11 @@ void main(){ console({ //main() ////////////////////////////////////////////////
 	readln;
 	
 	sc.each!((a){
-		write(a.op.predSwitch(	"content"	, EgaColor!().ltWhite	(a.src),
-			"push"	, EgaColor!().ltBlue	(a.src),
-			"pop"	, EgaColor!().ltGreen	(a.src),
-			"trans"	, EgaColor!().ltCyan	(a.src)
-				, EgaColor!().gray	(a.src)));
+		write(a.op.predSwitch(	"content"	, EgaColor.ltWhite	(a.src),
+			"push"	, EgaColor.ltBlue	(a.src),
+			"pop"	, EgaColor.ltGreen	(a.src),
+			"trans"	, EgaColor.ltCyan	(a.src)
+				, EgaColor.gray	(a.src)));
 	});
 
 	

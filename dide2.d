@@ -1622,8 +1622,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"																		         ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"																		         ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																			        ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																			        ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -2931,7 +2931,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 				if(mouseOp == MouseOp.move) return SIZEALL;
 				if(mouseOp == MouseOp.rectSelect) return CROSS;
 			}
-			if(workspace.textSelectionsGet.any) return IBEAM;
+			if(workspace.textSelectionsGet.any) return IBEAM; //bug: ez az IBeam a form jobb oldalan eltunik pont annyi pixelnyire az ablak jobb szeletol, mint ahany pixelre az ablak bal szele van a desktop bal szeletol merve.
 			return ARROW;
 		}}
 
