@@ -6,181 +6,269 @@ import het.utils;
 
 // IndexOfToken ///////////////////////////////////////
 
-ubyte[] extractTokenChars(string[] tokens){
+ubyte[] extractTokenFirstUbytes(string[] tokens){
 	return tokens	.map!(t => cast(ubyte)t[0])
 		.array.sort.uniq.array;
 }
 
-/// It supports a static array of strings as parameters
-size_t startsWithToken(string[] tokens)(string s){
+enum ToUbyteArray(string s) = mixin('[' ~ s.byChar.map!(b => format!"ubyte(%d)"(cast(ubyte)b)).join(',') ~ ']');
+enum ToUbyteArrayOfArray(string[] s) = mixin('[' ~ s.map!(a =>	'[' ~ a	.byChar.map!(b => format!"ubyte(%d)"(cast(ubyte)b)).join(',')~ ']').join(',') ~ ']');
+
+///This version stops at the first needle, not returning the shortest needle (phobos version).
+///The result is 0 based.  -1 means not found.
+sizediff_t startsWithToken(string[] tokens)(string s){
 	const ba = cast(ubyte[])s;
-	enum gen = 	"ba.startsWith( "
-		~ tokens	.map!(a =>	'[' 
-				~ a	.byChar.map!(b => format!"ubyte(%d)"(cast(ubyte)b))
-					.join(',') 
-				~ ']')
-			.join(',') 
-		~ " )";
-	pragma(msg, __FUNCTION__, "\n", gen);
-	return mixin(gen);
+	static foreach(idx, token; ToUbyteArrayOfArray!tokens){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
+		if(ba.startsWith(token)) return idx;
+	}}
+	return -1;
 }
 
 /// Find the first location index and the token index in the string. 
 /// Returns s.length if can't find anything.
 /// If the token is marked with tmPreserve, then it will not skip it. (slashComment for example)
-struct IndexOfToken{
+struct IndexOfTokenResult{
 	//opt: int instead of size_t
-	size_t		tokenIdx, //1based
-		tokenStartIdx, tokenLen; 
-	@property auto tokenEndIdx() const{ return tokenStartIdx+tokenLen; }
+	sizediff_t	tokenIdx=-1; //0based
+	size_t	tokenLen, tokenStartIdx; 
 	
-	void skip(ref string src) const{ src = src[tokenEndIdx..$]; }
-	
-	string fetchSS(ref string src) const{ auto tmp = src[0..tokenStartIdx	]; src = src[tokenStartIdx	..$]; return tmp; }
-	string fetchSE(ref string src) const{ auto tmp = src[0..tokenStartIdx	]; src = src[tokenEndIdx	..$]; return tmp; }
-	string fetchEE(ref string src) const{ auto tmp = src[0..tokenEndIdx	]; src = src[tokenEndIdx	..$]; return tmp; }
-} //opt:int
+	bool valid() const{ return tokenIdx>=0; }
+	auto opCast(b : bool)() const{ return valid; }
+	auto tokenEndIdx() const{ return tokenStartIdx+tokenLen; }
+} //opt: int-tel kiprobalni size_t helyett.
 
-auto indexOfToken(string[] tokens)(string s){
-	enum len  = 0 ~ tokens.map!(t => t.length).array;
-	//opt:array of struct instead of struct of arrays
+auto indexOfToken(string[] tokens)(string s, size_t startIdx){
+	assert(startIdx<=s.length);
 	
-	foreach(i; 0..s.length)
-		if(auto t = s[i..$].startsWithToken!tokens) 
-			return IndexOfToken(t, i, len[t]);
+	static if(!tokens.equal([""])){ //special case: [""] means: take everything, seek to the end.
+		
+		//use findAmong with the list of first ubytes
+		static immutable firstUBytes = tokens.extractTokenFirstUbytes;
+		startIdx = s.length - (cast(ubyte[])s)[startIdx..$].findAmong(firstUBytes).length;
+		
+		foreach(i; startIdx..s.length){ //opt: slow linear search
+			const tIdx = s[i..$].startsWithToken!tokens;
+			if(tIdx>=0)
+				return IndexOfTokenResult(tIdx, tokens[tIdx].length, i);
+		}
+	}
 			
-	return IndexOfToken(0, s.length, 0);
+	//emulate physical eof with a \0.  If can't find -> -1.
+	enum NullTokenIdx = tokens.countUntil("\0");
+			
+	return IndexOfTokenResult(NullTokenIdx, 0, s.length); //the very end of the string, and 0 idx
 }
 
-// Lexer //////////////////////////////////////////////////
+// StructureScanner //////////////////////////////////////////////////
 struct StructureScanner{
-	static{//----------------------------------------------------------------------------
-		
-		immutable 	EOFTokens	= "\0 \x1A __EOF__"	,
-			EOFTokens_str 	= "\0 \x1A"	, //note: __ EOF __  is NOT detected in strings. Only in structuredText and comments.
-			NewLineTokens	= "\r \n \u2028 \u2029"	;
+	static private{//-----------------------------------------------------------------------------------------------------
 		
 		struct Transition{
-			string[] tokens;
-			State dst;
+			string token;
+			State dstState;
 			int op; //1 = push
-			@property bool isPop() const{ return dst == State.pop; }
+			@property bool isPop() const{ return dstState == State.pop; }
+			@property bool isIgnore() const{ return dstState == State.ignore; }
 			@property bool isPush() const{ return op==1; }
 		}
 		
-		struct TR{ string token; State dst; int op; }
-		TR[] expand(in Transition transition){ return transition.tokens.map!(t => TR(t, transition.dst, transition.op)).array; }
-		TR[] expand(in Transition[] transitions){ return transitions.map!(t => expand(t)).join; }
+		static auto collectStateTransitions(State st)(){
+			static auto doit(A...)(A args){
+				Transition[] res;
+				foreach(a; args) static if(is(typeof(a)==Transition[])) res ~= a;
+				return res;
+			}
+			return doit(mixin(st.stringof.format!"__traits(getAttributes, %s)")); //todo: why is this mixin needed here???
+		}
 		
-		string extendCWD(string s){	return s.split(' ').map!(a => "*c *w *d *".replace("*", a)).join(" "); }
+		string extendCWD(string s){ 
+			//return s.split(" ").map!(a => a~"c "~a~"w "~a~"d "~a).join(" ");
+			//todo: ^^^^^^^^^^^ this fails in CTFE. It makes const char[][] instead of string[]
+			
+			string res;
+			foreach(a; s.split) 
+				res ~= (res.length ? " " : "") ~ a~"c "~a~"w "~a~"d "~a;
+			return res;
+		}
+	
+		auto Trans(string s, State dst, int op=0){ 
+			return s=="" 	?	[Transition("", dst, op)]  //s=="" means take ALL chars from src
+				:	s.split(' ').map!(t => Transition(t, dst, op)).array;
+		}
 		
-		enum Trans	(string s, alias dst, int op = 0	) = Transition(s.split(' '), dst, op);
-		enum Push	(string s, alias dst	) = Trans!(s, dst, 1);
-		enum Pop	(string s	) = Trans!(s, State.pop);
-		enum Pop_str	(string s	) = Pop!(extendCWD(s));
-		enum Ignore	(string s	) = Trans!(s, State.ignore);
-		enum EOF	(	) = Trans!(EOFTokens, State.eof); //normal eof handler
-		enum EOF_str	(	) = Trans!(EOFTokens_str, State.eof); //Don't check for __ EOF __ in strings
+		auto Push	(string s, State dst	){ return Trans(s, dst, 1); }
+		auto Pop	(string s	){ return Trans(s, State.pop); }
+		auto Ignore	(string s	){ return Trans(s, State.ignore); }
+		auto PopCWD	(string s	){ return Pop(extendCWD(s)); }
+		
+		enum 	EOFTokens	= "\0 \x1A __EOF__"	,
+			EOFTokens_str 	= "\0 \x1A"	, //note: __ EOF __  is NOT detected in strings. Only in structuredText and comments.
+			NewLineTokens	= "\r \n \u2028 \u2029"	;
+		
+		enum EOF	= Trans(EOFTokens	, State.unstructured);
+		enum EOF_str	= Trans(EOFTokens_str	, State.unstructured);
 		
 		enum State : ubyte {
-			//terminal states
-			eof, unexpectedEof,
+			//special system tokens 
+			eof, pop, ignore,
 			
-			//special states
-			pop, ignore,
-			 
-			@Push!("", eof) //"" means it takes all the text
-			unstructured,
+			//terminal tokens
+			@Trans("", eof) unstructured, 
 			
-			@Push!("{ ( [ q{"	, structured	) @Pop!"] ) }"
-			@Push!("//"	, slashComment	) @Push!("/*"	, cComment	) @Push!("/+"	, dComment	)
-			@Push!("'"	, cChar	) @Push!(`"`	, cString	) @Push!("`"	, dString	) @Push!(`r"`	, rString	)
-			@Push!(`q"/`	, qStringSlash	) @Push!(`q"{`	, qStringCurly	) @Push!(`q"(`	, qStringRound	) 
-			@Push!(`q"[`	, qStringSquare	) @Push!(`q"<`	, qStringAngle	) @Push!(`q"`	, qStringBegin	)
-			@EOF!()
+			@Push("{ ( [ q{"	, structured	) @Pop("] ) }")
+			@Push("//"	, slashComment	) @Push("/*"	, cComment	) @Push("/+"	, dComment	)
+			@Push("'"	, cChar	) @Push(`"`	, cString	) @Push("`"	, dString	) @Push(`r"`	, rString	)
+			@Push(`q"/`	, qStringSlash	) @Push(`q"{`	, qStringCurly	) @Push(`q"(`	, qStringRound	) 
+			@Push(`q"[`	, qStringSquare	) @Push(`q"<`	, qStringAngle	) @Push(`q"`	, qStringBegin	)
+			@EOF
 			structured,
 			
-			@Pop!NewLineTokens 	 @Pop!EOFTokens	 	 slashComment	,
-				 @Pop!"*/"	 @EOF!()	 cComment	,
-			@Push!("/+", dComment)	 @Pop!"+/"	 @EOF!()	 dComment 	,
+			@Pop(NewLineTokens)	 @Pop(EOFTokens)	 	slashComment	,
+				 @Pop("*/")	 @EOF	cComment	,
+			@Push("/+", dComment)	 @Pop("+/")	 @EOF	dComment 	,
 							
-			@Ignore!`\'`	 @Pop_str!`'`	 @EOF_str!()	 cChar	,
-			@Ignore!`\"`	 @Pop_str!`"`	 @EOF_str!()	 cString	,
-				 @Pop_str!`"`	 @EOF_str!()	 rString	,
-				 @Pop_str!"`"	 @EOF_str!()	 dString	,
-				 @Pop_str!`/"`	 @EOF_str!()	 qStringSlash	,
-			@Push!("{", qStringCurlyInner)	 @Pop_str!`}"`	 @EOF_str!()	 qStringCurly	,
-			@Push!("(", qStringRoundInner)	 @Pop_str!`)"`	 @EOF_str!()	 qStringRound	,
-			@Push!("[", qStringSquareInner)	 @Pop_str!`]"`	 @EOF_str!()	 qStringSquare	,
-			@Push!("<", qStringAngleInner)	 @Pop_str!`>"`	 @EOF_str!()	 qStringAngle	,
+			@Ignore(`\\ \'`)	 @PopCWD(`'`)	 @EOF_str	 cChar	,
+			@Ignore(`\\ \"`)	 @PopCWD(`"`)	 @EOF_str	 cString	,
+				 @PopCWD(`"`)	 @EOF_str	 rString	,
+				 @PopCWD("`")	 @EOF_str	 dString	,
+				 @PopCWD(`/"`)	 @EOF_str	 qStringSlash	,
+			@Push("{", qStringCurlyInner)	 @PopCWD(`}"`)	 @EOF_str	 qStringCurly	,
+			@Push("(", qStringRoundInner)	 @PopCWD(`)"`)	 @EOF_str	 qStringRound	,
+			@Push("[", qStringSquareInner)	 @PopCWD(`]"`)	 @EOF_str	 qStringSquare	,
+			@Push("<", qStringAngleInner)	 @PopCWD(`>"`)	 @EOF_str	 qStringAngle	,
 							
-			@Push!("{", qStringCurlyInner)	 @Pop!`}`	 @EOF_str!()	 qStringCurlyInner	,
-			@Push!("(", qStringRoundInner)	 @Pop!`)`	 @EOF_str!()	 qStringRoundInner	,
-			@Push!("[", qStringSquareInner)	 @Pop!`]`	 @EOF_str!()	 qStringSquareInner	,
-			@Push!("<", qStringAngleInner)	 @Pop!`>`	 @EOF_str!()	 qStringAngleInner	,
+			@Push("{", qStringCurlyInner)	 @Pop(`}`)	 @EOF_str	 qStringCurlyInner	,
+			@Push("(", qStringRoundInner)	 @Pop(`)`)	 @EOF_str	 qStringRoundInner	,
+			@Push("[", qStringSquareInner)	 @Pop(`]`)	 @EOF_str	 qStringSquareInner	,
+			@Push("<", qStringAngleInner)	 @Pop(`>`)	 @EOF_str	 qStringAngleInner	,
 					
-			@Trans!(NewLineTokens, qStringMain)	 	 @EOF_str!()	 qStringBegin,
-			/+ handled specially +/	 	 @EOF_str!()	 qStringMain,
+			@Trans(NewLineTokens, qStringMain)	 	 @EOF_str	 qStringBegin,
+			/+ handled specially +/	 	 @EOF_str	 qStringMain,
 		}
-	}//static
-	public{ //----------------------------------------------------------------------
+	
+	}//static private
+
+	import std.concurrency : Generator, yield; //Ali Cehreli Fiber presentation: https://youtu.be/NWIU5wn1F1I?t=1624
+
+	static struct ScanResult{
+		string op, src;
+	}
+
+	private static auto scan(string src){
+		enum log = 0;
+
+		State[] stack = [State.structured];
+		ref State state()	{ return stack.back; }
+		int stackLen()	{ return cast(int)stack.length; }
 		
-		static struct Result{
-			string src, token;
-			State state;
-		}
-		
-		private{
-			string src, nextSrc;  
-			State state = State.structured;
-			State[] stack;
+		while(src.length){
 			
-			bool isResultValid;
-			Result result;
-			
-			void process(){
-				assert(!isResultValid);
-				nextSrc = src;
-				
-				swState: final switch(state){
-					static foreach(stIdx, st; EnumMembers!State){
-						case st:{
-							//enum Transition[] transitions = ;
-							enum trs = expand([getUDAs!(EnumMembers!State[stIdx], Transition)]);
-							enum tokens = trs.map!(t => t.token).array;
-							print("aaaaa", st);
-							foreach(tr; trs) print("   ", tr);
-							foreach(t; tokens) print("   ", t);
-							//print(src.indexOfToken!tokens);
-						}break swState;
+			swState: final switch(state){
+				static foreach(caseState; EnumMembers!State){
+					case caseState:{
+						static immutable	transitions	 = collectStateTransitions!caseState,
+							tokens	 = transitions.map!"a.token".array;
+						//pragma(msg, caseState, "\n", transitions.map!(a => a.format!"  %s").join("\n"));
+						if(log){
+							print("------------------------------------");
+							print("SRC:", EgaColor!().yellow(src.quoted));
+							print("State:", state, "Stack:", stack.retro);
+							print("Looking for:", transitions.map!"a.token");
+						}
+						
+						//terminal node
+						
+						static if(transitions.length){
+							auto match = indexOfToken!tokens(src, 0);
+							
+							//skip ignored tokens
+							enum ignoreTokenIdx = transitions.countUntil!(t => t.isIgnore);
+							static if(ignoreTokenIdx>=0){
+								while(match && transitions[match.tokenIdx].isIgnore)
+									match = indexOfToken!tokens(src, match.tokenEndIdx);
+							}
+							
+							if(log) print(match);
+							if(match){ //found something
+								auto	contents 	= src[0..match.tokenStartIdx],
+									tokenStr 	= src[match.tokenStartIdx..match.tokenEndIdx]; //the actual token from the string. The last "" is detected as "\0"
+								src = src[match.tokenEndIdx..$]; //advance
+								with(transitions[match.tokenIdx]){
+									assert(!isIgnore, "Ignored tokens must be already skipped before this point.");
+									
+									if(contents.length)
+										yield(ScanResult("content", contents)); 
+									
+									//update stack
+									if(isPush){ 
+										stack ~= dstState;
+										yield(ScanResult("push", tokenStr)); 
+									}else{ //pop or trans. Both needs a non-empty stack.
+										if(stack.length){ 
+											if(isPop){
+												stack.popBack;
+												yield(ScanResult("pop", tokenStr)); 
+											}else{ //transition
+												state = dstState;
+												yield(ScanResult("trans", tokenStr)); 
+											}
+										}else{
+											yield(ScanResult("stack.empty", tokenStr ~ src));
+											return;
+										}
+									}
+								}
+							}else{
+								yield(ScanResult("scanner.stopped1", src));
+								return;
+								//assert(0, format!"Scanner error: Find nothing in state %s, and \0 is not even handled."(caseState));
+							}
+							break swState; //break from case
+						}else{
+							yield(ScanResult("scanner.stopped2", src));
+							return;
+							//static assert(caseState.among(State.pop, State.ignore, State.eof), format!"Scanner State graph error: %s should reach State.eof."(caseState));
+						}
 					}
 				}
-				
-				result.state = state;
-				result.src = nextSrc.front.text;
-				nextSrc.popFront;
-				
 			}
-		}
+		}//end while
 		
-		auto save(){ return this; }
-		
-		@property bool empty() const{ return src.empty; }
-		
-		@property auto front(){
-			if(isResultValid.chkSet) process;
-			return result;
-		}
-		
-		void popFront(){
-			if(isResultValid.chkSet) process;
-			src = nextSrc;
-			isResultValid = false;
-		}
+	}//end func
+	
+	static auto scanner(string src){
+		return new Generator!ScanResult({ scan(src); });
 	}
 }
 	
-void main(){ console({
-	auto sc = StructureScanner("hello");
-	foreach(r; sc) print(r);
+void main(){ console({ //main() //////////////////////////////////////////////////////////////
+	//StructureScanner("hello //comment\nnext line/*ccomment\nanother line*//+/+Nested+/comment+/__EOF__text beyond eof", [StructureScanner.State.structured]).each!print;
+	
+	auto src = File(`c:\d\libs\het\utils.d`).readText;
+	auto sc = StructureScanner.scanner(src);
+	
+	T0;
+	print(sc.walkLength);
+	print(DT);
+	
+	import het.tokenizer;
+	T0;
+	auto sourceCode = new SourceCode(src);
+	print(sourceCode.tokens.length);
+	print(DT);
+	
+	
+	
+	readln;
+	
+	sc.each!((a){
+		write(a.op.predSwitch(	"content"	, EgaColor!().ltWhite	(a.src),
+			"push"	, EgaColor!().ltBlue	(a.src),
+			"pop"	, EgaColor!().ltGreen	(a.src),
+			"trans"	, EgaColor!().ltCyan	(a.src)
+				, EgaColor!().gray	(a.src)));
+	});
+
+	
+	print("\n--------------------------DONE------------------------------");
 }); }
