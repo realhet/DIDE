@@ -1,6 +1,7 @@
 //@exe
 ///@debug
 //@release
+//@compile
 
 import het.utils;
 
@@ -17,6 +18,9 @@ enum ToUbyteArrayOfArray(string[] s) = mixin('[' ~ s.map!(a =>	'[' ~ a	.byChar.m
 ///This version stops at the first needle, not returning the shortest needle (phobos version).
 ///The result is 0 based.  -1 means not found.
 sizediff_t startsWithToken(string[] tokens)(string s){
+	asm{ int 3; }
+	print(__FUNCTION__);
+	asm{ int 3; }
 	const ba = cast(ubyte[])s;
 	static foreach(idx, token; ToUbyteArrayOfArray!tokens){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
 		if(ba.startsWith(token)) return idx;
@@ -43,10 +47,15 @@ auto indexOfToken(string[] tokens)(string s, size_t startIdx){
 	static if(!tokens.equal([""])){ //special case: [""] means: take everything, seek to the end.
 		
 		//use findAmong with the list of first ubytes
-		static immutable firstUBytes = tokens.extractTokenFirstUbytes;
-		startIdx = s.length - (cast(ubyte[])s)[startIdx..$].findAmong(firstUBytes).length;
+		static if(0){
+			//this is exactly slow as if it were omitted. It really needs SSE strcmp!
+			//static immutable firstUBytes = tokens.extractTokenFirstUbytes;
+			//startIdx = s.length - (cast(ubyte[])s)[startIdx..$].findAmong(firstUBytes).length;
+		}
 		
-		foreach(i; startIdx..s.length){ //opt: slow linear search
+		//opt: slow linear search
+		//opt: statistical reordering of items
+		foreach(i; startIdx..s.length){ 
 			const tIdx = s[i..$].startsWithToken!tokens;
 			if(tIdx>=0)
 				return IndexOfTokenResult(tIdx, tokens[tIdx].length, i);
@@ -101,49 +110,51 @@ struct StructureScanner{
 		auto Ignore	(string s	){ return Trans(s, State.ignore); }
 		auto PopCWD	(string s	){ return Pop(extendCWD(s)); }
 		
-		enum 	EOFTokens	= "\0 \x1A __EOF__"	,
-			EOFTokens_str 	= "\0 \x1A"	, //note: __ EOF __  is NOT detected in strings. Only in structuredText and comments.
-			NewLineTokens	= "\r \n \u2028 \u2029"	;
-		
+		enum NewLineTokens	= "\r \n \u2028 \u2029";
+		enum EOFTokens	= "\0 \x1A";
 		enum EOF	= Trans(EOFTokens	, State.unstructured);
-		enum EOF_str	= Trans(EOFTokens_str	, State.unstructured);
+		enum StructuredEOF	= Trans(EOFTokens ~ " __EOF__"	, State.unstructured);
 		
-		enum State : ubyte {
-			//special system tokens 
-			eof, pop, ignore,
-			
-			//terminal tokens
-			@Trans("", eof) unstructured, 
+		version(none) enum State : ubyte { // State graph //////////////////////////////////////////////////////////////////
+			/+special system tokens+/ ignore, pop, eof, @Trans("", eof) unstructured, 
 			
 			@Push("{ ( [ q{"	, structured	) @Pop("] ) }")
 			@Push("//"	, slashComment	) @Push("/*"	, cComment	) @Push("/+"	, dComment	)
 			@Push("'"	, cChar	) @Push(`"`	, cString	) @Push("`"	, dString	) @Push(`r"`	, rString	)
 			@Push(`q"/`	, qStringSlash	) @Push(`q"{`	, qStringCurly	) @Push(`q"(`	, qStringRound	) 
 			@Push(`q"[`	, qStringSquare	) @Push(`q"<`	, qStringAngle	) @Push(`q"`	, qStringBegin	)
-			@EOF
+			@StructuredEOF
 			structured,
 			
 			@Pop(NewLineTokens)	 @Pop(EOFTokens)	 	slashComment	,
 				 @Pop("*/")	 @EOF	cComment	,
 			@Push("/+", dComment)	 @Pop("+/")	 @EOF	dComment 	,
 							
-			@Ignore(`\\ \'`)	 @PopCWD(`'`)	 @EOF_str	 cChar	,
-			@Ignore(`\\ \"`)	 @PopCWD(`"`)	 @EOF_str	 cString	,
-				 @PopCWD(`"`)	 @EOF_str	 rString	,
-				 @PopCWD("`")	 @EOF_str	 dString	,
-				 @PopCWD(`/"`)	 @EOF_str	 qStringSlash	,
-			@Push("{", qStringCurlyInner)	 @PopCWD(`}"`)	 @EOF_str	 qStringCurly	,
-			@Push("(", qStringRoundInner)	 @PopCWD(`)"`)	 @EOF_str	 qStringRound	,
-			@Push("[", qStringSquareInner)	 @PopCWD(`]"`)	 @EOF_str	 qStringSquare	,
-			@Push("<", qStringAngleInner)	 @PopCWD(`>"`)	 @EOF_str	 qStringAngle	,
+			@Ignore(`\\ \'`)	 @PopCWD(`'`)	 @EOF	 cChar	,
+			@Ignore(`\\ \"`)	 @PopCWD(`"`)	 @EOF	 cString	,
+				 @PopCWD(`"`)	 @EOF	 rString	,
+				 @PopCWD("`")	 @EOF	 dString	,
+				 @PopCWD(`/"`)	 @EOF	 qStringSlash	,
+			@Push("{", qStringCurlyInner)	 @PopCWD(`}"`)	 @EOF	 qStringCurly	,
+			@Push("(", qStringRoundInner)	 @PopCWD(`)"`)	 @EOF	 qStringRound	,
+			@Push("[", qStringSquareInner)	 @PopCWD(`]"`)	 @EOF	 qStringSquare	,
+			@Push("<", qStringAngleInner)	 @PopCWD(`>"`)	 @EOF	 qStringAngle	,
 							
-			@Push("{", qStringCurlyInner)	 @Pop(`}`)	 @EOF_str	 qStringCurlyInner	,
-			@Push("(", qStringRoundInner)	 @Pop(`)`)	 @EOF_str	 qStringRoundInner	,
-			@Push("[", qStringSquareInner)	 @Pop(`]`)	 @EOF_str	 qStringSquareInner	,
-			@Push("<", qStringAngleInner)	 @Pop(`>`)	 @EOF_str	 qStringAngleInner	,
-					
-			@Trans(NewLineTokens, qStringMain)	 	 @EOF_str	 qStringBegin,
-			/+ handled specially +/	 	 @EOF_str	 qStringMain,
+			@Push("{", qStringCurlyInner)	 @Pop(`}`)	 @EOF	 qStringCurlyInner	,
+			@Push("(", qStringRoundInner)	 @Pop(`)`)	 @EOF	 qStringRoundInner	,
+			@Push("[", qStringSquareInner)	 @Pop(`]`)	 @EOF	 qStringSquareInner	,
+			@Push("<", qStringAngleInner)	 @Pop(`>`)	 @EOF	 qStringAngleInner	,
+							
+			@Trans(NewLineTokens, qStringMain)	 	 @EOF	 qStringBegin	,
+			/+ handled specially +/	 	 @EOF	 qStringMain	,
+		}
+		
+		enum State : ubyte { // State graph //////////////////////////////////////////////////////////////////
+			/+special system tokens+/ ignore, pop, eof, @Trans("", eof) unstructured, 
+			
+			@Push("(", structured) @Pop(")") @Push("/*", comment) @Push(`'`, name) @Trans(";", structured) @EOF structured,
+			@Pop("*/") @EOF comment,
+			@Ignore(`\\ \'`) @Pop("'") @EOF name
 		}
 	
 	}//static private
@@ -244,7 +255,7 @@ struct StructureScanner{
 void main(){ console({ //main() //////////////////////////////////////////////////////////////
 	//StructureScanner("hello //comment\nnext line/*ccomment\nanother line*//+/+Nested+/comment+/__EOF__text beyond eof", [StructureScanner.State.structured]).each!print;
 	
-	auto src = File(`c:\d\libs\het\utils.d`).readText;
+	/*auto src = File(`c:\d\libs\het\utils.d`).readText;
 	auto sc = StructureScanner.scanner(src);
 	
 	T0;
@@ -261,14 +272,36 @@ void main(){ console({ //main() ////////////////////////////////////////////////
 	
 	readln;
 	
-	sc.each!((a){
-		write(a.op.predSwitch(	"content"	, EgaColor.ltWhite	(a.src),
-			"push"	, EgaColor.ltBlue	(a.src),
-			"pop"	, EgaColor.ltGreen	(a.src),
-			"trans"	, EgaColor.ltCyan	(a.src)
-				, EgaColor.gray	(a.src)));
+	void dump(){
+		auto src = File(`c:\d\projects\DIDE\testHierarchyParser2.d`).readText;
+		auto sc = StructureScanner.scanner(src);
+		sc.each!((a){
+			write(a.op.predSwitch(	"content"	, EgaColor.ltWhite	(a.src),
+				"push"	, EgaColor.ltBlue	(a.src),
+				"pop"	, EgaColor.ltGreen	(a.src),
+				"trans"	, EgaColor.ltCyan	(a.src)
+					, EgaColor.gray	(a.src)));
+		});
+	}
+	
+	dump;*/
+	
+	T0;
+	auto src = File(`c:\dl\sac.step`).readText;           	DT.print;
+	auto scanner = StructureScanner.scanner(src);	DT.print;
+	scanner.walkLength.print;	DT.print;
+	
+	scanner = StructureScanner.scanner(src);
+	
+	scanner	.take(200)
+		.filter!(a => !a.src.isWild(`*:\*`)) //a file neveket nem mutatom
+		.each!((a){
+			with(EgaColor) write(a.op.predSwitch(	"content"	, ltWhite	(a.src),
+				"push"	, ltBlue	(a.src),
+				"pop"	, ltGreen	(a.src),
+				"trans"	, ltCyan	(a.src)
+					, gray	(a.src) ));
 	});
-
 	
 	print("\n--------------------------DONE------------------------------");
 }); }
