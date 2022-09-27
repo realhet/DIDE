@@ -18,9 +18,7 @@ enum ToUbyteArrayOfArray(string[] s) = mixin('[' ~ s.map!(a =>	'[' ~ a	.byChar.m
 ///This version stops at the first needle, not returning the shortest needle (phobos version).
 ///The result is 0 based.  -1 means not found.
 sizediff_t startsWithToken(string[] tokens)(string s){
-	asm{ int 3; }
-	print(__FUNCTION__);
-	asm{ int 3; }
+	//asm{ int 3; } print(__FUNCTION__); asm{ int 3; }
 	const ba = cast(ubyte[])s;
 	static foreach(idx, token; ToUbyteArrayOfArray!tokens){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
 		if(ba.startsWith(token)) return idx;
@@ -253,38 +251,19 @@ struct StructureScanner{
 }
 	
 void main(){ console({ //main() //////////////////////////////////////////////////////////////
-	//StructureScanner("hello //comment\nnext line/*ccomment\nanother line*//+/+Nested+/comment+/__EOF__text beyond eof", [StructureScanner.State.structured]).each!print;
 	
-	/*auto src = File(`c:\d\libs\het\utils.d`).readText;
-	auto sc = StructureScanner.scanner(src);
+	auto i=5, j=6;
+	print(i, j);
 	
-	T0;
-	print(sc.walkLength);
-	print(DT);
+	import ldc.llvmasm;
+	__asm("movl $1, $0", "=*m,r", &i, j);
 	
-	import het.tokenizer;
-	T0;
-	auto sourceCode = new SourceCode(src);
-	print(sourceCode.tokens.length);
-	print(DT);
+	asm{ mov EAX, j; mov i, EAX; }
 	
+	print(i, j);
 	
-	
+	//console.flush;
 	readln;
-	
-	void dump(){
-		auto src = File(`c:\d\projects\DIDE\testHierarchyParser2.d`).readText;
-		auto sc = StructureScanner.scanner(src);
-		sc.each!((a){
-			write(a.op.predSwitch(	"content"	, EgaColor.ltWhite	(a.src),
-				"push"	, EgaColor.ltBlue	(a.src),
-				"pop"	, EgaColor.ltGreen	(a.src),
-				"trans"	, EgaColor.ltCyan	(a.src)
-					, EgaColor.gray	(a.src)));
-		});
-	}
-	
-	dump;*/
 	
 	T0;
 	auto src = File(`c:\dl\sac.step`).readText;           	DT.print;

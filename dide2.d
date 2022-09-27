@@ -33,6 +33,8 @@
 //todo: save/restore buildsystem cache on start/exit
 //todo: nem letezo modul import forditasakor CRASH
 
+//todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
+
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
 }
@@ -269,17 +271,21 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 		if(doubleClick) wordSelecting = true;
 
 		//check if a keycombo modifier with the main mouse button isactive
-		bool _kc(string sh){ return	KeyCombo([sh, mouseMappings.main].join("+")).active; }
-		const opSelectColumn	= _kc(mouseMappings.selectColumn	    ),
-					opSelectColumnAdd	= _kc(mouseMappings.selectColumnAdd	    ),
-					opSelectAdd	= _kc(mouseMappings.selectAdd	    ),
-					opSelectExtend	= _kc(mouseMappings.selectExtend	    );
+		bool _kc(string sh){ return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+		const 	opSelectColumn	= _kc(mouseMappings.selectColumn	),
+			opSelectColumnAdd	= _kc(mouseMappings.selectColumnAdd	),
+			opSelectAdd	= _kc(mouseMappings.selectAdd	),
+			opSelectExtend	= _kc(mouseMappings.selectExtend	);
 
 		auto cursorAtMouse = workspace.createCursorAt(view.mousePos);
 
 		//initiate mouse operations
 		if(!im.wantMouse){
-			if(view.isMouseInside) if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
+			if(view.isMouseInside){ 
+				if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
+				if(inputs[mouseMappings.zoomInHold	].down) view.zoomAroundMouse(.125);
+				if(inputs[mouseMappings.zoomOutHold	].down) view.zoomAroundMouse(-.125);
+			}
 
 			if(frmMain.isForeground && view.isMouseInside && inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
 
@@ -578,7 +584,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	}
 
 	override @property bool isReadOnly(){
-		return frmMain.building;
+		//return frmMain.building;
+		return false;
+		//note: it's making me angly if I can't modify while it's compiling.
+		//bug: deleting from a readonly module loses its selections.
 	}
 
 	override void rearrange(){
@@ -1257,9 +1266,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 									isMidRow	= !isFirstRow && !isLastRow;
 						if(isMidRow){ //delete whole row
 							col.subCells = col.subCells.remove(y); //opt: do this in a one run batch operation.
-						}else{ //delete partial	row
-							const x0 = isFirstRow	? st.pos.x : 0,
-										x1 = isLastRow	? en.pos.x : rowCellCount+1;
+						}else{ //delete partial row
+							const	x0 = isFirstRow	? st.pos.x : 0,
+								x1 = isLastRow	? en.pos.x : rowCellCount+1;
 
 							foreach_reverse(x; x0..x1){
 								if(x>=0 && x<rowCellCount){
@@ -1622,8 +1631,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"																			        ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"																			        ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																						     ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																						     ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1663,11 +1672,13 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	struct MouseMappings{
 		string main	      = "LMB",
-					 scroll		= "MMB",   //todo: soft scroll/zoom, fast scroll
-					 menu						 =	"RMB",
-					 zoom						 =	"MW",
-					 selectAdd	      = "Alt",
-					 selectExtend						 = "Shift",
+					 scroll="MMB",   //todo: soft scroll/zoom, fast scroll
+					 menu="RMB",
+					 zoom="MW",
+					 zoomInHold="M5",
+					 zoomOutHold="M4",
+					 selectAdd="Alt",
+					 selectExtend="Shift",
 					 selectColumn						 = "Shift+Alt",
 					 selectColumnAdd	      = "Ctrl+Shift+Alt";
 	}
