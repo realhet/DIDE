@@ -34,6 +34,7 @@
 //todo: nem letezo modul import forditasakor CRASH
 
 //todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
+//todo: DIDE syntax highlight vector .rgba postfixes
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -284,7 +285,7 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 			if(view.isMouseInside){ 
 				if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
 				if(inputs[mouseMappings.zoomInHold	].down) view.zoomAroundMouse(.125);
-				if(inputs[mouseMappings.zoomOutHold	].down) view.zoomAroundMouse(-.125);
+				if(inputs[mouseMappings.zoomOutHold	].down) view.zoom/+AroundMouse+/(-.125);
 			}
 
 			if(frmMain.isForeground && view.isMouseInside && inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
@@ -1631,8 +1632,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"																						     ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"																						     ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																							    ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																							    ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1671,12 +1672,12 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	// Mouse ---------------------------------------------------
 
 	struct MouseMappings{
-		string main	      = "LMB",
-					 scroll="MMB",   //todo: soft scroll/zoom, fast scroll
+		string main	      =	"LMB",
+					 scroll="MMB",	//todo: soft scroll/zoom, fast scroll
 					 menu="RMB",
 					 zoom="MW",
-					 zoomInHold="M5",
-					 zoomOutHold="M4",
+					 zoomInHold="MB5",
+					 zoomOutHold="MB4",
 					 selectAdd="Alt",
 					 selectExtend="Shift",
 					 selectColumn						 = "Shift+Alt",
