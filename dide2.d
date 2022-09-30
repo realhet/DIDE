@@ -35,6 +35,7 @@
 
 //todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
 //todo: DIDE syntax highlight vector .rgba postfixes
+//todo: kinetic scroll
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -1632,8 +1633,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"																							    ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"																							    ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																								   ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																								   ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
