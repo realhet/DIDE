@@ -16,43 +16,103 @@ enum ToUbyteArrayOfArray(string[] s) = mixin('[' ~ s.map!(a =>	'[' ~ a	.byChar.m
 
 ///This version stops at the first needle, not returning the shortest needle (phobos version).
 ///The result is 0 based.  -1 means not found.
-sizediff_t startsWithToken(string[] tokens)(string s){
-	static assert(tokens.all!"a.length");
+
+alias startsWithToken = 
+	//startsWithToken_X86
+	startsWithToken_SSE42
+;
+
+sizediff_t startsWithToken_X86(string[] tokens)(string s){
+	static foreach(tIdx, token; tokens){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
+		if(startsWith(s, token)) return tIdx;
+	}}
+	return -1;
+}
+
+sizediff_t startsWithToken_SSE42(string[] tokens_)(string s){
+	//Empty token ("") handing.
+	static if(tokens_.canFind("")){
+		static assert(tokens_.back=="", `Empty token ("") is not at the end of tokens.`);
+		enum tokens = tokens_[0..$-1];
+		static assert(!tokens.canFind(""), `Only one empty token ("") allowed.`);
+		enum DefaultResult = tokens.length;
+	}else{
+		enum tokens = tokens_;
+		enum DefaultResult = -1;
+	}
+	
+	//own version of startsWith is dealing with ubytes instead of codepoints.
+	static bool startsWith(string s, string what){ return .startsWith(cast(ubyte[])s, cast(ubyte[])what); }
 	
 	//simple tokens are 1 byte long and no other tokens are starting with them.
 	static bool isSimple(string tk){ return tk.length==1 && tokens.filter!(t => t.startsWith(tk)).walkLength==1; }
+	static string i2str(T)(T i){ return text(cast(char)(i.to!ubyte)); }
 	static immutable 	simpleTokens	= tokens.filter!isSimple.array,
-		charSet	= tokens.map!"ubyte(a[0])".array.sort.uniq.array,
-		charSet_simpleIdx 	= charSet.map!(b => simpleTokens.canFind((cast(char)b).text) ? tokens.countUntil((cast(char)b).text): -1).array,
-		charSet_complexTokens	= charSet.map!(b => simpleTokens.canFind((cast(char)b).text) ? [] : tokens.filter!(t => t.startsWith((cast(char)b).text)).map!(t => tuple(t[1..$], tokens.countUntil(t))).array).array; //todo: ezt a 2 szintu tombot transzponalni kell.
+		charSet	= tokens.map!"ubyte(a[0])".array.sort.uniq.array;
+	
+	//generate arrays based on charSetIndex
+	enum GEN(alias trueFun, alias falseFun) = charSet.map!i2str.map!(a => simpleTokens.canFind(a) ? a.unaryFun!trueFun : a.unaryFun!falseFun).array;
+	enum tokensStartingWith(alias tk) = tokens.filter!(a => startsWith(a, tk));
+	static immutable 	simpleIdx 	= GEN!(tk => tokens.countUntil(tk)	, tk => -1 /+note: It's complex, not DefaultResult. +/		),
+		complexSubTokens	= GEN!(tk => string[].init	, tk => tokensStartingWith!tk.map!(a => a[1..$])	.array	),
+		complexSubTokenIndices	= GEN!(tk => sizediff_t[].init	, tk => tokensStartingWith!tk.map!(a => tokens.countUntil(a))	.array	);
+	
+	// debug dump of tables
 	static if(1){
-		pragma(msg, format!"tokens                  (%2d): %s"(tokens.length, tokens));
-		pragma(msg, format!"  simpleTokens          (%2d): %s"(simpleTokens.length, simpleTokens));
-		pragma(msg, format!"  charSet               (%2d): %s"(charSet.length, charSet));
-		pragma(msg, format!"  charSet_simpleIdx     (%2d): %s"(charSet_simpleIdx.length, charSet_simpleIdx));
-		pragma(msg, format!"  charSet_complexTokens(%2d): %s"(charSet_complexTokens.length, charSet_complexTokens));
-		pragma(msg, "");
+		pragma(msg, format!"%s (%2d%s): %s"("tokens"	, tokens.length, DefaultResult>=0 ? "+empty" : "", tokens.join("  ").quoted	));
+		enum charSetInfo = GEN!(tk => tk.quoted, tk => tokensStartingWith!tk.text); 
+		pragma(msg, charSetInfo.enumerate.map!(e => format!"  %2d %s"(e.index, e.value)).join('\n'));
+		pragma(msg, format!"  Default: %d"(DefaultResult), " ", DefaultResult>=0 ? tokens_[DefaultResult] : "");
 	}
 	
-	static if(0){
-		static foreach(idx, token; tokens){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
-			if((cast(ubyte[])s).startsWith(cast(ubyte[])token)) return idx;
-		}}
-	}else{
-		if(s.length){
-			auto cIdx = charSet.countUntil(cast(ubyte)s[0]); //opt: <- pcmpestri
-			if(cIdx>=0){ //todo: slow
-				auto stIdx = charSet_simpleIdx[cIdx];
-				if(stIdx>=0) return stIdx;
-				
-				s = s[1..$]; //todo: should be recursive from here.
-				foreach(ct; charSet_complexTokens[cIdx]){{ //opt: slow linear search. Should use a char map for the first char. Or generate a switch statement.
-					if((cast(ubyte[])s).startsWith(cast(ubyte[])(ct[0]))) return ct[1];
-				}}
+	//do the actual processing
+	if(s.length){
+		
+		sizediff_t cIdx;
+		enum method = 3;
+		static if(method==0){ //functional
+			//charSet.length.HIST!17;
+			cIdx = charSet.countUntil(cast(ubyte)s[0]); //opt: <- pcmpestri
+		}else static if(method==1){ //lookup table
+			static immutable byte[256] cMap = iota(256).map!(i => charSet.countUntil(cast(ubyte)i).to!byte).array;
+			//asm{ int 3; }
+			cIdx = cMap[cast(ubyte)s[0]];
+		}else static if(method==3){
+			enum sseLengthLimit = 16;
+			static immutable ubyte16 charSetVector = mixin(charSet.padRight(0, sseLengthLimit).text); 
+			
+			const tmp = __asm!size_t(
+				q{
+					movzbl $1, %ecx
+					movd %ecx, %xmm4
+					pcmpestri $5, $3, %xmm4
+				}
+				//    0   1  2   3  4  5
+				, q{={RCX},*p,{RAX},x,{RDX},i,~{flags},~{xmm4}}, 
+				          s.ptr, 1, charSetVector, charSet.length, 0
+			);
+			cIdx = tmp<16 ? tmp : -1;
+		}
+		
+		if(cIdx>=0){ //todo: slow
+			//first check for simple indices
+			auto tIdx = simpleIdx[cIdx];
+			if(tIdx>=0) return tIdx;
+			
+			//then call complex tokens. This is compile time recursion.
+			sw: switch(cIdx){
+				static foreach(i, subTokens; complexSubTokens) static if(subTokens.length){
+					case i: { 
+						auto sIdx = s[1..$].startsWithToken!subTokens;
+						if(sIdx>=0) return complexSubTokenIndices[i][sIdx];
+					}
+					break sw;
+				}
+				default:
 			}
 		}
 	}
-	return -1;
+	return DefaultResult;
 }
 
 size_t skipTokens(string[] tokens)(string s){
@@ -60,9 +120,7 @@ size_t skipTokens(string[] tokens)(string s){
 	static immutable charSet = tokens.map!"ubyte(a[0])".array.sort.uniq.array;
 	
 	static if(0){
-		const res = s.length - (cast(ubyte[])s).findAmong(charSet).length;
-		//print("QQ", res); static int cnt; if(cnt++==20) readln;
-		return res;
+		return s.length - (cast(ubyte[])s).findAmong(charSet).length;
 	}else{
 		enum sseLengthLimit = 16; //SSE vector size limit
 		
@@ -72,15 +130,6 @@ size_t skipTokens(string[] tokens)(string s){
 		
 		auto remaining = s.length, p0 = s.ptr, p = p0;
 		while(remaining>=16){ //note: this padding solves the unaligned read from a 4k page boundary at the end of the string. No masked reads needed.
-			/*const tmp = __asm!size_t(
-				q{
-					movdqu $3, %XMM4
-					pcmpestri $5, %XMM4, $1
-				}
-				//    0   1  2   3  4  5
-				, q{={RCX},x,{RAX},*p,{RDX},i,~{XMM4},~{flags}}, 
-				charSetVector, charSet.length, p, remaining, 0
-			); */
 			const tmp = __asm!size_t( //no 16byte align needed.
 				q{
 					pcmpestri $5, $3, $1
@@ -89,14 +138,11 @@ size_t skipTokens(string[] tokens)(string s){
 				, q{={RCX},x,{RAX},*p,{RDX},i,~{flags}}, 
 				charSetVector, charSet.length, p, remaining, 0
 			);
-			
 			p += tmp;
 			if(tmp<16) break;  //opt: Carry Flag signals if nothing found
 			remaining -= tmp;
 		}
-		const res = p-p0;
-		//print("QQ", res); static int cnt; if(cnt++==20) readln;
-		return res;
+		return p-p0;
 	}
 }
 
@@ -121,8 +167,12 @@ auto indexOfToken(string[] tokens)(string s, size_t startIdx){
 		
 		do{
 			//FastSkip
-			static if(1)
-				startIdx += skipTokens!tokens(s[startIdx..$])/+.HIST!(20)+/;
+			static if(1){
+				const skipCnt = skipTokens!tokens(s[startIdx..$]);
+				//print("QQ", skipCnt); static int cnt; if(cnt++==20) readln;
+				///skipCnt.HIST!(20)+/
+				startIdx += skipCnt;
+			}
 			
 			//check the tokens at startIdx
 			const tIdx = s[startIdx..$].startsWithToken!tokens;
