@@ -1,6 +1,6 @@
 module didemodule;
 
-import het, het.ui, het.tokenizer, dideui, buildsys;
+import het, het.ui, het.tokenizer, het.structurescanner ,dideui, buildsys;
 
 //version identifiers: AnimatedCursors
 enum MaxAnimatedCursors = 100;
@@ -2004,6 +2004,8 @@ class Module : CodeNode{ //this is any file in the project
 	bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
 
 	UndoManager undoManager;
+	
+	bool isStructured;
 
 	/*this(Container parent){
 		bkColor = clModuleBorder;
@@ -2089,7 +2091,7 @@ class Module : CodeNode{ //this is any file in the project
 	}
 
 
-	void reload(Flag!"useContents" useContents = No.useContents, string contents=""){
+	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
 		clearSubCells;
 
 		fileModified = file.modified;
@@ -2119,11 +2121,26 @@ class Module : CodeNode{ //this is any file in the project
 
 			T0;
 			auto prevSourceText = sourceText;
-			SourceCode src = useContents ? new SourceCode(contents, this.file)
-																	 : new SourceCode(this.file);
+			SourceCode src = useExternalContents	? new SourceCode(externalContents, this.file)
+				: new SourceCode(this.file);
+			
 			undoManager.justLoaded(src.file, encodePrevAndNextSourceText(prevSourceText, src.sourceText));
-			detectModuleTypeFlags(src);
-			code = new CodeColumn(this, src);
+			detectModuleTypeFlags(src); //todo: this needs a SourceCode instance
+			
+			bool success;
+			if(isStructured){
+				try{
+					code = buildStructuredCodeColumn(this, src.sourceText); //this doesn't need a SourceCode instance
+					success = true;
+				}catch(Exception e){
+					WARN("buildStructuredCodeColumn() failed: "~e.simpleMsg);
+					buildUnstructuredCodeColumn(this, src); //this needs a SourceCode instance
+				}
+			}else{
+				code = buildUnstructuredCodeColumn(this, src); //this needs a SourceCode instance
+			}
+			
+			
 			measureAndPropagateCodeSize;
 			updateBigComments(src);
 			static if(LogModuleLoadPerformance) LOG(DT, file);
@@ -2187,7 +2204,7 @@ class ErrorListModule : Module{  // ErrorListModule ////////////////////////////
 	override void resyntax(){ }
 	override void resyntax_src(SourceCode src){ }
 
-	override void reload(Flag!"useContents" useContents = No.useContents, string contents=""){
+	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents=""){
 		clearSubCells;
 
 		fileModified = now;
@@ -2219,7 +2236,7 @@ class ErrorListModule : Module{  // ErrorListModule ////////////////////////////
 }
 
 
-class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
+/+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
 	CodeColumn contents;
 
 	this(CodeRow parent){
@@ -2295,4 +2312,141 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
 		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
 		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
 	}
+}+/
+
+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
+	CodeColumn contents;
+
+	this(R)(CodeRow parent, R input) if(isInputRange!R && is(ElementType!R==ScanResult)){
+		super(parent);
+		
+		
+		//flags.yAlign = YAlign.top;
+
+//    auto ts = tsSyntax(SyntaxKind.Comment);
+		auto ts = tsSyntax(SyntaxKind.Symbol);
+
+		const darkColor	= ts.bkColor,
+					brightColor	= ts.fontColor,
+					halfColor	= avg(darkColor, brightColor);
+
+		bkColor = halfColor;
+		border.color = bkColor;
+
+		ts.fontColor = darkColor;
+		ts.bkColor = halfColor;
+		ts.bold = true;
+//    appendStr("//"~smallSpace, ts);
+		appendStr("if", ts);
+
+		contents = new CodeColumn(this, "1+1//This is a test comment");
+		contents.bkColor = darkColor;
+
+		subCells ~= contents;
+
+		appendStr("\nthen\t", ts);
+
+		contents = new CodeColumn(this, "//This is a test comment");
+		contents.bkColor = darkColor;
+
+		subCells ~= contents;
+
+		appendStr("\nelse\t", ts);
+
+		contents = new CodeColumn(this, "//This is a test comment");
+		contents.bkColor = darkColor;
+
+		subCells ~= contents;
+
+		needMeasure;
+	}
+
+	override string sourceText(){
+		NOTIMPL;
+		return "";
+	}
+
+	override void rearrange(){
+		{
+			const c = tsSyntax(SyntaxKind.Comment).bkColor;
+			foreach(r; contents.rows){
+				r.bkColor = c;
+			}
+		}
+
+		//measureSubCells;
+		super.rearrange;
+
+		//innerSize = subCells.back.outerBottomRight;
+	}
+
+	override void draw(Drawing dr){
+		super.draw(dr);
+
+		/*dr.lineWidth = -1;
+		dr.color = clBlue; dr.drawRect(outerBounds);
+		dr.color = clYellow; dr.drawRect(innerBounds);
+
+		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
+		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
+		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
+	}
+}
+
+
+CodeColumn buildUnstructuredCodeColumn(Container owner, SourceCode src){
+	return new CodeColumn(owner, src);
+}
+
+CodeColumn buildStructuredCodeColumn(Container owner, string src){ // buildStructuredCodeColumn ///////////////////////////////////
+	
+	return new CodeColumn(owner, src);
+	
+/*	auto scanner = DLangScanner(src); //this scanner is used by all the nested builder functions.
+	
+	CodeNode tryBuildComment(){
+		if(!scanner.empty && scanner.front.op==ScanOp.push){ 
+			if(scanner.front.src=="//"){
+				scanner.popFront;
+				string s;
+				while(!scanner.empty){
+					if(scanner.front.op==ScanOp.pop){
+						scanner.popFront;
+						break;
+					}else{
+						s ~= scanner.front.src;
+						scanner.popFront;
+					}
+				}
+				new CodeComment(null, s);
+				scanner.until!(t => t.op==ScanOp.pop);
+				auto res = new result;
+			}
+		}
+		return null;
+	}
+	
+	void buildDeclarations(){
+		string source;
+		CodeNode[] nodes;
+		
+		foreach(token; scanner){
+			print(token);
+			
+			with(ScanOp) switch(ScanOp){
+				case content: source ~= token.src;
+				case push: if(token.src.among("//", "/*", "/+")){
+					nodes ~= buildComment(token.src);
+				}
+				case pop:
+				
+				default: raise("UNHANDLED token: "~token.text);
+			}
+		}
+	}
+	
+	buildDeclarations;
+	raise("FUCK");
+	
+	return null;*/
 }

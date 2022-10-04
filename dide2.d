@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -36,6 +36,8 @@
 //todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
 //todo: DIDE syntax highlight vector .rgba postfixes
 //todo: kinetic scroll
+
+//todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -1199,7 +1201,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			}
 			return true;
 		}else assert(0, "Unable to resyntax: No CodeColumn");
-		return false;
 	}
 
 	/// returns true if any work done or queued
@@ -1255,7 +1256,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		if(returnSuccess !is null) *returnSuccess = true; //todo: terrible way to
 
 		void cutOne(TextSelection sel){
-			if(!sel.isZeroLength) if(auto col = sel.codeColumn){
+			if(sel.isZeroLength) return; //nothing to do with empty selection
+			if(auto col = sel.codeColumn){
 				const st = sel.start,
 							en = sel.end;
 
@@ -1490,7 +1492,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	protected void execute_reload(string where, string what){
 		if(auto m=findModule(File(where))){
-			m.reload(Yes.useContents, what);
+			m.reload(Yes.useExternalContents, what);
 			//selectAll
 			textSelectionsSet = [m.code.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
 		}else assert(0, "execute_reload: module lost: "~where.quoted);
@@ -1633,8 +1635,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Ctrl+F2"	) void kill	(){ with(frmMain) if(building || running	){ cancelBuildAndResetApp; 	} } //todo: some keycombo to clear error markers
 
 //	 @VERB("F5"	                          ) void toggleBreakpoint	            () { NOTIMPL; }
-//	 @VERB("F10"																								   ) void stepOver												 () { NOTIMPL; }
-//	 @VERB("F11"																								   ) void stepInto												 () { NOTIMPL; }
+//	 @VERB("F10"																										 ) void stepOver												 () { NOTIMPL; }
+//	 @VERB("F11"																										 ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
 		auto ts = textSelectionsGet;
@@ -1643,7 +1645,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			if(sel.valid){
 				if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
 					row.insertSomething(sel.caret.pos.x, {
-						row.append(new CodeComment(row));
+						//row.append(new CodeComment(row, CommentType.slash, "Comment"));
 
 						row.moduleOf.print;
 						(cast(const)row).moduleOf.print;
@@ -1655,7 +1657,11 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		}
 	}
 
-	@VERB("F2"                  ) void testInsert2       (){
+	@VERB("F2") void testInsert2(){
+		foreach(m; selectedModules){
+			m.isStructured = true;
+			m.reload;
+		}
 	}
 
 	@VERB("F3"                  ) void testInsert3       (){
@@ -2874,7 +2880,7 @@ class FrmMain : GLWindow { mixin autoCreate;
 		//StatusBar
 		with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";
 			Row({
-				theme = "tool"; style.fontHeight = 18;
+				/*theme = "tool";*/ style.fontHeight = 18;
 
 				//todo: faszomat ebbe a szarba:
 				flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
