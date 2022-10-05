@@ -1301,10 +1301,92 @@ auto createErrorListCodeColumn(Container parent){
 //}
 
 
+struct CodeContext{
+
+	enum CharSize: ubyte { default_, c, w, d }
+	
+	enum Type: ubyte {
+		plain           	, // Simple text without any structure of highlight
+		highlighted	, // syntax highlighted text without structure
+		structured	, // structured and syntax highlighted code
+		slashComment	, // simple comment text, no newLine allowed
+		cComment	, // no `*/` allowed
+		dComment	, // `/+` starts a new block, `+/` not allowed
+		cChar	, // ' C character literal with escapes   // all strings has extra parameter: charChoding: default(==char, but not written), char, word, dword
+		cString	, // " C string literal with escapes
+		dString	, // ` D string wysiwyg string
+		rString	, // r" D string wysiwyg string
+		qString_brace	, // q"( D delimited string
+		qString_square	, // q"[ D delimited string
+		qString_curly	, // q"{ D delimited string
+		qString_angle	, // q"< D delimited string
+		qString_slash	, // q"/ D delimited string
+		qString_id	, // q"id   // needs external parameter for the id
+		tString	, // q{   tokenString    same as highlightedText // needs external parameter for language.
+	}
+
+	Type type;
+	CharSize charSize;
+	string delimitedStringId;
+	
+	@property bool isComment	() const{ with(CodeContext.Type) return type.inRange(slashComment	, dComment	); }
+	@property bool isString	() const{ with(CodeContext.Type) return type.inRange(cChar	, tString	); }
+	
+	string prefix() const{
+		with(Type) return type.predSwitch(
+			cChar	, `'`,
+			cString	, `"`,
+			dString	, "`",
+			rString	, `r"`,
+			qString_brace	, `q"(`,
+			qString_square 	, `q"[`,
+			qString_curly	, `q"{`,
+			qString_angle	, `q"<`,
+			qString_slash	, `q"/`,
+			qString_id	, `q"`~delimitedStringId~DefaultNewLine,
+			tString	, `q{`,
+			slashComment	, `//`,
+			cComment	, `/*`,
+			dComment	, `/+`,
+				""
+		);
+	}
+	
+	string postfix() const{
+		
+		string cwd(){ 
+			with(CharSize) return charSize==default_ ? "" : charSize.text;
+		}
+		
+		with(Type) return isString ? type.predSwitch(
+			cChar	, `'`,
+			cString	, `"`,
+			dString	, "`",
+			rString	, `r"`,
+			qString_brace	, `)"`,
+			qString_square 	, `]"`,
+			qString_curly	, `}"`,
+			qString_angle	, `>"`,
+			qString_slash	, `/"`,
+			qString_id	, DefaultNewLine~delimitedStringId~`"`,
+			tString	, `}`
+		)~cwd : type.predSwitch(
+			slashComment	, DefaultNewLine,
+			cComment	, `*/`,
+			dComment	, `+/`,
+			""
+		);
+	}
+}
+
+pragma(msg, CodeContext(CodeContext.Type.qString_square, CodeContext.CharSize.w).prefix);
+pragma(msg, CodeContext(CodeContext.Type.qString_square, CodeContext.CharSize.w).postfix);
+
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
 	Container parent;
 
+	CodeContext context;
 	enum defaultSpacesPerTab = 4; //default in std library
 	int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
