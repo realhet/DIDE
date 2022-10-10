@@ -961,11 +961,18 @@ class CodeRow: Row{
 	string sourceText() { return chars.to!string; }
 
 	//todo: mode isSpace inside elastic tab detection, it's way too specialized
+
 	private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; } //this is for leadingTab detection
 	private static bool isTab  (Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
 	private auto isSpaces() { return glyphs.map!(g => isSpace(g)); }
 	private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
 	private auto leadingTabs  (){ return glyphs.until!(g => !isTab(g)  ); }
+
+	//these are needed for calcWhitespaceStats
+	private static bool isCodeSpace	(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
+	private static bool isCodeTab	(Glyph g){ return g && g.ch=='\t' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
+	private auto leadingCodeSpaces	(){ return glyphs.until!(g => !isCodeSpace(g)); }
+	private auto leadingCodeTabs	(){ return glyphs.until!(g => !isCodeTab(g)  ); }
 
 	//this is for visualization
 	private auto leadingWhitespaces(){ return glyphs.until!(g => !(g && g.ch.among(' ', '\t'))); }
@@ -1305,23 +1312,23 @@ struct CodeContext{
 
 	enum CharSize: ubyte { default_, c, w, d }
 	
-	enum Type: ubyte {
-		plain           	, // Simple text without any structure of highlight
+	enum Type: ubyte	{
+		plain		, // Simple text without any structure of highlight
 		highlighted	, // syntax highlighted text without structure
 		structured	, // structured and syntax highlighted code
 		slashComment	, // simple comment text, no newLine allowed
 		cComment	, // no `*/` allowed
-		dComment	, // `/+` starts a new block, `+/` not allowed
-		cChar	, // ' C character literal with escapes   // all strings has extra parameter: charChoding: default(==char, but not written), char, word, dword
+		dComment	, // `/+` starts a new block, `+/` not	allowed
+		cChar	, // ' C character literal with escapes	// all strings has extra parameter: charChoding: default(==char, but not written), char, word, dword
 		cString	, // " C string literal with escapes
 		dString	, // ` D string wysiwyg string
 		rString	, // r" D string wysiwyg string
 		qString_brace	, // q"( D delimited string
 		qString_square	, // q"[ D delimited string
-		qString_curly	, // q"{ D delimited string
-		qString_angle	, // q"< D delimited string
-		qString_slash	, // q"/ D delimited string
-		qString_id	, // q"id   // needs external parameter for the id
+		qString_curly	, // q"{	D delimited string
+		qString_angle	, // q"<	D delimited string
+		qString_slash	, // q"/	D delimited string
+		qString_id	, // q"id	// needs external parameter for the id
 		tString	, // q{   tokenString    same as highlightedText // needs external parameter for language.
 	}
 
@@ -1379,14 +1386,152 @@ struct CodeContext{
 	}
 }
 
-pragma(msg, CodeContext(CodeContext.Type.qString_square, CodeContext.CharSize.w).prefix);
-pragma(msg, CodeContext(CodeContext.Type.qString_square, CodeContext.CharSize.w).postfix);
+static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////////////////////////////////
+	CodeColumn col;
+	bool changed;
+	TextStyle tsWhitespace, ts;
+	SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace;
+			
+	CodeRow actRow;
+	bool skipNextN; //after \r, skip the next \n
+	
+	void NL(){ 
+		col.appendCell(actRow = new CodeRow(col, "", null)); 
+	}
+	
+	void appendChar(dchar ch){ 
+		static if(rebuild){
+			switch(ch){
+				case '\n', '\r', '\u2028', '\u2029':
+					if(skipNextN.chkClear && ch=='\n') break;
+					skipNextN = ch=='\r';
+					NL;
+				break;
+				default: 
+					if(_currentSk.chkSet(syntax))
+						applySyntax(ts, syntax);
+					actRow.appendSyntaxChar(ch, ts, syntax); 
+			}
+		}else{
+			static assert(0, "Resyntax mode NOTIMPL");
+		}
+	}
+
+	void appendStr(string str){
+		foreach(ch; str) appendChar(ch);
+	}
+	
+	void appendPlain(string sourceText){
+		syntax = skIdentifier1; //no skWhiteSpace handling either.
+		appendStr(sourceText);
+	}
+	
+	private void appendHighlighted_internal(string sourceText){
+		static char categorize(dchar ch){ 
+			if(isAlphaNum(ch) || ch.among('_', '#', '@')) return 'a';
+			if(ch.among(' ', '\t', '\x0b', '\x0c')) return ' ';
+			return '+';
+		}
+		foreach(s; sourceText.splitWhen!((a, b) => categorize(a) != categorize(b)).map!text){
+			switch(s[0]){
+				case ' ', '\t', '\x0b', '\x0c': syntax = skWhitespace; break;
+				case '0': ..case '9': syntax = skNumber; break;
+				case '#': syntax = skDirective; break;
+				case '@': syntax = skLabel; break;
+				default: 
+					if(s[0].isAlpha || s[0]=='_'){ 
+						if(auto kw = kwLookup(s)){
+							with(KeywordCat) switch(kwCatOf(kw)){
+								case Attribute	: syntax = skAttribute	; break;
+								case Value	: syntax = skBasicType	; break;
+								case BasicType	: syntax = skBasicType	; break;
+								case UserDefiniedType 	: syntax = skKeyword	; break;
+								case SpecialFunct	: syntax = skAttribute	; break;
+								case SpecialKeyword	: syntax = skKeyword	; break;
+								default	: syntax = skKeyword	; break;
+							}
+						}else syntax = skIdentifier1;
+					}else if(s[0].isSymbol || s[0].isPunctuation) syntax = skSymbol; 
+					else syntax = skIdentifier1;
+			}
+			
+			appendStr(s);
+		}
+		
+		syntax = skIdentifier1;
+	}
+	
+	void appendHighlighted(string sourceText){ 
+		auto scanner = sourceText.DLangScanner;
+		auto syntaxStack = [syntax];
+		while(!scanner.empty){ 
+			auto sr = scanner.front;
+			scanner.popFront;
+			
+			bool useSimpleHighlighter;
+			switch(sr.op){
+				case ScanOp.push:
+					syntaxStack ~= syntax;
+					switch(sr.src){
+						case "//", "/*", "/+"	: syntax = skComment	; appendStr(sr.src);		break;
+						case "{", "(", "["	: syntax = skSymbol	; appendStr(sr.src);	 syntax = skWhitespace; 	break;
+						case `q{`	: syntax = skString	; appendStr(sr.src);	 syntax = skWhitespace;	break;
+						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`	: syntax = skString	; appendStr(sr.src);		break;
+						default	: syntax = skError	; appendStr(sr.src);		break;
+						//todo: identifier quoted string `q"id`
+					}
+				break;
+				case ScanOp.pop:
+					if(syntaxStack.empty){
+						syntax = skError;
+						appendStr(sr.src);
+					}else{ 
+						if(!syntax.among(skComment, skString)) syntax = skSymbol;
+						appendStr(sr.src);
+						
+						syntax = syntaxStack.back;
+						syntaxStack.length--;
+						//todo: error checking for compatible closing tags. Maybe it can be implemented in the scanner too.
+					}
+				break;
+				//case ScanOp.trans: setSyntax(skError); 	break;
+				case ScanOp.content: 
+					if(!syntax.among(skComment, skString)){
+						appendHighlighted_internal(sr.src);
+					}else{
+						appendStr(sr.src);
+					}
+					break;
+				default: syntax = skError; appendStr(sr.src); break;
+			}
+		}
+	}
+	
+	this(CodeColumn col){
+		this. col = col;
+		
+		tsWhitespace 	= tsNormal	; applySyntax(tsWhitespace	, skWhitespace	);
+		ts 	= tsWhitespace	; applySyntax(ts	, _currentSk	);
+		
+		static if(rebuild){
+			col.clearSubCells;
+			NL; //there must be 1 row always. Empty column is a single empty row.
+			changed = true;
+		}else{
+			static assert(0, "Resyntax mode NOTIMPL");
+		}
+	}
+	
+	~this(){
+		if(changed) col.needMeasure;
+	}
+}
 
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
 	Container parent;
 
-	CodeContext context;
+	//CodeContext context;
 	enum defaultSpacesPerTab = 4; //default in std library
 	int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
@@ -1403,10 +1548,10 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		flags.cullSubCells	= true;
 		flags.columnElasticTabs = true;
 
-		bkColor = clCodeBackground;
 		this.setRoundBorder(8);
 		margin = "0.5";
 		padding = "0.5 4";
+		bkColor = clCodeBackground;
 	}
 
 	/// This is the normal constructor. This should be the only one.
@@ -1415,29 +1560,43 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		setSourceText(sourceText);
 	}
 
-
-	deprecated("This lets the module extract SourceRegions from this SourceCode first") this(Container parent, SourceCode sourceCode){
-		this(parent);
-		setSourceCode(sourceCode);
+	auto calcWhitespaceStats(){
+		import het.tokenizer : WhitespaceStats;
+		WhitespaceStats whitespaceStats;
+		foreach(r; rows){ //todo: optimize it somehow... Statistically...
+			if(!r.leadingCodeTabs.empty){
+				whitespaceStats.tabCnt++;
+			}else{
+				auto spaceCnt = cast(int)r.leadingCodeSpaces.walkLength;
+				whitespaceStats.addSpaceCnt(spaceCnt);
+			}
+		}
+		//note: this is just lame statistics to detect the size of a tab only for converting spaces to tabs.
+		return whitespaceStats;
 	}
+	
+	auto rebuilder(){ return CodeColumnBuilder!true(this); }
 
 	void setSourceText(string sourceText){
-		setSourceCode(scoped!SourceCode(sourceText));
-	}
-
-	deprecated void setSourceCode(SourceCode src){
-		clearSubCells; needMeasure;
-
+		/+ old version with SourceCode class
 		src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
 		if(subCells.empty)
-			appendCell(new CodeRow(this, "", null)); //always must have at least an empty row
+			appendCell(new CodeRow(this, "", null)); //always must have at least an empty row+/
 
-		//this creates the tabs from spaces
+		
+		const len = sourceText.length, t0 = now; scope(exit) LOG(len, len/(now-t0).value(second)/(1<<20), "MB/s");
+		
+		//rebuilder.appendPlain(sourceText);
+		rebuilder.appendHighlighted(sourceText);
+		
+		convertSpacesToTabs;
+		
+	}
+
+	void convertSpacesToTabs(){
 		createElasticTabs;
-
-		spacesPerTab = src.whiteSpaceStats.detectIndentSize(DefaultIndentSize);
+		spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize); //opt: this can be slow. Maybe put it on a keyboard shortcut.
 		rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
-
 		needMeasure;
 	}
 
@@ -1711,14 +1870,17 @@ void test_CodeColumn(){
 enum LabelType{ folder, module_, mainRegion, subRegion }
 
 class Label : Row{
-
-	this(LabelType labelType, vec2 pos, string str, float parentWidth=0){
+	Cell reference;
+	bool alignRight;
+	
+	this(LabelType labelType, vec2 pos, string str, Cell reference=null){
+		this.reference = reference;
+		
 		auto ts = tsNormal;
 		ts.fontColor = clWhite;
 		ts.bkColor = clBlack;
 		ts.transparent = true;
 
-		bool alignRight;
 		with(LabelType){
 			const isRegion = labelType.among(mainRegion, subRegion)!=0;
 			ts.fontHeight = isRegion ? 180 : 255;
@@ -1749,12 +1911,14 @@ class Label : Row{
 		//text
 		appendStr(str, ts);
 		measure;
-		if(alignRight){
-			assert(parentWidth);
-			outerX = parentWidth-outerWidth;
+	}
+	
+	void reposition(){
+		if(reference){
+			outerX = alignRight ? reference.outerWidth-this.outerWidth : 0;
+			outerY = reference.outerY;
 		}
 	}
-
 }
 
 // FolderLabel //////////////////////////////////
@@ -1788,11 +1952,12 @@ class CodeNode : Row{
 	~this(){
 		parent = null;
 	}
+	
+	@property abstract string sourceText();
+	
 
 	override inout(Container) getParent() inout { return parent; }
 	override void setParent(Container p){ parent = p; }
-
-	abstract string sourceText();
 
 	override void rearrange(){
 		innerSize = vec2(0);
@@ -2078,7 +2243,6 @@ class Module : CodeNode{ //this is any file in the project
 
 	//these are the 2 subcells
 	CodeColumn code;
-	Container overlay;
 
 	ModuleBuildState buildState;
 	bool isCompiling;
@@ -2088,15 +2252,6 @@ class Module : CodeNode{ //this is any file in the project
 	UndoManager undoManager;
 	
 	bool isStructured;
-
-	/*this(Container parent){
-		bkColor = clModuleBorder;
-		super(parent);
-
-		flags.clipSubCells = false; //to show labels
-
-		loaded = now;
-	}*/
 
 	this(Container parent, File file_){
 		bkColor = clModuleBorder;
@@ -2126,9 +2281,9 @@ class Module : CodeNode{ //this is any file in the project
 		isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
 	}
 
-	void detectModuleTypeFlags(SourceCode src){
+	void detectModuleTypeFlags(){
 		bool isMainSomething(string ext)(){
-			return src && src.tokens.length && src.tokens[0].isComment && sameText(src.tokens[0].source.stripRight, "//@"~ext);
+			return code && code.getRow(0) && sameText(code.getRow(0).sourceText.stripRight, "//@"~ext);
 		}
 		isMainExe = isMainSomething!"exe";
 		isMainDll = isMainSomething!"dll";
@@ -2137,22 +2292,6 @@ class Module : CodeNode{ //this is any file in the project
 
 		isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); //todo: detect compiler import path correctly
 		isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); //todo: periodically chenck if file is exists and other attributes in the IDE
-	}
-
-	void updateBigComments(SourceCode src){
-		assert(overlay);
-		overlay.subCells.clear;
-		overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-		foreach(k; src.bigComments.keys.sort){
-			if(inRange(k-1, code.subCells))//range chenking is needed in case it is from an outdated background resyntax operation.
-				overlay.appendCell(new Label(LabelType.subRegion, vec2(0, /+k*18+/ code.subCells[k-1].outerPos.y), src.bigComments[k], overlay.innerWidth));
-		}
-	}
-
-	protected void measureAndPropagateCodeSize(){
-		code.measure;
-		innerSize = code.outerSize;  //todo: try to put this into rearrange()
-		overlay.outerSize = code.outerSize;
 	}
 
 	void resyntax(){
@@ -2164,14 +2303,8 @@ class Module : CodeNode{ //this is any file in the project
 
 	//call it with a freshly parsed SourceCode object
 	void resyntax_src(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
-		detectModuleTypeFlags(src);
-
 		code.resyntax(src);
-		measureAndPropagateCodeSize;
-
-		updateBigComments(src);
 	}
-
 
 	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
 		clearSubCells;
@@ -2180,85 +2313,41 @@ class Module : CodeNode{ //this is any file in the project
 		sizeBytes = file.size;
 		resetModuleTypeFlags;
 
-		overlay = new Container;
-		overlay.id = "Overlay:"~file.fullName;
-		with(overlay.flags){
-			noHitTest = true;
-			dontSearch = true;
-			dontLocate = true;
-			noBackground = true;
-			//clipSubCells = false;
-		}
-		overlay.needMeasure;
-
-		if(file.extIs(".err")){
-			//todo: deprecated compile.err
-
-			code = createErrorListCodeColumn(this);
-
-			measureAndPropagateCodeSize;
-
-			overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-		}else{
-
-			T0;
-			auto prevSourceText = sourceText;
-			SourceCode src = useExternalContents	? new SourceCode(externalContents, this.file)
-				: new SourceCode(this.file);
-			
-			undoManager.justLoaded(src.file, encodePrevAndNextSourceText(prevSourceText, src.sourceText));
-			detectModuleTypeFlags(src); //todo: this needs a SourceCode instance
-			
-			bool success;
-			if(isStructured){
-				try{
-					code = buildStructuredCodeColumn(this, src.sourceText); //this doesn't need a SourceCode instance
-					success = true;
-				}catch(Exception e){
-					WARN("buildStructuredCodeColumn() failed: "~e.simpleMsg);
-					buildUnstructuredCodeColumn(this, src); //this needs a SourceCode instance
-				}
-			}else{
-				code = buildUnstructuredCodeColumn(this, src); //this needs a SourceCode instance
+		T0;
+		auto prevSourceText = sourceText;
+		string sourceText = useExternalContents	? externalContents
+			: this.file.readText;
+		
+		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
+		
+		if(isStructured){
+			try{
+				code = buildStructuredCodeColumn(this, sourceText);
+			}catch(Exception e){
+				WARN("buildStructuredCodeColumn() failed: "~e.simpleMsg);
+				code = buildUnstructuredCodeColumn(this, sourceText);
 			}
-			
-			
-			measureAndPropagateCodeSize;
-			updateBigComments(src);
-			static if(LogModuleLoadPerformance) LOG(DT, file);
-
+		}else{
+			code = buildUnstructuredCodeColumn(this, sourceText);
 		}
+		
+		static if(LogModuleLoadPerformance) LOG(DT, file);
 
 		appendCell(enforce(code));
-		appendCell(enforce(overlay));
 
 		needMeasure;
 	}
 
 	size_t linesOfCode(){ return code.subCells.length; } //todo: update this. only good for unstructured code.
 
-	override void draw(Drawing dr){
-		overlay.flags.hidden = lod.codeLevel;
-		if(overlay.subCells.length)
-			(cast(.Container)(overlay.subCells[0])).flags.hidden = !lod.moduleLevel;
-
-		super.draw(dr);
+	override void rearrange(){
+		detectModuleTypeFlags;
+		code.measure;
+		innerSize = code.outerSize.max(code.outerSize, DefaultFontEmptyEditorSize);
 	}
 
-	override void rearrange(){
-		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
-
-		//super.rearrange;
-		foreach(a; only(code, overlay)){
-			a.measure;
-			a.outerPos = vec2(0);
-		}
-
-		innerSize = code.outerSize.max(code.outerSize, DefaultFontEmptyEditorSize);
-		overlay.outerPos = vec2(0);
-
-		static if(rearrangeLOG) LOG("rearranging", this);
-
+	override void draw(Drawing dr){
+		super.draw(dr);
 	}
 
 	void save(){
@@ -2269,14 +2358,10 @@ class Module : CodeNode{ //this is any file in the project
 		fileSaved = now;
 	}
 
-
-/*	 override void draw(Drawing dr){ // draw///////////////////////////////////
-	 super.draw(dr);
-	}*/
 }
 
 
-class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
+deprecated class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
 	this(Container parent, File file_){
 		super(parent, file_);
 	}
@@ -2288,31 +2373,11 @@ class ErrorListModule : Module{  // ErrorListModule ////////////////////////////
 
 	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents=""){
 		clearSubCells;
-
 		fileModified = now;
 		sizeBytes = 0; //todo: note this has no file.
 		resetModuleTypeFlags;
-
-		overlay = new Container;
-		overlay.id = "Overlay:"~file.fullName;
-		with(overlay.flags){
-			noHitTest = true;
-			dontSearch = true;
-			dontLocate = true;
-			noBackground = true;
-			//clipSubCells = false;
-		}
-		overlay.needMeasure;
-
 		code = createErrorListCodeColumn(this);
-
-		measureAndPropagateCodeSize;
-
-		overlay.appendCell(new Label(LabelType.module_, vec2(0, -255), file.name/*WithoutExt*/));
-
 		appendCell(enforce(code));
-		appendCell(enforce(overlay));
-
 		needMeasure;
 	}
 }
@@ -2476,13 +2541,13 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
 }
 
 
-CodeColumn buildUnstructuredCodeColumn(Container owner, SourceCode src){
-	return new CodeColumn(owner, src);
+CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
+	return new CodeColumn(owner, sourceText);
 }
 
-CodeColumn buildStructuredCodeColumn(Container owner, string src){ // buildStructuredCodeColumn ///////////////////////////////////
+CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ // buildStructuredCodeColumn ///////////////////////////////////
 	
-	return new CodeColumn(owner, src);
+	return new CodeColumn(owner, sourceText);
 	
 /*	auto scanner = DLangScanner(src); //this scanner is used by all the nested builder functions.
 	

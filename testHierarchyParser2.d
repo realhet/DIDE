@@ -1,6 +1,6 @@
 //@exe
-//@debug
-///@release
+///@debug
+//@release
 
 import het.utils, het.structurescanner; 
 
@@ -42,7 +42,7 @@ struct StructureScanner_STEP{ static:
 	enum EOF	= Trans(EOFTokens	, State.unstructured);
 	
 	enum State : ubyte { // State graph
-		/+special system tokens+/ ignore, pop, eof, @Trans("", eof) unstructured, 
+		/+special system tokens+/ ignore, pop, eof, error, @Trans("", eof) unstructured, 
 		
 		@Push("/*", comment) @Push(`'`, name) @Push("(", bracket) 
 		@Trans(sortedIdentifiers, structured)
@@ -54,6 +54,8 @@ struct StructureScanner_STEP{ static:
 		@Pop("*/") @EOF comment,
 		@Ignore(`\\ \'`) @Pop("'") @EOF name
 	}
+	
+	enum initialState = structured;
 }
 
 void test_sac(){
@@ -76,7 +78,8 @@ void test_sac(){
 
 			
 void main(){ console({ //main() //////////////////////////////////////////////////////////////
+	print("SHIT");
 	if(1) test_StructureScanner;
-	
-	if(1) test_sac;
+	print("FUCK");
+	if(0) test_sac;
 }); }
