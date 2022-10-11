@@ -1262,7 +1262,7 @@ class CodeRow: Row{
 }
 
 
-enum TextFormat{
+deprecated enum TextFormat{
 	plainText,		// unstructured text
 	plainD,	    //	unstructured D source
 	declarations,	    // {	D declarations	         ; }	       // before ':' there can be attributes or staticif: version: debug:
@@ -1275,33 +1275,6 @@ enum TextFormat{
 	index	    //	[ , ]
 }
 
-// ErrorList ////////////////////////////////////////////
-
-auto createErrorListCodeColumn(Container parent){
-	auto code = new CodeColumn(parent);
-	code.padding = "1";
-	code.flags.dontStretchSubCells = true;
-
-	import dide2; //todo: should not import main module.
-	auto buildResult = global_getBuildResult;
-	auto markerLayerHideMask = global_getMarkerLayerHideMask;
-
-	foreach(file; buildResult.remainings.keys.sort){
-		auto pragmas = buildResult.remainings[file];
-		if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-	}
-
-	with(im) code.append({
-		foreach(loc; buildResult.messages.keys.sort){
-			auto msg = buildResult.messages[loc];
-			if(msg.parentLocation) continue;
-			if((1<<msg.type) & markerLayerHideMask) continue;
-			msg.UI(buildResult.subMessagesOf(msg.location));
-		}
-	});
-
-	return code;
-}
 
 //auto createErrorListModule(Container parent){
 //  auto Module = new Module()
@@ -1387,20 +1360,26 @@ struct CodeContext{
 }
 
 static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////////////////////////////////
+	enum resyntax = !rebuild;
+
 	CodeColumn col;
-	bool changed;
 	TextStyle tsWhitespace, ts;
 	SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace;
 			
 	CodeRow actRow;
 	bool skipNextN; //after \r, skip the next \n
 	
-	void NL(){ 
-		col.appendCell(actRow = new CodeRow(col, "", null)); 
-	}
-	
-	void appendChar(dchar ch){ 
-		static if(rebuild){
+	static if(rebuild){
+		void NL(){ 
+			col.appendCell(actRow = new CodeRow(col, "", null)); 
+		}
+		
+		void initialize(){
+			col.clearSubCells;
+			NL; //there must be 1 row always. Empty column is a single empty row.
+		}
+		
+		void appendChar(dchar ch){
 			switch(ch){
 				case '\n', '\r', '\u2028', '\u2029':
 					if(skipNextN.chkClear && ch=='\n') break;
@@ -1408,17 +1387,75 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 					NL;
 				break;
 				default: 
+					//update cached textStyle
 					if(_currentSk.chkSet(syntax))
 						applySyntax(ts, syntax);
+					
 					actRow.appendSyntaxChar(ch, ts, syntax); 
 			}
-		}else{
-			static assert(0, "Resyntax mode NOTIMPL");
 		}
 	}
+	
+	static if(resyntax){
+		
+		ivec2 actPos;
+		
+		void initialize(){
+			//seek to the first character
+			actPos = ivec2(0);
+			actRow = col.rowCount ? col.rows[0] : null;
+			enforce(actRow, "Resyntax: Invalid CodeColumn: No rows at all.");
+		}
+		
+		void moveToNextRow(){
+			enforce(actRow.cellCount==actPos.x, "Resyntax: Longer row than expected. "~actPos.text);
+			actPos.y++;
+			actPos.x = 0;
+			actRow = actPos.y<col.rowCount ? col.rows[actPos.y] : null;
+			enforce("Resyntax: More rows expected. "~actPos.text);
+		}
+		
+		void moveToNextChar(){ 
+			actPos.x++; //this position is allowed to be out of range, because here comes the newline
+		}
+		
+		void appendChar(dchar ch){
+			switch(ch){
+				case '\n', '\r', '\u2028', '\u2029':
+					if(skipNextN.chkClear && ch=='\n') break;
+					skipNextN = ch=='\r';
+					moveToNextRow;
+				break;
+				default: 
+					/+debug+/ //const prevSyntax = syntax; if(ch=='a') syntax = skKeyword; scope(exit) if(ch=='a') syntax = prevSyntax;
+					
+					//update cached textStyle
+					if(_currentSk.chkSet(syntax))
+						applySyntax(ts, syntax);
+					
+					auto g = cast(Glyph)(actRow.subCells.get(actPos.x)); //opt: cache this array per each row
+					enforce(g, "Resyntax: Glyph expected "~actPos.text);
+					enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text);
+					if(g.syntax.chkSet(syntax)){
+						//syntaxChanged = true;
+						g.bkColor	= ts.bkColor;
+						g.fontColor	= ts.fontColor;
 
+						const prevFontFlags = g.fontFlags;
+						g.fontFlags = ts.fontFlags;
+						if(auto delta = g.adjustBoldWidth(prevFontFlags)){
+							actRow.needMeasure; 
+							//opt: cache this and call only once per each row
+							//todo: Ensure elastic tabs recursive spread.
+						}
+					}
+					moveToNextChar;
+			}
+		}
+	}
+	
 	void appendStr(string str){
-		foreach(ch; str) appendChar(ch);
+		foreach(dchar ch; str) appendChar(ch);
 	}
 	
 	void appendPlain(string sourceText){
@@ -1461,19 +1498,40 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 		syntax = skIdentifier1;
 	}
 	
-	void appendHighlighted(string sourceText){ 
+	void appendHighlighted(string sourceText){
 		auto scanner = sourceText.DLangScanner;
+		appendHighlighted(scanner);
+		col.needMeasure;
+	}
+
+	void appendHighlighted(R)(R scanner) //no recursion, it eats the range up completely
+	//if(isInputRange!R && is(ElementType!R==ScanResult))
+	if(isScannerRange!R)
+	{
 		auto syntaxStack = [syntax];
 		while(!scanner.empty){ 
 			auto sr = scanner.front;
-			scanner.popFront;
+			
+			//structural exit handling
+			if(syntaxStack.length==1 && sr.op==ScanOp.pop){
+				
+				//only read until the end of the current level
+				break; 
+			}
 			
 			bool useSimpleHighlighter;
 			switch(sr.op){
 				case ScanOp.push:
 					syntaxStack ~= syntax;
 					switch(sr.src){
-						case "//", "/*", "/+"	: syntax = skComment	; appendStr(sr.src);		break;
+						case "/*"	: { 
+						const oldSyntax = syntax; 
+						syntax = skComment; 
+						appendStr("[*COMMENT:"); scanner.popFront; 
+						appendStr(scanner.front.src); scanner.popFront; 
+						appendStr("*]"); scanner.popFront; 
+						syntax = oldSyntax; continue; }
+						case "//", /*"/*", */ "/+"	: syntax = skComment	; appendStr(sr.src);		break;
 						case "{", "(", "["	: syntax = skSymbol	; appendStr(sr.src);	 syntax = skWhitespace; 	break;
 						case `q{`	: syntax = skString	; appendStr(sr.src);	 syntax = skWhitespace;	break;
 						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`	: syntax = skString	; appendStr(sr.src);		break;
@@ -1496,15 +1554,20 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 				break;
 				//case ScanOp.trans: setSyntax(skError); 	break;
 				case ScanOp.content: 
-					if(!syntax.among(skComment, skString)){
-						appendHighlighted_internal(sr.src);
+					if(syntax.among(skComment, skString)){
+						appendStr(sr.src); 
+						//todo: highlight string escapes
+						//todo: advanced comment formatting
 					}else{
-						appendStr(sr.src);
+						appendHighlighted_internal(sr.src);
 					}
 					break;
 				default: syntax = skError; appendStr(sr.src); break;
 			}
+			
+			scanner.popFront;
 		}
+		col.needMeasure;
 	}
 	
 	this(CodeColumn col){
@@ -1513,18 +1576,9 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 		tsWhitespace 	= tsNormal	; applySyntax(tsWhitespace	, skWhitespace	);
 		ts 	= tsWhitespace	; applySyntax(ts	, _currentSk	);
 		
-		static if(rebuild){
-			col.clearSubCells;
-			NL; //there must be 1 row always. Empty column is a single empty row.
-			changed = true;
-		}else{
-			static assert(0, "Resyntax mode NOTIMPL");
-		}
+		initialize;
 	}
 	
-	~this(){
-		if(changed) col.needMeasure;
-	}
 }
 
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
@@ -1560,6 +1614,42 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		setSourceText(sourceText);
 	}
 
+	protected auto rebuilder(){ return CodeColumnBuilder!true(this); }
+	protected auto resyntaxer(){ return CodeColumnBuilder!false(this); }
+
+	void setSourceText(string sourceText){
+		/+ old version with SourceCode class
+		src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
+		if(subCells.empty)
+			appendCell(new CodeRow(this, "", null)); //always must have at least an empty row+/
+
+		//rebuilder.appendPlain(sourceText);
+		
+		if(0){
+			string M(string what){ return q{ const len = sourceText.length, t0 = now, name = cast(Module)parent ? (cast(Module)parent).file.name : ""; scope(exit){ const t1 = now; if(len>100_000) print(#, ":", name, len, t1-t0, len/(t1-t0).value(second)/(1<<20), "MB/s"); } }.replace("#", what.quoted); }
+			{ mixin(M("rebuild"	)); rebuilder.appendHighlighted(sourceText); 	}
+			{ mixin(M("resyntax"	)); resyntaxer.appendHighlighted(sourceText); 	}
+			{ mixin(M("convTabs"	)); convertSpacesToTabs; 	}
+			
+			/+performance measurements
+				file	rebuild	resyntax	convTabs
+				Math.d	1.52519	3.89558	48.0364
+				Bitmap.d	2.16687	5.9431	55.6989
+				UIBase.d	1.87845	4.5704	49.8733
+				UI.d	1.85978	4.45091	53.227
+				Utils.d	1.2472	4.23284	34.8199
+				dide2.d	1.9538	5.01536	44.054
+				libUEye.d	1.79277	7.13611	47.1898
+				gccbuiltins_x86.di	1.96386	4.39065	35.5134
+				searching.d	0.86698	4.55342	24.2796
+				iteration.d	0.826249	3.51308	17.3037
+			+/
+		}
+		
+		rebuilder.appendHighlighted(sourceText);
+		convertSpacesToTabs;
+	}
+
 	auto calcWhitespaceStats(){
 		import het.tokenizer : WhitespaceStats;
 		WhitespaceStats whitespaceStats;
@@ -1575,24 +1665,6 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		return whitespaceStats;
 	}
 	
-	auto rebuilder(){ return CodeColumnBuilder!true(this); }
-
-	void setSourceText(string sourceText){
-		/+ old version with SourceCode class
-		src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
-		if(subCells.empty)
-			appendCell(new CodeRow(this, "", null)); //always must have at least an empty row+/
-
-		
-		const len = sourceText.length, t0 = now; scope(exit) LOG(len, len/(now-t0).value(second)/(1<<20), "MB/s");
-		
-		//rebuilder.appendPlain(sourceText);
-		rebuilder.appendHighlighted(sourceText);
-		
-		convertSpacesToTabs;
-		
-	}
-
 	void convertSpacesToTabs(){
 		createElasticTabs;
 		spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize); //opt: this can be slow. Maybe put it on a keyboard shortcut.
@@ -1600,7 +1672,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		needMeasure;
 	}
 
-	void resyntax(SourceCode src){
+	/*void resyntax(SourceCode src){
 		//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 		
 		//todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
@@ -1627,6 +1699,14 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			return true;
 		});
 	
+	}*/
+	
+	void resyntax(string sourceText){
+		try{ 
+			resyntaxer.appendHighlighted(sourceText);
+		}catch(Exception e){
+			WARN(e.simpleMsg);
+		}
 	}
 
 	override inout(Container) getParent() inout { return parent; }
@@ -2295,16 +2375,18 @@ class Module : CodeNode{ //this is any file in the project
 	}
 
 	void resyntax(){
-		auto txt = code.sourceText;
+		/+auto txt = code.sourceText;
 		auto src = scoped!SourceCode(txt);
 
-		resyntax_src(src);
+		resyntax_src(src);+/
+		
+		code.resyntax(code.sourceText);
 	}
 
 	//call it with a freshly parsed SourceCode object
-	void resyntax_src(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
+	/+void resyntax_src(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
 		code.resyntax(src);
-	}
+	}+/
 
 	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
 		clearSubCells;
@@ -2360,16 +2442,47 @@ class Module : CodeNode{ //this is any file in the project
 
 }
 
+// ErrorList ////////////////////////////////////////////
 
+auto createErrorListCodeColumn(Container parent){
+	auto code = new CodeColumn(parent);
+	code.padding = "1";
+	code.flags.dontStretchSubCells = true;
+
+	import dide2; //todo: should not import main module.
+	auto buildResult = global_getBuildResult;
+	auto markerLayerHideMask = global_getMarkerLayerHideMask;
+
+	foreach(file; buildResult.remainings.keys.sort){
+		auto pragmas = buildResult.remainings[file];
+		if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
+	}
+
+	with(im) code.append({
+		foreach(loc; buildResult.messages.keys.sort){
+			auto msg = buildResult.messages[loc];
+			if(msg.parentLocation) continue;
+			if((1<<msg.type) & markerLayerHideMask) continue;
+			msg.UI(buildResult.subMessagesOf(msg.location));
+		}
+	});
+
+	return code;
+}
+
+
+//bug: ErrorListModule is fucked up
 deprecated class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
 	this(Container parent, File file_){
 		super(parent, file_);
+		
+		reload;
 	}
 
 	override bool isReadOnly(){ return true; }
 
 	override void resyntax(){ }
-	override void resyntax_src(SourceCode src){ }
+	//override void resyntax_src(SourceCode src){ }
 
 	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents=""){
 		clearSubCells;
@@ -2461,56 +2574,60 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 	}
 }+/
 
-class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
-	CodeColumn contents;
+/+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
+	CodeColumn content;
 
-	this(R)(CodeRow parent, R input) if(isInputRange!R && is(ElementType!R==ScanResult)){
+	this(R)(CodeRow parent, R scanner) if(isScannerRange!R){
 		super(parent);
 		
+		enforce(!scanner.empty);
+		enforce(scanner.front.op==ScanOp.push);
+		enforce(scanner.front.src=="/*");
+		scanner.popFront;
+		
+		enforce(!scanner.empty);
+		
+		string contentStr;
+		if(scanner.front.op==Scan.content){
+			content = scanner.front.src;
+			scanner.popFront;
+		}
+		
+		enforce(!scanner.empty);
+		enforce(scanner.front.op==ScanOp.pop);
+		enforce(scanner.front.src=="*/");
+		scanner.popFront;
 		
 		//flags.yAlign = YAlign.top;
 
-//    auto ts = tsSyntax(SyntaxKind.Comment);
-		auto ts = tsSyntax(SyntaxKind.Symbol);
+		auto ts = tsSyntax(SyntaxKind.Comment);
 
-		const darkColor	= ts.bkColor,
-					brightColor	= ts.fontColor,
-					halfColor	= avg(darkColor, brightColor);
+		const 	darkColor	= ts.bkColor,
+			brightColor 	= ts.fontColor,
+			halfColor	= avg(darkColor, brightColor);
 
 		bkColor = halfColor;
 		border.color = bkColor;
 
 		ts.fontColor = darkColor;
 		ts.bkColor = halfColor;
-		ts.bold = true;
-//    appendStr("//"~smallSpace, ts);
-		appendStr("if", ts);
 
-		contents = new CodeColumn(this, "1+1//This is a test comment");
+		appendStr("/*", ts);
+
+		contents = new CodeColumn(this);
 		contents.bkColor = darkColor;
+		
+		contents.appendStr(contents);
 
 		subCells ~= contents;
 
-		appendStr("\nthen\t", ts);
-
-		contents = new CodeColumn(this, "//This is a test comment");
-		contents.bkColor = darkColor;
-
-		subCells ~= contents;
-
-		appendStr("\nelse\t", ts);
-
-		contents = new CodeColumn(this, "//This is a test comment");
-		contents.bkColor = darkColor;
-
-		subCells ~= contents;
+		appendStr("*/", ts);
 
 		needMeasure;
 	}
 
 	override string sourceText(){
-		NOTIMPL;
-		return "";
+		return "/*"~contents~"*/";
 	}
 
 	override void rearrange(){
@@ -2539,7 +2656,7 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
 		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
 	}
 }
-
++/
 
 CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
 	return new CodeColumn(owner, sourceText);

@@ -55,7 +55,7 @@ struct StructureScanner_STEP{ static:
 		@Ignore(`\\ \'`) @Pop("'") @EOF name
 	}
 	
-	enum initialState = structured;
+	enum initialState = State.structured;
 }
 
 void test_sac(){

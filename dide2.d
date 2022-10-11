@@ -39,6 +39,8 @@
 
 //todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
 
+//todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
+
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
 }
@@ -442,7 +444,10 @@ struct TextSelectionManager{ // TextSelectionManager ///////////////////////////
 
 }
 
+
 // SyntaxHighlightWorker ////////////////////////////////////////////
+
+enum DisableSyntaxHighlightWorkerJob = true;
 
 class SyntaxHighlightWorker{
 
@@ -451,7 +456,7 @@ class SyntaxHighlightWorker{
 		string resourceId; //only one object allowed with the same referenceId
 		string sourceText;
 
-		SourceCode sourceCode; //result
+		static if(!DisableSyntaxHighlightWorkerJob) SourceCode sourceCode; //result
 
 		bool valid() const{ return !changeId.isNull; }
 		bool opCast(b:bool)() const{ return valid; }
@@ -491,7 +496,7 @@ class SyntaxHighlightWorker{
 		while(shw.destroyLevel==0){
 			if(auto job = shw._workerGetJob){
 				//LOG("Working on Job: " ~ job.changeId.text ~ " " ~job.resourceId);
-				job.sourceCode = new SourceCode(job.sourceText);
+				static if(!DisableSyntaxHighlightWorkerJob) job.sourceCode = new SourceCode(job.sourceText);
 				//LOG("parsed");
 				shw._workerCompleteJob(job);
 			}else{
@@ -1217,7 +1222,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 					static DateTime lastOutdatedResyncTime;
 					if(col.lastResyntaxTime==job.changeId || now-lastOutdatedResyncTime > .25*second){
-						mod.resyntax_src(job.sourceCode);
+						//mod.resyntax_src(job.sourceCode);
+						mod.resyntax;
 						lastOutdatedResyncTime = now;
 					}
 				}
