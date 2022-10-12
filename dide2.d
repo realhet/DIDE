@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -40,6 +40,8 @@
 //todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
 
 //todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
+
+//todo: Search: x=12  match -> x =12,  x =  12 too. Automatic whitespaces.
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -973,7 +975,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	void scrollV(float dy){ frmMain.view.scrollV(dy); }
 	void scrollH(float dx){ frmMain.view.scrollH(dx); }
-	void zoom(float log){ frmMain.view.zoom(log); }
+	void zoom(float log){ frmMain.view.zoom(log); } //todo: Only zoom when window is foreground
 
 	float scrollSpeed(){ return frmMain.deltaTime.value(second)*2000; }
 	float zoomSpeed(){ return frmMain.deltaTime.value(second)*8; }
@@ -1388,9 +1390,9 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 				assert(ts.caret.pos.x>=0 && ts.caret.pos.x<=row.subCells.length);
 
 				//handle leadingTab duplication
-				if(duplicateTabs && row.leadingTabCount){
+				if(duplicateTabs && row.leadingCodeTabCount){
 					lines = lines.dup;
-					lines.back = "\t".replicate(row.leadingTabCount) ~ lines.back;
+					lines.back = "\t".replicate(row.leadingCodeTabCount) ~ lines.back;
 				}
 
 				if(requestInsertPermission_prepare(ts, lines.join(DefaultNewLine))){
@@ -1666,7 +1668,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("F2") void testInsert2(){
 		foreach(m; selectedModules){
 			m.isStructured = true;
-			m.reload;
+			//m.reload;
 		}
 	}
 

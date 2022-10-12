@@ -369,7 +369,7 @@ struct TextCursor{  //TextCursor /////////////////////////////
 	void moveRight(int delta){
 		if(!delta) return;
 		if(delta==home){
-			const ltc = codeColumn.rows[pos.y].leadingTabCount; //unsafe
+			const ltc = codeColumn.rows[pos.y].leadingCodeTabCount; //unsafe
 			pos.x = pos.x>ltc ? ltc : 0; //first stop is right after leading tabs, then goes to 0
 		}else if(delta==end){
 			pos.x = codeColumn.rows[pos.y].cellCount; //unsafe
@@ -958,27 +958,25 @@ class CodeRow: Row{
 
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
-	string sourceText() { return chars.to!string; }
+	
+	string sourceText() { 
+		return chars.to!string; 
+	}
 
 	//todo: mode isSpace inside elastic tab detection, it's way too specialized
 
-	private static bool isSpace(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; } //this is for leadingTab detection
-	private static bool isTab  (Glyph g){ return g && g.ch=='\t' /+any syntax counts for tabs +/; }
-	private auto isSpaces() { return glyphs.map!(g => isSpace(g)); }
-	private auto leadingSpaces(){ return glyphs.until!(g => !isSpace(g)); }
-	private auto leadingTabs  (){ return glyphs.until!(g => !isTab(g)  ); }
-
-	//these are needed for calcWhitespaceStats
-	private static bool isCodeSpace	(Glyph g){ return g && g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
-	private static bool isCodeTab	(Glyph g){ return g && g.ch=='\t' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; }
-	private auto leadingCodeSpaces	(){ return glyphs.until!(g => !isCodeSpace(g)); }
-	private auto leadingCodeTabs	(){ return glyphs.until!(g => !isCodeTab(g)  ); }
-
-	//this is for visualization
-	private auto leadingWhitespaces(){ return glyphs.until!(g => !(g && g.ch.among(' ', '\t'))); }
-	int leadingWhitespaceCount() { return cast(int)leadingWhitespaces.walkLength; }
-
-	int leadingTabCount() { return cast(int)leadingTabs.walkLength; }
+	private static bool isCodeSpace	(Cell c){ if(auto g = cast(Glyph)c) return g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; return false; }
+	private static bool isCodeTab	(Cell c){ if(auto g = cast(Glyph)c) return g.ch=='\t' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; return false; }
+	private static bool isAnyWhitespace	(Cell c){ if(auto g = cast(Glyph)c) return !!g.ch.among(' ', '\t'); return false; }
+	private auto isCodeSpaces() { return subCells.map!isCodeSpace; }
+	
+	auto leadingCodeSpaces	(){ return subCells.until!(not!isCodeSpace	); }
+	auto leadingCodeTabs	(){ return subCells.until!(not!isCodeTab	); }
+	auto leadingAnyWhitespaces	(){ return subCells.until!(not!isAnyWhitespace	); }
+	
+	auto leadingCodeSpaceCount	(){ return cast(int)leadingCodeSpaces	.walkLength; }
+	auto leadingCodeTabCount	(){ return cast(int)leadingCodeTabs	.walkLength; }
+	auto leadingAnyWhitespaceCount	(){ return cast(int)leadingAnyWhitespaces	.walkLength; }
 
 	this(CodeColumn parent_){
 		parent = enforce(parent_);
@@ -990,7 +988,7 @@ class CodeRow: Row{
 		flags.cullSubCells	= true;
 		flags.rowElasticTabs	= false;
 		flags.dontHideSpaces	= true;
-		bkColor = clCodeBackground;
+		bkColor = parent.bkColor;
 	}
 
 	this(CodeColumn parent_, string line, ubyte[] syntax){
@@ -1106,8 +1104,8 @@ class CodeRow: Row{
 		void adjustCharWidths(){
 
 			bool isLeading = true;
-			foreach(g; glyphs) if(g){
-				if(isSpace(g)){
+			foreach(g; glyphs) if(g){ //todo: make this nicer
+				if(isCodeSpace(g)){
 					g.outerWidth = isLeading ? LeadingSpaceWidth
 																	 : NormalSpaceWidth;
 				}else{
@@ -1127,7 +1125,7 @@ class CodeRow: Row{
 
 		private void spaceToTab(long i){
 			auto g = glyphs[i];
-			assert(isSpace(glyphs[i]));
+			assert(isCodeSpace(g));
 			g.ch = '\t';
 			g.isTab = true;
 			//note: refreshTabIdx must be called later
@@ -1137,11 +1135,11 @@ class CodeRow: Row{
 			assert(xStart<=xTab	, "invalid xStart, xTab");
 			assert(xStart>=0	, "xStart out of range");
 			assert(xTab<subCells.length	, "xTab out of range");
-			assert(glyphs[xStart..xTab+1].all!(g => isSpace(g))	, "All must be spaces");
+			assert(glyphs[xStart..xTab+1].all!(g => isCodeSpace(g))	, "All must be spaces");
 			assert(tabCount <= xTab-xStart+1	, "tabCount too much.");
 
 			auto normalizeLeadingSpaces(Cell[] sc){
-				(cast(Glyph[])sc) .until!(a => !(isSpace(a) && a.outerWidth!=NormalSpaceWidth))
+				sc	.until!(a => !(isCodeSpace(a) && a.outerWidth!=NormalSpaceWidth))
 					.each!(a => a.outerWidth = NormalSpaceWidth);
 				return sc;
 			}
@@ -1154,9 +1152,10 @@ class CodeRow: Row{
 
 		void convertLeadingSpacesToTabs(int spaceCnt){
 			//todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
-
+			//subCells.each!LOG;
 			assert(spaceCnt>0);
-			const tabCnt = (cast(int)leadingSpaces.walkLength)/spaceCnt;
+			const tabCnt = leadingCodeSpaceCount/spaceCnt;
+			//LOG(leadingCodeSpaceCount, spaceCnt);
 			if(tabCnt>0){
 				const removeCnt = tabCnt*spaceCnt-tabCnt;
 				internal_setSubCells(subCells[removeCnt..$]);
@@ -1187,7 +1186,7 @@ class CodeRow: Row{
 		if(lod.level>1 && im.actTargetSurface==0){ //note: LOD is only enabled on the world view, not on the UI
 
 			if(subCells.length){
-				const lwsCnt = leadingWhitespaceCount; //opt: this should be memoized
+				const lwsCnt = leadingAnyWhitespaceCount; //opt: this should be memoized
 				if(lwsCnt<subCells.length){
 					auto cell = subCells[lwsCnt];
 					const r = bounds2(cell.outerPos, subCells.back.outerBottomRight) + innerPos;
@@ -1431,6 +1430,12 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 					actRow.appendSyntaxChar(ch, ts, syntax); 
 			}
 		}
+		
+		void appendNode(CodeNode node){
+			assert(node);
+			assert(node.parent is actRow);
+			actRow.appendCell(node);
+		}
 	}
 	
 	static if(resyntax){
@@ -1489,6 +1494,16 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 					moveToNextChar;
 			}
 		}
+		
+		void appendNode(CodeNode node){
+			auto n = cast(CodeNode)(actRow.subCells.get(actPos.x)); //opt: cache this array per each row
+			enforce(n, "Resyntax: Glyph expected "~actPos.text);
+			
+			//no need to check anything
+			//opt: no need to rebuild the node, only skip it.
+			
+			moveToNextChar;
+		}
 	}
 	
 	void appendStr(string str){
@@ -1535,13 +1550,13 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 		syntax = skIdentifier1;
 	}
 	
-	void appendHighlighted(string sourceText){
-		auto scanner = sourceText.DLangScanner;
-		appendHighlighted(scanner);
-		col.needMeasure;
-	}
+	void appendHighlighted	(string sourceText){ appendHighlighted	(sourceText.DLangScanner); }
+	void appendStructured	(string sourceText){ appendStructured	(sourceText.DLangScanner); }
 
-	void appendHighlighted(R)(R scanner) //no recursion, it eats the range up completely
+	void appendHighlighted	(R)(R scanner) if(isScannerRange!R) { appendHighlightedOrStructured!false	(scanner); }
+	void appendStructured	(R)(R scanner) if(isScannerRange!R) { appendHighlightedOrStructured!true	(scanner); }
+	
+	void appendHighlightedOrStructured(bool structured=false, R)(R scanner) //no recursion, it eats the range up completely
 	//if(isInputRange!R && is(ElementType!R==ScanResult))
 	if(isScannerRange!R)
 	{
@@ -1550,37 +1565,56 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 			auto sr = scanner.front;
 			
 			//structural exit handling
-			if(syntaxStack.length==1 && sr.op==ScanOp.pop){
-				
-				//only read until the end of the current level
-				break; 
+			static if(structured){
+				if(syntaxStack.length==1 && sr.op==ScanOp.pop){
+					//only read until the end of the current level
+					break; 
+				}
 			}
 			
-			bool useSimpleHighlighter;
+			void handleHighlightedPush(){
+				syntaxStack ~= syntax;
+				switch(sr.src){
+					case "//", "/*", "/+"	: syntax = skComment	; appendStr(sr.src);		break;
+					case "{", "(", "["	: syntax = skSymbol	; appendStr(sr.src);	 syntax = skWhitespace; 	break;
+					case `q{`	: syntax = skString	; appendStr(sr.src);	 syntax = skWhitespace;	break;
+					case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`	: syntax = skString	; appendStr(sr.src);		break;
+					default	: syntax = skError	; appendStr(sr.src);		break;
+					//todo: identifier quoted string `q"id`
+				}
+			}
+			
 			switch(sr.op){
-				case ScanOp.push:
-					syntaxStack ~= syntax;
-					switch(sr.src){
-						case "/*": { 
-							
-							//appendNode!CodeComment;
-							
-							const oldSyntax = syntax; 
-							syntax = skComment; 
-							appendStr("[*COMMENT:"); scanner.popFront; 
-							appendStr(scanner.front.src); scanner.popFront; 
-							appendStr("*]"); scanner.popFront; 
-							syntax = oldSyntax; 
-							continue; }
+				case ScanOp.push:{
+					static if(structured){
 						
-						case "//", /*"/*", */ "/+"	: syntax = skComment	; appendStr(sr.src);		break;
-						case "{", "(", "["	: syntax = skSymbol	; appendStr(sr.src);	 syntax = skWhitespace; 	break;
-						case `q{`	: syntax = skString	; appendStr(sr.src);	 syntax = skWhitespace;	break;
-						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`	: syntax = skString	; appendStr(sr.src);		break;
-						default	: syntax = skError	; appendStr(sr.src);		break;
-						//todo: identifier quoted string `q"id`
+						auto N(T)(){ auto c = new T(actRow); c.rebuild(scanner); appendNode(c); }
+						
+						switch(sr.src){
+							case "//":{
+								N!CodeComment;
+								syntax = skWhitespace; appendChar('\n');
+								continue; 
+							}
+							case "/*", "/+":{
+								N!CodeComment;
+								continue; 
+							}
+							
+							case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`:{
+								N!CodeString;
+								continue;
+							}
+							case "{", "(", "[":{
+								N!CodeBlock;
+								continue;
+							}
+							default: handleHighlightedPush;
+						}
+					}else{
+						handleHighlightedPush;
 					}
-				break;
+				break;}
 				case ScanOp.pop:
 					if(syntaxStack.empty){
 						syntax = skError;
@@ -1626,21 +1660,21 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
 	Container parent;
-	CodeContext context;
+	//CodeContext context;
 	
 	enum defaultSpacesPerTab = 4; //default in std library
 	int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
 	DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
 
-	deprecated("Only needed for compile.err builder") this(Container parent){
+	/+deprecated("Only needed for compile.err builder") this(Container parent){
 		this(parent, ccPlain);
-	}
+	}+/
 
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
-	deprecated("Only needed for compile.err builder") this(Container parent, CodeContext context){
+	deprecated("Only needed for compile.err builder") this(Container parent/*, CodeContext context*/){
 		this.parent = parent;
-		this.context = context;
+		//this.context = context;
 		//id.value = this.identityStr;  //id is not used anymore for this
 
 		needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
@@ -1652,19 +1686,19 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		this.setRoundBorder(8);
 		margin = "0.5";
 		padding = "0.5 4";
-		bkColor = context.clBackground;
+		bkColor = clCodeBackground;
 	}
 
 	/// This is the normal constructor. This should be the only one.
-	this(Container parent, CodeContext context, string sourceText){
+	/+this(Container parent, CodeContext context, string sourceText){
 		this(parent, context);
 		setSourceText(sourceText);
-	}
+	}+/
 
-	protected auto rebuilder(){ return CodeColumnBuilder!true(this); }
-	protected auto resyntaxer(){ return CodeColumnBuilder!false(this); }
+	auto rebuilder	(){ return CodeColumnBuilder!true	(this); }
+	auto resyntaxer	(){ return CodeColumnBuilder!false	(this); }
 
-	void setSourceText(string sourceText){
+	/+void setSourceText(string sourceText){
 		/+ old version with SourceCode class
 		src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
 		if(subCells.empty)
@@ -1700,7 +1734,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		}
 		
 		convertSpacesToTabs;
-	}
+	}+/
 
 	auto calcWhitespaceStats(){
 		import het.tokenizer : WhitespaceStats;
@@ -1709,7 +1743,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			if(!r.leadingCodeTabs.empty){
 				whitespaceStats.tabCnt++;
 			}else{
-				auto spaceCnt = cast(int)r.leadingCodeSpaces.walkLength;
+				auto spaceCnt = r.leadingCodeSpaceCount;
 				whitespaceStats.addSpaceCnt(spaceCnt);
 			}
 		}
@@ -1763,6 +1797,11 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 	override inout(Container) getParent() inout { return parent; }
 	override void setParent(Container p){ parent = p; }
+
+	override void appendCell(Cell cell){
+		assert(cast(CodeRow)cell);
+		super.appendCell(cell);
+	}
 
 	auto const rows(){ return cast(CodeRow[])subCells; }
 	int rowCount() const{ return cast(int)subCells.length; }
@@ -1880,7 +1919,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			if(cast(uint)y >= rowCount) return false;
 			with(rows[y]){
 				if(cast(uint)x >= cellCount) return false;
-				return isSpaces[x] && (x+1 >= cellCount || !isSpaces[x+1]);
+				return isCodeSpaces[x] && (x+1 >= cellCount || !isCodeSpaces[x+1]);
 			}
 		}
 
@@ -1902,7 +1941,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			if(y0<y1) foreach(yy; y0..y1+1) with(rows[yy]) {
 				visited[x+(long(yy)<<32)] = true;
 
-				int x0 = x; while(x0 > 0 && isSpaces[x0-1]) x0--;
+				int x0 = x; while(x0 > 0 && isCodeSpaces[x0-1]) x0--;
 				int x1 = x;
 
 				int len = x1-x0+1;
@@ -1917,7 +1956,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 				//if(xStartMin>0) "------------------".print;
 
 				foreach(yy; y0..y1+1) with(rows[yy]) {
-					int xStart	= x; while(xStart > xStartMin && isSpaces[xStart-1]) xStart--;
+					int xStart	= x; while(xStart > xStartMin && isCodeSpaces[xStart-1]) xStart--;
 					int xTab	= x+1-minLen;
 
 					newTabs ~= TabInfo(yy, xStart, xTab);
@@ -1930,7 +1969,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		//scan through all the rows and initiate floodFills
 		foreach(y, row; rows) with(row){
 			int st = 0;
-			foreach(isSpace, len; isSpaces.group){
+			foreach(isSpace, len; isCodeSpaces.group){
 				const en = st + cast(int)len;
 
 				if(isSpace && st>0){
@@ -1943,7 +1982,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 					const rightChar = en+1<len ? chars[en+1] : '\0';
 					if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;+/
 					
-					flood(en-1, cast(int)y, canGoUp, canGoDown, leadingSpaces.walkLength);
+					flood(en-1, cast(int)y, canGoUp, canGoDown, leadingCodeSpaceCount);
 				}
 
 				st = en;
@@ -1982,7 +2021,8 @@ void test_CodeColumn(){
 
 	void test_RowCount(string src, int rowCount, string dst="*"){
 		if(dst=="*") dst = src;
-		auto cc = scoped!CodeColumn(null, ccPlain, src);
+		auto cc = scoped!CodeColumn(null);
+		cc.rebuilder.appendStr(src);
 		void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
 		expect(cc.rows.length, rowCount);
 		expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.sourceText).join('\n')));
@@ -2441,25 +2481,30 @@ class Module : CodeNode{ //this is any file in the project
 	}+/
 
 	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
-		clearSubCells;
-
 		fileModified = file.modified;
 		sizeBytes = file.size;
 		resetModuleTypeFlags;
 
-		T0;
 		auto prevSourceText = sourceText;
 		string sourceText = useExternalContents	? externalContents
 			: this.file.readText;
 		
 		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
 		
-		code = new CodeColumn(this, ccPlain, sourceText);
-		
-		static if(LogModuleLoadPerformance) LOG(DT, file);
+		code = new CodeColumn(this);
+		try{ code.rebuilder.appendStructured(sourceText); }
+		catch(Exception e){
+			try{ code.rebuilder.appendHighlighted(sourceText); }
+			catch(Exception e){
+				try{ code.rebuilder.appendPlain(sourceText); }
+				catch(Exception e){
+					raise("Fatal error. Unable to load module "~file.fullName);
+				}
+			}
+		}
+		code.convertSpacesToTabs;
 
-		appendCell(enforce(code));
-
+		subCells = [code];
 		needMeasure;
 	}
 
@@ -2488,7 +2533,7 @@ class Module : CodeNode{ //this is any file in the project
 // ErrorList ////////////////////////////////////////////
 
 auto createErrorListCodeColumn(Container parent){
-	auto code = new CodeColumn(parent, ccPlain);
+	auto code = new CodeColumn(parent);
 	code.padding = "1";
 	code.flags.dontStretchSubCells = true;
 
@@ -2617,74 +2662,91 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 	}
 }+/
 
-/+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
 	CodeColumn content;
 
-	this(R)(CodeRow parent, R scanner) if(isScannerRange!R){
+	enum Type {slash, c, d}
+	enum TypePrefix 	= ["//"	, "/*", "/+"];
+	enum TypePostfix 	= ["\r\n"	, "*/", "+/"];
+	
+	Type type;
+	
+	@property string prefix	() const{ return TypePrefix[type]; }
+	@property string postfix	() const{ return type==Type.slash ? DefaultNewLine : TypePostfix[type]; }
+
+	this(CodeRow parent){
 		super(parent);
+		content = new CodeColumn(this);
+		content.bkColor = syntaxBkColor(skComment);
+	}
+
+	void rebuild(R)(R scanner) if(isScannerRange!R){
+		assert(content);
 		
+		//decode type
 		enforce(!scanner.empty);
-		enforce(scanner.front.op==ScanOp.push);
-		enforce(scanner.front.src=="/*");
+		const sr = scanner.front;
+		enforce(sr.op == ScanOp.push);
+		type = TypePrefix.countUntil(sr.src).to!Type;
 		scanner.popFront;
 		
-		enforce(!scanner.empty);
+		//get content
 		
-		string contentStr;
-		if(scanner.front.op==Scan.content){
-			content = scanner.front.src;
+		auto rebuilder = CodeColumnBuilder!true(content);
+		while(!scanner.empty){
+			if(scanner.front.op==ScanOp.push){
+				//opening a new something
+				if(scanner.front.src=="/+"){
+					auto n = new CodeComment(rebuilder.actRow);  //RECURSION!!!!!
+					n.rebuild(scanner);
+					rebuilder.appendNode(n);
+					continue;
+				}else{
+					enforce(0, "Invalid push: "~scanner.front.src);
+				}
+			}else if(scanner.front.op==ScanOp.pop){
+				//closing token
+				scanner.popFront;
+				break;
+			}else{
+				rebuilder.syntax = scanner.front.op==ScanOp.content ? skComment : skError;
+				rebuilder.appendStr(scanner.front.src);
+			}
 			scanner.popFront;
 		}
 		
-		enforce(!scanner.empty);
-		enforce(scanner.front.op==ScanOp.pop);
-		enforce(scanner.front.src=="*/");
-		scanner.popFront;
-		
-		//flags.yAlign = YAlign.top;
-
-		auto ts = tsSyntax(SyntaxKind.Comment);
-
-		const 	darkColor	= ts.bkColor,
-			brightColor 	= ts.fontColor,
-			halfColor	= avg(darkColor, brightColor);
-
-		bkColor = halfColor;
-		border.color = bkColor;
-
-		ts.fontColor = darkColor;
-		ts.bkColor = halfColor;
-
-		appendStr("/*", ts);
-
-		contents = new CodeColumn(this);
-		contents.bkColor = darkColor;
-		
-		contents.appendStr(contents);
-
-		subCells ~= contents;
-
-		appendStr("*/", ts);
-
 		needMeasure;
 	}
 
 	override string sourceText(){
-		return "/*"~contents~"*/";
+		//todo: handle invalid characters.
+		assert(content);
+		return prefix~content.sourceText~postfix;
 	}
 
 	override void rearrange(){
-		{
-			const c = tsSyntax(SyntaxKind.Comment).bkColor;
-			foreach(r; contents.rows){
-				r.bkColor = c;
-			}
-		}
+		flags.yAlign = YAlign.center;
+		
+		auto ts = tsSyntax(SyntaxKind.Comment);
+		
+		const 	darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= avg(darkColor, brightColor);
 
-		//measureSubCells;
+		bkColor 	= halfColor;
+		border.color 	= bkColor;
+
+		ts.fontColor 	= darkColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		
+		appendStr(prefix, ts);
+		appendCell(content);
+		if(type!=Type.slash) appendStr(postfix, ts);
+		
 		super.rearrange;
-
-		//innerSize = subCells.back.outerBottomRight;
+		
+		//todo: yAlign the prefix
 	}
 
 	override void draw(Drawing dr){
@@ -2699,13 +2761,226 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
 	}
 }
-+/
+
+class CodeString : CodeNode{ // CodeString //////////////////////////////////////////
+	CodeColumn content;
+
+	//todo: qString_id
+	enum Type 		{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	}
+	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`	];
+	enum TypePostfix 	= 	["`"	, "'"	, `"`	, `"`	, `)"`	, `]"`	, `}"`	, `>"`	, `/"`	, `}`	];
+	
+	enum CharSize {default_, c, w, d}
+	
+	Type type;
+	CharSize charSize;
+	
+	@property string prefix	() const{ return TypePrefix[type]; }
+	@property string sizePostfix	() const{ return charSize!=CharSize.default_ ? charSize.text : ""; }
+	@property string postfix	() const{ return TypePostfix[type]~sizePostfix; }
+
+	this(CodeRow parent){
+		super(parent);
+		content = new CodeColumn(this);
+		content.bkColor = syntaxBkColor(skString);
+	}
+
+	void rebuild(R)(R scanner) if(isScannerRange!R){
+		assert(content);
+		
+		//decode type
+		enforce(!scanner.empty);
+		const sr = scanner.front;
+		enforce(sr.op == ScanOp.push);
+		type = TypePrefix.countUntil(sr.src).to!Type;
+		charSize = CharSize.default_;
+		scanner.popFront;
+		
+		//set special bk color. For tokenString.
+		content.bkColor = syntaxBkColor(skString);
+		if(type==Type.tokenString)
+			content.bkColor = mix(clCodeBackground, content.bkColor, .33f); //todo: clCodeBackground should be inherited for the inner contents...
+		
+		//get content
+		auto rebuilder = CodeColumnBuilder!true(content);
+		
+		if(type==Type.tokenString){
+			
+			rebuilder.appendStructured(scanner); //this will stop at the closing "}"
+			
+			if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src.startsWith("}")){
+				//closing token: Decode char/word/dword string element size specifier.
+				if(auto cwdIdx = scanner.front.src.back.among('c', 'w', 'd'))
+					charSize = cast(CharSize)cwdIdx;
+				
+				scanner.popFront;
+			}else{
+				enforce(0, "Invalid tokenstring");
+			}
+			
+		}else{ 
+			while(!scanner.empty){
+				if(scanner.front.op==ScanOp.push){
+					enforce(0, "Invalid push: "~scanner.front.src);
+				}else if(scanner.front.op==ScanOp.pop){
+					//closing token: Decode char/word/dword string element size specifier.
+					if(auto cwdIdx = scanner.front.src.back.among('c', 'w', 'd'))
+						charSize = cast(CharSize)cwdIdx;
+					
+					scanner.popFront;
+					break;
+				}else{
+					rebuilder.syntax = scanner.front.op==ScanOp.content ? skString : skError;
+					rebuilder.appendStr(scanner.front.src);
+				}
+				scanner.popFront;
+			}
+		}
+		
+		needMeasure;
+	}
+
+	override string sourceText(){
+		//todo: handle invalid characters.
+		assert(content);
+		return prefix~content.sourceText~postfix;
+	}
+
+	override void rearrange(){
+		flags.yAlign = YAlign.center;
+		
+		auto ts = tsSyntax(SyntaxKind.String);
+		
+		const 	darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= avg(darkColor, brightColor);
+
+		bkColor 	= halfColor;
+		border.color 	= bkColor;
+
+		ts.fontColor 	= darkColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		
+		appendStr(prefix, ts);
+		appendCell(content);
+		appendStr(postfix, ts);
+		
+		super.rearrange;
+		
+		//todo: yAlign the prefix
+	}
+
+	override void draw(Drawing dr){
+		super.draw(dr);
+
+		/*dr.lineWidth = -1;
+		dr.color = clBlue; dr.drawRect(outerBounds);
+		dr.color = clYellow; dr.drawRect(innerBounds);
+
+		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
+		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
+		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
+	}
+}
+
+
+class CodeBlock : CodeNode{ // CodeBlock //////////////////////////////////////////
+	CodeColumn content;
+
+	//todo: qString_id
+	enum Type 		{ block	, list	, index	}
+	enum TypePrefix 	= 	["{"	, "("	, `[`	];
+	enum TypePostfix 	= 	["}"	, ")"	, `]`	];
+	
+	Type type;
+	
+	@property string prefix	() const{ return TypePrefix	[type]; }
+	@property string postfix	() const{ return TypePostfix	[type]; }
+
+	this(CodeRow parent){
+		super(parent);
+		content = new CodeColumn(this);
+	}
+
+	void rebuild(R)(R scanner) if(isScannerRange!R){
+		assert(content);
+		
+		//decode type
+		enforce(!scanner.empty);
+		const sr = scanner.front;
+		enforce(sr.op == ScanOp.push);
+		type = TypePrefix.countUntil(sr.src).to!Type;
+		scanner.popFront;
+		
+		//todo: different colors for each
+		
+		//get content
+		auto rebuilder = CodeColumnBuilder!true(content);
+		
+		rebuilder.appendStructured(scanner); //this will stop at the closing token
+		
+		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix){
+			//closing token
+			scanner.popFront;
+		}else{
+			enforce(0, "Invalid block closing token");
+		}
+		
+		needMeasure;
+	}
+
+	override string sourceText(){
+		//todo: handle invalid characters.
+		assert(content);
+		return prefix~content.sourceText~postfix;
+	}
+
+	override void rearrange(){
+		flags.yAlign = YAlign.center;
+		
+		auto ts = tsSyntax(SyntaxKind.Symbol);
+		
+		const 	darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= mix(darkColor, brightColor, .15f);
+
+		bkColor 	= halfColor;
+		border.color 	= bkColor;
+
+		ts.fontColor 	= brightColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		
+		appendStr(prefix, ts);
+		appendCell(content);
+		appendStr(postfix, ts);
+		
+		super.rearrange;
+		
+		//todo: yAlign the prefix
+	}
+
+	override void draw(Drawing dr){
+		super.draw(dr);
+
+		/*dr.lineWidth = -1;
+		dr.color = clBlue; dr.drawRect(outerBounds);
+		dr.color = clYellow; dr.drawRect(innerBounds);
+
+		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
+		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
+		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
+	}
+}
+
 
 //CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
 //	return new CodeColumn(owner, sourceText);
 //}
 
-//CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ // buildStructuredCodeColumn ///////////////////////////////////
+//CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ 
+// buildStructuredCodeColumn ///////////////////////////////////
 	
 //	return new CodeColumn(owner, sourceText);
 	
