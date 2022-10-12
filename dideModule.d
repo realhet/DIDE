@@ -1281,12 +1281,18 @@ deprecated enum TextFormat{
 //}
 
 
+
+auto ccPlain	(){ return CodeContext(CodeContext.Type.plain); }
+auto ccHighlighted	(){ return CodeContext(CodeContext.Type.highlighted); }
+auto ccStructured	(){ return CodeContext(CodeContext.Type.structured); }
+auto ccCComment	(){ return CodeContext(CodeContext.Type.cComment); }
+
 struct CodeContext{
 
 	enum CharSize: ubyte { default_, c, w, d }
 	
 	enum Type: ubyte	{
-		plain		, // Simple text without any structure of highlight
+		plain	, // Simple text without any structure of highlight
 		highlighted	, // syntax highlighted text without structure
 		structured	, // structured and syntax highlighted code
 		slashComment	, // simple comment text, no newLine allowed
@@ -1296,7 +1302,7 @@ struct CodeContext{
 		cString	, // " C string literal with escapes
 		dString	, // ` D string wysiwyg string
 		rString	, // r" D string wysiwyg string
-		qString_brace	, // q"( D delimited string
+		qString_round	, // q"( D delimited string
 		qString_square	, // q"[ D delimited string
 		qString_curly	, // q"{	D delimited string
 		qString_angle	, // q"<	D delimited string
@@ -1312,13 +1318,44 @@ struct CodeContext{
 	@property bool isComment	() const{ with(CodeContext.Type) return type.inRange(slashComment	, dComment	); }
 	@property bool isString	() const{ with(CodeContext.Type) return type.inRange(cChar	, tString	); }
 	
+	bool opEquals(in CodeContext b) const{ 
+		if(type!=b.type) return false;
+		if(isString){
+			if(charSize!=b.charSize) return false;
+			if(type==Type.qString_id){
+				if(delimitedStringId!=b.delimitedStringId) return false;
+			}
+		}
+		return true;
+	}
+	
+	size_t toHash() const{
+		if(isString){ 
+			if(type==Type.qString_id) return hashOf(this); 
+			return hashOf(CodeContext(type, charSize));
+		}
+		return hashOf(CodeContext(type));
+	}
+	
+	@property RGB clBackground(){
+		if(isComment)	return syntaxBkColor(skComment);
+		if(isString && type!=Type.tString)	return syntaxBkColor(skString);
+		return clCodeBackground;
+	}
+	
+	@property RGB clFont(){
+		if(isComment)	return syntaxFontColor(skComment);
+		if(isString && type!=Type.tString)	return syntaxFontColor(skString);
+		return clCodeBackground;
+	}
+
 	string prefix() const{
 		with(Type) return type.predSwitch(
 			cChar	, `'`,
 			cString	, `"`,
 			dString	, "`",
 			rString	, `r"`,
-			qString_brace	, `q"(`,
+			qString_round	, `q"(`,
 			qString_square 	, `q"[`,
 			qString_curly	, `q"{`,
 			qString_angle	, `q"<`,
@@ -1343,7 +1380,7 @@ struct CodeContext{
 			cString	, `"`,
 			dString	, "`",
 			rString	, `r"`,
-			qString_brace	, `)"`,
+			qString_round	, `)"`,
 			qString_square 	, `]"`,
 			qString_curly	, `}"`,
 			qString_angle	, `>"`,
@@ -1524,13 +1561,18 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 				case ScanOp.push:
 					syntaxStack ~= syntax;
 					switch(sr.src){
-						case "/*"	: { 
-						const oldSyntax = syntax; 
-						syntax = skComment; 
-						appendStr("[*COMMENT:"); scanner.popFront; 
-						appendStr(scanner.front.src); scanner.popFront; 
-						appendStr("*]"); scanner.popFront; 
-						syntax = oldSyntax; continue; }
+						case "/*": { 
+							
+							//appendNode!CodeComment;
+							
+							const oldSyntax = syntax; 
+							syntax = skComment; 
+							appendStr("[*COMMENT:"); scanner.popFront; 
+							appendStr(scanner.front.src); scanner.popFront; 
+							appendStr("*]"); scanner.popFront; 
+							syntax = oldSyntax; 
+							continue; }
+						
 						case "//", /*"/*", */ "/+"	: syntax = skComment	; appendStr(sr.src);		break;
 						case "{", "(", "["	: syntax = skSymbol	; appendStr(sr.src);	 syntax = skWhitespace; 	break;
 						case `q{`	: syntax = skString	; appendStr(sr.src);	 syntax = skWhitespace;	break;
@@ -1584,17 +1626,22 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
 	Container parent;
-
-	//CodeContext context;
+	CodeContext context;
+	
 	enum defaultSpacesPerTab = 4; //default in std library
 	int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 
-	deprecated("In the end, multithreaded resyntax wont require this.") DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
+	DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
+
+	deprecated("Only needed for compile.err builder") this(Container parent){
+		this(parent, ccPlain);
+	}
 
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
-	deprecated("Only needed for compile.err builder") this(Container parent){
+	deprecated("Only needed for compile.err builder") this(Container parent, CodeContext context){
 		this.parent = parent;
-		id.value = this.identityStr;  //id is not used anymore for this
+		this.context = context;
+		//id.value = this.identityStr;  //id is not used anymore for this
 
 		needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
 		flags.wordWrap	= false;
@@ -1605,12 +1652,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		this.setRoundBorder(8);
 		margin = "0.5";
 		padding = "0.5 4";
-		bkColor = clCodeBackground;
+		bkColor = context.clBackground;
 	}
 
 	/// This is the normal constructor. This should be the only one.
-	this(Container parent, string sourceText){
-		this(parent);
+	this(Container parent, CodeContext context, string sourceText){
+		this(parent, context);
 		setSourceText(sourceText);
 	}
 
@@ -1646,7 +1693,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			+/
 		}
 		
-		rebuilder.appendHighlighted(sourceText);
+		if(context.type==CodeContext.Type.plain){
+			rebuilder.appendPlain(sourceText);
+		}else if(context.type==CodeContext.Type.highlighted){
+			rebuilder.appendHighlighted(sourceText);
+		}
+		
 		convertSpacesToTabs;
 	}
 
@@ -1930,7 +1982,7 @@ void test_CodeColumn(){
 
 	void test_RowCount(string src, int rowCount, string dst="*"){
 		if(dst=="*") dst = src;
-		auto cc = scoped!CodeColumn(null, src);
+		auto cc = scoped!CodeColumn(null, ccPlain, src);
 		void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
 		expect(cc.rows.length, rowCount);
 		expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.sourceText).join('\n')));
@@ -2402,16 +2454,7 @@ class Module : CodeNode{ //this is any file in the project
 		
 		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
 		
-		if(isStructured){
-			try{
-				code = buildStructuredCodeColumn(this, sourceText);
-			}catch(Exception e){
-				WARN("buildStructuredCodeColumn() failed: "~e.simpleMsg);
-				code = buildUnstructuredCodeColumn(this, sourceText);
-			}
-		}else{
-			code = buildUnstructuredCodeColumn(this, sourceText);
-		}
+		code = new CodeColumn(this, ccPlain, sourceText);
 		
 		static if(LogModuleLoadPerformance) LOG(DT, file);
 
@@ -2445,7 +2488,7 @@ class Module : CodeNode{ //this is any file in the project
 // ErrorList ////////////////////////////////////////////
 
 auto createErrorListCodeColumn(Container parent){
-	auto code = new CodeColumn(parent);
+	auto code = new CodeColumn(parent, ccPlain);
 	code.padding = "1";
 	code.flags.dontStretchSubCells = true;
 
@@ -2658,13 +2701,13 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 }
 +/
 
-CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
-	return new CodeColumn(owner, sourceText);
-}
+//CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
+//	return new CodeColumn(owner, sourceText);
+//}
 
-CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ // buildStructuredCodeColumn ///////////////////////////////////
+//CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ // buildStructuredCodeColumn ///////////////////////////////////
 	
-	return new CodeColumn(owner, sourceText);
+//	return new CodeColumn(owner, sourceText);
 	
 /*	auto scanner = DLangScanner(src); //this scanner is used by all the nested builder functions.
 	
@@ -2713,4 +2756,4 @@ CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ // bui
 	raise("FUCK");
 	
 	return null;*/
-}
+//}
