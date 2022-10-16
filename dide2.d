@@ -41,7 +41,9 @@
 
 //todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
 
-//todo: Search: x=12  match -> x =12,  x =  12 too. Automatic whitespaces.
+//todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
+//todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
+//bug: F9 -> invalid character FEFF (utf8 BOM)
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -1303,7 +1305,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 							}
 
 							row.refreshTabIdx;
-							row.refresh;
+							row.spreadElasticNeedMeasure;
 							row.setChangedRemoved;
 						}
 

@@ -1008,8 +1008,8 @@ class CodeRow: Row{
 		static TextStyle style; //it is needed by appendCode/applySyntax
 		this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); }, style/+, must paste tabs!!! DefaultIndentSize+/);
 
-		//tabIdx if refreshed by appendCode
-		refresh;
+		//note: tabIdx is already refreshed by appendCode
+		spreadElasticNeedMeasure;
 	}
 
 	/// Returns inserted count
@@ -1029,7 +1029,7 @@ class CodeRow: Row{
 		subCells ~= after;
 
 		refreshTabIdx;
-		refresh;
+		spreadElasticNeedMeasure;
 
 		return insertedCnt;
 	}
@@ -1059,13 +1059,13 @@ class CodeRow: Row{
 			this.setChangedRemoved;
 
 		only(this, nextRow).each!"a.refreshTabIdx";
-		only(this, nextRow).each!"a.refresh";
+		only(this, nextRow).each!"a.spreadElasticNeedMeasure";
 
 		return nextRow;
 	}
 
 	///must be called after the code changed. It tracks elasticTabs, and realigns if needed
-	void refresh(){
+	void spreadElasticNeedMeasure(){ //todo: such beautyful name... NOT!
 		if(needMeasure){
 
 			//extend up and down along elastic tabs
@@ -1261,140 +1261,6 @@ class CodeRow: Row{
 }
 
 
-deprecated enum TextFormat{
-	plainText,		// unstructured text
-	plainD,	    //	unstructured D source
-	declarations,	    // {	D declarations	         ; }	       // before ':' there can be attributes or staticif: version: debug:
-	statements,	    // { D	statements	         ; }	       // before	':' there can be labels or case: default: conditions
-	structInitializer,		// { field initializers	         , }		// before ':' there can be field identifiers
-	stringLiteral,	    //	''w  ""w  ``w  r""w  q""w  q{}
-	comment,		// //\n	/**/  /+/++/+/
-	list,	    //	( , )
-	forList,		// ( , ; )
-	index	    //	[ , ]
-}
-
-
-//auto createErrorListModule(Container parent){
-//  auto Module = new Module()
-//}
-
-
-
-auto ccPlain	(){ return CodeContext(CodeContext.Type.plain); }
-auto ccHighlighted	(){ return CodeContext(CodeContext.Type.highlighted); }
-auto ccStructured	(){ return CodeContext(CodeContext.Type.structured); }
-auto ccCComment	(){ return CodeContext(CodeContext.Type.cComment); }
-
-struct CodeContext{
-
-	enum CharSize: ubyte { default_, c, w, d }
-	
-	enum Type: ubyte	{
-		plain	, // Simple text without any structure of highlight
-		highlighted	, // syntax highlighted text without structure
-		structured	, // structured and syntax highlighted code
-		slashComment	, // simple comment text, no newLine allowed
-		cComment	, // no `*/` allowed
-		dComment	, // `/+` starts a new block, `+/` not	allowed
-		cChar	, // ' C character literal with escapes	// all strings has extra parameter: charChoding: default(==char, but not written), char, word, dword
-		cString	, // " C string literal with escapes
-		dString	, // ` D string wysiwyg string
-		rString	, // r" D string wysiwyg string
-		qString_round	, // q"( D delimited string
-		qString_square	, // q"[ D delimited string
-		qString_curly	, // q"{	D delimited string
-		qString_angle	, // q"<	D delimited string
-		qString_slash	, // q"/	D delimited string
-		qString_id	, // q"id	// needs external parameter for the id
-		tString	, // q{   tokenString    same as highlightedText // needs external parameter for language.
-	}
-
-	Type type;
-	CharSize charSize;
-	string delimitedStringId;
-	
-	@property bool isComment	() const{ with(CodeContext.Type) return type.inRange(slashComment	, dComment	); }
-	@property bool isString	() const{ with(CodeContext.Type) return type.inRange(cChar	, tString	); }
-	
-	bool opEquals(in CodeContext b) const{ 
-		if(type!=b.type) return false;
-		if(isString){
-			if(charSize!=b.charSize) return false;
-			if(type==Type.qString_id){
-				if(delimitedStringId!=b.delimitedStringId) return false;
-			}
-		}
-		return true;
-	}
-	
-	size_t toHash() const{
-		if(isString){ 
-			if(type==Type.qString_id) return hashOf(this); 
-			return hashOf(CodeContext(type, charSize));
-		}
-		return hashOf(CodeContext(type));
-	}
-	
-	@property RGB clBackground(){
-		if(isComment)	return syntaxBkColor(skComment);
-		if(isString && type!=Type.tString)	return syntaxBkColor(skString);
-		return clCodeBackground;
-	}
-	
-	@property RGB clFont(){
-		if(isComment)	return syntaxFontColor(skComment);
-		if(isString && type!=Type.tString)	return syntaxFontColor(skString);
-		return clCodeBackground;
-	}
-
-	string prefix() const{
-		with(Type) return type.predSwitch(
-			cChar	, `'`,
-			cString	, `"`,
-			dString	, "`",
-			rString	, `r"`,
-			qString_round	, `q"(`,
-			qString_square 	, `q"[`,
-			qString_curly	, `q"{`,
-			qString_angle	, `q"<`,
-			qString_slash	, `q"/`,
-			qString_id	, `q"`~delimitedStringId~DefaultNewLine,
-			tString	, `q{`,
-			slashComment	, `//`,
-			cComment	, `/*`,
-			dComment	, `/+`,
-				""
-		);
-	}
-	
-	string postfix() const{
-		
-		string cwd(){ 
-			with(CharSize) return charSize==default_ ? "" : charSize.text;
-		}
-		
-		with(Type) return isString ? type.predSwitch(
-			cChar	, `'`,
-			cString	, `"`,
-			dString	, "`",
-			rString	, `r"`,
-			qString_round	, `)"`,
-			qString_square 	, `]"`,
-			qString_curly	, `}"`,
-			qString_angle	, `>"`,
-			qString_slash	, `/"`,
-			qString_id	, DefaultNewLine~delimitedStringId~`"`,
-			tString	, `}`
-		)~cwd : type.predSwitch(
-			slashComment	, DefaultNewLine,
-			cComment	, `*/`,
-			dComment	, `+/`,
-			""
-		);
-	}
-}
-
 static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////////////////////////////////
 	enum resyntax = !rebuild;
 
@@ -1556,8 +1422,7 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 	void appendHighlighted	(R)(R scanner) if(isScannerRange!R) { appendHighlightedOrStructured!false	(scanner); }
 	void appendStructured	(R)(R scanner) if(isScannerRange!R) { appendHighlightedOrStructured!true	(scanner); }
 	
-	void appendHighlightedOrStructured(bool structured=false, R)(R scanner) //no recursion, it eats the range up completely
-	//if(isInputRange!R && is(ElementType!R==ScanResult))
+	void appendHighlightedOrStructured(bool structured=false, R)(R scanner)
 	if(isScannerRange!R)
 	{
 		auto syntaxStack = [syntax];
@@ -1587,28 +1452,12 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 			switch(sr.op){
 				case ScanOp.push:{
 					static if(structured){
-						
 						auto N(T)(){ auto c = new T(actRow); c.rebuild(scanner); appendNode(c); }
-						
 						switch(sr.src){
-							case "//":{
-								N!CodeComment;
-								syntax = skWhitespace; appendChar('\n');
-								continue; 
-							}
-							case "/*", "/+":{
-								N!CodeComment;
-								continue; 
-							}
-							
-							case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`:{
-								N!CodeString;
-								continue;
-							}
-							case "{", "(", "[":{
-								N!CodeBlock;
-								continue;
-							}
+							case "//"	: N!CodeComment; appendChar('\n'); 	continue; //todo: //comment must ensure that after it, there will be a NewLine
+							case "/*", "/+",	: N!CodeComment;	continue; 
+							case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`	: N!CodeString;	continue;
+							case "{", "(", "["	: N!CodeBlock;	continue;
 							default: handleHighlightedPush;
 						}
 					}else{
@@ -1643,8 +1492,11 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 			
 			scanner.popFront;
 		}
+		
+		col.convertSpacesToTabs(Yes.outdent);
 		col.needMeasure;
 	}
+	
 	
 	this(CodeColumn col){
 		this. col = col;
@@ -1751,10 +1603,53 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		return whitespaceStats;
 	}
 	
-	void convertSpacesToTabs(){
+	
+	void convertSpacesToTabs(Flag!"outdent" outdent){ 
+		//todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
 		createElasticTabs;
 		spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize); //opt: this can be slow. Maybe put it on a keyboard shortcut.
 		rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
+		
+		//outdent
+		if(outdent){
+			
+			bool isWhitespaceRow(CodeRow r){
+				return r.subCells.empty || r.subCells.all!((c){
+					if(auto g = cast(Glyph)c)
+						if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true;
+					return false;
+				});
+				//return r.leadingCodeTabCount<r.cellCount; 
+			}
+			
+			//remove first and last whitespace row
+			if(subCells.length>1 && isWhitespaceRow(rows[0])) subCells = subCells[1..$];
+			if(subCells.length>1 && isWhitespaceRow(rows[$-1])) subCells = subCells[0..$-1];
+			
+			//only rows that not only tabs are relevant
+			bool relevant(CodeRow r){
+				return r.subCells.any!((c){
+					if(auto g = cast(Glyph)c){
+						if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false;
+						return true;
+					}
+					if(cast(CodeComment)c) return false; //comments are irrelevant
+					return true;
+				});
+				//return r.leadingCodeTabCount<r.cellCount; 
+			}
+			//find minimum amount of tabs
+			auto relevantRows = rows.filter!relevant;
+			if(!relevantRows.empty){
+				const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
+				if(numTabs) foreach(r; rows) if(r.leadingCodeTabCount>=numTabs){
+					r.subCells = r.subCells[numTabs..$];
+					r.refreshTabIdx;
+					//note: no need to call needRefresh_elastic because all rows will be refreshed. It's in convertSpacesToTabs which only kicks right after row creation.
+				}
+			}
+		}
+		
 		needMeasure;
 	}
 
@@ -2502,7 +2397,7 @@ class Module : CodeNode{ //this is any file in the project
 				}
 			}
 		}
-		code.convertSpacesToTabs;
+		//moved into appendStructured/Highlighted code.convertSpacesToTabs;
 
 		subCells = [code];
 		needMeasure;
@@ -2662,36 +2557,119 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 	}
 }+/
 
-class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
+bool isNewLine(string s) { return !!s.among("\r\n", "\r", "\n", lineSep.text, paraSep.text); }
+
+void dumpDDoc(string src){
+	print("----Original DDoc---------------------------------------------------");
+	LOG(src);
+	print("----Processed DDoc-------------------------------------------------");
+	string stack="*";
+	auto scanner = src.DDocScanner;
+	if(1) f: foreach(sr; scanner){
+		with(EgaColor) switch(sr.op){
+			case ScanOp.content:{
+				if(stack[$-1]=='`') write(ltGreen(sr.src));
+				else if(stack[$-1]=='*') write(ltWhite(sr.src));
+				else write(ltBlue(sr.src));
+			} break;
+			case ScanOp.push:{
+				write(yellow(sr.src));
+				stack ~= sr.src[0];
+			} break;
+			case ScanOp.pop:{
+				write(yellow(sr.src));
+				stack.popBack;
+				if(stack.empty){ write(ltRed("Out of stack")); break f; }
+			} break;
+			case ScanOp.trans:{
+				write(ltCyan(sr.src));
+			} break;
+			default:{
+				write(EgaColor.ltRed(sr.op.text~":"~sr.src));
+			} break;
+		}
+	}
+	print("---End of Processed DDoc----------------------------------------------");
+}
+
+class CodeContainer : CodeNode{
 	CodeColumn content;
-
-	enum Type {slash, c, d}
-	enum TypePrefix 	= ["//"	, "/*", "/+"];
-	enum TypePostfix 	= ["\r\n"	, "*/", "+/"];
 	
-	Type type;
+	abstract SyntaxKind syntax	() const;
+	abstract string prefix	() const;
+	abstract string postfix	() const;
 	
-	@property string prefix	() const{ return TypePrefix[type]; }
-	@property string postfix	() const{ return type==Type.slash ? DefaultNewLine : TypePostfix[type]; }
-
 	this(CodeRow parent){
 		super(parent);
 		content = new CodeColumn(this);
-		content.bkColor = syntaxBkColor(skComment);
 	}
-
-	void rebuild(R)(R scanner) if(isScannerRange!R){
-		assert(content);
-		
-		//decode type
+	
+	override string sourceText(){
+		//todo: handle invalid characters.
+		return prefix~content.sourceText~postfix;
+	}
+	
+	protected T parseBlockPrefix(T, string[] tokens, R)(R scanner) if(isScannerRange!R){
 		enforce(!scanner.empty);
 		const sr = scanner.front;
 		enforce(sr.op == ScanOp.push);
-		type = TypePrefix.countUntil(sr.src).to!Type;
+		auto res = tokens.countUntil(sr.src).to!T;
 		scanner.popFront;
+		return res;
+	}
+	
+	override void rearrange(){
+		flags.yAlign = YAlign.center;
+		auto ts = tsSyntax(syntax);
+		
+		const 	inverse	= !prefix.among("[", "(", "{"),
+			darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= mix(darkColor, brightColor, inverse ? .5f : .15f);
+		
+		bkColor	= halfColor; 
+		border.color	= halfColor;
+		ts.fontColor	= inverse ? darkColor : brightColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		
+		appendStr(prefix, ts); 	const i0 = subCells.length;
+		appendCell(content);	const i2 = subCells.length;
+		appendStr(postfix, ts); //todo: //comment must ensure that after it there is a newLine
+		
+		super.rearrange;
+		
+		//yAlign prefix and postfix
+		if(content.rowCount>1){
+			foreach(c; subCells[0..i0]) c.outerPos.y = 0;
+			foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
+		}
+
+	}
+
+}
+
+class CodeComment : CodeContainer{ // CodeComment //////////////////////////////////////////
+	enum Type {slashComment, cComment, dComment}
+	enum TypePrefix 	= ["//"	, "/*", "/+"];
+	enum TypePostfix 	= [""	, "*/", "+/"];
+	
+	Type type;
+	bool isDDoc;
+	
+	override SyntaxKind syntax	() const{ return skComment; }
+	override string prefix	() const{ return TypePrefix[type]; }
+	override string postfix	() const{ return TypePostfix[type]; }
+	
+	this(CodeRow parent){ 
+		super(parent); 
+	}
+	
+	void rebuild(R)(R scanner) if(isScannerRange!R){
+		type = parseBlockPrefix!(Type, TypePrefix)(scanner);
+		isDDoc = !scanner.empty && scanner.front.op==ScanOp.content && scanner.front.src.startsWith(prefix.back);
 		
 		//get content
-		
 		auto rebuilder = CodeColumnBuilder!true(content);
 		while(!scanner.empty){
 			if(scanner.front.op==ScanOp.push){
@@ -2711,6 +2689,8 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
 			}else{
 				rebuilder.syntax = scanner.front.op==ScanOp.content ? skComment : skError;
 				rebuilder.appendStr(scanner.front.src);
+				
+				//if(isDDoc) dumpDDoc(scanner.front.src); //todo: DDoc parser
 			}
 			scanner.popFront;
 		}
@@ -2718,53 +2698,9 @@ class CodeComment : CodeNode{ // CodeComment ///////////////////////////////////
 		needMeasure;
 	}
 
-	override string sourceText(){
-		//todo: handle invalid characters.
-		assert(content);
-		return prefix~content.sourceText~postfix;
-	}
-
-	override void rearrange(){
-		flags.yAlign = YAlign.center;
-		
-		auto ts = tsSyntax(SyntaxKind.Comment);
-		
-		const 	darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= avg(darkColor, brightColor);
-
-		bkColor 	= halfColor;
-		border.color 	= bkColor;
-
-		ts.fontColor 	= darkColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		
-		appendStr(prefix, ts);
-		appendCell(content);
-		if(type!=Type.slash) appendStr(postfix, ts);
-		
-		super.rearrange;
-		
-		//todo: yAlign the prefix
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
-
-		/*dr.lineWidth = -1;
-		dr.color = clBlue; dr.drawRect(outerBounds);
-		dr.color = clYellow; dr.drawRect(innerBounds);
-
-		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
-		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
-		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
-	}
 }
 
-class CodeString : CodeNode{ // CodeString //////////////////////////////////////////
-	CodeColumn content;
-
+class CodeString : CodeContainer{ // CodeString //////////////////////////////////////////
 	//todo: qString_id
 	enum Type 		{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	}
 	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`	];
@@ -2775,36 +2711,28 @@ class CodeString : CodeNode{ // CodeString /////////////////////////////////////
 	Type type;
 	CharSize charSize;
 	
-	@property string prefix	() const{ return TypePrefix[type]; }
-	@property string sizePostfix	() const{ return charSize!=CharSize.default_ ? charSize.text : ""; }
-	@property string postfix	() const{ return TypePostfix[type]~sizePostfix; }
-
-	this(CodeRow parent){
-		super(parent);
-		content = new CodeColumn(this);
-		content.bkColor = syntaxBkColor(skString);
+	override SyntaxKind syntax	() const{ return skString; }
+	override string prefix	() const{ return TypePrefix[type]; }
+	override string postfix	() const{ return TypePostfix[type]~sizePostfix; }
+	string sizePostfix	() const{ return charSize!=CharSize.default_ ? charSize.text : ""; }
+	
+	this(CodeRow parent){ 
+		super(parent); 
 	}
-
+	
 	void rebuild(R)(R scanner) if(isScannerRange!R){
-		assert(content);
-		
-		//decode type
-		enforce(!scanner.empty);
-		const sr = scanner.front;
-		enforce(sr.op == ScanOp.push);
-		type = TypePrefix.countUntil(sr.src).to!Type;
+		type = parseBlockPrefix!(Type, TypePrefix)(scanner);
 		charSize = CharSize.default_;
-		scanner.popFront;
-		
-		//set special bk color. For tokenString.
-		content.bkColor = syntaxBkColor(skString);
-		if(type==Type.tokenString)
-			content.bkColor = mix(clCodeBackground, content.bkColor, .33f); //todo: clCodeBackground should be inherited for the inner contents...
 		
 		//get content
 		auto rebuilder = CodeColumnBuilder!true(content);
 		
 		if(type==Type.tokenString){
+			
+			content.bkColor = mix(syntaxBkColor(skString), clCodeBackground, .75f);
+			content.rows[0].bkColor = content.bkColor; //todo: refacrtoe setBkColor
+			//todo: clCodeBackground should be inherited to all the inner backgrounds.
+			//todo: language dependent keyword coloring
 			
 			rebuilder.appendStructured(scanner); //this will stop at the closing "}"
 			
@@ -2814,10 +2742,7 @@ class CodeString : CodeNode{ // CodeString /////////////////////////////////////
 					charSize = cast(CharSize)cwdIdx;
 				
 				scanner.popFront;
-			}else{
-				enforce(0, "Invalid tokenstring");
-			}
-			
+			}else enforce(0, "Invalid tokenstring");
 		}else{ 
 			while(!scanner.empty){
 				if(scanner.front.op==ScanOp.push){
@@ -2840,78 +2765,26 @@ class CodeString : CodeNode{ // CodeString /////////////////////////////////////
 		needMeasure;
 	}
 
-	override string sourceText(){
-		//todo: handle invalid characters.
-		assert(content);
-		return prefix~content.sourceText~postfix;
-	}
-
-	override void rearrange(){
-		flags.yAlign = YAlign.center;
-		
-		auto ts = tsSyntax(SyntaxKind.String);
-		
-		const 	darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= avg(darkColor, brightColor);
-
-		bkColor 	= halfColor;
-		border.color 	= bkColor;
-
-		ts.fontColor 	= darkColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		
-		appendStr(prefix, ts);
-		appendCell(content);
-		appendStr(postfix, ts);
-		
-		super.rearrange;
-		
-		//todo: yAlign the prefix
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
-
-		/*dr.lineWidth = -1;
-		dr.color = clBlue; dr.drawRect(outerBounds);
-		dr.color = clYellow; dr.drawRect(innerBounds);
-
-		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
-		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
-		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
-	}
 }
 
 
-class CodeBlock : CodeNode{ // CodeBlock //////////////////////////////////////////
-	CodeColumn content;
-
-	//todo: qString_id
+class CodeBlock : CodeContainer{ // CodeBlock //////////////////////////////////////////
 	enum Type 		{ block	, list	, index	}
 	enum TypePrefix 	= 	["{"	, "("	, `[`	];
 	enum TypePostfix 	= 	["}"	, ")"	, `]`	];
 	
 	Type type;
 	
-	@property string prefix	() const{ return TypePrefix	[type]; }
-	@property string postfix	() const{ return TypePostfix	[type]; }
-
-	this(CodeRow parent){
-		super(parent);
-		content = new CodeColumn(this);
+	override SyntaxKind syntax	() const{ return skSymbol; }
+	override string prefix	() const{ return TypePrefix	[type]; }
+	override string postfix	() const{ return TypePostfix	[type]; }
+	
+	this(CodeRow parent){ 
+		super(parent); 
 	}
-
+	
 	void rebuild(R)(R scanner) if(isScannerRange!R){
-		assert(content);
-		
-		//decode type
-		enforce(!scanner.empty);
-		const sr = scanner.front;
-		enforce(sr.op == ScanOp.push);
-		type = TypePrefix.countUntil(sr.src).to!Type;
-		scanner.popFront;
+		type = parseBlockPrefix!(Type, TypePrefix)(scanner);
 		
 		//todo: different colors for each
 		
@@ -2923,112 +2796,20 @@ class CodeBlock : CodeNode{ // CodeBlock ///////////////////////////////////////
 		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix){
 			//closing token
 			scanner.popFront;
-		}else{
-			enforce(0, "Invalid block closing token");
-		}
+		}else enforce(0, "Invalid block closing token");
+		
+		/+if(type!=Type.block){
+			content.setRoundBorder(2);
+			content.margin = "0.25";
+			content.padding = "0.25 4";
+			
+			this.setRoundBorder(2);
+			this.margin = "0.25";
+			this.padding = ".6 .75";
+		}+/
 		
 		needMeasure;
 	}
 
-	override string sourceText(){
-		//todo: handle invalid characters.
-		assert(content);
-		return prefix~content.sourceText~postfix;
-	}
-
-	override void rearrange(){
-		flags.yAlign = YAlign.center;
-		
-		auto ts = tsSyntax(SyntaxKind.Symbol);
-		
-		const 	darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= mix(darkColor, brightColor, .15f);
-
-		bkColor 	= halfColor;
-		border.color 	= bkColor;
-
-		ts.fontColor 	= brightColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		
-		appendStr(prefix, ts);
-		appendCell(content);
-		appendStr(postfix, ts);
-		
-		super.rearrange;
-		
-		//todo: yAlign the prefix
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
-
-		/*dr.lineWidth = -1;
-		dr.color = clBlue; dr.drawRect(outerBounds);
-		dr.color = clYellow; dr.drawRect(innerBounds);
-
-		dr.color = clAqua; dr.drawRect(contents.outerBounds + innerPos);
-		dr.color = clFuchsia; dr.drawRect(contents.borderBounds_outer + innerPos);
-		dr.color = clOrange; dr.drawRect(contents.innerBounds + innerPos);*/
-	}
 }
 
-
-//CodeColumn buildUnstructuredCodeColumn(Container owner, string sourceText){
-//	return new CodeColumn(owner, sourceText);
-//}
-
-//CodeColumn buildStructuredCodeColumn(Container owner, string sourceText){ 
-// buildStructuredCodeColumn ///////////////////////////////////
-	
-//	return new CodeColumn(owner, sourceText);
-	
-/*	auto scanner = DLangScanner(src); //this scanner is used by all the nested builder functions.
-	
-	CodeNode tryBuildComment(){
-		if(!scanner.empty && scanner.front.op==ScanOp.push){ 
-			if(scanner.front.src=="//"){
-				scanner.popFront;
-				string s;
-				while(!scanner.empty){
-					if(scanner.front.op==ScanOp.pop){
-						scanner.popFront;
-						break;
-					}else{
-						s ~= scanner.front.src;
-						scanner.popFront;
-					}
-				}
-				new CodeComment(null, s);
-				scanner.until!(t => t.op==ScanOp.pop);
-				auto res = new result;
-			}
-		}
-		return null;
-	}
-	
-	void buildDeclarations(){
-		string source;
-		CodeNode[] nodes;
-		
-		foreach(token; scanner){
-			print(token);
-			
-			with(ScanOp) switch(ScanOp){
-				case content: source ~= token.src;
-				case push: if(token.src.among("//", "/*", "/+")){
-					nodes ~= buildComment(token.src);
-				}
-				case pop:
-				
-				default: raise("UNHANDLED token: "~token.text);
-			}
-		}
-	}
-	
-	buildDeclarations;
-	raise("FUCK");
-	
-	return null;*/
-//}
