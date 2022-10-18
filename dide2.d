@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -840,10 +840,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			foreach(msgIdx, const msg; br.messages) if(msg.type==type){
 				
 				if(auto mod = findModule(msg.location.file.withoutDMixin)){    //opt: bottleneck! linear search
-					if((msg.location.line-1).inRange(mod.code.subCells)){
+					if((msg.location.line-1).inRange(mod.content.subCells)){
 						Container.SearchResult sr;
-						sr.container = cast(Container)mod.code.subCells[msg.location.line-1];
-						sr.absInnerPos = mod.innerPos + mod.code.innerPos + sr.container.innerPos;
+						sr.container = cast(Container)mod.content.subCells[msg.location.line-1];
+						sr.absInnerPos = mod.innerPos + mod.content.innerPos + sr.container.innerPos;
 						sr.cells = sr.container.subCells;
 						sr.reference = CodeLocationPrefix~msg.location.text;
 						res ~= sr;
@@ -1202,7 +1202,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	bool resyntaxNowOrLater(Cell cell, DateTime changedId, Flag!"later" later){
 		if(auto col = cast(CodeColumn)cell){
 			if(later){
-				syntaxHighlightWorker.addJob(changedId, TextCursor(col, ivec2(0)).toReference.text, col.sourceText);
+				syntaxHighlightWorker.addJob(changedId, TextCursor(col, ivec2(0)).toReference.text, /*col.sourceText*/ "UNUSED");
 			}else{
 				if(auto mod = col.moduleOf){
 					mod.resyntax;
@@ -1222,7 +1222,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 				if(sel.valid){
 					auto col = sel.codeColumn;
 					auto mod = col.moduleOf;
-					enforce(mod && mod.code is col, "syntaxHighlightWorker.getResult: only codeColumns that has a Module parent are supported");
+					enforce(mod && mod.content is col, "syntaxHighlightWorker.getResult: only codeColumns that has a Module parent are supported");
 
 					static DateTime lastOutdatedResyncTime;
 					if(col.lastResyntaxTime==job.changeId || now-lastOutdatedResyncTime > .25*second){
@@ -1504,7 +1504,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		if(auto m=findModule(File(where))){
 			m.reload(Yes.useExternalContents, what);
 			//selectAll
-			textSelectionsSet = [m.code.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
+			textSelectionsSet = [m.content.allSelection(true)]; //todo: refactor codeColumn.allTextSelection(bool primary or not)
 		}else assert(0, "execute_reload: module lost: "~where.quoted);
 		//todo: somehow signal bact to the undo manager, if an undo operation is failed
 	}
@@ -1596,7 +1596,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("Shift+Alt+Right"	) void extendAstSelection	(){ }
 	@VERB("Shift+Alt+I"	) void insertCursorAtEndOfEachLineSelected	(){ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
 			
-	@VERB("Ctrl+A"	) void selectAllText	(){ textSelectionsSet = modulesWithTextSelection.map!(m => m.code.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
+	@VERB("Ctrl+A"	) void selectAllText	(){ textSelectionsSet = modulesWithTextSelection.map!(m => m.content.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; }
 	@VERB("Ctrl+Shift+A"	) void selectAllModules	(){ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
 	@VERB(""	) void deselectAllModules	(){ modules.each!(m => m.flags.selected = false); } //note: this clicking on emptyness does this too.
 	@VERB("Esc"	) void cancelSelection	(){ if(!im.wantKeys) cancelSelection_impl; }  //bug: nested commenten belulrol Escape nyomkodas (kizoomolas) = access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
@@ -1669,7 +1669,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	@VERB("F2") void testInsert2(){
 		foreach(m; selectedModules){
-			m.isStructured = true;
+			//m.isStructured = true;
 			//m.reload;
 		}
 	}
@@ -1802,7 +1802,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		if(loc){
 			//print("LOC:", loc);
 			if(auto mod = findModule(loc.file)){ //todo: load the module automatically
-				if(auto ts = mod.code.cellSelection(loc.line, loc.column, true)){
+				if(auto ts = mod.content.cellSelection(loc.line, loc.column, true)){
 					textSelectionsSet = [ts]; //todo: doubleClick = zoomclose
 					with(frmMain.view){
 						if(scale<0.3f) scale = 1;
@@ -1998,7 +1998,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 					//todo: ez ugorhatna regionra is.
 					searchResults = [];
 					textSelectionsSet = [];
-					if(auto mod = expectOneSelectedModule) if(auto col  = mod.code) if(auto rowCount = col.cellCount){
+					if(auto mod = expectOneSelectedModule) if(auto col  = mod.content) if(auto rowCount = col.cellCount){
 						if(auto line = searchText[1..$].to!int.ifThrown(0)){
 
 							if(line<0 && line>=-rowCount)
@@ -2222,7 +2222,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 			}
 
 			if(auto mod = errorList){ 
-				if(auto col = mod.code){
+				if(auto col = mod.content){
 	
 					//total size placeholder
 					Container({ outerPos = col.outerSize; outerSize = vec2(0); });
@@ -2260,7 +2260,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	}}
 
 	auto findErrorListItemByLocation(string locStr){
-		if(auto mod = errorList) if(auto col = mod.code){
+		if(auto mod = errorList) if(auto col = mod.content){
 
 		}
 	}
@@ -2277,7 +2277,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 			if(nearestSearchResult.reference!=""){
 
-				if(auto mod = errorList) if(auto col = mod.code){
+				if(auto mod = errorList) if(auto col = mod.content){
 
 					const locationRef = nearestSearchResult.reference;
 					foreach(row; col.rows){

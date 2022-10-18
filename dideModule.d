@@ -19,15 +19,15 @@ const clModuleText = clBlack;
 // ChangeIndicator ////////////////////////////////////////////
 
 struct ChangeIndicator{ //todo: this is quite similar to CaretPos
-	vec2 pos;
-	float height;
-	ubyte thickness;
-	ubyte mask;
+	vec2	pos;
+	float	height;
+	ubyte	thickness;
+	ubyte 	mask;
 
-	vec2	top   () const{ return pos; }
-	vec2	center() const{ return pos + vec2(0, height/2); }
-	vec2	bottom() const{ return pos + vec2(0, height); }
-	bounds2	bounds() const{ return bounds2(top, bottom); }
+	vec2	top	() const{ return pos; }
+	vec2	center	() const{ return pos + vec2(0, height/2); }
+	vec2	bottom	() const{ return pos + vec2(0, height); }
+	bounds2	bounds	() const{ return bounds2(top, bottom); }
 }
 
 Appender!(ChangeIndicator[]) globalChangeindicatorsAppender;
@@ -959,8 +959,20 @@ class CodeRow: Row{
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
 	
-	string sourceText() { 
-		return chars.to!string; 
+	string shallowText() { return chars.to!string; }
+
+	string deepText() { 
+		string res; //opt: appender
+		foreach(c; subCells){
+			if(auto g = cast(Glyph)c){
+				res ~= g.ch;
+			}else if(auto n = cast(CodeNode)c){
+				res ~= n.sourceText;
+			}else{
+				enforce(0, "deepText: unsupported obj");
+			}
+		}
+		return res;
 	}
 
 	//todo: mode isSpace inside elastic tab detection, it's way too specialized
@@ -988,7 +1000,9 @@ class CodeRow: Row{
 		flags.cullSubCells	= true;
 		flags.rowElasticTabs	= false;
 		flags.dontHideSpaces	= true;
-		bkColor = parent.bkColor;
+		flags.noBackground	= true;
+		
+		//bkColor = parent.bkColor;
 	}
 
 	this(CodeColumn parent_, string line, ubyte[] syntax){
@@ -1524,7 +1538,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 	}+/
 
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
-	deprecated("Only needed for compile.err builder") this(Container parent/*, CodeContext context*/){
+	this(Container parent){
 		this.parent = parent;
 		//this.context = context;
 		//id.value = this.identityStr;  //id is not used anymore for this
@@ -1534,60 +1548,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		flags.clipSubCells	= true;
 		flags.cullSubCells	= true;
 		flags.columnElasticTabs = true;
-
-		this.setRoundBorder(8);
-		margin = "0.5";
-		padding = "0.5 4";
-		bkColor = clCodeBackground;
+		bkColor = mix(clCodeBackground, clGray, .25f);
 	}
-
-	/// This is the normal constructor. This should be the only one.
-	/+this(Container parent, CodeContext context, string sourceText){
-		this(parent, context);
-		setSourceText(sourceText);
-	}+/
-
+	
 	auto rebuilder	(){ return CodeColumnBuilder!true	(this); }
 	auto resyntaxer	(){ return CodeColumnBuilder!false	(this); }
-
-	/+void setSourceText(string sourceText){
-		/+ old version with SourceCode class
-		src.foreachLine( (int idx, string line, ubyte[] syntax) => appendCell(new CodeRow(this, line, syntax)) );
-		if(subCells.empty)
-			appendCell(new CodeRow(this, "", null)); //always must have at least an empty row+/
-
-		//rebuilder.appendPlain(sourceText);
-		
-		if(0){
-			string M(string what){ return q{ const len = sourceText.length, t0 = now, name = cast(Module)parent ? (cast(Module)parent).file.name : ""; scope(exit){ const t1 = now; if(len>100_000) print(#, ":", name, len, t1-t0, len/(t1-t0).value(second)/(1<<20), "MB/s"); } }.replace("#", what.quoted); }
-			{ mixin(M("rebuild"	)); rebuilder.appendHighlighted(sourceText); 	}
-			{ mixin(M("resyntax"	)); resyntaxer.appendHighlighted(sourceText); 	}
-			{ mixin(M("convTabs"	)); convertSpacesToTabs; 	}
-			
-			/+performance measurements
-				file	rebuild	resyntax	convTabs
-				Math.d	1.52519	3.89558	48.0364
-				Bitmap.d	2.16687	5.9431	55.6989
-				UIBase.d	1.87845	4.5704	49.8733
-				UI.d	1.85978	4.45091	53.227
-				Utils.d	1.2472	4.23284	34.8199
-				dide2.d	1.9538	5.01536	44.054
-				libUEye.d	1.79277	7.13611	47.1898
-				gccbuiltins_x86.di	1.96386	4.39065	35.5134
-				searching.d	0.86698	4.55342	24.2796
-				iteration.d	0.826249	3.51308	17.3037
-			+/
-		}
-		
-		if(context.type==CodeContext.Type.plain){
-			rebuilder.appendPlain(sourceText);
-		}else if(context.type==CodeContext.Type.highlighted){
-			rebuilder.appendHighlighted(sourceText);
-		}
-		
-		convertSpacesToTabs;
-	}+/
-
+	
 	auto calcWhitespaceStats(){
 		import het.tokenizer : WhitespaceStats;
 		WhitespaceStats whitespaceStats;
@@ -1603,7 +1569,6 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		return whitespaceStats;
 	}
 	
-	
 	void convertSpacesToTabs(Flag!"outdent" outdent){ 
 		//todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
 		createElasticTabs;
@@ -1616,7 +1581,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			bool isWhitespaceRow(CodeRow r){
 				return r.subCells.empty || r.subCells.all!((c){
 					if(auto g = cast(Glyph)c)
-						if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true;
+						if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true;
 					return false;
 				});
 				//return r.leadingCodeTabCount<r.cellCount; 
@@ -1653,36 +1618,10 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		needMeasure;
 	}
 
-	/*void resyntax(SourceCode src){
-		//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
-		
-		//todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
-		//todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-		
-		assert(subCells.length>0);
-		
-		static TextStyle style; //it is needed by appendCode/applySyntax
-		
-		src.foreachLine( (int idx, string line, ubyte[] syntax){
-			if(idx<subCells.length){
-				auto row = rows[idx];
-				bool wasWidthChange;
-				if(row.updateSyntax(line, syntax, (ubyte s){ applySyntax(style, s); }, style, wasWidthChange/+, must paste tabs!!! DefaultIndentSize+/)){
-					if(wasWidthChange){
-						row.needMeasure;
-					}
-				}else{
-					return false;
-				}
-			}else{
-				return false;
-			}
-			return true;
-		});
-	
-	}*/
-	
 	void resyntax(string sourceText){
+		//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
+		//todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
+		//todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
 		try{ 
 			resyntaxer.appendHighlighted(sourceText);
 		}catch(Exception e){
@@ -1705,18 +1644,20 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 	auto getRow(int rowIdx){ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
 
-	int rowCharCount(int rowIdx) const{	//todo: it's ugly because of the constness. Make it nicer.
-		if(rowIdx.inRange(subCells)) return	cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
+	int rowCharCount(int rowIdx) const{
+		//todo: it's ugly because of the constness. Make it nicer.
+		if(rowIdx.inRange(subCells)) return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
 		return 0;
 	}
 
-	string rowSourceText(int rowIdx){
-		if(auto row = getRow(rowIdx)) return row.sourceText;
-		return "";
-	}
+	string rowShallowText	(int rowIdx){ if(auto row = getRow(rowIdx)) return row.shallowText	; return ""; }
+	string rowDeepText	(int rowIdx){ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
 
 	TextCursor homeCursor(){ return TextCursor(this, ivec2(0)); }
-	TextCursor endCursor(){ auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; }
+	TextCursor endCursor(){ 
+		return TextCursor(this, ivec2(rowCount-1, lastRowLength)); 
+		/* auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; */ 
+	}
 	TextSelection allSelection(bool primary){ return TextSelection(homeCursor, endCursor, primary); }
 
 	TextSelection lineSelection(bool selectWholeLine)(int line, bool primary){
@@ -1741,7 +1682,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 	}
 
 
-	@property string sourceText() { return rows.map!(r => r.sourceText).join(DefaultNewLine); }  // \r\n is the default in std library
+	@property string shallowText	() { return rows.map!(r => r.shallowText	).join(DefaultNewLine); }  // \r\n is the default in std library
+	@property string deepText	() { return rows.map!(r => r.deepText	).join(DefaultNewLine); }
 
 	//index, location calculations
 	int maxIdx() const{ //inclusive end position
@@ -1776,8 +1718,15 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount);
 	}
 
+	void setupBorder(){
+		this.setRoundBorder(8);
+		margin.set(.5);
+		padding.set(.5, 4);
+	}
 
 	override void rearrange(){
+		setupBorder;
+		
 		//ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
 		auto rows = cast(Row[])subCells;
 		assert(rows.map!(a => cast(Row)a).all);
@@ -1917,19 +1866,19 @@ void test_CodeColumn(){
 	void test_RowCount(string src, int rowCount, string dst="*"){
 		if(dst=="*") dst = src;
 		auto cc = scoped!CodeColumn(null);
-		cc.rebuilder.appendStr(src);
+		cc.rebuilder.appendPlain(src);
 		void expect(T, U)(T a, U b){ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
 		expect(cc.rows.length, rowCount);
-		expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.sourceText).join('\n')));
+		expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.shallowText).join('\n')));
 	}
 
 	test_RowCount("", 1);
 	test_RowCount(" ", 1);
 	test_RowCount("\n", 2);
-	test_RowCount("\n ", 2, "\n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen, az elastic tabokat meg egymas ala kell igazitani space-ekkel. De ezt majd kesobb. Most minden tab lesz.
+	test_RowCount("\n ", 2, "\n "); //todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen, az elastic tabokat meg egymas ala kell igazitani space-ekkel. De ezt majd kesobb. Most minden tab lesz.
 	test_RowCount("\r\n", 2, "\n");
-	test_RowCount(" \n \n \r\n", 4, " \n \n \n".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
-	test_RowCount(" \n \n \r\n ", 4, " \n \n \n ".replace(" ", "\t")); //todo: a tabokat visszaalakitani space-ra
+	test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //todo: a tabokat visszaalakitani space-ra
+	test_RowCount(" \n \n \r\n ", 4, " \n \n \n "); //todo: a tabokat visszaalakitani space-ra
 }
 
 /// Label //////////////////////////////////////////
@@ -1993,56 +1942,6 @@ class Label : Row{
 auto cachedFolderLabel(string folderPath){
 	return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
 }
-
-// CodeNode //////////////////////////////////////////
-class CodeNode : Row{
-	Container parent;
-
-	auto subColumns(){ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
-
-	this(Container parent){
-		this.parent = parent;
-		id = this.identityStr;
-
-		needMeasure; //enables on-demand measure
-		flags.wordWrap	= false;
-		flags.clipSubCells	= true;
-		flags.cullSubCells	= true;
-		flags.rowElasticTabs	= true;
-		flags.dontHideSpaces	= true;
-
-		this.setRoundBorder(8);
-		margin = "0.5";
-		padding = "1 1.5";
-	}
-
-	~this(){
-		parent = null;
-	}
-	
-	@property abstract string sourceText();
-	
-
-	override inout(Container) getParent() inout { return parent; }
-	override void setParent(Container p){ parent = p; }
-
-	override void rearrange(){
-		innerSize = vec2(0);
-		flags.autoWidth = true;
-		flags.autoHeight = true;
-		super.rearrange;
-		static if(rearrangeLOG) LOG("rearranging", this);
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
-
-		//visualize changed/created/modified
-		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
-	}
-
-}
-
 
 //! Undo/History System ////////////////////////////////////
 /+
@@ -2297,186 +2196,6 @@ struct UndoManager{
 	}
 }
 
-/// Module ///////////////////////////////////////////////
-interface WorkspaceInterface{
-	@property bool isReadOnly();
-}
-
-class Module : CodeNode{ //this is any file in the project
-	File file;
-
-	DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
-	size_t sizeBytes;  //todo: update this form the outside
-
-	//these are the 2 subcells
-	CodeColumn code;
-
-	ModuleBuildState buildState;
-	bool isCompiling;
-
-	bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
-
-	UndoManager undoManager;
-	
-	bool isStructured;
-
-	this(Container parent, File file_){
-		bkColor = clModuleBorder;
-		super(parent);
-
-		flags.clipSubCells = false; //to show labels
-
-		fileLoaded = now;
-
-		file = file_.actualFile;
-		//id = "Module:"~this.file.fullName;
-
-		reload;
-	}
-
-	override string sourceText(){
-		return code ? code.sourceText : "";
-	}
-
-	///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
-	bool isReadOnly(){
-		//return inputs["ScrollLockState"].active;
-		return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly;
-	}
-
-	void resetModuleTypeFlags(){
-		isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
-	}
-
-	void detectModuleTypeFlags(){
-		bool isMainSomething(string ext)(){
-			return code && code.getRow(0) && sameText(code.getRow(0).sourceText.stripRight, "//@"~ext);
-		}
-		isMainExe = isMainSomething!"exe";
-		isMainDll = isMainSomething!"dll";
-		isMainLib = isMainSomething!"lib";
-		isMain = isMainExe || isMainDll || isMainLib;
-
-		isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); //todo: detect compiler import path correctly
-		isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); //todo: periodically chenck if file is exists and other attributes in the IDE
-	}
-
-	void resyntax(){
-		/+auto txt = code.sourceText;
-		auto src = scoped!SourceCode(txt);
-
-		resyntax_src(src);+/
-		
-		code.resyntax(code.sourceText);
-	}
-
-	//call it with a freshly parsed SourceCode object
-	/+void resyntax_src(SourceCode src){  //todo: this should go into the column somehow: only codeColumn will have the resyntax/needResyntax functionality and those columns with a Module parent will notify thir own parent after they have the SourceCode parsed.
-		code.resyntax(src);
-	}+/
-
-	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
-		fileModified = file.modified;
-		sizeBytes = file.size;
-		resetModuleTypeFlags;
-
-		auto prevSourceText = sourceText;
-		string sourceText = useExternalContents	? externalContents
-			: this.file.readText;
-		
-		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
-		
-		code = new CodeColumn(this);
-		try{ code.rebuilder.appendStructured(sourceText); }
-		catch(Exception e){
-			try{ code.rebuilder.appendHighlighted(sourceText); }
-			catch(Exception e){
-				try{ code.rebuilder.appendPlain(sourceText); }
-				catch(Exception e){
-					raise("Fatal error. Unable to load module "~file.fullName);
-				}
-			}
-		}
-		//moved into appendStructured/Highlighted code.convertSpacesToTabs;
-
-		subCells = [code];
-		needMeasure;
-	}
-
-	size_t linesOfCode(){ return code.subCells.length; } //todo: update this. only good for unstructured code.
-
-	override void rearrange(){
-		detectModuleTypeFlags;
-		code.measure;
-		innerSize = code.outerSize.max(code.outerSize, DefaultFontEmptyEditorSize);
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
-	}
-
-	void save(){
-		if(isReadOnly) return;
-		sourceText.saveTo(file, Yes.onlyIfChanged);
-		clearChanged;
-		fileModified = file.modified; //opt: slow
-		fileSaved = now;
-	}
-
-}
-
-// ErrorList ////////////////////////////////////////////
-
-auto createErrorListCodeColumn(Container parent){
-	auto code = new CodeColumn(parent);
-	code.padding = "1";
-	code.flags.dontStretchSubCells = true;
-
-	import dide2; //todo: should not import main module.
-	auto buildResult = global_getBuildResult;
-	auto markerLayerHideMask = global_getMarkerLayerHideMask;
-
-	foreach(file; buildResult.remainings.keys.sort){
-		auto pragmas = buildResult.remainings[file];
-		if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-	}
-
-	with(im) code.append({
-		foreach(loc; buildResult.messages.keys.sort){
-			auto msg = buildResult.messages[loc];
-			if(msg.parentLocation) continue;
-			if((1<<msg.type) & markerLayerHideMask) continue;
-			msg.UI(buildResult.subMessagesOf(msg.location));
-		}
-	});
-
-	return code;
-}
-
-
-//bug: ErrorListModule is fucked up
-deprecated class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
-	this(Container parent, File file_){
-		super(parent, file_);
-		
-		reload;
-	}
-
-	override bool isReadOnly(){ return true; }
-
-	override void resyntax(){ }
-	//override void resyntax_src(SourceCode src){ }
-
-	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents=""){
-		clearSubCells;
-		fileModified = now;
-		sizeBytes = 0; //todo: note this has no file.
-		resetModuleTypeFlags;
-		code = createErrorListCodeColumn(this);
-		appendCell(enforce(code));
-		needMeasure;
-	}
-}
 
 
 /+class CodeComment : CodeNode{ // CodeComment //////////////////////////////////////////
@@ -2557,8 +2276,6 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 	}
 }+/
 
-bool isNewLine(string s) { return !!s.among("\r\n", "\r", "\n", lineSep.text, paraSep.text); }
-
 void dumpDDoc(string src){
 	print("----Original DDoc---------------------------------------------------");
 	LOG(src);
@@ -2592,21 +2309,71 @@ void dumpDDoc(string src){
 	print("---End of Processed DDoc----------------------------------------------");
 }
 
-class CodeContainer : CodeNode{
+
+// CodeNode //////////////////////////////////////////
+class CodeNode : Row{
+	Container parent;
+
+	auto subColumns(){ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
+
+	this(Container parent){
+		this.parent = parent;
+		id = this.identityStr;
+
+		needMeasure; //enables on-demand measure
+		flags.wordWrap	= false;
+		flags.clipSubCells	= true;
+		flags.cullSubCells	= true;
+		flags.rowElasticTabs	= true;
+		flags.dontHideSpaces	= true;
+
+		this.setRoundBorder(8);
+		margin = "0.5";
+		padding = "1 1.5";
+	}
+
+	~this(){
+		parent = null;
+	}
+	
+	@property abstract string sourceText();
+
+	override inout(Container) getParent() inout { return parent; }
+	override void setParent(Container p){ parent = p; }
+
+	override void rearrange(){
+		innerSize = vec2(0);
+		flags.autoWidth = true;
+		flags.autoHeight = true;
+		super.rearrange;
+		static if(rearrangeLOG) LOG("rearranging", this);
+	}
+
+	override void draw(Drawing dr){
+		super.draw(dr);
+
+		//visualize changed/created/modified
+		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+	}
+
+}
+
+
+class CodeContainer : CodeNode{ // CodeContainer /////////////////////////////
 	CodeColumn content;
 	
 	abstract SyntaxKind syntax	() const;
 	abstract string prefix	() const;
 	abstract string postfix	() const;
 	
-	this(CodeRow parent){
+	this(Container parent){
 		super(parent);
 		content = new CodeColumn(this);
 	}
 	
 	override string sourceText(){
 		//todo: handle invalid characters.
-		return prefix~content.sourceText~postfix;
+		return prefix~content.deepText~postfix;
 	}
 	
 	protected T parseBlockPrefix(T, string[] tokens, R)(R scanner) if(isScannerRange!R){
@@ -2621,6 +2388,8 @@ class CodeContainer : CodeNode{
 	override void rearrange(){
 		flags.yAlign = YAlign.center;
 		auto ts = tsSyntax(syntax);
+		
+		content.bkColor = ts.bkColor;
 		
 		const 	inverse	= !prefix.among("[", "(", "{"),
 			darkColor	= ts.bkColor,
@@ -2728,9 +2497,7 @@ class CodeString : CodeContainer{ // CodeString ////////////////////////////////
 		auto rebuilder = CodeColumnBuilder!true(content);
 		
 		if(type==Type.tokenString){
-			
 			content.bkColor = mix(syntaxBkColor(skString), clCodeBackground, .75f);
-			content.rows[0].bkColor = content.bkColor; //todo: refacrtoe setBkColor
 			//todo: clCodeBackground should be inherited to all the inner backgrounds.
 			//todo: language dependent keyword coloring
 			
@@ -2779,21 +2546,44 @@ class CodeBlock : CodeContainer{ // CodeBlock //////////////////////////////////
 	override string prefix	() const{ return TypePrefix	[type]; }
 	override string postfix	() const{ return TypePostfix	[type]; }
 	
-	this(CodeRow parent){ 
+	this(Container parent){ 
 		super(parent); 
 	}
 	
 	void rebuild(R)(R scanner) if(isScannerRange!R){
 		type = parseBlockPrefix!(Type, TypePrefix)(scanner);
-		
-		//todo: different colors for each
-		
-		//get content
 		auto rebuilder = CodeColumnBuilder!true(content);
-		
 		rebuilder.appendStructured(scanner); //this will stop at the closing token
-		
 		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix){
+			//analize patterns
+			
+			/*if(scanner.front.src=="}"){
+				auto crsr = content.endCursor;
+				print(crsr);
+				while(!isnull(crsr.pos)){
+					crsr.moveRight(-1);
+					print(2, crsr);
+					auto c = content.rows[crsr.pos.y].subCells[crsr.pos.x];
+					print(3, crsr);
+					if(auto g = cast(Glyph)c){
+						print(4, crsr);
+						if(g.syntax==skWhitespace){
+							write(" ");
+						}else if(g.syntax==skKeyword){
+							write(EgaColor.ltGreen(g.ch.text));
+						}else{
+							write(g.ch);
+						}
+					}else if(auto s = cast(CodeString)c){
+						write(`"`);
+					}else if(auto s = cast(CodeComment)c){
+						write("/");
+					}else if(auto b = cast(CodeBlock)c){
+						write(b.prefix[0]);
+					}else write("?");
+				}
+			}*/
+			
 			//closing token
 			scanner.popFront;
 		}else enforce(0, "Invalid block closing token");
@@ -2811,5 +2601,209 @@ class CodeBlock : CodeContainer{ // CodeBlock //////////////////////////////////
 		needMeasure;
 	}
 
+}
+
+/// Module ///////////////////////////////////////////////
+interface WorkspaceInterface{
+	@property bool isReadOnly();
+}
+
+class Module : CodeBlock{ //this is any file in the project
+	File file;
+
+	DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
+	size_t sizeBytes;  //todo: update this form the outside
+
+	//these are the 2 subcells
+
+	ModuleBuildState buildState;
+	bool isCompiling;
+
+	bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
+
+	UndoManager undoManager;
+	
+	override SyntaxKind syntax	() const{ return skWhitespace; }
+	override string prefix	() const{ return ""; }
+	override string postfix	() const{ return ""; }
+
+	this(Container parent, File file_){
+		super(parent);
+		bkColor = clModuleBorder;
+		fileLoaded = now;
+		file = file_.actualFile;
+		reload;
+	}
+
+	///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
+	bool isReadOnly(){
+		//return inputs["ScrollLockState"].active;
+		return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly;
+	}
+
+	void resetModuleTypeFlags(){
+		isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
+	}
+
+	void detectModuleTypeFlags(){
+
+		bool isMainSomething(string ext)(){
+			if(content) if(auto r = content.getRow(0)){ 
+				//todo: this detector is not so nice... Need to develop more advanced source code parsing methods.
+				
+				//structured
+				if(auto c = cast(CodeComment)(r.subCells.get(0)))
+					if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true;
+				//highlighted/plain
+				if(sameText(r.shallowText.stripRight, "//@"~ext)) return true;
+			}
+			return false;
+		}
+		isMainExe = isMainSomething!"exe";
+		isMainDll = isMainSomething!"dll";
+		isMainLib = isMainSomething!"lib";
+		isMain = isMainExe || isMainDll || isMainLib;
+
+		isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); //todo: detect compiler import path correctly
+		isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); //todo: periodically chenck if file is exists and other attributes in the IDE
+	}
+
+	void resyntax(){
+		content.resyntax("UNUSED0"/*code.sourceText*/);
+	}
+
+	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents=""){
+		fileModified = file.modified;
+		sizeBytes = file.size;
+		resetModuleTypeFlags;
+
+		auto prevSourceText = sourceText;
+		string sourceText = useExternalContents	? externalContents
+			: this.file.readText;
+		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
+		try{ content.rebuilder.appendStructured(sourceText); processHighLevelPatterns(content); }
+		catch(Exception e){
+			try{ content.rebuilder.appendHighlighted(sourceText); }
+			catch(Exception e){
+				try{ content.rebuilder.appendPlain(sourceText); }
+				catch(Exception e){
+					raise("Fatal error. Unable to load module "~file.fullName);
+				}
+			}
+		}
+		needMeasure;
+	}
+
+	size_t linesOfCode(){ return content.rowCount; } //todo: update this. only good for unstructured code.
+
+	override void rearrange(){
+		detectModuleTypeFlags;
+		super.rearrange;
+	}
+
+	override void draw(Drawing dr){
+		super.draw(dr);
+	}
+
+	void save(){
+		if(isReadOnly) return;
+		sourceText.saveTo(file, Yes.onlyIfChanged);
+		clearChanged;
+		fileModified = file.modified; //opt: slow
+		fileSaved = now;
+	}
+
+}
+
+// High level stuff ///////////////////////////////////
+
+/*["while/with/for/foreach/foreach_reverse", "(", ";{"]
+["do", ";{", "while", "(", ";"]
+["struct/union/class/interface", "*", "{"]*/
+
+
+void processHighLevelPatterns(CodeColumn col){
+	//todo: ensure this is a structured CodeColumn.
+	
+	//every chacacter or node maps to exactly one character (including newline)
+	auto s = col.rows.map!(r => r.subCells.map!(castSwitch!(
+		(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
+		(CodeComment 	_) 	=> ' '	,
+		(CodeString	_) 	=> '"'	,
+		(CodeBlock	b) 	=> b.prefix[0]	,
+	)).text).join("\n");
+	
+	if(s.canFind("module didemodule;")) LOG(s);
+	
+	foreach(rIdx, r; col.rows){
+		//things on a row:
+		//whitespace, comments: these can separate things, generrally just skip them
+		//identifiers/keywords
+		//structure elements: Strings, { [ (
+		//symbols
+		
+		/*struct Thing{
+			string id;
+			ivec2 pos;
+			bool isKeyword, isIdentifier, 
+			
+		}*/
+	}
+	
+	
+	
+}
+
+
+// ErrorList ////////////////////////////////////////////
+
+auto createErrorListCodeColumn(Container parent){
+	auto code = new CodeColumn(parent);
+	code.padding = "1";
+	code.flags.dontStretchSubCells = true;
+
+	import dide2; //todo: should not import main module.
+	auto buildResult = global_getBuildResult;
+	auto markerLayerHideMask = global_getMarkerLayerHideMask;
+
+	foreach(file; buildResult.remainings.keys.sort){
+		auto pragmas = buildResult.remainings[file];
+		if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
+	}
+
+	with(im) code.append({
+		foreach(loc; buildResult.messages.keys.sort){
+			auto msg = buildResult.messages[loc];
+			if(msg.parentLocation) continue;
+			if((1<<msg.type) & markerLayerHideMask) continue;
+			msg.UI(buildResult.subMessagesOf(msg.location));
+		}
+	});
+
+	return code;
+}
+
+
+//bug: ErrorListModule is fucked up
+deprecated class ErrorListModule : Module{  // ErrorListModule ////////////////////////////////////////////////////////
+	this(Container parent, File file_){
+		super(parent, file_);
+		
+		reload;
+	}
+
+	override bool isReadOnly(){ return true; }
+
+	override void resyntax(){ }
+
+	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents=""){
+		clearSubCells;
+		fileModified = now;
+		sizeBytes = 0; //todo: note this has no file.
+		resetModuleTypeFlags;
+		content = createErrorListCodeColumn(this); //todo: remake this with a parser
+		appendCell(enforce(content));
+		needMeasure;
+	}
 }
 
