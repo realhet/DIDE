@@ -2733,9 +2733,21 @@ void processHighLevelPatterns(CodeColumn col){
 		(CodeBlock	b) 	=> b.prefix[0]	,
 	)).text).join("\n");
 	
-	if(s.canFind("module didemodule;")) LOG(s);
+	dchar categorize(dchar ch){
+		if(ch.inRange('a', 'z') || ch.inRange('A', 'Z')) return 'a';
+		if(ch.inRange('0', '9') || ch.inRange('0', '9')) return '0';
+		if(isUniAlpha(ch)) return 'a';
+		if(ch=='\n') return ' ';
+		return ch;
+	}
 	
-	foreach(rIdx, r; col.rows){
+	if(1 || s.canFind("module didemodule;")) LOG(s.map!categorize);
+	
+	foreach(dchar ch; s){
+//		if(state==
+		
+//		if(ch.isNumber)
+		
 		//things on a row:
 		//whitespace, comments: these can separate things, generrally just skip them
 		//identifiers/keywords
