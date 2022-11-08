@@ -2681,7 +2681,7 @@ class Module : CodeBlock{ //this is any file in the project
 		string sourceText = useExternalContents	? externalContents
 			: this.file.readText;
 		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
-		try{ content.rebuilder.appendStructured(sourceText); processHighLevelPatterns(content); }
+		try{ content.rebuilder.appendStructured(sourceText); /*processHighLevelPatterns(content);*/ }
 		catch(Exception e){
 			try{ content.rebuilder.appendHighlighted(sourceText); }
 			catch(Exception e){
@@ -2713,57 +2713,6 @@ class Module : CodeBlock{ //this is any file in the project
 		fileSaved = now;
 	}
 
-}
-
-// High level stuff ///////////////////////////////////
-
-/*["while/with/for/foreach/foreach_reverse", "(", ";{"]
-["do", ";{", "while", "(", ";"]
-["struct/union/class/interface", "*", "{"]*/
-
-
-void processHighLevelPatterns(CodeColumn col){
-	//todo: ensure this is a structured CodeColumn.
-	
-	//every chacacter or node maps to exactly one character (including newline)
-	auto s = col.rows.map!(r => r.subCells.map!(castSwitch!(
-		(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
-		(CodeComment 	_) 	=> ' '	,
-		(CodeString	_) 	=> '"'	,
-		(CodeBlock	b) 	=> b.prefix[0]	,
-	)).text).join("\n");
-	
-	dchar categorize(dchar ch){
-		if(ch.inRange('a', 'z') || ch.inRange('A', 'Z')) return 'a';
-		if(ch.inRange('0', '9') || ch.inRange('0', '9')) return '0';
-		if(isUniAlpha(ch)) return 'a';
-		if(ch=='\n') return ' ';
-		return ch;
-	}
-	
-	if(1 || s.canFind("module didemodule;")) LOG(s.map!categorize);
-	
-	foreach(dchar ch; s){
-//		if(state==
-		
-//		if(ch.isNumber)
-		
-		//things on a row:
-		//whitespace, comments: these can separate things, generrally just skip them
-		//identifiers/keywords
-		//structure elements: Strings, { [ (
-		//symbols
-		
-		/*struct Thing{
-			string id;
-			ivec2 pos;
-			bool isKeyword, isIdentifier, 
-			
-		}*/
-	}
-	
-	
-	
 }
 
 
@@ -2819,3 +2768,206 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 	}
 }
 
+
+// High level stuff ///////////////////////////////////
+
+/*["while/with/for/foreach/foreach_reverse", "(", ";{"]
+["do", ";{", "while", "(", ";"]
+["struct/union/class/interface", "*", "{"]*/
+
+/+ DLang colon : usage
+
+inside declatarions:
+  import : ;
+  version/debug/static_if/static_foreach : decldefs?
+  version/debug/static_if {} else : decldefs?
+  interface/class x : y {}
+  enum x? : y { }
+
+inside	expressions: 
+  ? :	tenary operator
+  [ x : y, ... ]  array member initialization
+
+inside template params:
+  : template parameter specialization
+
+inside statements: 
+  x:  label
+  default:
+  case x : 
+  .. case x : 
+
+inside	asm:
+  ? :	tenary operator
+  x:  label
+  segbemReg : offsetReg
+
++/
+
+auto findTokens(alias E)(CodeColumn col){
+	static assert(is(E == enum));
+	
+	pragma(msg, EnumMembers!E[].map!text.join(' '));
+	
+	//immutable tokenByName = assocArray(enumMembers!E
+}
+
+
+auto strToToken(alias E)(string s){
+	static assert(is(E==enum));
+	static assert(E.none == 0);
+	
+	static string strFromToken(E)(E e) if(is(E==enum)){
+		const a = e.text;
+		if(a.startsWith('_')) return a[1..$];
+		return a.predSwitch(
+			"none"	, "",
+			"semicolon"	, ";", 
+			"colon"	, ":", 
+			"equal"	, "=", 
+			"block"	, "{"
+		);
+	}
+
+	enum	 members = [EnumMembers!E],
+		 m = assocArray(members.map!(a => strFromToken(a)), members);
+	if(auto a = s in m) return *a;
+	return E.none;
+}
+
+struct TokenLocation(Token){ int pos, len; Token token; } 
+
+auto findTokenLocations(Token)(CodeColumn col){
+	
+	static dchar cellToChar(Cell c){
+		return c.castSwitch!(
+			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
+			(CodeComment 	_) 	=> ' '	,
+			(CodeString	_) 	=> '"'	,
+			(CodeBlock	b) 	=> b.prefix[0]	,
+		);
+	}
+	
+	static dstring rowToString(CodeRow row){
+		return row.subCells.map!cellToChar.dtext;
+	}
+	
+	static void categorize(dchar ch, ref char s/+state+/){
+		bool isIdentifierStart(){ return ch.inRange('a', 'z') || ch.inRange('A', 'Z') || ch=='_' || isUniAlpha(ch); }
+		bool isNumberStart(){ return ch.inRange('0', '9'); }
+		bool isIdentifierCont(){ return isIdentifierStart || isNumberStart; }
+		bool isNumberCont(){ return isIdentifierCont; }
+		
+		if(s=='a'){
+			if(!isIdentifierCont) s = ' ';
+		}else if(s=='0'){
+			if(!isNumberCont) s = ' ';
+		}else{
+			if(isIdentifierStart) s = 'a';
+			else if(isNumberStart) s = '0';
+			else s = ' ';
+		}
+		
+		//return 'a' for identifiers, '0' for numbers, ' ' for newline. 
+		//Otherwise terutn the actual char.
+		//return s==' ' ? (ch=='\n' ? ' ' : ch) : s; 
+	}
+	
+	//every chacacter or node maps to exactly one character (including newline)
+	const str = col.rows.map!rowToString.join("\n");
+	
+	auto res = appender!(TokenLocation!Token[]);
+	
+	void tryAppend(dstring s, size_t pos){ 
+		const token = strToToken!Token(s.text); //opt: this conversion from dstring to string is slow and only string identifiers and symbols are in the keywords and in the symbols.
+		if(token != Token.none)
+			res ~= TokenLocation!Token(cast(int)pos, cast(int)s.length, token);
+	}
+	
+	char actState = ' ';
+	dstring actWord;
+	foreach(idx, dchar ch; str){
+			
+		//detect words and symbols
+		auto lastState = actState;
+		bool wordFound = false;
+		categorize(ch, actState);
+		if(lastState!=actState){
+			if(actState=='a') actWord = "";
+			else if(lastState=='a') wordFound = true;
+		}
+		if(actState=='a') actWord ~= ch;
+		
+		if(wordFound) tryAppend(actWord, idx-actWord.length); //note: no 'else' here!!!
+		if(!ch.isAlphaNum) tryAppend(ch.dtext, idx);
+	}
+	if(actState=='a') tryAppend(actWord, str.length-actWord.length);
+		
+	return res[];	
+}
+
+void processHighLevelPatterns(CodeColumn col){
+	
+	enum DeclToken{ none, semicolon, colon, equal, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface/*, _static, _if, _version, _debug, _else, _foreach, _foreach_reverse */};
+	auto tokens = col.findTokenLocations!DeclToken;
+	
+	CodeRow[] dst;
+	void appendNewLine(){ dst ~= new CodeRow(col); }
+	void appendCell(Cell c){ dst[$-1].subCells ~= c; }
+	appendNewLine;
+	
+	auto srcIdx = 0; srcCursor = TextCursor(col, ivec2(0));
+	
+	void transferUntil(bool skip)(int targetIdx){
+		assert(targetIdx>=srcIdx);
+		assert(srcCursor.pos.y.inRange(col.rows));
+		assert(srcCursor.pos.x.inRange(0, col.rowLength(srcCursor.pos.y)));
+		while(srcIdx < targetIdx){
+			auto srcRow = col.rows[srcCursor.y];
+			if(srcCursor.x<srcRow.subCells.length){ //Cell
+				if(!skip) appendCell(srcRow.subCells[srcCursor.x]);
+				srcCursor.pos.x ++;
+			}else{ //NewLine
+				if(!skip) appendNewLine;
+				srcCursor.pos = ivec2(0, srcCursor.pos.y+1);
+			}
+			srcIdx++;
+		}
+	}
+	alias skipUntil = transferUntil!true;
+	
+	with(DeclToken) while(tokens.length){
+		
+		auto fetchUntil(DeclToken[] term)(){
+			const idx = tokens.map!(t => term.canFind(t.token)).countUntil(true);
+			enforce(idx>=0);
+			auto res = tokens[0..idx+1];
+			tokens = tokens[idx+1..$];
+			return res;
+		}
+		
+		Token[] tokens;
+		auto unknown = false;
+		
+		switch(tokens.front.token){
+			case semicolon, _module, _import, _alias, equal	: tokens = fetchUntil!([semicolon]); break;
+			case block, _struct, _union, _class, _interface 	: tokens = fetchUntil!([block]); break;
+			case _enum	: tokens = fetchUntil!([semicolon, block]); break;
+			case colon	: tokens = fetchUntil!([colon]); break;
+			default: tokens = [tokens.front.token]; tokens.popFront; unknown = true;
+		}
+		
+		print(unhandled ? EgaColor.red("UNHANDLED") : "", tokens.map!"a.token");
+	}
+	
+	transferUntil(cast(int)str.length);
+	
+	col.subCells = dst[];
+	foreach(r; col.rows){
+		r.refreshTabIdx;
+		r.needMeasure;
+	}
+}
+
+
+const xxxx0 = 0x0.5p3;
