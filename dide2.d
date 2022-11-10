@@ -1672,6 +1672,8 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("F2") void testInsert2(){
 		foreach(m; selectedModules){
 			processHighLevelPatterns(m.content);
+			//m.content.needMeasure;
+			//m.content.measure;
 			//m.isStructured = true;
 			//m.reload;
 		}

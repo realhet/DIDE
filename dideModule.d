@@ -955,6 +955,8 @@ class CodeRow: Row{
 	override void setParent(Container p){ parent = enforce(cast(CodeColumn)p); }
 
 	int index(){ return parent.subCellIndex(this); }
+	
+	bool empty() const{ return subCells.empty; }
 
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
@@ -1014,6 +1016,16 @@ class CodeRow: Row{
 	this(CodeColumn parent_, string line){
 		this(parent_);
 		set(line, [ubyte(0)].replicate(line.length));
+	}
+	
+	this(CodeColumn parent_, Cell[] cells){
+		this(parent_);
+		
+		//take ownership of the cells.
+		cells.each!(c => c.setParent(this));
+		subCells = cells;
+		refreshTabIdx;
+		needMeasure;
 	}
 
 	void set(string line, ubyte[] syntax){
@@ -1325,7 +1337,7 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 		void initialize(){
 			//seek to the first character
 			actPos = ivec2(0);
-			actRow = col.rowCount ? col.rows[0] : null;
+			actRow = col.rowCount ? col.rows[0] : null; //todo: there must be a first row.
 			enforce(actRow, "Resyntax: Invalid CodeColumn: No rows at all.");
 		}
 		
@@ -1550,6 +1562,13 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		flags.columnElasticTabs = true;
 		bkColor = mix(clCodeBackground, clGray, .25f);
 	}
+	
+	this(Container parent_, Cell[][] cells){
+		this(parent_);
+		subCells = cast(Cell[])(cells.map!(r => new CodeRow(this, r)).array);
+	}
+	
+	bool empty() const{ return !rows.length || rows.length==1 && rows[0].empty; }
 	
 	auto rebuilder	(){ return CodeColumnBuilder!true	(this); }
 	auto resyntaxer	(){ return CodeColumnBuilder!false	(this); }
@@ -2345,6 +2364,7 @@ class CodeNode : Row{
 		innerSize = vec2(0);
 		flags.autoWidth = true;
 		flags.autoHeight = true;
+		
 		super.rearrange;
 		static if(rearrangeLOG) LOG("rearranging", this);
 	}
@@ -2386,6 +2406,8 @@ class CodeContainer : CodeNode{ // CodeContainer /////////////////////////////
 	}
 	
 	override void rearrange(){
+		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		
 		flags.yAlign = YAlign.center;
 		auto ts = tsSyntax(syntax);
 		
@@ -2556,7 +2578,7 @@ class CodeBlock : CodeContainer{ // CodeBlock //////////////////////////////////
 		rebuilder.appendStructured(scanner); //this will stop at the closing token
 		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix){
 			//analize patterns
-			
+			//note: -> processHighLevel
 			/*if(scanner.front.src=="}"){
 				auto crsr = content.endCursor;
 				print(crsr);
@@ -2715,6 +2737,170 @@ class Module : CodeBlock{ //this is any file in the project
 
 }
 
+auto withoutStartingSpace(Cell[][] a){
+	if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
+	return a;
+}
+
+auto withoutEndingSpace(Cell[][] a){
+	if(a.length && a.back.length) if(auto g = cast(Glyph)a.back.back) if(g.ch==' ') a.back = a.back[0..$-1];
+	return a;
+}
+
+class SimpleDeclaration : CodeNode { // SimpleDeclaration /////////////////////////////
+	CodeColumn attrs, content;
+	string type;
+	
+	char closingSymbol() const { return type=="attribute" ? ':' : ';'; }
+	string keyword() const{
+		if(type.among("statement", "attribute")) return "";
+		return type;
+	}
+	
+	this(Container parent, Cell[][] attrCells, string type, Cell[][] contentCells){
+		super(parent);
+		this.type = type;
+		enforce(type.among("module", "import", "alias", "enum", "struct", "union", "class", "interface", "statement", "attribute"), "invalid SimpleDeclaration type: "~type.quoted);
+		attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
+		content	= new CodeColumn(this, contentCells	.withoutStartingSpace	);
+	}
+	
+	override string sourceText(){
+		//todo: handle invalid characters.
+		return only(attrs.deepText, keyword, content.deepText).filter!"a.length".join(' ')~closingSymbol;
+	}
+	
+	override void rearrange(){
+		const syntax = skWhitespace;
+		
+		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		//copy ---------------------------------------
+		flags.yAlign = YAlign.center;
+		auto ts = tsSyntax(syntax);
+		
+		ts.fontColor = structuredColor(type);  //different!!!
+		
+		content	.bkColor = ts.bkColor;
+		attrs	.bkColor = ts.bkColor; //different!!!!!
+		
+		const 	inverse	= type!="statement",
+			darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
+		
+		bkColor	= halfColor; 
+		border.color	= halfColor;
+		ts.fontColor	= inverse ? darkColor : brightColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		//copy end ----------------------------------------------
+		if(keyword == ""){
+			appendCell(content);
+			appendStr(closingSymbol.text, ts);
+			
+			super.rearrange;
+			
+			//if(auto c = subCells.back) c.outerPos.y = innerHeight-c.outerHeight;
+		}else{
+			appendCell(attrs);	const i0 = subCells.length;
+			appendStr(" "~keyword~" ", ts); 	const i1 = subCells.length;
+			appendCell(content);	const i2 = subCells.length;
+			appendStr(closingSymbol.text, ts);
+		
+			if(attrs.empty) attrs.bkColor = mix(darkColor, brightColor, 0.75f);
+			
+			super.rearrange;
+			
+			//foreach(c; subCells[0..i1]) c.outerPos.y = 0;
+			//foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
+		}
+	}
+
+}
+
+class BlockDeclaration : CodeNode { // BlockDeclaration /////////////////////////////
+	CodeColumn attrs, header, content;
+	string type;
+	
+	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, CodeBlock block){
+		super(parent);
+		this.type = type;
+		enforce(type.among("enum", "struct", "union", "class", "interface", "template", ""));
+		if(type==""){
+			attrs 	= null;
+			header 	= new CodeColumn(this, headerCells.withoutEndingSpace	);
+			content	= block.content; content.setParent(this);
+		}else{
+			attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
+			header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace	);
+			content	= block.content; content.setParent(this);
+		}
+		
+		if(type!="enum") processHighLevelPatterns(content); //RECURSIVE!!!
+	}
+	
+	override string sourceText(){
+		//todo: handle invalid characters.
+		if(type=="") return only(header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ');
+		return only(attrs.deepText, type, header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ')~";";
+	}
+	
+	override void rearrange(){
+		const syntax = skSymbol;
+		
+		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		//copy ---------------------------------------
+		flags.yAlign = YAlign.center;
+		auto ts = tsSyntax(syntax);
+		
+		ts.fontColor = structuredColor(type=="" ? "function" : type);  //different!!!
+		
+		content	.bkColor = ts.bkColor;
+		if(attrs) attrs	.bkColor = ts.bkColor; //different!!!!!
+		header	.bkColor = ts.bkColor; //different!!!!!
+		
+		const 	inverse	= true,
+			darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
+		
+		bkColor	= halfColor; 
+		border.color	= halfColor;
+		ts.fontColor	= inverse ? darkColor : brightColor;
+		ts.bkColor 	= halfColor;
+		ts.bold 	= true;
+		//copy end ----------------------------------------------
+		if(type==""){
+			if(!header.empty){ appendCell(header); appendStr(" ", ts); }
+			appendStr("\n    {", ts);
+			appendCell(content);
+			appendStr("}", ts);
+			
+			if(header.empty) header.bkColor = mix(darkColor, brightColor, 0.75f);
+			
+			super.rearrange;
+			
+			//if(auto c = subCells.back) c.outerPos.y = innerHeight-c.outerHeight;
+		}else{
+			appendCell(attrs);
+			appendStr(" "~type~" ", ts);
+			appendCell(header);
+			appendStr("\n    {", ts); 
+			appendCell(content);
+			appendStr("}", ts);
+		
+			if(attrs.empty) attrs.bkColor = mix(darkColor, brightColor, 0.75f);
+			if(header.empty) header.bkColor = mix(darkColor, brightColor, 0.75f);
+			
+			super.rearrange;
+			
+			//foreach(c; subCells[0..i1]) c.outerPos.y = 0;
+			//foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
+		}
+	}
+
+}
+
 
 // ErrorList ////////////////////////////////////////////
 
@@ -2771,6 +2957,55 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 
 // High level stuff ///////////////////////////////////
 
+enum clPiko : RGB8 {
+	G940 	= RGB(139, 59, 43),
+	G239 	= RGB(245, 156, 0),
+	G231 	= RGB(238, 114, 3),
+	G119 	= RGB(221, 11, 47),
+	G115 	= RGB(222, 0, 126),
+	G107 	= RGB(158, 25, 129),
+	G62 	= RGB(92, 36, 131),
+	R1 	= RGB(22, 186, 231),
+	R2 	= RGB(0, 134, 192),
+	R3 	= RGB(0, 105, 180),
+	R4 	= RGB(0, 79, 159),
+	R9 	= RGB(0, 48, 93),
+	W 	= RGB(134, 188, 37),
+	BW 	= RGB(101, 179, 46),
+	W3 	= RGB(0, 120, 88),
+	WY 	= RGB(0, 169, 132),
+	K15 	= RGB(255, 227, 126),
+	K30 	= RGB(255, 237, 0),
+	DKW 	= RGB(255, 204, 0),
+	GE31 	= RGB(157, 157, 156),
+}
+
+RGB structuredColor(string name, RGB def = clGray){
+	switch(name){
+		case "template"	: return clPiko.G940;
+		case "enum"	: return clPiko.G239;
+		case "alias"	: return clPiko.G231;
+		case "if", "switch", "for", "do", "while", "foreach", "foreach_reverse"	: return clPiko.G119;
+		case "return", "break", "continue", "case"	: return clPiko.G115;
+		case "module", "import"	: return clPiko.G107;
+			
+		case "attribute"	: return clPiko.R1;
+		case "with"	: return clPiko.R2;
+		case "label"	: return clPiko.R4;
+			
+		case "class"	: return clPiko.W;
+		case "interface"	: return clPiko.BW;
+		case "struct"	: return clPiko.W3;
+		case "union"	: return clPiko.WY;
+		case "mixin template"	: return clPiko.K15;
+		case "mixin"	: return clPiko.DKW;
+		case "statement"	: return clGray;
+		case "function"	: return clSilver;
+		default	: return def;
+	}
+}
+
+
 /*["while/with/for/foreach/foreach_reverse", "(", ";{"]
 ["do", ";{", "while", "(", ";"]
 ["struct/union/class/interface", "*", "{"]*/
@@ -2825,6 +3060,7 @@ auto strToToken(alias E)(string s){
 			"semicolon"	, ";", 
 			"colon"	, ":", 
 			"equal"	, "=", 
+			"question"	, "?",
 			"block"	, "{"
 		);
 	}
@@ -2835,10 +3071,12 @@ auto strToToken(alias E)(string s){
 	return E.none;
 }
 
-struct TokenLocation(Token){ int pos, len; Token token; } 
+struct TokenLocation(Token){ 
+	int pos, len; Token token; 
+	@property int end() const{ return pos+len; }
+} 
 
-auto findTokenLocations(Token)(CodeColumn col){
-	
+dstring extractRootLevelDChars(CodeColumn col){
 	static dchar cellToChar(Cell c){
 		return c.castSwitch!(
 			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
@@ -2848,8 +3086,22 @@ auto findTokenLocations(Token)(CodeColumn col){
 		);
 	}
 	
-	static dstring rowToString(CodeRow row){
+	static dstring rowToDString(CodeRow row){
 		return row.subCells.map!cellToChar.dtext;
+	}
+	
+	//every chacacter or node maps to exactly one character (including newline)
+	const str = col.rows.map!rowToDString.join("\n");
+	return str;
+}
+
+auto findTokenLocations(Token)(dstring str){
+	auto res = appender!(TokenLocation!Token[]);
+	
+	void tryAppend(dstring s, size_t pos){ 
+		const token = strToToken!Token(s.text); //opt: this conversion from dstring to string is slow and only string identifiers and symbols are in the keywords and in the symbols.
+		if(token != Token.none)
+			res ~= TokenLocation!Token(cast(int)pos, cast(int)s.length, token);
 	}
 	
 	static void categorize(dchar ch, ref char s/+state+/){
@@ -2871,17 +3123,6 @@ auto findTokenLocations(Token)(CodeColumn col){
 		//return 'a' for identifiers, '0' for numbers, ' ' for newline. 
 		//Otherwise terutn the actual char.
 		//return s==' ' ? (ch=='\n' ? ' ' : ch) : s; 
-	}
-	
-	//every chacacter or node maps to exactly one character (including newline)
-	const str = col.rows.map!rowToString.join("\n");
-	
-	auto res = appender!(TokenLocation!Token[]);
-	
-	void tryAppend(dstring s, size_t pos){ 
-		const token = strToToken!Token(s.text); //opt: this conversion from dstring to string is slow and only string identifiers and symbols are in the keywords and in the symbols.
-		if(token != Token.none)
-			res ~= TokenLocation!Token(cast(int)pos, cast(int)s.length, token);
 	}
 	
 	char actState = ' ';
@@ -2907,67 +3148,182 @@ auto findTokenLocations(Token)(CodeColumn col){
 }
 
 void processHighLevelPatterns(CodeColumn col){
+	const srcDStr = extractRootLevelDChars(col);
 	
-	enum DeclToken{ none, semicolon, colon, equal, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface/*, _static, _if, _version, _debug, _else, _foreach, _foreach_reverse */};
-	auto tokens = col.findTokenLocations!DeclToken;
+	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template/*, _version, _debug, _else, _foreach, _foreach_reverse */};
+	auto tokens = findTokenLocations!DeclToken(srcDStr);
 	
 	CodeRow[] dst;
 	void appendNewLine(){ dst ~= new CodeRow(col); }
 	void appendCell(Cell c){ dst[$-1].subCells ~= c; }
 	appendNewLine;
 	
-	auto srcIdx = 0; srcCursor = TextCursor(col, ivec2(0));
+	auto 	srcIdx = 0, 
+		srcCursor = TextCursor(col, ivec2(0));
+	Cell[][] resultCells;
 	
-	void transferUntil(bool skip)(int targetIdx){
-		assert(targetIdx>=srcIdx);
+	enum Operation { skip, transfer, fetch }
+	
+	void processSrc(Operation op, bool whitespaceAndCommentOnly = false)(int targetIdx){
+		assert(srcIdx <= targetIdx);
 		assert(srcCursor.pos.y.inRange(col.rows));
-		assert(srcCursor.pos.x.inRange(0, col.rowLength(srcCursor.pos.y)));
+		assert(srcCursor.pos.x.inRange(0, col.rowCharCount(srcCursor.pos.y)));
+		
+		static if(op==Operation.fetch){ resultCells = null; resultCells.length = 1; }
+		
 		while(srcIdx < targetIdx){
-			auto srcRow = col.rows[srcCursor.y];
-			if(srcCursor.x<srcRow.subCells.length){ //Cell
-				if(!skip) appendCell(srcRow.subCells[srcCursor.x]);
+			auto srcRow = col.rows[srcCursor.pos.y]; //opt: only fetch row when needed
+			if(srcCursor.pos.x<srcRow.subCells.length){ //Cell
+				auto cell = srcRow.subCells[srcCursor.pos.x];
+
+				static if(whitespaceAndCommentOnly){
+					bool isComment(){
+						if(cast(CodeComment)cell) return true;
+						if(auto g = cast(Glyph)cell) if(g.ch.isDLangWhitespace) return true;
+						return false;
+					}
+					if(!isComment) break;
+				}
+				
+				static if(op==Operation.transfer) appendCell(cell);
+				static if(op==Operation.fetch) resultCells.back ~= cell;
+				
 				srcCursor.pos.x ++;
 			}else{ //NewLine
-				if(!skip) appendNewLine;
+				static if(op==Operation.transfer) appendNewLine;
+				static if(op==Operation.fetch) resultCells.length ++;
+				
 				srcCursor.pos = ivec2(0, srcCursor.pos.y+1);
 			}
 			srcIdx++;
 		}
 	}
-	alias skipUntil = transferUntil!true;
 	
+	alias transferUntil = processSrc!(Operation.transfer);
+	alias skipUntil = processSrc!(Operation.skip);
+	auto fetchUntil(int targetIdx){ processSrc!(Operation.fetch)(targetIdx); return resultCells; }
+	void transferWhitespaceAndComments(){ processSrc!(Operation.transfer, true)(srcDStr.length.to!int); }
+	
+
 	with(DeclToken) while(tokens.length){
 		
-		auto fetchUntil(DeclToken[] term)(){
+		auto fetchTokens(DeclToken[] term)(){
 			const idx = tokens.map!(t => term.canFind(t.token)).countUntil(true);
-			enforce(idx>=0);
+			enforce(idx>=0, "ECFT:" ~ tokens.text);
 			auto res = tokens[0..idx+1];
 			tokens = tokens[idx+1..$];
 			return res;
 		}
 		
-		Token[] tokens;
-		auto unknown = false;
-		
-		switch(tokens.front.token){
-			case semicolon, _module, _import, _alias, equal	: tokens = fetchUntil!([semicolon]); break;
-			case block, _struct, _union, _class, _interface 	: tokens = fetchUntil!([block]); break;
-			case _enum	: tokens = fetchUntil!([semicolon, block]); break;
-			case colon	: tokens = fetchUntil!([colon]); break;
-			default: tokens = [tokens.front.token]; tokens.popFront; unknown = true;
+		//fetch a sentence with a main token
+		TokenLocation!DeclToken[] sentence;
+		const mainToken = tokens.front;
+		switch(mainToken.token){
+			case colon	: sentence = fetchTokens!([colon	]); break;
+			case semicolon, _module, _import, _alias, equal, question	: sentence = fetchTokens!([semicolon	]); break;
+			case block, _template 	: sentence = fetchTokens!([block	]); break;
+			case _enum, _struct, _union, _class, _interface	: sentence = fetchTokens!([semicolon, block	]); break;
+			default:{
+				print(EgaColor.red("Unidentified TokenLocation stream:"));
+				tokens.each!print;
+				application.exit;
+			}
 		}
 		
-		print(unhandled ? EgaColor.red("UNHANDLED") : "", tokens.map!"a.token");
+		if(sentence.back.token==semicolon){
+			transferWhitespaceAndComments;
+			
+			Cell[][] attrs;
+			string type = "statement";
+			if(mainToken.token.among(_module, _import, _alias, _enum, _struct, _union, _class, _interface)){
+				type = mainToken.token.text[1..$];
+				attrs = fetchUntil(mainToken.pos);
+				skipUntil(mainToken.end);
+			}
+			
+			auto content = fetchUntil(sentence.back.pos);
+			skipUntil(sentence.back.end);
+			
+			appendCell(new SimpleDeclaration(dst.back, attrs, type, content));
+		}else if(sentence.back.token==block){
+			transferWhitespaceAndComments;
+			
+			Cell[][] attrs;   //todo attribute/header splitting for functs
+			string type = "";
+			if(mainToken.token.among(_enum, _struct, _union, _class, _interface, _template)){
+				type = mainToken.token.text[1..$];
+				attrs = fetchUntil(mainToken.pos);
+				skipUntil(mainToken.end);
+			}
+			
+			auto header = fetchUntil(sentence.back.pos);
+			auto content = fetchUntil(sentence.back.end);
+			auto block = cast(CodeBlock)content.front.front;
+			assert(block);
+			appendCell(new BlockDeclaration(dst.back, attrs, type, header, block));
+		}else if(sentence.back.token==colon){ //todo: if
+			transferWhitespaceAndComments;
+			auto content = fetchUntil(sentence.back.pos);
+			skipUntil(sentence.back.end);
+			appendCell(new SimpleDeclaration(dst.back, null, "attribute", content));
+		}else{
+			print(EgaColor.red(sentence.back.text));
+			transferUntil(sentence.back.end);
+		}
+		
 	}
 	
-	transferUntil(cast(int)str.length);
+	transferUntil(cast(int)srcDStr.length);
 	
-	col.subCells = dst[];
+	col.subCells = cast(Cell[])dst;
 	foreach(r; col.rows){
 		r.refreshTabIdx;
 		r.needMeasure;
 	}
 }
+
+
+
+
+// Test codes
+
+public mixin template TestMixinTemplate(){ int a; int b; }
+public template TestTemplate(){ int a; int b; }
+public alias aaa = TestClass2;
+public enum TestEnum = 5, TestEnum2 = 6;
+public enum TestBlock : int {a = 5, b = a}
+public struct TestStruct{ int a; int b; }
+public union TestUnion{ int a; int b; }
+public class TestClass1 { int a; int b; }
+public class TestClass2 : TestClass1 { }
+public interface TestInterface { int a(); int b(); }
+public:
+public{
+	public int kkk;
+	public int iii=5, jjj=6;
+	public int function() funcptrdecl;
+	public int forward();
+	public int hello(){ label1: label2: return 1 ? 2 : 3; }
+}
+
+struct OpaqueStruct; 
+union OpaqueUnion; 
+class OpaqueClass; 
+interface OpaqueInterface;
+
+static if(1==1):
+
+void testStatements(){
+	with(TestClass1){
+		if(1==2){} else {}
+		if(1==2) sleep(1); else {}
+		if(1==2) {} else sleep(1);
+		
+		
+		
+	}
+}
+//_enum, _alias, _struct, _union, _class, _interface, _template/*, _static, _if, _version, _debug, _else, _foreach, _foreach_reverse */};
 
 
 const xxxx0 = 0x0.5p3;
