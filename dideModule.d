@@ -2747,27 +2747,94 @@ auto withoutEndingSpace(Cell[][] a){
 	return a;
 }
 
-class SimpleDeclaration : CodeNode { // SimpleDeclaration /////////////////////////////
-	CodeColumn attrs, content;
+/*class Declaration : CodeNode { // Declaration //////////////////////////////
+	//CodeColumn attrs, header, content;
 	string type;
 	
-	char closingSymbol() const { return type=="attribute" ? ':' : ';'; }
-	string keyword() const{
-		if(type.among("statement", "attribute")) return "";
-		return type;
+	
+	
+
+}*/
+
+enum DeclarationKind{ 
+	@(":") section,   // content
+	@(";") statement, // content
+	@("{") block,     // header { content
+	
+	@("module ;") module_statement,
+	@("import ;") import_statement,
+	@("alias ;") alias_statement,
+	@("enum ;") enum_statement,	 @("enum {") enum_block,
+	@("struct ;") struct_statement,	 @("struct {") struct_block,
+	@("union ;") union_statement,	 @("union {") union_block,
+	@("class ;") class_statement,	 @("class {") class_block,
+	@("interface ;") interface_statement,	 @("interface {") interface_block,
+	@("template {") template_block, 
+	
+	@("with ( ;") with_statement,	 @("with ( {") with_block,
+	@("if ( ;") if_statement,	 @("if ( {") if_block,
+	@("else ;") else_statement,	 @("else {") else_block,
+	@("for ( ;") for_statement,	 @("for ( {") for_block,
+	@("foreach ( ;") foreach_statement,	 @("foreach ( {") foreach_block,
+	@("foreach_reverse ( ;") foreach_reverse_statement,	 @("foreach_reverse ( {") foreach_reverse_block,
+	@("while ( ;") while_statement,	 @("while ( {") while_block,
+	@("do ; while ( ;") do_while_statement,	 @("do { while ( ;") do_while_block,
+	@("switch ( ;") switch_statement,	 @("switch ( {") switch_block,
+		 @("asm {") asm_block,
+}
+
+bool hasAttrs(DeclarationKind dk) { with(DeclarationKind) return !!dk.among(section, if_section, foreach_section, foreach_reverse_section, if_statement, if_block, foreach_statement, foreach_block, foreach_reverse_statement, foreach_reverse_block, switch_statement, switch_block); }
+
+
+enum DeclarationCategory{ statement, block, section }
+
+auto categoryOf(DeclarationKind dk){ 
+	final switch(dk){
+		static foreach(e; EnumMembers!(typeof(dk)))
+			case e: return mixin(e.text.split('_').back.to!DeclarationCategory);
+	}
+}
+
+string keywordOf(DeclarationKind dk){ 
+	final switch(dk) 
+		static foreach(e; EnumMembers!(typeof(dk)))
+			case e: return mixin(`"` ~ e.text.split('_')[0..$-1].join('_') ~ `"`);
+}
+
+
+class SimpleDeclaration : CodeNode { // SimpleDeclaration /////////////////////////////
+	DeclarationKind kind;
+	CodeColumn attrs, header, block;
+	
+	auto category() const{ return categoryOf(kind); }
+	string keyword() const{ return keywordOf(kind); }
+	
+	char closingSymbol() { 
+		with(DeclarationCategory) final switch(category){ 
+			case statement: return ';';
+			case section: return ':';
+			case block: return '}';
+		}
 	}
 	
-	this(Container parent, Cell[][] attrCells, string type, Cell[][] contentCells){
+	this(Container parent, Cell[][] attrCells, DeclarationKind kind, Cell[][] headerCells, CodeBlock block){
 		super(parent);
-		this.type = type;
-		enforce(type.among("module", "import", "alias", "enum", "struct", "union", "class", "interface", "statement", "attribute"), "invalid SimpleDeclaration type: "~type.quoted);
-		attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
-		content	= new CodeColumn(this, contentCells	.withoutStartingSpace	);
+		this.kind = kind;
+		if(hasAttrs	) attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
+		if(hasHeader	) header 	= new CodeColumn(this, headerCells	.withoutStartingSpace	);
+		if(hasBlock	){ block = codeBlock.content; block.setParent(this); }
+		
+		/+	module, import, alias, enum, struct, union, class, interface 	  [attrs] keyword [content] ;
+			statement		 [content] ;
+			attribute		 [content] :
+		+/
 	}
 	
 	override string sourceText(){
 		//todo: handle invalid characters.
-		return only(attrs.deepText, keyword, content.deepText).filter!"a.length".join(' ')~closingSymbol;
+		return only(attrs.deepText, keyword, header.deepText).filter!"a.length".join(' ') 
+			~ (closingSymbol=='}' 	? "{" ~ block.deepText ~ "}" 
+				: " " ~ block.deepText ~ closingSymbol);
 	}
 	
 	override void rearrange(){
@@ -2778,12 +2845,12 @@ class SimpleDeclaration : CodeNode { // SimpleDeclaration //////////////////////
 		flags.yAlign = YAlign.center;
 		auto ts = tsSyntax(syntax);
 		
-		ts.fontColor = structuredColor(type);  //different!!!
+		ts.fontColor = structuredColor(keyword);  //different!!!
 		
 		content	.bkColor = ts.bkColor;
 		attrs	.bkColor = ts.bkColor; //different!!!!!
 		
-		const 	inverse	= type!="statement",
+		const 	inverse	= keyword!="",
 			darkColor	= ts.bkColor,
 			brightColor	= ts.fontColor,
 			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
@@ -2825,8 +2892,8 @@ class BlockDeclaration : CodeNode { // BlockDeclaration ////////////////////////
 	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, CodeBlock block){
 		super(parent);
 		this.type = type;
-		enforce(type.among("enum", "struct", "union", "class", "interface", "template", ""));
-		if(type==""){
+		enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"));
+		if(type=="function"){
 			attrs 	= null;
 			header 	= new CodeColumn(this, headerCells.withoutEndingSpace	);
 			content	= block.content; content.setParent(this);
@@ -2837,11 +2904,16 @@ class BlockDeclaration : CodeNode { // BlockDeclaration ////////////////////////
 		}
 		
 		if(type!="enum") processHighLevelPatterns(content); //RECURSIVE!!!
+		
+		/+	enum, struct, union, class, interface, template 	  [attrs] type [header] { [content] }
+			""	  [header?] { [content] }
+		+/
+
 	}
 	
 	override string sourceText(){
 		//todo: handle invalid characters.
-		if(type=="") return only(header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ');
+		if(type=="function") return only(header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ');
 		return only(attrs.deepText, type, header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ')~";";
 	}
 	
@@ -2853,26 +2925,26 @@ class BlockDeclaration : CodeNode { // BlockDeclaration ////////////////////////
 		flags.yAlign = YAlign.center;
 		auto ts = tsSyntax(syntax);
 		
-		ts.fontColor = structuredColor(type=="" ? "function" : type);  //different!!!
-		
-		content	.bkColor = ts.bkColor;
-		if(attrs) attrs	.bkColor = ts.bkColor; //different!!!!!
-		header	.bkColor = ts.bkColor; //different!!!!!
+		ts.fontColor = structuredColor(type);  //different!!!
 		
 		const 	inverse	= true,
 			darkColor	= ts.bkColor,
 			brightColor	= ts.fontColor,
 			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
 		
+		content	.bkColor = mix(darkColor, brightColor, 0.125f);
+		if(attrs) attrs	.bkColor = darkColor; //different!!!!!
+		header	.bkColor = darkColor; //different!!!!!
+
 		bkColor	= halfColor; 
 		border.color	= halfColor;
 		ts.fontColor	= inverse ? darkColor : brightColor;
 		ts.bkColor 	= halfColor;
 		ts.bold 	= true;
 		//copy end ----------------------------------------------
-		if(type==""){
+		if(type=="function"){
 			if(!header.empty){ appendCell(header); appendStr(" ", ts); }
-			appendStr("\n    {", ts);
+			appendStr("{", ts);
 			appendCell(content);
 			appendStr("}", ts);
 			
@@ -2885,7 +2957,7 @@ class BlockDeclaration : CodeNode { // BlockDeclaration ////////////////////////
 			appendCell(attrs);
 			appendStr(" "~type~" ", ts);
 			appendCell(header);
-			appendStr("\n    {", ts); 
+			appendStr("{", ts); 
 			appendCell(content);
 			appendStr("}", ts);
 		
@@ -3219,10 +3291,10 @@ void processHighLevelPatterns(CodeColumn col){
 		TokenLocation!DeclToken[] sentence;
 		const mainToken = tokens.front;
 		switch(mainToken.token){
-			case colon	: sentence = fetchTokens!([colon	]); break;
 			case semicolon, _module, _import, _alias, equal, question	: sentence = fetchTokens!([semicolon	]); break;
 			case block, _template 	: sentence = fetchTokens!([block	]); break;
 			case _enum, _struct, _union, _class, _interface	: sentence = fetchTokens!([semicolon, block	]); break;
+			case colon	: sentence = fetchTokens!([colon	]); break;
 			default:{
 				print(EgaColor.red("Unidentified TokenLocation stream:"));
 				tokens.each!print;
@@ -3230,9 +3302,9 @@ void processHighLevelPatterns(CodeColumn col){
 			}
 		}
 		
+		transferWhitespaceAndComments;
+		
 		if(sentence.back.token==semicolon){
-			transferWhitespaceAndComments;
-			
 			Cell[][] attrs;
 			string type = "statement";
 			if(mainToken.token.among(_module, _import, _alias, _enum, _struct, _union, _class, _interface)){
@@ -3246,10 +3318,9 @@ void processHighLevelPatterns(CodeColumn col){
 			
 			appendCell(new SimpleDeclaration(dst.back, attrs, type, content));
 		}else if(sentence.back.token==block){
-			transferWhitespaceAndComments;
 			
-			Cell[][] attrs;   //todo attribute/header splitting for functs
-			string type = "";
+			Cell[][] attrs;   //todo: attribute/header splitting for functs
+			string type = "function";
 			if(mainToken.token.among(_enum, _struct, _union, _class, _interface, _template)){
 				type = mainToken.token.text[1..$];
 				attrs = fetchUntil(mainToken.pos);
@@ -3258,11 +3329,12 @@ void processHighLevelPatterns(CodeColumn col){
 			
 			auto header = fetchUntil(sentence.back.pos);
 			auto content = fetchUntil(sentence.back.end);
+			
 			auto block = cast(CodeBlock)content.front.front;
 			assert(block);
+			
 			appendCell(new BlockDeclaration(dst.back, attrs, type, header, block));
-		}else if(sentence.back.token==colon){ //todo: if
-			transferWhitespaceAndComments;
+		}else if(sentence.back.token==colon){
 			auto content = fetchUntil(sentence.back.pos);
 			skipUntil(sentence.back.end);
 			appendCell(new SimpleDeclaration(dst.back, null, "attribute", content));
@@ -3301,29 +3373,56 @@ public:
 public{
 	public int kkk;
 	public int iii=5, jjj=6;
+	const xxxx0 = 0x0.5p3;
 	public int function() funcptrdecl;
 	public int forward();
 	public int hello(){ label1: label2: return 1 ? 2 : 3; }
 }
 
-struct OpaqueStruct; 
-union OpaqueUnion; 
-class OpaqueClass; 
-interface OpaqueInterface;
+struct OpaqueStruct; union OpaqueUnion; class OpaqueClass; interface OpaqueInterface;
 
 static if(1==1):
 
-void testStatements(){
-	with(TestClass1){
-		if(1==2){} else {}
-		if(1==2) sleep(1); else {}
-		if(1==2) {} else sleep(1);
-		
-		
-		
+version(abcd){
+	//nothing
+}else debug{
+
+	int testStatements(){
+		ivec2 v2 = {[1, 2]};
+		with(TestClass2) static int i=5;
+		with(TestClass1){
+			if(1==2){} else {}
+			if(1==2) sleep(1); else {}
+			if(1==2) {} else sleep(1);
+			if(1==2) {} else if(2==3) {} else sleep(1);
+			
+			for(int i; i++; i<10) writeln(i);
+			label1: foreach(i; 0..10){ writeln(i); break label1; }
+			static foreach_reverse(i; 0..10){{ writeln(i); continue; }}
+			while(0){ }
+			do sleep(1); while(0);
+			do { sleep(1); } while(0);
+			
+			switch(5){
+				case 6: break;
+				case 7:..case 9: break;
+				case 10, 11, 12: break;
+				default: 
+			}
+			
+			return typeof(return).max;
+		}
 	}
+	
+	debug(blabla):
+}else{
+	
+	auto testfun = (){
+		//todo: process lambda's  =>{ or (){ , but not ={
+		do sleep(1); while(0);
+	};
 }
-//_enum, _alias, _struct, _union, _class, _interface, _template/*, _static, _if, _version, _debug, _else, _foreach, _foreach_reverse */};
 
-
-const xxxx0 = 0x0.5p3;
+static foreach(ch; ['a', 'b']): //this must be the last test
+	mixin(format!"enum testEnum", ch, "='", ch, "';");
+	pragma(msg, mixin("testEnum", ch));
