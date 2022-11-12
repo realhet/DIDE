@@ -2360,6 +2360,42 @@ class CodeNode : Row{
 	override inout(Container) getParent() inout { return parent; }
 	override void setParent(Container p){ parent = p; }
 
+	auto rearrangeHelper(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init){
+		
+		struct Helper{
+			CodeNode node;
+			TextStyle ts;
+			int inverse; //0, 1, 2
+			RGB darkColor, brightColor, halfColor;
+			
+			void put(T)(T a){ 
+				static if(isSomeString!T	) node.appendStr(a, ts);
+				else static if(isSomeChar!T	) node.appendChar(a, ts);
+				else static if(is(T:Cell)	) node.appendCell(a);
+				else static assert(0, "unhandled type");
+			}
+		}
+		
+		Helper res; with(res){
+			node 	= this;
+			ts 	= tsSyntax(syntax);  if(!customColor.isNull) ts.fontColor = customColor.get;
+			inverse 	= inverse_;
+			darkColor	= ts.bkColor,
+			brightColor	= ts.fontColor,
+			halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1));
+			
+			ts.bkColor = border.color = bkColor	= halfColor; 
+			ts.fontColor	= inverse ? darkColor : brightColor;
+			ts.bold 	= true;
+		}
+
+		//initialize node
+		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		flags.yAlign = YAlign.center;
+		
+		return res;
+	}
+	
 	override void rearrange(){
 		innerSize = vec2(0);
 		flags.autoWidth = true;
@@ -2368,14 +2404,14 @@ class CodeNode : Row{
 		super.rearrange;
 		static if(rearrangeLOG) LOG("rearranging", this);
 	}
-
+	
 	override void draw(Drawing dr){
 		super.draw(dr);
 
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
 	}
-
+	
 }
 
 
@@ -2406,36 +2442,21 @@ class CodeContainer : CodeNode{ // CodeContainer /////////////////////////////
 	}
 	
 	override void rearrange(){
-		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		with(rearrangeHelper(syntax, prefix.among("[", "(", "{") ? 0 : 1)){
+			content.bkColor = darkColor;
 		
-		flags.yAlign = YAlign.center;
-		auto ts = tsSyntax(syntax);
+			put(prefix); 	const i0 = subCells.length;
+			put(content);	const i2 = subCells.length;
+			put(postfix); //todo: //slashComment must ensure that after it there is a newLine
 		
-		content.bkColor = ts.bkColor;
-		
-		const 	inverse	= !prefix.among("[", "(", "{"),
-			darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= mix(darkColor, brightColor, inverse ? .5f : .15f);
-		
-		bkColor	= halfColor; 
-		border.color	= halfColor;
-		ts.fontColor	= inverse ? darkColor : brightColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		
-		appendStr(prefix, ts); 	const i0 = subCells.length;
-		appendCell(content);	const i2 = subCells.length;
-		appendStr(postfix, ts); //todo: //comment must ensure that after it there is a newLine
-		
-		super.rearrange;
+			super.rearrange;
 		
 		//yAlign prefix and postfix
-		if(content.rowCount>1){
-			foreach(c; subCells[0..i0]) c.outerPos.y = 0;
-			foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
+			if(content.rowCount>1){
+				foreach(c; subCells[0..i0]) c.outerPos.y = 0;
+				foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
+			}
 		}
-
 	}
 
 }
@@ -2737,242 +2758,6 @@ class Module : CodeBlock{ //this is any file in the project
 
 }
 
-auto withoutStartingSpace(Cell[][] a){
-	if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
-	return a;
-}
-
-auto withoutEndingSpace(Cell[][] a){
-	if(a.length && a.back.length) if(auto g = cast(Glyph)a.back.back) if(g.ch==' ') a.back = a.back[0..$-1];
-	return a;
-}
-
-/*class Declaration : CodeNode { // Declaration //////////////////////////////
-	//CodeColumn attrs, header, content;
-	string type;
-	
-	
-	
-
-}*/
-
-enum DeclarationKind{ 
-	@(":") section,   // content
-	@(";") statement, // content
-	@("{") block,     // header { content
-	
-	@("module ;") module_statement,
-	@("import ;") import_statement,
-	@("alias ;") alias_statement,
-	@("enum ;") enum_statement,	 @("enum {") enum_block,
-	@("struct ;") struct_statement,	 @("struct {") struct_block,
-	@("union ;") union_statement,	 @("union {") union_block,
-	@("class ;") class_statement,	 @("class {") class_block,
-	@("interface ;") interface_statement,	 @("interface {") interface_block,
-	@("template {") template_block, 
-	
-	@("with ( ;") with_statement,	 @("with ( {") with_block,
-	@("if ( ;") if_statement,	 @("if ( {") if_block,
-	@("else ;") else_statement,	 @("else {") else_block,
-	@("for ( ;") for_statement,	 @("for ( {") for_block,
-	@("foreach ( ;") foreach_statement,	 @("foreach ( {") foreach_block,
-	@("foreach_reverse ( ;") foreach_reverse_statement,	 @("foreach_reverse ( {") foreach_reverse_block,
-	@("while ( ;") while_statement,	 @("while ( {") while_block,
-	@("do ; while ( ;") do_while_statement,	 @("do { while ( ;") do_while_block,
-	@("switch ( ;") switch_statement,	 @("switch ( {") switch_block,
-		 @("asm {") asm_block,
-}
-
-bool hasAttrs(DeclarationKind dk) { with(DeclarationKind) return !!dk.among(section, if_section, foreach_section, foreach_reverse_section, if_statement, if_block, foreach_statement, foreach_block, foreach_reverse_statement, foreach_reverse_block, switch_statement, switch_block); }
-
-
-enum DeclarationCategory{ statement, block, section }
-
-auto categoryOf(DeclarationKind dk){ 
-	final switch(dk){
-		static foreach(e; EnumMembers!(typeof(dk)))
-			case e: return mixin(e.text.split('_').back.to!DeclarationCategory);
-	}
-}
-
-string keywordOf(DeclarationKind dk){ 
-	final switch(dk) 
-		static foreach(e; EnumMembers!(typeof(dk)))
-			case e: return mixin(`"` ~ e.text.split('_')[0..$-1].join('_') ~ `"`);
-}
-
-
-class SimpleDeclaration : CodeNode { // SimpleDeclaration /////////////////////////////
-	DeclarationKind kind;
-	CodeColumn attrs, header, block;
-	
-	auto category() const{ return categoryOf(kind); }
-	string keyword() const{ return keywordOf(kind); }
-	
-	char closingSymbol() { 
-		with(DeclarationCategory) final switch(category){ 
-			case statement: return ';';
-			case section: return ':';
-			case block: return '}';
-		}
-	}
-	
-	this(Container parent, Cell[][] attrCells, DeclarationKind kind, Cell[][] headerCells, CodeBlock block){
-		super(parent);
-		this.kind = kind;
-		if(hasAttrs	) attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
-		if(hasHeader	) header 	= new CodeColumn(this, headerCells	.withoutStartingSpace	);
-		if(hasBlock	){ block = codeBlock.content; block.setParent(this); }
-		
-		/+	module, import, alias, enum, struct, union, class, interface 	  [attrs] keyword [content] ;
-			statement		 [content] ;
-			attribute		 [content] :
-		+/
-	}
-	
-	override string sourceText(){
-		//todo: handle invalid characters.
-		return only(attrs.deepText, keyword, header.deepText).filter!"a.length".join(' ') 
-			~ (closingSymbol=='}' 	? "{" ~ block.deepText ~ "}" 
-				: " " ~ block.deepText ~ closingSymbol);
-	}
-	
-	override void rearrange(){
-		const syntax = skWhitespace;
-		
-		subCells = []; //This rebuilds and realigns the whole Row subCells.
-		//copy ---------------------------------------
-		flags.yAlign = YAlign.center;
-		auto ts = tsSyntax(syntax);
-		
-		ts.fontColor = structuredColor(keyword);  //different!!!
-		
-		content	.bkColor = ts.bkColor;
-		attrs	.bkColor = ts.bkColor; //different!!!!!
-		
-		const 	inverse	= keyword!="",
-			darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
-		
-		bkColor	= halfColor; 
-		border.color	= halfColor;
-		ts.fontColor	= inverse ? darkColor : brightColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		//copy end ----------------------------------------------
-		if(keyword == ""){
-			appendCell(content);
-			appendStr(closingSymbol.text, ts);
-			
-			super.rearrange;
-			
-			//if(auto c = subCells.back) c.outerPos.y = innerHeight-c.outerHeight;
-		}else{
-			appendCell(attrs);	const i0 = subCells.length;
-			appendStr(" "~keyword~" ", ts); 	const i1 = subCells.length;
-			appendCell(content);	const i2 = subCells.length;
-			appendStr(closingSymbol.text, ts);
-		
-			if(attrs.empty) attrs.bkColor = mix(darkColor, brightColor, 0.75f);
-			
-			super.rearrange;
-			
-			//foreach(c; subCells[0..i1]) c.outerPos.y = 0;
-			//foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
-		}
-	}
-
-}
-
-class BlockDeclaration : CodeNode { // BlockDeclaration /////////////////////////////
-	CodeColumn attrs, header, content;
-	string type;
-	
-	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, CodeBlock block){
-		super(parent);
-		this.type = type;
-		enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"));
-		if(type=="function"){
-			attrs 	= null;
-			header 	= new CodeColumn(this, headerCells.withoutEndingSpace	);
-			content	= block.content; content.setParent(this);
-		}else{
-			attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
-			header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace	);
-			content	= block.content; content.setParent(this);
-		}
-		
-		if(type!="enum") processHighLevelPatterns(content); //RECURSIVE!!!
-		
-		/+	enum, struct, union, class, interface, template 	  [attrs] type [header] { [content] }
-			""	  [header?] { [content] }
-		+/
-
-	}
-	
-	override string sourceText(){
-		//todo: handle invalid characters.
-		if(type=="function") return only(header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ');
-		return only(attrs.deepText, type, header.deepText, "{"~content.deepText~"}").filter!"a.length".join(' ')~";";
-	}
-	
-	override void rearrange(){
-		const syntax = skSymbol;
-		
-		subCells = []; //This rebuilds and realigns the whole Row subCells.
-		//copy ---------------------------------------
-		flags.yAlign = YAlign.center;
-		auto ts = tsSyntax(syntax);
-		
-		ts.fontColor = structuredColor(type);  //different!!!
-		
-		const 	inverse	= true,
-			darkColor	= ts.bkColor,
-			brightColor	= ts.fontColor,
-			halfColor	= mix(darkColor, brightColor, inverse ? /*.5f*/ 1 /*diff!!!!*/ : .15f);
-		
-		content	.bkColor = mix(darkColor, brightColor, 0.125f);
-		if(attrs) attrs	.bkColor = darkColor; //different!!!!!
-		header	.bkColor = darkColor; //different!!!!!
-
-		bkColor	= halfColor; 
-		border.color	= halfColor;
-		ts.fontColor	= inverse ? darkColor : brightColor;
-		ts.bkColor 	= halfColor;
-		ts.bold 	= true;
-		//copy end ----------------------------------------------
-		if(type=="function"){
-			if(!header.empty){ appendCell(header); appendStr(" ", ts); }
-			appendStr("{", ts);
-			appendCell(content);
-			appendStr("}", ts);
-			
-			if(header.empty) header.bkColor = mix(darkColor, brightColor, 0.75f);
-			
-			super.rearrange;
-			
-			//if(auto c = subCells.back) c.outerPos.y = innerHeight-c.outerHeight;
-		}else{
-			appendCell(attrs);
-			appendStr(" "~type~" ", ts);
-			appendCell(header);
-			appendStr("{", ts); 
-			appendCell(content);
-			appendStr("}", ts);
-		
-			if(attrs.empty) attrs.bkColor = mix(darkColor, brightColor, 0.75f);
-			if(header.empty) header.bkColor = mix(darkColor, brightColor, 0.75f);
-			
-			super.rearrange;
-			
-			//foreach(c; subCells[0..i1]) c.outerPos.y = 0;
-			//foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
-		}
-	}
-
-}
-
 
 // ErrorList ////////////////////////////////////////////
 
@@ -3061,7 +2846,7 @@ RGB structuredColor(string name, RGB def = clGray){
 		case "return", "break", "continue", "case"	: return clPiko.G115;
 		case "module", "import"	: return clPiko.G107;
 			
-		case "attribute"	: return clPiko.R1;
+		case "attributes"	: return clPiko.R1;
 		case "with"	: return clPiko.R2;
 		case "label"	: return clPiko.R4;
 			
@@ -3077,6 +2862,40 @@ RGB structuredColor(string name, RGB def = clGray){
 	}
 }
 
+//getLeadingAttributesAndComments /////////////////////////////////////////
+
+/+auto getLeadingAttributesAndComments(Token[] tokens){
+	auto orig = tokens;
+
+	ref Token t(){ assert(tokens.length); return tokens[0]; }
+	void advance(){ assert(tokens.length); tokens = tokens[1..$]; }
+	void skipComments(){ while(t.isComment) advance; }
+	void skipBlock(){ auto level = t.level; while(!t.among!")"(level)) advance; advance; }
+
+	while(tokens.length){
+		if(t.isComment){              //comments
+			advance;
+		}else if(t.among!"@"){
+			advance; skipComments;
+			if(t.isIdentifier){         //@UDA
+				advance; skipComments;
+				if(t.among!"(") skipBlock;//@UDA(params)
+			}else if(t.among!"("){         //@(params)
+				skipBlock;
+			}else{
+				WARN("Garbage after @");  //todo: it is some garbage, what to do with the error
+				break;
+			}
+		}else if(t.isAttribute){      //attr
+			advance; skipComments;
+			if(t.among!"(") skipBlock;  //attr(params)
+		}else{
+			break; //reached the end normally
+		}
+	}
+
+	return orig[0..$-tokens.length];
+}+/
 
 /*["while/with/for/foreach/foreach_reverse", "(", ";{"]
 ["do", ";{", "while", "(", ";"]
@@ -3111,14 +2930,170 @@ inside	asm:
 
 +/
 
-auto findTokens(alias E)(CodeColumn col){
-	static assert(is(E == enum));
-	
-	pragma(msg, EnumMembers!E[].map!text.join(' '));
-	
-	//immutable tokenByName = assocArray(enumMembers!E
+
+auto withoutStartingSpace(Cell[][] a){
+	if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
+	return a;
 }
 
+auto withoutEndingSpace(Cell[][] a){
+	if(a.length && a.back.length) if(auto g = cast(Glyph)a.back.back) if(g.ch==' ') a.back = a.back[0..$-1];
+	return a;
+}
+
+/*class Declaration : CodeNode { // Declaration //////////////////////////////
+	//CodeColumn attrs, header, content;
+	string type;
+	
+	
+	
+
+}*/
+/+
+			case semicolon, _module, _import, _alias, equal, question	: sentence = fetchTokens!([semicolon	]); break;
+			case block, _template 	: sentence = fetchTokens!([block	]); break;
+			case _enum, _struct, _union, _class, _interface	: sentence = fetchTokens!([semicolon, block	]); break;
+			case colon	: sentence = fetchTokens!([colon	]); break;
+
+
+enum parseRules = [
+	[":"	, ":"	],
+	["; = ? module import alias"	, ";"	],
+	["{", "template"	, "{"	],
+	["enum struct union class interface"	, "{;"	],
+	["if with for foreach foreach_reverse"	, "(*"	],
+	[""	, "(*"	],
+	["else"	, "*"	],
+]
+
+
+enum DeclarationKind{ 
+	@(":") section,	// content
+	@(";") statement,	// content
+	@("{") block,	// header { content
+	
+	@("module ;") module_statement,
+	@("import ;") import_statement,
+	@("alias ;") alias_statement,
+	@("enum ;") enum_statement,	 @("enum {") enum_block,
+	@("struct ;") struct_statement,	 @("struct {") struct_block,
+	@("union ;") union_statement,	 @("union {") union_block,
+	@("class ;") class_statement,	 @("class {") class_block,
+	@("interface ;") interface_statement,	 @("interface {") interface_block,
+	@("template {") template_block, 
+	
+	@("with ( ;") with_statement,	 @("with ( {") with_block,
+	@("if ( ;") if_statement,	 @("if ( {") if_block,
+	@("else ;") else_statement,	 @("else {") else_block,
+	@("for ( ;") for_statement,	 @("for ( {") for_block,
+	@("foreach ( ;") foreach_statement,	 @("foreach ( {") foreach_block,
+	@("foreach_reverse ( ;") foreach_reverse_statement,	 @("foreach_reverse ( {") foreach_reverse_block,
+	@("while ( ;") while_statement,	 @("while ( {") while_block,
+	@("do ; while ( ;") do_while_statement,	 @("do { while ( ;") do_while_block,
+	@("switch ( ;") switch_statement,	 @("switch ( {") switch_block,
+		 @("asm {") asm_block,
+}
+
+bool hasAttrs(DeclarationKind dk) { with(DeclarationKind) return !!dk.among(section, if_section, foreach_section, foreach_reverse_section, if_statement, if_block, foreach_statement, foreach_block, foreach_reverse_statement, foreach_reverse_block, switch_statement, switch_block); }
+
+
+enum DeclarationCategory{ 
+	statement, 	// closed with ;
+	block,	// closed with {}
+	section	// closed with :
+}
+
+/+ Parsing logic:
+
+	@ : next nonWhite/
+
++/
+
+auto categoryOf(DeclarationKind dk){ 
+	final switch(dk){
+		static foreach(e; EnumMembers!(typeof(dk)))
+			case e: return mixin(e.text.split('_').back.to!DeclarationCategory);
+	}
+}
+
+string keywordOf(DeclarationKind dk){ 
+	final switch(dk) 
+		static foreach(e; EnumMembers!(typeof(dk)))
+			case e: return mixin(`"` ~ e.text.split('_')[0..$-1].join('_') ~ `"`);
+}
+
++/
+
+class Declaration : CodeNode { // Declaration /////////////////////////////
+	string type;
+	CodeColumn attrs, header, block;
+	
+	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, CodeBlock block_ = null){
+		super(parent);
+		this.type = type;
+		
+		if(block_){ block	= block_.content; block.setParent(this); }
+		
+		if(block) 	enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"));
+		else	enforce(type.among("enum", "struct", "union", "class", "interface", "statement", "attributes", "label", "module", "import", "alias", ));
+		
+		if(block){
+			if(type=="function"){
+				attrs 	= null;
+				header 	= new CodeColumn(this, headerCells.withoutEndingSpace	);
+				block	= block_.content; block.setParent(this);
+			}else{
+				attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
+				header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace	);
+				block	= block_.content; block.setParent(this);
+			}
+			if(type!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
+		}else{
+			attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
+			header 	= new CodeColumn(this, headerCells	.withoutStartingSpace	);
+		}
+	}
+	
+	string keyword() { return type.among("statement", "attributes", "function", "label") ? "" : type; }
+	char closingSymbol() const{ return type.among("attributes", "label") ? ':' : ';'; }
+	
+	override string sourceText(){
+		//todo: handle invalid characters.
+		if(block){
+			if(type=="function") return only(header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ');
+			return only(attrs.deepText, type, header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ')~";";
+		}else{
+			return only(attrs.deepText, keyword, header.deepText).filter!"a.length".join(' ') ~ closingSymbol.text;
+		}
+	}
+	
+	override void rearrange(){
+		with(rearrangeHelper(skWhitespace, type=="statement" ? 0 : 2, structuredColor(type).nullable)){
+			
+			//set subColumn bkColors
+			if(block) block	.bkColor = mix(darkColor, brightColor, 0.125f);
+			foreach(a; only(attrs, header)) if(a){
+				a.bkColor = darkColor;
+				if(a.empty) a.bkColor	 = mix(darkColor, brightColor, 0.75f);
+			}
+
+			if(block){
+				if(keyword!=""){
+					put(attrs); put(" "~keyword~" "); put(header);
+				}else{
+					if(!header.empty){ put(header); put(' '); } 
+				}
+				put("{"); put(block); put("}");
+			}else{
+				if(keyword!=""){ put(attrs); put(" "~keyword~" "); }
+				put(header); put(closingSymbol);
+			}
+			
+			super.rearrange;
+		}
+	}
+
+}
 
 auto strToToken(alias E)(string s){
 	static assert(is(E==enum));
@@ -3316,7 +3291,7 @@ void processHighLevelPatterns(CodeColumn col){
 			auto content = fetchUntil(sentence.back.pos);
 			skipUntil(sentence.back.end);
 			
-			appendCell(new SimpleDeclaration(dst.back, attrs, type, content));
+			appendCell(new Declaration(dst.back, attrs, type, content));
 		}else if(sentence.back.token==block){
 			
 			Cell[][] attrs;   //todo: attribute/header splitting for functs
@@ -3333,11 +3308,11 @@ void processHighLevelPatterns(CodeColumn col){
 			auto block = cast(CodeBlock)content.front.front;
 			assert(block);
 			
-			appendCell(new BlockDeclaration(dst.back, attrs, type, header, block));
+			appendCell(new Declaration(dst.back, attrs, type, header, block));
 		}else if(sentence.back.token==colon){
 			auto content = fetchUntil(sentence.back.pos);
 			skipUntil(sentence.back.end);
-			appendCell(new SimpleDeclaration(dst.back, null, "attribute", content));
+			appendCell(new Declaration(dst.back, null, "attributes", content));
 		}else{
 			print(EgaColor.red(sentence.back.text));
 			transferUntil(sentence.back.end);
