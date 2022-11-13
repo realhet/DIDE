@@ -961,7 +961,7 @@ class CodeRow: Row{
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
 	
-	string shallowText() { return chars.to!string; }
+	string shallowText() { return chars.to!string; } //todo: combine this with extractThisLevelDString
 
 	string deepText() { 
 		string res; //opt: appender
@@ -2651,13 +2651,16 @@ interface WorkspaceInterface{
 	@property bool isReadOnly();
 }
 
+enum StructureLevel : ubyte { plain, highlighted, structured, managed }
+
 class Module : CodeBlock{ //this is any file in the project
 	File file;
 
 	DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
 	size_t sizeBytes;  //todo: update this form the outside
 
-	//these are the 2 subcells
+	StructureLevel structureLevel;
+	static foreach(e; EnumMembers!StructureLevel) mixin(format!q{ @property is%s() const{ return structureLevel == StructureLevel.%s; } }(e.text.capitalize, e.text));
 
 	ModuleBuildState buildState;
 	bool isCompiling;
@@ -2724,16 +2727,52 @@ class Module : CodeBlock{ //this is any file in the project
 		string sourceText = useExternalContents	? externalContents
 			: this.file.readText;
 		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
-		try{ content.rebuilder.appendStructured(sourceText); /*processHighLevelPatterns(content);*/ }
-		catch(Exception e){
-			try{ content.rebuilder.appendHighlighted(sourceText); }
-			catch(Exception e){
-				try{ content.rebuilder.appendPlain(sourceText); }
-				catch(Exception e){
-					raise("Fatal error. Unable to load module "~file.fullName);
+		
+		void doPlain(){
+			try{
+				content.rebuilder.appendPlain(sourceText);
+				structureLevel = StructureLevel.plain;
+			}catch(Exception e){
+				raise("Fatal error. Unable to load module even in plain mode. "~file.text~"\n"~e.simpleMsg);
+			}
+		}
+		
+		void doHighlighted(){
+			try{
+				content.rebuilder.appendHighlighted(sourceText);  //todo: this is NOT raising an exception, only draws the error with red and and display a WARN. It should revert to plain...
+				structureLevel = StructureLevel.highlighted;
+			}catch(Exception e){
+				WARN("Unable to load module in highlighted mode. "~file.text~"\n"~e.simpleMsg);
+				doPlain;
+			}
+		}
+		
+		void doStructured(){
+			try{
+				content.rebuilder.appendStructured(sourceText); 
+				structureLevel = StructureLevel.structured;
+			}catch(Exception e){
+				WARN("Unable to load module in structured mode. "~file.text~"\n"~e.simpleMsg);
+				doHighlighted;
+			}
+		}
+		
+		void doManaged(){
+			doManaged; 
+			if(isStructured){
+				try{
+					processHighLevelPatterns(content);
+					structureLevel = StructureLevel.managed;
+				}catch(Exception e){
+					WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg);
+					doManaged;
 				}
 			}
 		}
+		
+		enum targetLevel = StructureLevel.structured;
+		[&doPlain, &doHighlighted, &doStructured, &doManaged][targetLevel]();
+		
 		needMeasure;
 	}
 
@@ -3035,8 +3074,8 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		
 		if(block_){ block	= block_.content; block.setParent(this); }
 		
-		if(block) 	enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"));
-		else	enforce(type.among("enum", "struct", "union", "class", "interface", "statement", "attributes", "label", "module", "import", "alias", ));
+		if(block) 	enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"), "Invalid block keyword: "~type.quoted);
+		else	enforce(type.among("enum", "struct", "union", "class", "interface", "statement", "attributes", "label", "module", "import", "alias"), "Invalid non-block keyword: "~type.quoted);
 		
 		if(block){
 			if(type=="function"){
@@ -3096,6 +3135,25 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 
 }
 
+dstring extractThisLevelDString(CodeColumn col){
+	static dchar cellToChar(Cell c){
+		return c.castSwitch!(
+			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
+			(CodeComment 	_) 	=> ' '	,
+			(CodeString	_) 	=> '"'	,
+			(CodeBlock	b) 	=> b.prefix[0]	,
+		);
+	}
+	
+	static dstring rowToDString(CodeRow row){
+		return row.subCells.map!cellToChar.dtext;
+	}
+	
+	//every chacacter or node maps to exactly one character (including newline)
+	const str = col.rows.map!rowToDString.join("\n");
+	return str;
+}
+
 
 struct TokenProcessor(Token){ // TokenProcessor /////////////////////////////////
 	
@@ -3114,7 +3172,8 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 					"colon"	, ":", 
 					"equal"	, "=", 
 					"question"	, "?",
-					"block"	, "{"
+					"block"	, "{",
+					"params"	, "(",
 				);
 			}
 		
@@ -3122,25 +3181,6 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 				 m = assocArray(members.map!(a => strFromToken(a)), members);
 			if(auto a = s in m) return *a;
 			return E.none;
-		}
-		
-		dstring extractThisLevelDChars(CodeColumn col){
-			static dchar cellToChar(Cell c){
-				return c.castSwitch!(
-					(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
-					(CodeComment 	_) 	=> ' '	,
-					(CodeString	_) 	=> '"'	,
-					(CodeBlock	b) 	=> b.prefix[0]	,
-				);
-			}
-			
-			static dstring rowToDString(CodeRow row){
-				return row.subCells.map!cellToChar.dtext;
-			}
-			
-			//every chacacter or node maps to exactly one character (including newline)
-			const str = col.rows.map!rowToDString.join("\n");
-			return str;
 		}
 		
 		struct TokenLocation(Token){ 
@@ -3208,6 +3248,8 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 	
 	TokenLocation!Token[] tokens;
 	
+	TokenLocation!Token[] sentence; //fetchTokenSentence's result
+	
 	CodeRow[] dst;
 	void appendNewLine(){ dst ~= new CodeRow(col); }
 	void appendCell(Cell c){ dst[$-1].subCells ~= c; }
@@ -3219,7 +3261,7 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 
 	this(CodeColumn col){
 		this.col = col;
-		srcDStr = extractThisLevelDChars(col);
+		srcDStr = extractThisLevelDString(col);
 		tokens = findTokenLocations!Token(srcDStr);
 		
 		appendNewLine;
@@ -3235,14 +3277,19 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 		}
 	}
 	
-	auto fetchTokens(Token[] term)(){
+	void fetchTokens(Token[] term)(){
 		const idx = tokens.map!(t => term.canFind(t.token)).countUntil(true);
 		enforce(idx>=0, "ECFT:" ~ tokens.text);
-		auto res = tokens[0..idx+1];
+		sentence = tokens[0..idx+1];
 		tokens = tokens[idx+1..$];
-		return res;
 	}
 	
+	void fetchSingleToken(){
+		enforce(tokens.length);
+		sentence = tokens[0..1];
+		tokens.popFront;
+	}
+
 	enum Operation { skip, transfer, fetch }
 	
 	void processSrc(Operation op, bool whitespaceAndCommentOnly = false)(int targetIdx){
@@ -3287,73 +3334,77 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 	
 }
 
+auto genericSwitch(alias fun, E)(E e){ //todo: this could be moved into utils.d
+	final switch(e)
+		static foreach(a; EnumMembers!E)
+			case a: return a.unaryFun!fun;
+}
+
+
+struct DDeclarationRecord{
+	string attributes;
+	string type;
+	string header;
+}
+DDeclarationRecord[] dDeclarationRecords;
+
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
-	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template/*, _version, _debug, _else, _foreach, _foreach_reverse */};
+	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template/*, _version, _debug, _else, _foreach, _foreach_reverse */}
 	
 	auto proc = TokenProcessor!DeclToken(col_);
 	with(proc) with(DeclToken){
 	
 		while(tokens.length){
-			
-			//fetch a sentence with a main token
-			TokenLocation!DeclToken[] sentence;
-			const mainToken = tokens.front;
-			switch(mainToken.token){
-				case semicolon, _module, _import, _alias, equal, question	: sentence = fetchTokens!([semicolon	]); break;
-				case block, _template 	: sentence = fetchTokens!([block	]); break;
-				case _enum, _struct, _union, _class, _interface	: sentence = fetchTokens!([semicolon, block	]); break;
-				case colon	: sentence = fetchTokens!([colon	]); break;
-				default:{
-					print(EgaColor.red("Unidentified TokenLocation stream:"));
-					tokens.each!print;
-					application.exit;
-				}
-			}
-			
 			transferWhitespaceAndComments;
 			
-			if(sentence.back.token==semicolon){
+			const main = tokens.front;
+			auto mainIsKeyword(){ return main.token.genericSwitch!"a.text.startsWith('_')"; /+todo: lame string ops+/}
+			switch(main.token){
+				case semicolon, equal, question, _module, _import, _alias:	fetchTokens!([semicolon	]); break;
+				case block, _template:	fetchTokens!([block	]); break;
+				case _enum, _struct, _union, _class, _interface: 	fetchTokens!([semicolon, block	]); break;
+				case colon:	fetchTokens!([colon	]); break;
+				default:	fetchSingleToken;
+			}
+			const ending = sentence.back;
+			
+			if(ending.token.among(semicolon, block)){
 				Cell[][] attrs;
-				string type = "statement";
-				if(mainToken.token.among(_module, _import, _alias, _enum, _struct, _union, _class, _interface)){
-					type = mainToken.token.text[1..$];
-					attrs = fetchUntil(mainToken.pos);
-					skipUntil(mainToken.end);
+				CodeBlock block;
+				
+				string type = ending.token==semicolon ? "statement" : "function";
+				if(mainIsKeyword){
+					type = main.token.text[1..$];
+					attrs = fetchUntil(main.pos);
+					skipUntil(main.end);
 				}
 				
-				auto content = fetchUntil(sentence.back.pos);
-				skipUntil(sentence.back.end);
-				
-				appendCell(new Declaration(dst.back, attrs, type, content));
-			}else if(sentence.back.token==block){
-				
-				Cell[][] attrs;   //todo: attribute/header splitting for functs
-				string type = "function";
-				if(mainToken.token.among(_enum, _struct, _union, _class, _interface, _template)){
-					type = mainToken.token.text[1..$];
-					attrs = fetchUntil(mainToken.pos);
-					skipUntil(mainToken.end);
+				auto header = fetchUntil(ending.pos);
+				if(ending.token==semicolon){
+					skipUntil(ending.end);
+				}else{
+					auto container = fetchUntil(ending.end);
+					block = cast(CodeBlock) container.front.front;
 				}
 				
-				auto header = fetchUntil(sentence.back.pos);
-				auto content = fetchUntil(sentence.back.end);
+				auto decl = new Declaration(dst.back, attrs, type, header, block);
+				appendCell(decl);
 				
-				auto block = cast(CodeBlock)content.front.front;
-				assert(block);
+				dDeclarationRecords ~= DDeclarationRecord(decl.attrs ? decl.attrs.extractThisLevelDString.text : "", type, decl.header.extractThisLevelDString.text ~ (ending.token==semicolon ? ";" : "{"));
+			}else if(ending.token==colon){
+				auto content = fetchUntil(ending.pos);
+				skipUntil(ending.end);
+				auto decl = new Declaration(dst.back, null, "attributes", content);
+				appendCell(decl);
 				
-				appendCell(new Declaration(dst.back, attrs, type, header, block));
-			}else if(sentence.back.token==colon){
-				auto content = fetchUntil(sentence.back.pos);
-				skipUntil(sentence.back.end);
-				appendCell(new Declaration(dst.back, null, "attributes", content));
+				dDeclarationRecords ~= DDeclarationRecord(decl.attrs.extractThisLevelDString.text, "attributes", ""~":");
 			}else{
-				print(EgaColor.red(sentence.back.text));
-				transferUntil(sentence.back.end);
+				ERR("Unhandled token"~ending.text);
+				transferUntil(ending.end);
 			}
 			
 		}
-		
 	}
 }
 
@@ -3424,6 +3475,6 @@ version(abcd){
 	};
 }
 
-static foreach(ch; ['a', 'b']): //this must be the last test
+static if(0) static foreach(ch; ['a', 'b']): //this must be the last test
 	mixin(format!"enum testEnum", ch, "='", ch, "';");
 	pragma(msg, mixin("testEnum", ch));

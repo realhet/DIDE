@@ -1671,7 +1671,10 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 
 	@VERB("F2") void testInsert2(){
 		foreach(m; selectedModules){
-			processHighLevelPatterns(m.content);
+			if(m.isStructured){
+				processHighLevelPatterns(m.content);
+				m.structureLevel = StructureLevel.managed;
+			}else beep;
 			//m.content.needMeasure;
 			//m.content.measure;
 			//m.isStructured = true;
@@ -1682,6 +1685,26 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	@VERB("F3"                  ) void testInsert3       (){
 		foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
 	}
+	
+	@VERB("F4"                  ) void test4(){
+		auto files = dirPerS(Path(`c:\d`), "*.d").files.map!"a.file".array;
+		//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
+		dDeclarationRecords.clear;
+		foreach(i, f; files){
+			print(i, files.length, dDeclarationRecords.length, f);
+			auto m = scoped!Module(this, f);
+			if(m.isStructured){
+				m.content.processHighLevelPatterns;
+			}else	{ print("Is not structured"); beep; }
+		}
+		dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`);
+		print("DONE.");
+		
+		//todo: implement identifier qString  File(`c:\D\ldc2\import\std\json.d`) File(`c:\D\ldc2\import\std\xml.d`) File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
+		//bad tokenString, not my bad...  File(`c:\D\ldc-master\dmd\iasmgcc.d`) File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token
+		
+	}
+
 
 	void preserveTextSelections(void delegate() fun){ //todo: preserve module selections too
 		const savedTextSelections = textSelectionsGet.map!(a => a.toReference.text).array;
