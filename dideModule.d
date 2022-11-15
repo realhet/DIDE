@@ -1566,6 +1566,9 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 	this(Container parent_, Cell[][] cells){
 		this(parent_);
 		subCells = cast(Cell[])(cells.map!(r => new CodeRow(this, r)).array);
+		
+		//one row must always present.
+		if(subCells.empty) subCells ~= new CodeRow(this);
 	}
 	
 	bool empty() const{ return !rows.length || rows.length==1 && rows[0].empty; }
@@ -3065,17 +3068,34 @@ auto withoutEndingSpace(Cell[][] a){
 
 
 class Declaration : CodeNode { // Declaration /////////////////////////////
-	string type;
-	CodeColumn attrs, header, block;
+	CodeColumn attributes, 
+	string keyword;
+	CodeColumn header, block;
+	char ending;
 	
-	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, CodeBlock block_ = null){
+	bool isBlock	() const{ return ending=='}'; }
+	bool isStatement	() const{ return ending==';'; }
+	bool isSection	() const{ return ending==':'; }
+	bool isPreposition	() const{ return ending==')'; }
+	
+	void verify(){
+		if(isBlock){
+			enforce(block, "Invalid null block.");
+			enforce(keyword.among("enum", "struct", "union", "class", "interface", "template", "unittest", ""), "Invalid declaration block keyword: "~keyword.quoted);
+		}else if(isStatement){
+			enforce(type.among("enum", "struct", "union", "class", "interface", "module", "import", "alias", ""), "Invalid declaration statement keyword: "~keyword.quoted);
+		}else if(isSection){
+			enforce(type.among(""), "Invalid declaration section keyword: "~keyword.quoted);
+		}else if(isPreposition){
+			enforce(type.among("with", "if", "else"), "Invalid declaration preposition keyword: "~keyword.quoted);
+		}else enforce(0, "Invalid declaration ending: "~ending.text.quoted);
+	}
+	
+	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, char ending, CodeColumn block = null){
 		super(parent);
-		this.type = type;
-		
-		if(block_){ block	= block_.content; block.setParent(this); }
-		
-		if(block) 	enforce(type.among("enum", "struct", "union", "class", "interface", "template", "function"), "Invalid block keyword: "~type.quoted);
-		else	enforce(type.among("enum", "struct", "union", "class", "interface", "statement", "attributes", "label", "module", "import", "alias"), "Invalid non-block keyword: "~type.quoted);
+		this.keyword = keyword;
+		this.ending = ending;
+		this.block	= block; if(block) block.setParent(this);
 		
 		if(block){
 			if(type=="function"){
@@ -3094,15 +3114,14 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		}
 	}
 	
-	string keyword() { return type.among("statement", "attributes", "function", "label") ? "" : type; }
-	char closingSymbol() const{ return type.among("attributes", "label") ? ':' : ';'; }
-	
 	override string sourceText(){
 		//todo: handle invalid characters.
 		if(block){
-			if(type=="function") return only(header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ');
+			if(keyword=="") return only(header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ');
 			return only(attrs.deepText, type, header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ')~";";
 		}else{
+		
+		todo
 			return only(attrs.deepText, keyword, header.deepText).filter!"a.length".join(' ') ~ closingSymbol.text;
 		}
 	}
@@ -3170,6 +3189,7 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 					"none"	, "",
 					"semicolon"	, ";", 
 					"colon"	, ":", 
+					"comma"	, ",", 
 					"equal"	, "=", 
 					"question"	, "?",
 					"block"	, "{",
@@ -3197,19 +3217,14 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 					res ~= TokenLocation!Token(cast(int)pos, cast(int)s.length, token);
 			}
 			
-			static void categorize(dchar ch, ref char s/+state+/){
-				bool isIdentifierStart(){ return ch.inRange('a', 'z') || ch.inRange('A', 'Z') || ch=='_' || isUniAlpha(ch); }
-				bool isNumberStart(){ return ch.inRange('0', '9'); }
-				bool isIdentifierCont(){ return isIdentifierStart || isNumberStart; }
-				bool isNumberCont(){ return isIdentifierCont; }
-				
+			static void categorizeDlangChar(dchar ch, ref char s/+state+/){
 				if(s=='a'){
-					if(!isIdentifierCont) s = ' ';
+					if(!isDLangIdentifierCont(ch)) s = ' ';
 				}else if(s=='0'){
-					if(!isNumberCont) s = ' ';
+					if(!isDLangNumberCont(ch)) s = ' ';
 				}else{
-					if(isIdentifierStart) s = 'a';
-					else if(isNumberStart) s = '0';
+					if(isDLangIdentifierStart(ch)) s = 'a';
+					else if(isDLangNumberStart(ch)) s = '0';
 					else s = ' ';
 				}
 				
@@ -3220,22 +3235,21 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 			
 			char actState = ' ';
 			dstring actWord;
-			foreach(idx, dchar ch; str){
+			foreach(idx, dchar ch; str){ 
 					
 				//detect words and symbols
 				auto lastState = actState;
 				bool wordFound = false;
-				categorize(ch, actState);
+				categorizeDlangChar(ch, actState);
 				if(lastState!=actState){
-					if(actState=='a') actWord = "";
+					if(actState=='a') actWord = "";  //note: this parser ignores numbers
 					else if(lastState=='a') wordFound = true;
 				}
-				if(actState=='a') actWord ~= ch;
-				
+				if(actState=='a') actWord ~= ch;  //note: this parser ignores numbers
 				if(wordFound) tryAppend(actWord, idx-actWord.length); //note: no 'else' here!!!
-				if(!ch.isAlphaNum) tryAppend(ch.dtext, idx);
+				if(actState==' ') tryAppend(ch.dtext, idx); //symbol
 			}
-			if(actState=='a') tryAppend(actWord, str.length-actWord.length);
+			if(actState=='a') tryAppend(actWord, str.length-actWord.length); //note: ignores numbers
 				
 			return res[];	
 		}
@@ -3350,7 +3364,7 @@ DDeclarationRecord[] dDeclarationRecords;
 
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
-	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template/*, _version, _debug, _else, _foreach, _foreach_reverse */}
+	enum DeclToken{ none, semicolon, colon, equal, question, comma, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest/*, _version, _debug, _else, _foreach, _foreach_reverse */}
 	
 	auto proc = TokenProcessor!DeclToken(col_);
 	with(proc) with(DeclToken){
@@ -3361,8 +3375,8 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 			const main = tokens.front;
 			auto mainIsKeyword(){ return main.token.genericSwitch!"a.text.startsWith('_')"; /+todo: lame string ops+/}
 			switch(main.token){
-				case semicolon, equal, question, _module, _import, _alias:	fetchTokens!([semicolon	]); break;
-				case block, _template:	fetchTokens!([block	]); break;
+				case semicolon, equal, question, comma,   _module, _import, _alias:	fetchTokens!([semicolon	]); break;
+				case block,    _template, _unittest:	fetchTokens!([block	]); break;
 				case _enum, _struct, _union, _class, _interface: 	fetchTokens!([semicolon, block	]); break;
 				case colon:	fetchTokens!([colon	]); break;
 				default:	fetchSingleToken;
