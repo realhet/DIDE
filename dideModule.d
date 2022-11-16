@@ -2856,14 +2856,18 @@ deprecated class ErrorListModule : Module{  // ErrorListModule /////////////////
 
 // High level stuff ///////////////////////////////////
 
+RGB brighter(RGB a, float f){
+	return (a.rgbToFloat*(1+f)).floatToRgb;
+}
+
 enum clPiko : RGB8 {
-	G940 	= RGB(139, 59, 43),
+	G940 	= RGB(139, 59, 43).brighter(.25f),
 	G239 	= RGB(245, 156, 0),
 	G231 	= RGB(238, 114, 3),
-	G119 	= RGB(221, 11, 47),
+	G119 	= RGB(221, 11, 47).brighter(.25f),
 	G115 	= RGB(222, 0, 126),
 	G107 	= RGB(158, 25, 129),
-	G62 	= RGB(92, 36, 131),
+	G62 	= RGB(92, 36, 131).brighter(.25f),
 	R1 	= RGB(22, 186, 231),
 	R2 	= RGB(0, 134, 192),
 	R3 	= RGB(0, 105, 180),
@@ -2884,13 +2888,14 @@ RGB structuredColor(string name, RGB def = clGray){
 		case "template"	: return clPiko.G940;
 		case "enum"	: return clPiko.G239;
 		case "alias"	: return clPiko.G231;
-		case "if", "switch", "for", "do", "while", "foreach", "foreach_reverse"	: return clPiko.G119;
-		case "return", "break", "continue", "case"	: return clPiko.G115;
+		case "if", "switch", "final switch", "for", "do", "while", "foreach", "foreach_reverse", "else"	: return clPiko.G119;
+		case "version", "debug", "static if", "static foreach"	: return clPiko.G115;
 		case "module", "import"	: return clPiko.G107;
+		case "unittest"	: return clPiko.G62;
 			
-		case "attributes"	: return clPiko.R1;
+		case "section"	: return clPiko.R1;
 		case "with"	: return clPiko.R2;
-		case "label"	: return clPiko.R4;
+		case "__unused1"	: return clPiko.R4;
 			
 		case "class"	: return clPiko.W;
 		case "interface"	: return clPiko.BW;
@@ -3068,7 +3073,7 @@ auto withoutEndingSpace(Cell[][] a){
 
 
 class Declaration : CodeNode { // Declaration /////////////////////////////
-	CodeColumn attributes, 
+	CodeColumn attributes;
 	string keyword;
 	CodeColumn header, block;
 	char ending;
@@ -3078,74 +3083,74 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	bool isSection	() const{ return ending==':'; }
 	bool isPreposition	() const{ return ending==')'; }
 	
+	bool hasHeader() const{
+		if(keyword.among("else", "unittest")) return false;
+		return true;
+	}
+	
 	void verify(){
 		if(isBlock){
 			enforce(block, "Invalid null block.");
 			enforce(keyword.among("enum", "struct", "union", "class", "interface", "template", "unittest", ""), "Invalid declaration block keyword: "~keyword.quoted);
 		}else if(isStatement){
-			enforce(type.among("enum", "struct", "union", "class", "interface", "module", "import", "alias", ""), "Invalid declaration statement keyword: "~keyword.quoted);
+			enforce(keyword.among("enum", "struct", "union", "class", "interface", "module", "import", "alias", ""), "Invalid declaration statement keyword: "~keyword.quoted);
 		}else if(isSection){
-			enforce(type.among(""), "Invalid declaration section keyword: "~keyword.quoted);
+			enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted);
 		}else if(isPreposition){
-			enforce(type.among("with", "if", "else"), "Invalid declaration preposition keyword: "~keyword.quoted);
+			enforce(keyword.among("with", "if", "else"), "Invalid declaration preposition keyword: "~keyword.quoted);
 		}else enforce(0, "Invalid declaration ending: "~ending.text.quoted);
 	}
 	
-	this(Container parent, Cell[][] attrCells, string type, Cell[][] headerCells, char ending, CodeColumn block = null){
+	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending){
 		super(parent);
 		this.keyword = keyword;
 		this.ending = ending;
+		this.attributes 	= new CodeColumn(this, attrCells	.withoutStartingSpace.withoutEndingSpace);
+		this.header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace);
 		this.block	= block; if(block) block.setParent(this);
-		
-		if(block){
-			if(type=="function"){
-				attrs 	= null;
-				header 	= new CodeColumn(this, headerCells.withoutEndingSpace	);
-				block	= block_.content; block.setParent(this);
-			}else{
-				attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
-				header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace	);
-				block	= block_.content; block.setParent(this);
-			}
-			if(type!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
-		}else{
-			attrs 	= new CodeColumn(this, attrCells	.withoutEndingSpace	);
-			header 	= new CodeColumn(this, headerCells	.withoutStartingSpace	);
-		}
+		verify;
+		if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
 	}
 	
 	override string sourceText(){
-		//todo: handle invalid characters.
-		if(block){
-			if(keyword=="") return only(header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ');
-			return only(attrs.deepText, type, header.deepText, "{"~block.deepText~"}").filter!"a.length".join(' ')~";";
-		}else{
-		
-		todo
-			return only(attrs.deepText, keyword, header.deepText).filter!"a.length".join(' ') ~ closingSymbol.text;
-		}
+		//todo: handle invalid characters. Ensure valid syntax.
+		if(isPreposition) return keyword ~ (hasHeader ? "("~header.deepText~")" : ""); 
+		return only(attributes.deepText, keyword, header.deepText, isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
 	}
 	
+	string type() const{
+		if(keyword.length	) return keyword;
+		if(isStatement	) return "statement";
+		if(isSection	) return "section";
+		if(isPreposition	) return "preposition";
+		if(isBlock	) return "function";
+		return "";
+	}
+	
+	char opening() const{ return ending.predSwitch('}', '{', ')', '(', ' '); }
+	
 	override void rearrange(){
-		with(rearrangeHelper(skWhitespace, type=="statement" ? 0 : 2, structuredColor(type).nullable)){
+		with(rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable)){
 			
 			//set subColumn bkColors
-			if(block) block	.bkColor = mix(darkColor, brightColor, 0.125f);
-			foreach(a; only(attrs, header)) if(a){
+			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
+			foreach(a; only(attributes, header)) if(a){
 				a.bkColor = darkColor;
 				if(a.empty) a.bkColor	 = mix(darkColor, brightColor, 0.75f);
 			}
 
-			if(block){
-				if(keyword!=""){
-					put(attrs); put(" "~keyword~" "); put(header);
-				}else{
-					if(!header.empty){ put(header); put(' '); } 
-				}
-				put("{"); put(block); put("}");
+			if(isBlock){
+				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+				if(hasHeader){ put(header); put(' '); } 
+				put(opening); put(block); put(ending); put(' ');
+			}else if(isPreposition){
+				put(keyword~' ');
+				if(hasHeader){ put('('); put(header); put(") "); }
+				put(block); 
 			}else{
-				if(keyword!=""){ put(attrs); put(" "~keyword~" "); }
-				put(header); put(closingSymbol);
+				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+				if(hasHeader){ put(header); } 
+				put(ending); put(' ');
 			}
 			
 			super.rearrange;
@@ -3154,18 +3159,19 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 
 }
 
+dchar structuredCellToChar(Cell c){
+	return c.castSwitch!(
+		(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
+		(CodeComment 	_) 	=> ' '	,
+		(CodeString	_) 	=> '"'	,
+		(CodeBlock	b) 	=> b.prefix[0]	,
+	);
+}
+
 dstring extractThisLevelDString(CodeColumn col){
-	static dchar cellToChar(Cell c){
-		return c.castSwitch!(
-			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
-			(CodeComment 	_) 	=> ' '	,
-			(CodeString	_) 	=> '"'	,
-			(CodeBlock	b) 	=> b.prefix[0]	,
-		);
-	}
 	
 	static dstring rowToDString(CodeRow row){
-		return row.subCells.map!cellToChar.dtext;
+		return row.subCells.map!structuredCellToChar.dtext;
 	}
 	
 	//every chacacter or node maps to exactly one character (including newline)
@@ -3356,15 +3362,107 @@ auto genericSwitch(alias fun, E)(E e){ //todo: this could be moved into utils.d
 
 
 struct DDeclarationRecord{
-	string attributes;
 	string type;
 	string header;
 }
 DDeclarationRecord[] dDeclarationRecords;
 
+Declaration extractPrepositions(CodeRow parent, ref Cell[][] cellRows){ // extractPrepositions ///////////////////////////////
+
+	enum patterns = [
+		"with (",
+		"for (", "foreach (", "foreach_reverse (", "static foreach (", "static foreach_reverse (",
+		"while (", "do",
+		"version (", "debug (", "debug ="/+take nothing!+/, "debug",
+		"if (", "static if (", "else if (", "else static if (",
+		"else", "else version (", "else debug (", "else debug ="/+take "else" only+/ , "else debug",
+		"switch (", "final switch (",
+		"try", "catch (", "finally",
+		//"scope (",	        //todo: statements only
+		//"synchronized (",  //todo: statements only
+		//"synchronized",    //todo: statements only
+	].sort!"a>b".array; //descending order is important.  "debug (" must be checked before "debug"
+	
+	Declaration rootDecl, actDecl;
+	
+	void append(string keyword, Cell[][] paramCells){
+		write("  -$"~keyword~"$-  ");
+	}
+
+	///remove from cellRows, return last cell
+	Cell skip(int idx){
+		Cell res;
+		while(idx>0){ //opt: this is unoptimal but simple
+			if(cellRows.length){
+				if(cellRows.front.length)	{ res = cellRows.front.front; cellRows.front = cellRows.front[1..$]; }
+				else	{ cellRows = cellRows[1..$]; }
+			}
+			idx--;
+		}
+		return res;
+	}
+	
+	while(1){
+		
+		bool again = false;
+		foreach(pattern; patterns){
+			auto src = cellRows.map!(row => row.map!structuredCellToChar).joiner([dchar('\n')]);
+			int idx;
+			bool match=true;
+			foreach(dchar pch; pattern){
+				void step(){ src.popFront; idx++; }
+				if(pch==' '){
+					while(!src.empty && src.front.among(' ', '\n')) step;
+				}else{
+					if(!src.empty && pch==src.front){ 
+						step;
+					}else{
+						match = false; 
+						break; 
+					}
+				}
+			}
+			
+			if(match){
+				
+				again = true;
+				if(pattern[$-1]=='='){
+					again = false;
+					if(pattern=="debug ="){
+						//do nothing.
+					}else if(pattern=="else debug ="){ 
+						skip(4);
+						append("else", []);
+					}else enforce(0, "Unhandled terminal preposition =");
+				}else if(pattern[$-1]=='('){
+					auto param = (cast(CodeBlock) skip(idx)); 
+					assert(param && param.prefix=="(");
+					append(pattern.withoutEnding(" ("), param.content.rows.map!(r => r.subCells).array);
+				}else{
+					skip(idx);
+					append(pattern, []);
+				}
+				
+				break;
+			}
+		}
+		
+		if(!again) break;
+		
+		//skip whitespace
+		while(cellRows.length && (cellRows.front.empty || cellRows.front.front.structuredCellToChar==' ')) 
+			skip(1);
+	}
+	
+	writeln;
+	
+	return rootDecl;
+}
+
+
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
-	enum DeclToken{ none, semicolon, colon, equal, question, comma, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest/*, _version, _debug, _else, _foreach, _foreach_reverse */}
+	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest/*, _version, _debug, _else, _foreach, _foreach_reverse */}
 	
 	auto proc = TokenProcessor!DeclToken(col_);
 	with(proc) with(DeclToken){
@@ -3375,7 +3473,7 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 			const main = tokens.front;
 			auto mainIsKeyword(){ return main.token.genericSwitch!"a.text.startsWith('_')"; /+todo: lame string ops+/}
 			switch(main.token){
-				case semicolon, equal, question, comma,   _module, _import, _alias:	fetchTokens!([semicolon	]); break;
+				case semicolon, equal, question,   _module, _import, _alias:	fetchTokens!([semicolon	]); break; //note: no comma, because: int a,b; VS case a,b: +/
 				case block,    _template, _unittest:	fetchTokens!([block	]); break;
 				case _enum, _struct, _union, _class, _interface: 	fetchTokens!([semicolon, block	]); break;
 				case colon:	fetchTokens!([colon	]); break;
@@ -3383,41 +3481,44 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 			}
 			const ending = sentence.back;
 			
-			if(ending.token.among(semicolon, block)){
-				Cell[][] attrs;
-				CodeBlock block;
+			const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
+			const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
+			
+			if(endingChar.among(';', '}', ':')){
 				
-				string type = ending.token==semicolon ? "statement" : "function";
-				if(mainIsKeyword){
-					type = main.token.text[1..$];
+				Cell[][] attrs;
+				if(keyword != ""){
 					attrs = fetchUntil(main.pos);
 					skipUntil(main.end);
 				}
 				
 				auto header = fetchUntil(ending.pos);
-				if(ending.token==semicolon){
+				
+				CodeColumn block;
+				if(endingChar.among(';', ':', '(')){
 					skipUntil(ending.end);
-				}else{
+				}else if(endingChar == '}'){
 					auto container = fetchUntil(ending.end);
-					block = cast(CodeBlock) container.front.front;
-				}
+					block = (cast(CodeBlock) container.front.front).content;
+				}else enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
 				
-				auto decl = new Declaration(dst.back, attrs, type, header, block);
+				extractPrepositions(dst.back, attrs.length ? attrs : header);
+				
+				auto decl = new Declaration(dst.back, attrs, keyword, header, block, endingChar);
 				appendCell(decl);
 				
-				dDeclarationRecords ~= DDeclarationRecord(decl.attrs ? decl.attrs.extractThisLevelDString.text : "", type, decl.header.extractThisLevelDString.text ~ (ending.token==semicolon ? ";" : "{"));
-			}else if(ending.token==colon){
-				auto content = fetchUntil(ending.pos);
-				skipUntil(ending.end);
-				auto decl = new Declaration(dst.back, null, "attributes", content);
-				appendCell(decl);
+				//collect statistics
+				if(1) dDeclarationRecords ~= DDeclarationRecord(
+					only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
+					(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
+				);
 				
-				dDeclarationRecords ~= DDeclarationRecord(decl.attrs.extractThisLevelDString.text, "attributes", ""~":");
+				//print(dDeclarationRecords.back);
 			}else{
 				ERR("Unhandled token"~ending.text);
 				transferUntil(ending.end);
 			}
-			
+		
 		}
 	}
 }
@@ -3425,7 +3526,7 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 
 // Test codes ////////////////////////////////////////
 
-public mixin template TestMixinTemplate(){ int a; int b; }
+unittest { hello; }public mixin template TestMixinTemplate(){ int a; int b; }
 public template TestTemplate(){ int a; int b; }
 public alias aaa = TestClass2;
 public enum TestEnum = 5, TestEnum2 = 6;
@@ -3488,6 +3589,8 @@ version(abcd){
 		do sleep(1); while(0);
 	};
 }
+
+debug debug = hehehe; else version = hahaha;
 
 static if(0) static foreach(ch; ['a', 'b']): //this must be the last test
 	mixin(format!"enum testEnum", ch, "='", ch, "';");

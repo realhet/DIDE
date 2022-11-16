@@ -4,7 +4,6 @@
 import het;
 
 struct DDeclarationRecord{
-	string attributes;
 	string type;
 	string header;
 }
@@ -110,22 +109,22 @@ enum 	TypeCTors 	= ["const","immutable","inout","shared"],
 	DLangValues	= ["null","false","true","this","super"],
 	BasicTypes	= ["byte","ubyte", "short","ushort", "int","uint", "long","ulong", "float","double","real", "bool", "char","wchar","dchar", "void"],
 	PopularAliases	= ["string", "wstring", "dstring", "size_t", "sizediff_t", "ptrdiff_t", "noreturn",
-			  "File", "Path", "DateTime", "Time",
-			  "Vector",
-			  "vec2", "dvec2", "ivec2", "uvec2", "bvec2", "RG",
-			  "vec3", "dvec3", "ivec3", "uvec3", "bvec3", "RGB",
-			  "vec4", "dvec4", "ivec4", "uvec4", "bvec4", "RGBA",
-			  "Matrix",
+				 "File", "Path", "DateTime", "Time",
+				 "Vector",
+				 "vec2", "dvec2", "ivec2", "uvec2", "bvec2", "RG",
+				 "vec3", "dvec3", "ivec3", "uvec3", "bvec3", "RGB",
+				 "vec4", "dvec4", "ivec4", "uvec4", "bvec4", "RGBA",
+				 "Matrix",
 		    "mat2" , "mat3" , "mat4" , "mat2x3",  "mat2x4",  "mat3x2",  "mat3x4",  "mat4x2",  "mat4x3",
-			  "dmat2", "dmat3", "dmat4", "dmat2x3", "dmat2x4", "dmat3x2", "dmat3x4", "dmat4x2", "dmat4x3",
-			  "Bounds",
-			  "bounds" , "dbounds" , "ibounds" ,
-			  "bounds2", "dbounds2", "ibounds2",
-			  "bounds3", "dbounds3", "ibounds3"],
+				 "dmat2", "dmat3", "dmat4", "dmat2x3", "dmat2x4", "dmat3x2", "dmat3x4", "dmat4x2", "dmat4x3",
+				 "Bounds",
+				 "bounds" , "dbounds" , "ibounds" ,
+				 "bounds2", "dbounds2", "ibounds2",
+				 "bounds3", "dbounds3", "ibounds3"],
 	UserSefiniedTypes	= ["alias","enum","interface","struct","class","union","delegate","function"],
 	ProgramKeywords	= ["asm","break","case","catch","continue","default","do","else","finally","for","foreach","foreach_reverse","goto",
-			  "if","invariant","module","return","switch","template","throw","try","unittest","while","with",
-			  "assert","debug","import","mixin","version"],
+				 "if","invariant","module","return","switch","template","throw","try","unittest","while","with",
+				 "assert","debug","import","mixin","version"],
 	SpecialFunctions	= ["cast","pragma","typeid","typeof","__traits","__parameters","__vector"],
 	SpecialKeywords	= ["__EOF__","__DATE__","__TIME__","__TIMESTAMP__","__DATETIME__"/+//EXTRA+/,"__VENDOR__","__VERSION__",
 		   "__FILE__","__FILE_FULL_PATH__","__MODULE__","__LINE__","__FUNCTION__","__PRETTY_FUNCTION__"],
