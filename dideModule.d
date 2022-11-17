@@ -3097,7 +3097,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		}else if(isSection){
 			enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted);
 		}else if(isPreposition){
-			enforce(keyword.among("with", "if", "else"), "Invalid declaration preposition keyword: "~keyword.quoted);
+			enforce(keyword.isPrepositionKeyword, "Invalid declaration preposition keyword: "~keyword.quoted);
 		}else enforce(0, "Invalid declaration ending: "~ending.text.quoted);
 	}
 	
@@ -3129,6 +3129,28 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	
 	char opening() const{ return ending.predSwitch('}', '{', ')', '(', ' '); }
 	
+	bool isLabel() const{
+		if(!isSection) return false;
+		auto src = header.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
+		
+		while(!src.empty && src.front==' ') src.popFront;
+		
+		if(src.empty || !src.front.isDLangIdentifierStart) return false;
+		
+		string id = src.front.text;
+		src.popFront;
+		while(!src.empty && src.front.isDLangIdentifierCont){
+			id ~= src.front.text;
+			src.popFront;
+		}
+		
+		if(isAttributeKeyword(id)) return false;
+		
+		if(!src.all!"a==' '") return false; //something els at the end
+		
+		return true;;
+	}
+	
 	override void rearrange(){
 		with(rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable)){
 			
@@ -3159,6 +3181,9 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 
 }
 
+
+// parsing helper functions ////////////////////////////////////////////////
+
 dchar structuredCellToChar(Cell c){
 	return c.castSwitch!(
 		(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
@@ -3177,6 +3202,56 @@ dstring extractThisLevelDString(CodeColumn col){
 	//every chacacter or node maps to exactly one character (including newline)
 	const str = col.rows.map!rowToDString.join("\n");
 	return str;
+}
+
+
+alias 	removeFront = removeImpl!true, 
+	removeBack = removeImpl!false;
+	
+auto removeImpl(bool fromFront, alias filter="true")(ref Cell[][] rows, size_t idx){
+	
+	struct RemovedCells{
+		CodeComment[] comments;
+		Cell lastCell;
+		int newLineCount;
+		int removedCount;
+		bool overflow;
+	}
+	RemovedCells res;
+	
+	while(idx>0){
+		if(rows.empty){ res.overflow = true; break; }
+		
+		static if(fromFront) 	auto actRow = rows.front; 
+		else 	auto actRow = rows.back;
+		
+		if(!actRow.empty){  //opt: this is unoptimal but simple
+			static if(fromFront) 	auto actCell = actRow.front; 
+			else 	auto actCell = actRow.back;
+			
+			if(!actCell.unaryFun!filter) break;
+			
+			res.lastCell = actCell; //LOG(structuredCellToChar(actCell));
+			if(auto cmt = cast(CodeComment) actCell) 
+				res.comments ~= cmt;
+			
+			static if(fromFront) 	rows.front = rows.front[1..$];
+			else	rows.back = rows.back[0..$-1];
+			
+			res.removedCount ++;
+		}else{ 
+			if(rows.length>1){
+				static if(fromFront) 	rows = rows[1..$];
+				else	rows = rows[0..$-1];
+				
+				res.newLineCount ++;
+				res.removedCount ++;
+			}else{ res.overflow = true; break; }
+		}
+		
+		idx--;
+	}
+	return res;
 }
 
 
@@ -3271,8 +3346,17 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 	TokenLocation!Token[] sentence; //fetchTokenSentence's result
 	
 	CodeRow[] dst;
-	void appendNewLine(){ dst ~= new CodeRow(col); }
-	void appendCell(Cell c){ dst[$-1].subCells ~= c; }
+	
+	void appendNewLine(){ 
+		dst ~= new CodeRow(col); 
+	}
+	
+	void appendCell(Cell c){
+		if(c){ 
+			dst.back.subCells ~= c; 
+			c.setParent = dst.back;
+		}
+	}
 	
 	int 	srcIdx;
 	ivec2 srcPos;
@@ -3354,10 +3438,115 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 	
 }
 
-auto genericSwitch(alias fun, E)(E e){ //todo: this could be moved into utils.d
-	final switch(e)
-		static foreach(a; EnumMembers!E)
-			case a: return a.unaryFun!fun;
+static immutable prepositionPatterns = [
+	"with (",
+	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
+	"while (", 	"do",		
+	"version (", 	"debug (",  	"debug", 	
+	"if (", 	"static if (", 	"else if (", 	"else static if (",
+	"else", 	"else version (", 	"else debug (", 	"else debug", 
+	"switch (", 	"final switch (",		
+	"try", 	"catch (", 	"finally",	
+	"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
+	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
+].sort!"a>b".array; //note: descending order is important.  "debug (" must be checked before "debug"
+
+static immutable prepositionKeywords = prepositionPatterns.map!(a => a.replace(" (", "").replace(" =", "").strip).array.sort.uniq.array;
+
+bool isPrepositionKeyword(string s){ return prepositionKeywords.canFind(s); }
+
+enum attributeKeywords = [
+	"extern", "align", "deprecated",
+	"private", "package", "package", "protected", "public", "export",
+	"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
+	"const", "immutable", "inout", "shared", "__gshared", 
+	"nothrow", "pure", "ref", "return"
+];
+
+bool isAttributeKeyword(string s){ return attributeKeywords.canFind(s); }
+
+
+auto findCellPattern(string[] patterns)(ref Cell[][] cellRows){ //findCellPattern ////////////////////////////////
+	
+	struct Result{
+		string pattern;
+		size_t idx;
+		bool opCast(T : bool)() const { return pattern!=""; }
+	}
+	Result res;
+	
+	foreach(pattern; patterns){
+		auto src = cellRows.map!(row => row.map!structuredCellToChar).joiner([dchar('\n')]);
+		size_t idx;
+		bool match=true;
+		foreach(dchar pch; pattern){
+			void step(){ src.popFront; idx++; }
+			if(pch==' '){
+				while(!src.empty && src.front.among(' ', '\n')) step;
+			}else{
+				if(!src.empty && pch==src.front){ 
+					step;
+				}else{
+					match = false; 
+					break; 
+				}
+			}
+		}
+		if(match){
+			res.pattern = pattern;
+			res.idx = idx;
+			break;
+		}
+	}
+	
+	return res;
+}
+
+
+Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions ///////////////////////////////
+	
+	///remove from cellRows, return last removed cell
+	Cell skip(size_t idx){ return cellRows.removeFront(idx).lastCell; }
+
+	auto skipWhite(){ 
+		with(cellRows.removeImpl!(true, c => c.structuredCellToChar==' ')(int.max)){
+			//todo: handle newLineCount
+			//todo: put the comments inside the ( )
+			if(!comments.empty) WARN("There were skipped comments:\n"~comments.map!"a.sourceText".join('\n'));
+		} 
+	}
+	
+	Declaration[] res;
+	
+	void append(string keyword, Cell[][] paramCells){
+		//write("  "~keyword~"  "); //todo
+		res ~= new Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
+	}
+	
+	while(auto match = cellRows.findCellPattern!prepositionPatterns) with(match){
+		
+		if(pattern[$-1]=='='){ //special terminal patterns.
+			if(pattern=="debug ="){
+				//it's a statement, not a preposition
+			}else if(pattern=="else debug ="){ 
+				skip(4);
+				append("else", []);
+				skipWhite;
+			}else enforce(0, "Unhandled terminal preposition =");
+			break;
+		}else if(pattern[$-1]=='('){
+			auto param = (cast(CodeBlock) skip(idx)); 
+			assert(param && param.prefix=="(");
+			append(pattern.withoutEnding(" ("), param.content.rows.map!(r => r.subCells).array);
+		}else{
+			skip(idx);
+			append(pattern, []);
+		}
+		
+		skipWhite;
+	}
+	
+	return res;
 }
 
 
@@ -3367,98 +3556,6 @@ struct DDeclarationRecord{
 }
 DDeclarationRecord[] dDeclarationRecords;
 
-Declaration extractPrepositions(CodeRow parent, ref Cell[][] cellRows){ // extractPrepositions ///////////////////////////////
-
-	enum patterns = [
-		"with (",
-		"for (", "foreach (", "foreach_reverse (", "static foreach (", "static foreach_reverse (",
-		"while (", "do",
-		"version (", "debug (", "debug ="/+take nothing!+/, "debug",
-		"if (", "static if (", "else if (", "else static if (",
-		"else", "else version (", "else debug (", "else debug ="/+take "else" only+/ , "else debug",
-		"switch (", "final switch (",
-		"try", "catch (", "finally",
-		//"scope (",	        //todo: statements only
-		//"synchronized (",  //todo: statements only
-		//"synchronized",    //todo: statements only
-	].sort!"a>b".array; //descending order is important.  "debug (" must be checked before "debug"
-	
-	Declaration rootDecl, actDecl;
-	
-	void append(string keyword, Cell[][] paramCells){
-		write("  -$"~keyword~"$-  ");
-	}
-
-	///remove from cellRows, return last cell
-	Cell skip(int idx){
-		Cell res;
-		while(idx>0){ //opt: this is unoptimal but simple
-			if(cellRows.length){
-				if(cellRows.front.length)	{ res = cellRows.front.front; cellRows.front = cellRows.front[1..$]; }
-				else	{ cellRows = cellRows[1..$]; }
-			}
-			idx--;
-		}
-		return res;
-	}
-	
-	while(1){
-		
-		bool again = false;
-		foreach(pattern; patterns){
-			auto src = cellRows.map!(row => row.map!structuredCellToChar).joiner([dchar('\n')]);
-			int idx;
-			bool match=true;
-			foreach(dchar pch; pattern){
-				void step(){ src.popFront; idx++; }
-				if(pch==' '){
-					while(!src.empty && src.front.among(' ', '\n')) step;
-				}else{
-					if(!src.empty && pch==src.front){ 
-						step;
-					}else{
-						match = false; 
-						break; 
-					}
-				}
-			}
-			
-			if(match){
-				
-				again = true;
-				if(pattern[$-1]=='='){
-					again = false;
-					if(pattern=="debug ="){
-						//do nothing.
-					}else if(pattern=="else debug ="){ 
-						skip(4);
-						append("else", []);
-					}else enforce(0, "Unhandled terminal preposition =");
-				}else if(pattern[$-1]=='('){
-					auto param = (cast(CodeBlock) skip(idx)); 
-					assert(param && param.prefix=="(");
-					append(pattern.withoutEnding(" ("), param.content.rows.map!(r => r.subCells).array);
-				}else{
-					skip(idx);
-					append(pattern, []);
-				}
-				
-				break;
-			}
-		}
-		
-		if(!again) break;
-		
-		//skip whitespace
-		while(cellRows.length && (cellRows.front.empty || cellRows.front.front.structuredCellToChar==' ')) 
-			skip(1);
-	}
-	
-	writeln;
-	
-	return rootDecl;
-}
-
 
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
@@ -3466,12 +3563,30 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 	
 	auto proc = TokenProcessor!DeclToken(col_);
 	with(proc) with(DeclToken){
-	
+		
+		Declaration receiver;
+		void appendDeclaration(Declaration decl){
+			if(receiver){
+				auto row = receiver.block.rows.back;
+				decl.setParent(row);
+				row.appendCell(decl);
+				
+				if(decl.isPreposition) 	receiver = decl;
+				else if(decl.isStatement || decl.isBlock) 	receiver = null;
+				else if(decl.isSection) 	{ if(!decl.isLabel) receiver = null; /+note: A preposition can receive any number of labels, but only one attribute section. +/ } 
+				else 	assert(0, "Unidentified declaration type");
+			}else{
+				proc.appendCell(decl);
+				
+				if(decl.isPreposition) receiver = decl;
+			}
+		}
+		
 		while(tokens.length){
 			transferWhitespaceAndComments;
 			
 			const main = tokens.front;
-			auto mainIsKeyword(){ return main.token.genericSwitch!"a.text.startsWith('_')"; /+todo: lame string ops+/}
+			auto mainIsKeyword(){ return main.token.functionSwitch!"a.text.startsWith('_')"; }
 			switch(main.token){
 				case semicolon, equal, question,   _module, _import, _alias:	fetchTokens!([semicolon	]); break; //note: no comma, because: int a,b; VS case a,b: +/
 				case block,    _template, _unittest:	fetchTokens!([block	]); break;
@@ -3502,16 +3617,17 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 					block = (cast(CodeBlock) container.front.front).content;
 				}else enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
 				
-				extractPrepositions(dst.back, attrs.length ? attrs : header);
 				
-				auto decl = new Declaration(dst.back, attrs, keyword, header, block, endingChar);
-				appendCell(decl);
+				auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
+					new Declaration(null, attrs, keyword, header, block, endingChar);
+				
+				foreach(decl; declarationChain) appendDeclaration(decl);
 				
 				//collect statistics
-				if(1) dDeclarationRecords ~= DDeclarationRecord(
+				/+if(1) dDeclarationRecords ~= DDeclarationRecord(
 					only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
 					(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
-				);
+				);+/
 				
 				//print(dDeclarationRecords.back);
 			}else{
@@ -3550,6 +3666,10 @@ struct OpaqueStruct; union OpaqueUnion; class OpaqueClass; interface OpaqueInter
 
 static if(1==1):
 
+struct SSSS1{
+	static if(0) private: public:  //must encapsulate only "private:" 
+}
+
 version(abcd){
 	//nothing
 }else debug{
@@ -3578,6 +3698,9 @@ version(abcd){
 			}
 			
 			return typeof(return).max;
+			
+			static if(0) label1: label2: writeln; //if/else must encapsulate all the labels
+			else label3: label4: { label5: }
 		}
 	}
 	
@@ -3592,6 +3715,7 @@ version(abcd){
 
 debug debug = hehehe; else version = hahaha;
 
-static if(0) static foreach(ch; ['a', 'b']): //this must be the last test
-	mixin(format!"enum testEnum", ch, "='", ch, "';");
-	pragma(msg, mixin("testEnum", ch));
+static if(0) /*skipped comment*/ //after a newline too
+	static foreach(ch; ['a', 'b']): //this must be the last test
+		mixin(format!"enum testEnum", ch, "='", ch, "';");
+		pragma(msg, mixin("testEnum", ch));
