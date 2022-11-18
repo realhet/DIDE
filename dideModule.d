@@ -2909,6 +2909,88 @@ RGB structuredColor(string name, RGB def = clGray){
 	}
 }
 
+// keyword tables /////////////////////////////////////
+
+static immutable namedSymbols = [ //["none", ""] is mandatory
+	["none"	, ""	],   	["semicolon"	, ";"	],   	["colon"	, ":"	],   	["comma"	, ","	],
+	["equal"	, "="	],   	["question"	, "?"	],   	["block"	, "{"	],   	["params"	, "("	],
+];
+
+static immutable sentenceDetectionRules = [
+	["; = ? module import alias"	, ";"	],
+	["{ template unittest"	, "{"	],
+	["enum struct union class interface"	, "; {"	],
+	[":"	, ":"	],
+];
+
+static immutable prepositionPatterns = [
+	"with (",
+	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
+	"while (", 	"do",		
+	"version (", 	"debug (",  	"debug", 	
+	"if (", 	"static if (", 	"else if (", 	"else static if (",
+	"else", 	"else version (", 	"else debug (", 	"else debug", 
+	"switch (", 	"final switch (",		
+	"try", 	"catch (", 	"finally",	
+	"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
+	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
+].sort!"a>b".array; //note: descending order is important.  "debug (" must be checked before "debug"
+
+static immutable attributeKeywords = [
+	"extern", "align", "deprecated",
+	"private", "package", "package", "protected", "public", "export",
+	"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
+	"const", "immutable", "inout", "shared", "__gshared", 
+	"nothrow", "pure", "ref", "return"
+];
+
+// keyword helper functions ///////////////////////////////////////////////
+
+alias nameOfSymbol = arraySwitch!(namedSymbols[].map!"a[1]", namedSymbols[].map!"a[0]");
+alias symbolOfName = arraySwitch!(namedSymbols[].map!"a[0]", namedSymbols[].map!"a[1]");
+
+bool isNamedSymbol(string symbol){ return namedSymbols.map!"a[1]".canFind(symbol); }
+bool isSymbolName(string name){ return namedSymbols.map!"a[0]".canFind(name); }
+
+string toSymbolEnum(string s){
+	return isNamedSymbol(s) ? nameOfSymbol(s) : "_"~s;
+}
+
+/// do conversion from simple string symbols/identifiers to enum members
+/// "; : alias if" -> "semicolon, colon, _alias, _if"
+string toSymbolEnumList(string s){
+	return s.split.filter!"a.length".map!toSymbolEnum.join(", ");
+}
+
+
+//todo: move to utils
+bool isDLangIdentifier(alias fStart=isDLangIdentifierStart, alias fCont=isDLangIdentifierCont, S)(in S s){
+	auto a = s.byDchar;
+	if(a.empty) return false;
+	if(!a.front.unaryFun!fStart) return false;
+	a.popFront;
+	return a.all!(unaryFun!fCont);
+}
+
+alias isDLangNumber(S) = isDLangIdentifier!(isDLangNumberStart, isDLangNumberCont, S);
+
+auto genExtractIdentifiers(string ending)(){ 
+	return ending.format!q{ 
+		sentenceDetectionRules.filter!"a[1].canFind(`%s`)".map!"a[0].split".join.filter!(a => a.length && a[0].isDLangIdentifierStart).array //todo: isDLangIdentifier
+	};
+}
+
+static immutable 	prepositionKeywords 	= prepositionPatterns.map!(a => a.stripRight(" (=")).array.sort.uniq.array, 
+ 	blockKeywords 	= mixin(genExtractIdentifiers!"{"),
+	statementKeywords 	= mixin(genExtractIdentifiers!";");
+
+static foreach(name; "preposition attribute statement block".split){
+	mixin( format!q{
+		bool is%sKeyword	(string s){ return %sKeywords	.canFind(s); } 
+	}(name.capitalize, name) );
+}
+
+
 //getLeadingAttributesAndComments /////////////////////////////////////////
 
 /+auto getLeadingAttributesAndComments(Token[] tokens){
@@ -2944,122 +3026,6 @@ RGB structuredColor(string name, RGB def = clGray){
 	return orig[0..$-tokens.length];
 }+/
 
-/*["while/with/for/foreach/foreach_reverse", "(", ";{"]
-["do", ";{", "while", "(", ";"]
-["struct/union/class/interface", "*", "{"]*/
-
-/+ DLang colon : usage
-
-inside declatarions:
-  import : ;
-  version/debug/static_if/static_foreach : decldefs?
-  version/debug/static_if {} else : decldefs?
-  interface/class x : y {}
-  enum x? : y { }
-
-inside	expressions: 
-  ? :	tenary operator
-  [ x : y, ... ]  array member initialization
-
-inside template params:
-  : template parameter specialization
-
-inside statements: 
-  x:  label
-  default:
-  case x : 
-  .. case x : 
-
-inside	asm:
-  ? :	tenary operator
-  x:  label
-  segbemReg : offsetReg
-
-+/
-
-
-/*class Declaration : CodeNode { // Declaration //////////////////////////////
-	//CodeColumn attrs, header, content;
-	string type;
-	
-	
-	
-
-}*/
-/+
-			case semicolon, _module, _import, _alias, equal, question	: sentence = fetchTokens!([semicolon	]); break;
-			case block, _template 	: sentence = fetchTokens!([block	]); break;
-			case _enum, _struct, _union, _class, _interface	: sentence = fetchTokens!([semicolon, block	]); break;
-			case colon	: sentence = fetchTokens!([colon	]); break;
-
-
-enum parseRules = [
-	[":"	, ":"	],
-	["; = ? module import alias"	, ";"	],
-	["{", "template"	, "{"	],
-	["enum struct union class interface"	, "{;"	],
-	["if with for foreach foreach_reverse"	, "(*"	],
-	[""	, "(*"	],
-	["else"	, "*"	],
-]
-
-
-enum DeclarationKind{ 
-	@(":") section,	// content
-	@(";") statement,	// content
-	@("{") block,	// header { content
-	
-	@("module ;") module_statement,
-	@("import ;") import_statement,
-	@("alias ;") alias_statement,
-	@("enum ;") enum_statement,	 @("enum {") enum_block,
-	@("struct ;") struct_statement,	 @("struct {") struct_block,
-	@("union ;") union_statement,	 @("union {") union_block,
-	@("class ;") class_statement,	 @("class {") class_block,
-	@("interface ;") interface_statement,	 @("interface {") interface_block,
-	@("template {") template_block, 
-	
-	@("with ( ;") with_statement,	 @("with ( {") with_block,
-	@("if ( ;") if_statement,	 @("if ( {") if_block,
-	@("else ;") else_statement,	 @("else {") else_block,
-	@("for ( ;") for_statement,	 @("for ( {") for_block,
-	@("foreach ( ;") foreach_statement,	 @("foreach ( {") foreach_block,
-	@("foreach_reverse ( ;") foreach_reverse_statement,	 @("foreach_reverse ( {") foreach_reverse_block,
-	@("while ( ;") while_statement,	 @("while ( {") while_block,
-	@("do ; while ( ;") do_while_statement,	 @("do { while ( ;") do_while_block,
-	@("switch ( ;") switch_statement,	 @("switch ( {") switch_block,
-		 @("asm {") asm_block,
-}
-
-bool hasAttrs(DeclarationKind dk) { with(DeclarationKind) return !!dk.among(section, if_section, foreach_section, foreach_reverse_section, if_statement, if_block, foreach_statement, foreach_block, foreach_reverse_statement, foreach_reverse_block, switch_statement, switch_block); }
-
-
-enum DeclarationCategory{ 
-	statement, 	// closed with ;
-	block,	// closed with {}
-	section	// closed with :
-}
-
-/+ Parsing logic:
-
-	@ : next nonWhite/
-
-+/
-
-auto categoryOf(DeclarationKind dk){ 
-	final switch(dk){
-		static foreach(e; EnumMembers!(typeof(dk)))
-			case e: return mixin(e.text.split('_').back.to!DeclarationCategory);
-	}
-}
-
-string keywordOf(DeclarationKind dk){ 
-	final switch(dk) 
-		static foreach(e; EnumMembers!(typeof(dk)))
-			case e: return mixin(`"` ~ e.text.split('_')[0..$-1].join('_') ~ `"`);
-}
-
-+/
 
 auto withoutStartingSpace(Cell[][] a){
 	if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
@@ -3091,9 +3057,9 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	void verify(){
 		if(isBlock){
 			enforce(block, "Invalid null block.");
-			enforce(keyword.among("enum", "struct", "union", "class", "interface", "template", "unittest", ""), "Invalid declaration block keyword: "~keyword.quoted);
+			enforce(keyword=="" || keyword.isBlockKeyword, "Invalid declaration block keyword: "~keyword.quoted);
 		}else if(isStatement){
-			enforce(keyword.among("enum", "struct", "union", "class", "interface", "module", "import", "alias", ""), "Invalid declaration statement keyword: "~keyword.quoted);
+			enforce(keyword=="" || keyword.isStatementKeyword, "Invalid declaration statement keyword: "~keyword.quoted);
 		}else if(isSection){
 			enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted);
 		}else if(isPreposition){
@@ -3266,16 +3232,7 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 			static string strFromToken(E)(E e) if(is(E==enum)){
 				const a = e.text;
 				if(a.startsWith('_')) return a[1..$];
-				return a.predSwitch(
-					"none"	, "",
-					"semicolon"	, ";", 
-					"colon"	, ":", 
-					"comma"	, ",", 
-					"equal"	, "=", 
-					"question"	, "?",
-					"block"	, "{",
-					"params"	, "(",
-				);
+				return a.symbolOfName;
 			}
 		
 			enum	 members = [EnumMembers!E],
@@ -3438,34 +3395,6 @@ struct TokenProcessor(Token){ // TokenProcessor ////////////////////////////////
 	
 }
 
-static immutable prepositionPatterns = [
-	"with (",
-	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
-	"while (", 	"do",		
-	"version (", 	"debug (",  	"debug", 	
-	"if (", 	"static if (", 	"else if (", 	"else static if (",
-	"else", 	"else version (", 	"else debug (", 	"else debug", 
-	"switch (", 	"final switch (",		
-	"try", 	"catch (", 	"finally",	
-	"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
-	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
-].sort!"a>b".array; //note: descending order is important.  "debug (" must be checked before "debug"
-
-static immutable prepositionKeywords = prepositionPatterns.map!(a => a.replace(" (", "").replace(" =", "").strip).array.sort.uniq.array;
-
-bool isPrepositionKeyword(string s){ return prepositionKeywords.canFind(s); }
-
-enum attributeKeywords = [
-	"extern", "align", "deprecated",
-	"private", "package", "package", "protected", "public", "export",
-	"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
-	"const", "immutable", "inout", "shared", "__gshared", 
-	"nothrow", "pure", "ref", "return"
-];
-
-bool isAttributeKeyword(string s){ return attributeKeywords.canFind(s); }
-
-
 auto findCellPattern(string[] patterns)(ref Cell[][] cellRows){ //findCellPattern ////////////////////////////////
 	
 	struct Result{
@@ -3519,8 +3448,8 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 	Declaration[] res;
 	
 	void append(string keyword, Cell[][] paramCells){
-		//write("  "~keyword~"  "); //todo
-		res ~= new Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
+		//write("	"~keyword~"  "); //todo
+		res ~= new	Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
 	}
 	
 	while(auto match = cellRows.findCellPattern!prepositionPatterns) with(match){
@@ -3559,7 +3488,9 @@ DDeclarationRecord[] dDeclarationRecords;
 
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
-	enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest/*, _version, _debug, _else, _foreach, _foreach_reverse */}
+	//enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest}
+	
+	mixin( format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", ")) );
 	
 	auto proc = TokenProcessor!DeclToken(col_);
 	with(proc) with(DeclToken){
@@ -3587,11 +3518,15 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 			
 			const main = tokens.front;
 			auto mainIsKeyword(){ return main.token.functionSwitch!"a.text.startsWith('_')"; }
-			switch(main.token){
-				case semicolon, equal, question,   _module, _import, _alias:	fetchTokens!([semicolon	]); break; //note: no comma, because: int a,b; VS case a,b: +/
+			sw: switch(main.token){
+				/+case semicolon, equal, question,   _module, _import, _alias:	fetchTokens!([semicolon	]); break;
 				case block,    _template, _unittest:	fetchTokens!([block	]); break;
 				case _enum, _struct, _union, _class, _interface: 	fetchTokens!([semicolon, block	]); break;
-				case colon:	fetchTokens!([colon	]); break;
+				case colon:	fetchTokens!([colon	]); break;+/
+				
+				static foreach(a; sentenceDetectionRules)
+					mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
+					
 				default:	fetchSingleToken;
 			}
 			const ending = sentence.back;

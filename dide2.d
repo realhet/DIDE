@@ -1651,6 +1651,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 //	 @VERB("F11"																										 ) void stepInto												 () { NOTIMPL; }
 
 	@VERB("F1"                  ) void testInsert       (){
+		
 		/*auto ts = textSelectionsGet;
 		if(ts.length==1){
 			auto sel = ts.front;
