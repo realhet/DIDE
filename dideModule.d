@@ -3044,15 +3044,19 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	CodeColumn header, block;
 	char ending;
 	
+	bool explicitPrepositionBlock;
+	
 	bool isBlock	() const{ return ending=='}'; }
 	bool isStatement	() const{ return ending==';'; }
 	bool isSection	() const{ return ending==':'; }
 	bool isPreposition	() const{ return ending==')'; }
 	
-	bool hasHeader() const{
-		if(keyword.among("else", "unittest")) return false;
+	bool canHaveHeader() const{
+		if(keyword.among("else", "unittest", "try", "finally", "do")) return false;
 		return true;
 	}
+	
+	bool isSimpleBlock() const{ return isBlock && keyword=="" && header.empty && attributes.empty; }
 	
 	void verify(){
 		if(isBlock){
@@ -3080,7 +3084,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	
 	override string sourceText(){
 		//todo: handle invalid characters. Ensure valid syntax.
-		if(isPreposition) return keyword ~ (hasHeader ? "("~header.deepText~")" : ""); 
+		if(isPreposition) return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
 		return only(attributes.deepText, keyword, header.deepText, isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
 	}
 	
@@ -3118,31 +3122,48 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	}
 	
 	override void rearrange(){
-		with(rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable)){
-			
+		auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
+		with(rh){
 			//set subColumn bkColors
 			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
 			foreach(a; only(attributes, header)) if(a){
 				a.bkColor = darkColor;
 				if(a.empty) a.bkColor	 = mix(darkColor, brightColor, 0.75f);
 			}
-
-			if(isBlock){
-				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-				if(hasHeader){ put(header); put(' '); } 
-				put(opening); put(block); put(ending); put(' ');
-			}else if(isPreposition){
-				put(keyword~' ');
-				if(hasHeader){ put('('); put(header); put(") "); }
-				put(block); 
-			}else{
-				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-				if(hasHeader){ put(header); } 
-				put(ending); put(' ');
-			}
 			
-			super.rearrange;
+			enum showParens = false, showBraces = false;
+			
+			if(isBlock){
+				if(isSimpleBlock){
+					//todo: the transition from simpleBlock to non-simple block is not clear. A boolean flag is needed to let the user write into the header.
+				}else{
+					if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+					if(canHaveHeader){ put(header); put(' '); } 
+				}
+				if(showBraces) put('{'); 
+				put(block); 
+				if(showBraces) put('}'); 
+				put(' ');
+			}else if(isPreposition){
+				put(keyword);
+				put(' ');
+				if(canHaveHeader){ 
+					if(showParens) put('('); 
+					put(header); 
+					if(showParens) put(')'); 
+					put(' '); 
+				}
+				if(showBraces && explicitPrepositionBlock) put('{');
+				put(block); 
+				if(showBraces && explicitPrepositionBlock) put("} ");
+			}else{ //statement or section
+				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+				if(canHaveHeader){ put(header); } 
+				put(ending); 
+				put(' ');
+			}
 		}
+		super.rearrange;
 	}
 
 }
@@ -3498,9 +3519,17 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 		Declaration receiver;
 		void appendDeclaration(Declaration decl){
 			if(receiver){
-				auto row = receiver.block.rows.back;
-				decl.setParent(row);
-				row.appendCell(decl);
+				
+				if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition){
+					//unpack the declaration block
+					receiver.explicitPrepositionBlock = true;
+					receiver.block = decl.block;
+					receiver.block.setParent(receiver);
+				}else{
+					auto row = receiver.block.rows.back;
+					row.appendCell(decl);
+					decl.setParent(row);
+				}
 				
 				if(decl.isPreposition) 	receiver = decl;
 				else if(decl.isStatement || decl.isBlock) 	receiver = null;
@@ -3636,6 +3665,14 @@ version(abcd){
 			
 			static if(0) label1: label2: writeln; //if/else must encapsulate all the labels
 			else label3: label4: { label5: }
+			
+			if(0) a; else b;
+			if(0) a; else if(0) b; else c;
+			if(0) if(0) a; else b; //else is dangling
+			if(0) if(0){ a; }else b; //else is dangling
+			if(0){ if(0) a; }else b;
+			if(0){ if(0) a; else b; }
+			if(0){ if(0) a; else b; }else c;
 		}
 	}
 	
