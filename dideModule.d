@@ -1610,8 +1610,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 			}
 			
 			//remove first and last whitespace row
-			if(subCells.length>1 && isWhitespaceRow(rows[0])) subCells = subCells[1..$];
-			if(subCells.length>1 && isWhitespaceRow(rows[$-1])) subCells = subCells[0..$-1];
+			const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front);	if(firstRowRemoved) subCells.popFront;
+			const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back);	if(lastRowRemoved) subCells.popBack;
 			
 			//only rows that not only tabs are relevant
 			bool relevant(CodeRow r){
@@ -1623,10 +1623,10 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 					if(cast(CodeComment)c) return false; //comments are irrelevant
 					return true;
 				});
-				//return r.leadingCodeTabCount<r.cellCount; 
 			}
 			//find minimum amount of tabs
-			auto relevantRows = rows.filter!relevant;
+			const canIgnoreFirstRow = !firstRowRemoved && rows.drop(1).any!relevant;
+			auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant;
 			if(!relevantRows.empty){
 				const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
 				if(numTabs) foreach(r; rows) if(r.leadingCodeTabCount>=numTabs){
@@ -3044,6 +3044,9 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	CodeColumn header, block;
 	char ending;
 	
+	CodeComment[] internalComments;
+	bool internalNewLine;
+	
 	bool explicitPrepositionBlock;
 	
 	bool isBlock	() const{ return ending=='}'; }
@@ -3071,14 +3074,27 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		}else enforce(0, "Invalid declaration ending: "~ending.text.quoted);
 	}
 	
-	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending){
+	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
+	{
 		super(parent);
+		
+		auto detectInternalNewLine(Cell[][] a) //blabla
+		{
+			if(!isBlock) return a;
+			if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '"){
+				a.popBack; 
+				internalNewLine = true;
+			}
+			return a;
+		}
+		
 		this.keyword = keyword;
 		this.ending = ending;
-		this.attributes 	= new CodeColumn(this, attrCells	.withoutStartingSpace.withoutEndingSpace);
-		this.header 	= new CodeColumn(this, headerCells	.withoutStartingSpace.withoutEndingSpace);
 		this.block	= block; if(block) block.setParent(this);
+		this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
+		this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells	.withoutStartingSpace.withoutEndingSpace));
 		verify;
+		
 		if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
 	}
 	
@@ -3131,7 +3147,8 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				if(a.empty) a.bkColor	 = mix(darkColor, brightColor, 0.75f);
 			}
 			
-			enum showParens = false, showBraces = false;
+			enum showParens = false, showBraces = true;
+			//internalNewLine = true;
 			
 			if(isBlock){
 				if(isSimpleBlock){
@@ -3140,6 +3157,10 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 					if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
 					if(canHaveHeader){ put(header); put(' '); } 
 				}
+				
+				if(internalComments.length) put(internalComments.length.format!" C%s ");
+				if(internalNewLine) put("\n    ");
+				
 				if(showBraces) put('{'); 
 				put(block); 
 				if(showBraces) put('}'); 
@@ -3151,8 +3172,12 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 					if(showParens) put('('); 
 					put(header); 
 					if(showParens) put(')'); 
-					put(' '); 
+					put(' ');
 				}
+				
+				if(internalComments.length) put(internalComments.length.format!" C%s ");
+				if(internalNewLine) put("\n    ");
+				
 				if(showBraces && explicitPrepositionBlock) put('{');
 				put(block); 
 				if(showBraces && explicitPrepositionBlock) put("} ");
@@ -3421,18 +3446,33 @@ auto findCellPattern(string[] patterns)(ref Cell[][] cellRows){ //findCellPatter
 	struct Result{
 		string pattern;
 		size_t idx;
+		
+		//CodeComment[] comments;
+		//int newLineCount;
+		
 		bool opCast(T : bool)() const { return pattern!=""; }
 	}
 	Result res;
 	
 	foreach(pattern; patterns){
-		auto src = cellRows.map!(row => row.map!structuredCellToChar).joiner([dchar('\n')]);
+		
+		auto src = cellRows.map!(row => row.map!((cell){ 
+			//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
+			return cell.structuredCellToChar; 
+		})).joiner([dchar('\n')]);
+		
 		size_t idx;
 		bool match=true;
 		foreach(dchar pch; pattern){
 			void step(){ src.popFront; idx++; }
+
+			void stepWhite(){ 
+				//if(pch=='\n') res.newLineCount++; //collect newlines
+				step; 
+			}
+			
 			if(pch==' '){
-				while(!src.empty && src.front.among(' ', '\n')) step;
+				while(!src.empty && src.front.among(' ', '\n')) stepWhite;
 			}else{
 				if(!src.empty && pch==src.front){ 
 					step;
@@ -3455,31 +3495,57 @@ auto findCellPattern(string[] patterns)(ref Cell[][] cellRows){ //findCellPatter
 
 Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions ///////////////////////////////
 	
+	Declaration[] res;
+	
+	int totalNewLineCount;
+	CodeComment[] totalComments;
+	
 	///remove from cellRows, return last removed cell
-	Cell skip(size_t idx){ return cellRows.removeFront(idx).lastCell; }
+	Cell skip(size_t idx){ 
+		auto res = cellRows.removeFront(idx);
+		totalNewLineCount += res.newLineCount;
+		totalComments ~= res.comments;
+		return res.lastCell; 
+	}
 
 	auto skipWhite(){ 
-		with(cellRows.removeImpl!(true, c => c.structuredCellToChar==' ')(int.max)){
-			//todo: handle newLineCount
-			//todo: put the comments inside the ( )
-			if(!comments.empty) WARN("There were skipped comments:\n"~comments.map!"a.sourceText".join('\n'));
-		} 
+		auto res = cellRows.removeImpl!(true, c => c.structuredCellToChar==' ')(int.max);
+		totalNewLineCount += res.newLineCount;
+		totalComments ~= res.comments;
 	}
 	
-	Declaration[] res;
+	void appendCommentsAndNewLines(){
+		if(totalNewLineCount || !totalComments.empty){
+			if(res.length){
+				res.back.internalNewLine 	|= totalNewLineCount>0;  	
+				res.back.internalComments 	~= totalComments;	
+			}else{
+				if(totalComments.length) WARN("There were skipped internal comments:\n"~totalComments.map!"a.sourceText".join('\n'));
+				if(totalNewLineCount) WARN("There were skipped internal newLines:\n"~totalNewLineCount.text);
+			}
+			
+			totalNewLineCount 	= 0;
+			totalComments 	= [];
+		}
+	}
 	
 	void append(string keyword, Cell[][] paramCells){
 		//write("	"~keyword~"  "); //todo
-		res ~= new	Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
+		auto decl = new	Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
+		res ~= decl;
+		appendCommentsAndNewLines;
 	}
 	
 	while(auto match = cellRows.findCellPattern!prepositionPatterns) with(match){
+		
+		//totalNewLineCount 	+= match.newLineCount;
+		//totalComments 	~= match.comments;
 		
 		if(pattern[$-1]=='='){ //special terminal patterns.
 			if(pattern=="debug ="){
 				//it's a statement, not a preposition
 			}else if(pattern=="else debug ="){ 
-				skip(4);
+				skip(4); //skipping else keyword
 				append("else", []);
 				skipWhite;
 			}else enforce(0, "Unhandled terminal preposition =");
@@ -3496,6 +3562,8 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 		skipWhite;
 	}
 	
+	appendCommentsAndNewLines;
+	
 	return res;
 }
 
@@ -3509,8 +3577,7 @@ DDeclarationRecord[] dDeclarationRecords;
 
 void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////////////////////////////////
 	
-	//enum DeclToken{ none, semicolon, colon, equal, question, block, _module, _import, _enum, _alias, _struct, _union, _class, _interface, _template, _unittest}
-	
+	//generate Token enum from sentence detection rules.
 	mixin( format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", ")) );
 	
 	auto proc = TokenProcessor!DeclToken(col_);
@@ -3543,19 +3610,13 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 		}
 		
 		while(tokens.length){
-			transferWhitespaceAndComments;
+			transferWhitespaceAndComments; //these comments are going into the body of the block
 			
 			const main = tokens.front;
 			auto mainIsKeyword(){ return main.token.functionSwitch!"a.text.startsWith('_')"; }
 			sw: switch(main.token){
-				/+case semicolon, equal, question,   _module, _import, _alias:	fetchTokens!([semicolon	]); break;
-				case block,    _template, _unittest:	fetchTokens!([block	]); break;
-				case _enum, _struct, _union, _class, _interface: 	fetchTokens!([semicolon, block	]); break;
-				case colon:	fetchTokens!([colon	]); break;+/
-				
 				static foreach(a; sentenceDetectionRules)
 					mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
-					
 				default:	fetchSingleToken;
 			}
 			const ending = sentence.back;
@@ -3580,7 +3641,6 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 					auto container = fetchUntil(ending.end);
 					block = (cast(CodeBlock) container.front.front).content;
 				}else enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
-				
 				
 				auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
 					new Declaration(null, attrs, keyword, header, block, endingChar);
@@ -3673,6 +3733,48 @@ version(abcd){
 			if(0){ if(0) a; }else b;
 			if(0){ if(0) a; else b; }
 			if(0){ if(0) a; else b; }else c;
+			
+			
+			// horizontal
+			
+			if(0){ /*comment05*/ block; }
+			
+			if(0)/*comment06*/ { block; }
+			
+			if(0)/*comment07*/ statement;
+			
+			if/*comment08*/(0) statement;
+			
+			// vertical
+			
+			if(0)//comment01
+			{
+				block;
+			}
+			
+			if(0){ //comment02
+				block;
+			}
+			
+			if(0){ //comment03
+				block; }
+			
+			if(0) /+comment04+/ {
+				block; }
+			
+			if
+			/*comment09*/(0) statement;
+			
+			if/*comment10*/
+			(0) statement;
+			
+			if/*comment11*/
+			(0) /*comment12*/
+			statement;
+			
+			if(0){ stm;
+				stm2; }
+
 		}
 	}
 	
