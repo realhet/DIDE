@@ -957,6 +957,8 @@ class CodeRow: Row{
 	int index(){ return parent.subCellIndex(this); }
 	
 	bool empty() const{ return subCells.empty; }
+	
+	Cell singleCellOrNull(){ return subCells.length==1 ? subCells[0] : null; }
 
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
@@ -1037,7 +1039,7 @@ class CodeRow: Row{
 		//note: tabIdx is already refreshed by appendCode
 		spreadElasticNeedMeasure;
 	}
-
+	
 	/// Returns inserted count
 	int insertSomething(int at, void delegate() appendFun){
 		enforce(at>=0 && at<=subCells.length, "Out of bounds");
@@ -1283,7 +1285,7 @@ class CodeRow: Row{
 		assert(innerHeight>=DefaultFontHeight);
 		return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f);
 	}
-
+	
 }
 
 
@@ -1573,6 +1575,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 	
 	bool empty() const{ return !rows.length || rows.length==1 && rows[0].empty; }
 	
+	Cell singleCellOrNull(){ return rows.length==1 ? rows[0].singleCellOrNull : null; }
+	
 	auto rebuilder	(){ return CodeColumnBuilder!true	(this); }
 	auto resyntaxer	(){ return CodeColumnBuilder!false	(this); }
 	
@@ -1633,6 +1637,12 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 					r.subCells = r.subCells[numTabs..$];
 					r.refreshTabIdx;
 					//note: no need to call needRefresh_elastic because all rows will be refreshed. It's in convertSpacesToTabs which only kicks right after row creation.
+				}
+			}else{
+				//there are no relevant rows at all. : cleanup the tabs
+				foreach(r; rows) if(auto cnt = r.leadingCodeTabCount){
+					r.subCells = r.subCells[cnt..$];
+					r.refreshTabIdx;
 				}
 			}
 		}
@@ -1861,9 +1871,9 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		int idx; foreach(const tabInfo; sortedTabs) with(rows[tabInfo.y]){
 
 			//tabs on the previous line will split this tab if it is long enough
-			auto tabsOnPrevLine = sortedTabs[0..idx] .retro
-																							 .until !(t => t.y< tabInfo.y-1)
-																							 .filter!(t => t.y==tabInfo.y-1);
+			auto tabsOnPrevLine = sortedTabs[0..idx]	.retro
+				.until!(t => t.y< tabInfo.y-1)
+				.filter!(t => t.y==tabInfo.y-1);
 			auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1));
 			const tabCount = 1 + splitThisTabAt.walkLength;
 			//print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
@@ -1871,6 +1881,8 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 			idx++;
 		}
+		
+		//todo: bug with labels: c:\D\ldc2\import\std\internal\math\biguintcore.d search-> div3by2correction
 
 	}
 
@@ -2936,6 +2948,12 @@ static immutable prepositionPatterns = [
 	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
 ].sort!"a>b".array; //note: descending order is important.  "debug (" must be checked before "debug"
 
+static immutable prepositionLinkingRules = [
+	[["do"	], ["while"	]],
+	[["if", "static if", "version", "debug", "else if", "else static if", "else version", "else debug"	], ["else", "else if", "else static if", "else version", "else debug"	]],
+	[["try", "catch"	], ["catch", "finally"	]]
+];
+
 static immutable attributeKeywords = [
 	"extern", "align", "deprecated",
 	"private", "package", "package", "protected", "public", "export",
@@ -3049,10 +3067,61 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	
 	bool explicitPrepositionBlock;
 	
+	Declaration nextJoinedPreposition;
+	
 	bool isBlock	() const{ return ending=='}'; }
 	bool isStatement	() const{ return ending==';'; }
 	bool isSection	() const{ return ending==':'; }
 	bool isPreposition	() const{ return ending==')'; }
+	
+	Declaration lastJoinedPreposition(){
+		auto d = this;
+		while(d.nextJoinedPreposition)
+			d = d.nextJoinedPreposition;
+		return d;
+	}
+	
+	Declaration[] allJoinedPrepositions()
+	{
+		Declaration[] res;
+		auto act = this;
+		while(act)
+		{
+			res ~= act;
+			act = act.nextJoinedPreposition;
+		}
+		return res;
+	}
+	
+	void appendJoinedPreposition(Declaration decl){
+		static bugcnt = 0;
+		if(!bugcnt++){ beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
+		
+		assert(decl && decl.isPreposition);
+		lastJoinedPreposition.nextJoinedPreposition = decl;
+	}
+	
+	Declaration nestedPreposition(){
+		if(isPreposition)
+			if(auto a = cast(Declaration) block.singleCellOrNull)
+				if(a.isPreposition)
+					return a;
+		return null;
+	}
+	
+	Declaration[] allNestedPrepositions()
+	{
+		Declaration[] res;
+		auto act = this;
+		
+		while(act && act.isPreposition)
+		{
+			res ~= act;
+			act = act.nestedPreposition;
+		}
+		
+		return res;
+	}
 	
 	bool canHaveHeader() const{
 		if(keyword.among("else", "unittest", "try", "finally", "do")) return false;
@@ -3166,21 +3235,36 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				if(showBraces) put('}'); 
 				put(' ');
 			}else if(isPreposition){
-				put(keyword);
-				put(' ');
-				if(canHaveHeader){ 
-					if(showParens) put('('); 
-					put(header); 
-					if(showParens) put(')'); 
+				
+				void emit(Declaration decl){ with(decl){
+					put(keyword);
 					put(' ');
-				}
+					if(canHaveHeader){ 
+						if(showParens) put('('); 
+						put(header); 
+						if(showParens) put(')'); 
+						put(' ');
+					}
+					
+					if(internalComments.length) put(internalComments.length.format!" C%s ");
+					//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
+					if(internalNewLine) put("\n    ");
+					
+					if(showBraces && explicitPrepositionBlock) put('{');
+					put(block); 
+					if(showBraces && explicitPrepositionBlock) put('}');
+					put(' ');
+					
+					if(nextJoinedPreposition){
+						if(nextJoinedPreposition.internalNewLine) put("\n");  
+						/+note: It doesn't matter if the newline is bewore or after or on both sides 
+						       around an "else". As it is either joined horizontally or vertically. +/
+						emit(nextJoinedPreposition); //RECURSIVE!!!
+					}	
+				}}
 				
-				if(internalComments.length) put(internalComments.length.format!" C%s ");
-				if(internalNewLine) put("\n    ");
+				emit(this);
 				
-				if(showBraces && explicitPrepositionBlock) put('{');
-				put(block); 
-				if(showBraces && explicitPrepositionBlock) put("} ");
 			}else{ //statement or section
 				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
 				if(canHaveHeader){ put(header); } 
@@ -3201,7 +3285,15 @@ dchar structuredCellToChar(Cell c){
 		(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
 		(CodeComment 	_) 	=> ' '	,
 		(CodeString	_) 	=> '"'	,
-		(CodeBlock	b) 	=> b.prefix[0]	,
+		(CodeBlock	b) 	=> b.prefix[0]
+	);
+}
+
+bool isWhitespaceOrComment(Cell c){
+	return c.castSwitch!(
+		(Glyph	g) 	=> isDLangWhitespace(g.ch)	,
+		(CodeComment 	_) 	=> true	,
+		(Cell	c)	=> false
 	);
 }
 
@@ -3217,10 +3309,13 @@ dstring extractThisLevelDString(CodeColumn col){
 }
 
 
-alias 	removeFront = removeImpl!true, 
-	removeBack = removeImpl!false;
-	
-auto removeImpl(bool fromFront, alias filter="true")(ref Cell[][] rows, size_t idx){
+auto removeBack(alias filter="true", R)(ref R[] rows, sizediff_t cnt)
+{
+	return removeFront!(filter, false, R)(rows, cnt);
+}
+
+auto removeFront(alias filter="true", bool fromFront=true, R)(ref R[] rows, sizediff_t cnt)
+{
 	
 	struct RemovedCells{
 		CodeComment[] comments;
@@ -3231,11 +3326,17 @@ auto removeImpl(bool fromFront, alias filter="true")(ref Cell[][] rows, size_t i
 	}
 	RemovedCells res;
 	
-	while(idx>0){
+	static ref Cell[] accessCells(ref R r){
+		static if(is(R==Cell[])) return r;
+		else static if(is(R==CodeRow)) return r.subCells;
+		else static assert(0, "Unhandled type");
+	}
+	
+	while(cnt>0){
 		if(rows.empty){ res.overflow = true; break; }
 		
-		static if(fromFront) 	auto actRow = rows.front; 
-		else 	auto actRow = rows.back;
+		static if(fromFront) 	auto actRow = accessCells(rows.front); 
+		else 	auto actRow = accessCells(rows.back);
 		
 		if(!actRow.empty){  //opt: this is unoptimal but simple
 			static if(fromFront) 	auto actCell = actRow.front; 
@@ -3247,8 +3348,8 @@ auto removeImpl(bool fromFront, alias filter="true")(ref Cell[][] rows, size_t i
 			if(auto cmt = cast(CodeComment) actCell) 
 				res.comments ~= cmt;
 			
-			static if(fromFront) 	rows.front = rows.front[1..$];
-			else	rows.back = rows.back[0..$-1];
+			static if(fromFront) 	accessCells(rows.front).popFront;
+			else	accessCells(rows.back).popBack;
 			
 			res.removedCount ++;
 		}else{ 
@@ -3260,8 +3361,7 @@ auto removeImpl(bool fromFront, alias filter="true")(ref Cell[][] rows, size_t i
 				res.removedCount ++;
 			}else{ res.overflow = true; break; }
 		}
-		
-		idx--;
+		cnt--;
 	}
 	return res;
 }
@@ -3456,6 +3556,9 @@ auto findCellPattern(string[] patterns)(ref Cell[][] cellRows){ //findCellPatter
 	
 	foreach(pattern; patterns){
 		
+		static bugCnt=0;
+		if(!bugCnt++){ beep; ERR("MUST DETECT WORD BOUNDARIES!!!  `done` generates false positive `do` "); }
+		
 		auto src = cellRows.map!(row => row.map!((cell){ 
 			//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
 			return cell.structuredCellToChar; 
@@ -3509,7 +3612,7 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 	}
 
 	auto skipWhite(){ 
-		auto res = cellRows.removeImpl!(true, c => c.structuredCellToChar==' ')(int.max);
+		auto res = cellRows.removeFront!(c => c.isWhitespaceOrComment)(int.max);
 		totalNewLineCount += res.newLineCount;
 		totalComments ~= res.comments;
 	}
@@ -3533,6 +3636,7 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 		//write("	"~keyword~"  "); //todo
 		auto decl = new	Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')');
 		res ~= decl;
+		skipWhite;
 		appendCommentsAndNewLines;
 	}
 	
@@ -3541,16 +3645,15 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 		//totalNewLineCount 	+= match.newLineCount;
 		//totalComments 	~= match.comments;
 		
-		if(pattern[$-1]=='='){ //special terminal patterns.
+		if(pattern.endsWith('=')){ //special terminal patterns.
 			if(pattern=="debug ="){
 				//it's a statement, not a preposition
 			}else if(pattern=="else debug ="){ 
 				skip(4); //skipping else keyword
 				append("else", []);
-				skipWhite;
 			}else enforce(0, "Unhandled terminal preposition =");
 			break;
-		}else if(pattern[$-1]=='('){
+		}else if(pattern.endsWith('(')){
 			auto param = (cast(CodeBlock) skip(idx)); 
 			assert(param && param.prefix=="(");
 			append(pattern.withoutEnding(" ("), param.content.rows.map!(r => r.subCells).array);
@@ -3558,11 +3661,7 @@ Declaration[] extractPrepositions(ref Cell[][] cellRows){ // extractPrepositions
 			skip(idx);
 			append(pattern, []);
 		}
-		
-		skipWhite;
 	}
-	
-	appendCommentsAndNewLines;
 	
 	return res;
 }
@@ -3584,7 +3683,9 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 	with(proc) with(DeclToken){
 		
 		Declaration receiver;
+		
 		void appendDeclaration(Declaration decl){
+			
 			if(receiver){
 				
 				if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition){
@@ -3607,6 +3708,66 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 				
 				if(decl.isPreposition) receiver = decl;
 			}
+			
+		}
+		
+		void joinPrepositions()
+		{
+			size_t backTrackCount = 0;
+			Declaration findSrcPreposition(in string[] validKeywords){
+				
+				Declaration recursiveSearch(Declaration decl){
+					Declaration res;
+					if(decl) foreach_reverse(d; decl.allNestedPrepositions)
+					{
+						d = d.lastJoinedPreposition;
+						if(validKeywords.canFind(d.keyword)){ 
+							enum danglingIsValid = true;
+							static if(danglingIsValid){
+								return d; //return the nearest match
+							}else{
+								if(!res) 	res = d;
+								else	return null; //multiple opportinities means: dangling
+								/*todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
+									and ensure that no other propositions could join to them. */
+							}
+							
+						}
+					}
+					return res;
+				}
+				
+				backTrackCount = 1; //first is the dstPreposition, it's always dropped
+				auto a = dst.retro.map!(r => r.subCells.retro).joiner.drop(1);
+				while(!a.empty && a.front.isWhitespaceOrComment){ 
+					a.popFront;
+					backTrackCount++;
+				}
+				auto rootDecl = cast(Declaration) a.frontOrNull;
+				
+				//dstPrepositionRootDecl = rootDecl; //return this on the side
+				return recursiveSearch(rootDecl);
+			}
+			
+			if(auto row = dst.backOrNull)
+				if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
+					if(dstPreposition.isPreposition)
+						foreach(rule; prepositionLinkingRules)
+							if(rule[1].canFind(dstPreposition.keyword)){
+								if(auto srcPreposition = findSrcPreposition(rule[0])){
+									
+									//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
+									
+									//backTrack until the receiver
+									assert(backTrackCount>0);
+									auto removed = dst.removeBack(backTrackCount);
+									dstPreposition.internalComments ~= removed.comments;
+									dstPreposition.internalNewLine |= removed.newLineCount > 0;
+									
+									srcPreposition.appendJoinedPreposition(dstPreposition);
+								}
+								break; //dstPreposition can present in only one rule
+							}
 		}
 		
 		while(tokens.length){
@@ -3652,6 +3813,8 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 					only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
 					(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
 				);+/
+				
+				joinPrepositions;
 				
 				//print(dDeclarationRecords.back);
 			}else{
@@ -3774,7 +3937,33 @@ version(abcd){
 			
 			if(0){ stm;
 				stm2; }
-
+			
+			//if else variations
+			
+			if(0) bla; else bla;
+			
+			if(0) {} else {}
+			
+			if/*comment20*/(0){
+			} else {
+			}
+			
+			if(0) //comment21
+			{
+			} 
+			else //comment22
+			{
+			}
+			
+			if(0){ }  else /*comment24*/
+			{
+			}
+			
+			if(0){ }  /*comment23*/else /*comment24*/
+			{
+			}
+			
+			if(0){} else if(0){} else {}
 		}
 	}
 	
