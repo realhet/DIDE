@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -2994,6 +2994,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 		}}
 
 		mouseCursor = chooseMouseCursor;
+		
+		//print(lod.zoomFactor*DefaultFontHeight);
 	}
 
 	override void onPaint(){ // onPaint ///////////////////////////////////////

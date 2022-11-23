@@ -1211,7 +1211,7 @@ class CodeRow: Row{
 	}
 
 	override void draw(Drawing dr){ //draw ////////////////////////////////
-		if(lod.level>1 && im.actTargetSurface==0){ //note: LOD is only enabled on the world view, not on the UI
+		if(/*lod.level>1*/ lod.zoomFactor*outerHeight<3 && im.actTargetSurface==0){ //note: LOD is only enabled on the world view, not on the UI
 
 			if(subCells.length){
 				const lwsCnt = leadingAnyWhitespaceCount; //opt: this should be memoized
@@ -1222,6 +1222,8 @@ class CodeRow: Row{
 					//decide row's average color. For simplicity choose the first char's color
 					if(auto glyph = cast(Glyph)cell){
 						dr.color = avg(glyph.bkColor, glyph.fontColor);
+					}else if(auto cntr = cast(CodeContainer)cell){
+						dr.color = cntr.content.bkColor; //todo: get colod of codeNode
 					}else if(auto node = cast(CodeNode)cell){
 						dr.color = clGray; //todo: get colod of codeNode
 					}else{
@@ -3256,8 +3258,8 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 					put(' ');
 					
 					if(nextJoinedPreposition){
-						if(nextJoinedPreposition.internalNewLine) put("\n");  
-						/+note: It doesn't matter if the newline is bewore or after or on both sides 
+						if(nextJoinedPreposition.internalNewLine) put("\n");	
+						/+note: It doesn't matter if the newline is bewore or	after or on both sides 
 						       around an "else". As it is either joined horizontally or vertically. +/
 						emit(nextJoinedPreposition); //RECURSIVE!!!
 					}	
