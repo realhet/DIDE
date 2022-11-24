@@ -1222,10 +1222,13 @@ class CodeRow: Row{
 					//decide row's average color. For simplicity choose the first char's color
 					if(auto glyph = cast(Glyph)cell){
 						dr.color = avg(glyph.bkColor, glyph.fontColor);
-					}else if(auto cntr = cast(CodeContainer)cell){
-						dr.color = cntr.content.bkColor; //todo: get colod of codeNode
-					}else if(auto node = cast(CodeNode)cell){
-						dr.color = clGray; //todo: get colod of codeNode
+					/*}else if(auto cntr = cast(CodeContainer)cell){
+						dr.color = cntr.content.bkColor; //todo: get colod of codeNode*/
+					/*}else if(auto node = cast(CodeNode)cell){
+						dr.color = node.bkColor; //todo: get colod of codeNode
+					}else{*/
+					}else if(auto cntr = cast(Container)cell){
+						dr.color = cntr.bkColor;
 					}else{
 						assert(0, "Invalid class in CodeRow");
 					}
@@ -2939,7 +2942,7 @@ static immutable sentenceDetectionRules = [
 
 static immutable prepositionPatterns = [
 	"with (",
-	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
+	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (", "for iTO (",
 	"while (", 	"do",		
 	"version (", 	"debug (",  	"debug", 	
 	"if (", 	"static if (", 	"else if (", 	"else static if (",
@@ -3208,6 +3211,23 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		return true;;
 	}
 	
+	auto identifier(){
+		
+		if(isBlock){ 
+			if(keyword==""){
+				auto s = header.extractThisLevelDString.text;
+				foreach(p; s.strip.split('(').retro.drop(1)){
+					auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array;
+					if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back;
+				}
+			}
+			if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+				return header.shallowText.strip.wordAt(0);
+		}
+		return "";
+		
+	}
+	
 	override void rearrange(){
 		auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
 		with(rh){
@@ -3276,6 +3296,22 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		}
 		super.rearrange;
 	}
+	
+	override void draw(Drawing dr){ // draw ///////////////////////////////////
+		super.draw(dr);
+		
+		if(lod.pixelSize>2){
+			auto id = identifier;
+			dr.fontHeight = lod.pixelSize*12;
+			if(outerHeight>=dr.fontHeight && id!=""){
+				
+				auto p = outerPos + vec2(max(0, outerWidth-dr.textWidth(id)), 0);
+				
+				dr.color = clBlack	; dr.fontBold = true	; dr.textOut(p, id);
+				dr.color = clWhite	; dr.fontBold = false	; dr.textOut(p, id);
+			}
+		}
+	}
 
 }
 
@@ -3299,14 +3335,15 @@ bool isWhitespaceOrComment(Cell c){
 	);
 }
 
+dstring extractThisLevelDString(CodeRow row){
+	return row.subCells.map!structuredCellToChar.dtext;
+}
+
+
 dstring extractThisLevelDString(CodeColumn col){
 	
-	static dstring rowToDString(CodeRow row){
-		return row.subCells.map!structuredCellToChar.dtext;
-	}
-	
 	//every chacacter or node maps to exactly one character (including newline)
-	const str = col.rows.map!rowToDString.join("\n");
+	const str = col.rows.map!extractThisLevelDString.join("\n");
 	return str;
 }
 
