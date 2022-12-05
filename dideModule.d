@@ -1542,6 +1542,18 @@ static struct CodeColumnBuilder(bool rebuild){ //CodeColumnBuilder /////////////
 	
 }
 
+/*enum CodeContext{
+	plain, //no structure, no highlight
+	highlighted,
+	structured,
+	comment, cString, rString, qString, declarations, statements, params, index;
+}
+
+auto CodeContext(Cell cell){
+	
+}*/
+
+
 class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////////
 	//note: this is basically the CodeBlock
 	Container parent;
@@ -2348,7 +2360,6 @@ void dumpDDoc(string src){
 	print("---End of Processed DDoc----------------------------------------------");
 }
 
-
 // CodeNode //////////////////////////////////////////
 class CodeNode : Row{
 	Container parent;
@@ -2471,8 +2482,9 @@ class CodeContainer : CodeNode{ // CodeContainer /////////////////////////////
 		
 			super.rearrange;
 		
-		//yAlign prefix and postfix
-			if(content.rowCount>1){
+			//yAlign prefix to top and postfix to bottom
+			//todo: 4 modes to align: center, top/bottom, stretch, stretch-repeat
+			if(0) if(content.rowCount>1){
 				foreach(c; subCells[0..i0]) c.outerPos.y = 0;
 				foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight;
 			}
@@ -3753,6 +3765,7 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 		void joinPrepositions()
 		{
 			size_t backTrackCount = 0;
+			
 			Declaration findSrcPreposition(in string[] validKeywords){
 				
 				Declaration recursiveSearch(Declaration decl){
@@ -3777,8 +3790,16 @@ void processHighLevelPatterns(CodeColumn col_){ // processHighLevelPatterns ////
 				}
 				
 				backTrackCount = 1; //first is the dstPreposition, it's always dropped
-				auto a = dst.retro.map!(r => r.subCells.retro).joiner.drop(1);
-				while(!a.empty && a.front.isWhitespaceOrComment){ 
+				auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
+				while(!a.empty){ 
+					if(a.front is null){
+						//note: this newline is in front of the else. Currently the trigger to put the else on a new line is the newline after the else.  In text there are 4 combinations. In structured view there are only 2. (same line or new line)
+					}else if(a.front.isWhitespaceOrComment){
+						//todo: collect the comment and and at least make a WARN
+						if(auto cmt = cast(CodeComment) a.front) WARN("Lost comment: "~cmt.sourceText);
+					}else break;
+					
+					//advance
 					a.popFront;
 					backTrackCount++;
 				}
@@ -3889,6 +3910,7 @@ public{
 }
 
 struct OpaqueStruct; union OpaqueUnion; class OpaqueClass; interface OpaqueInterface;
+struct OpaqueStruct2(T); union OpaqueUnion2(T);
 
 static if(1==1):
 
@@ -4003,6 +4025,18 @@ version(abcd){
 			}
 			
 			if(0){} else if(0){} else {}
+			
+			//fixed bug: extra new line at the end of this if. The unwanted extra newline is before the else.
+			if(0){
+				if(0){}
+				else{}
+			}
+			//this way it's ok
+			if(0){
+				if(0){
+				}else{}
+			}
+
 		}
 	}
 	
@@ -4014,6 +4048,29 @@ version(abcd){
 		do sleep(1); while(0);
 	};
 }
+
+version(none){
+	//static initializer vs labmda
+	
+	auto l1 = { lambda1; };
+	auto l2 = [{ lambda2; }];
+	auto l3 = ({ lambda3; });
+	auto l4 = b({ lambda4; });
+	auto l5 = { lambda5; }();
+	auto l5 = (){ lambda6; }();
+	auto l6 = ()=>{ lambda7; }();
+	auto l7 = a=>{ lambda7; }.b;
+	
+	struct S{ int i; }/+Extra semicolon+/;
+	S s1 = {};
+	S s2 = {5};
+	S[] s1 = [{5}];
+	S[] s2 = b({ lambda4; });
+	struct T{ S s; }
+	T[] t1 = [{{5}}];
+	
+}
+
 
 debug debug = hehehe; else version = hahaha;
 
