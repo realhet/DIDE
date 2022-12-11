@@ -2360,6 +2360,85 @@ void dumpDDoc(string src){
 	print("---End of Processed DDoc----------------------------------------------");
 }
 
+class StructureMap{ //StructureMap //////////////////////////////////////////
+	
+	private static StructureMap collector;
+	private static bool collecting(){ return collector !is null; }
+
+	bool debugTrigger;
+	
+	struct Rec{ CodeNode node; bounds2 bnd; }
+	Rec[] visibleNamedNodes;
+	
+	void beginCollect(){
+		assert(!collecting);
+		collector = this;
+		
+		visibleNamedNodes.clear;
+	}
+	
+	void onCollect(Drawing dr, CodeNode node){
+		assert(collector is this);
+		
+		if(node.identifier != "")
+			visibleNamedNodes ~= Rec(node, dr.inputTransform(node.outerBounds));
+	}
+	
+	void endCollect(Drawing dr){
+		assert(collector is this);
+		collector = null;
+		
+		if(debugTrigger.chkClear){
+			foreach(n; visibleNamedNodes){
+				n.node.fullIdentifier.print;
+			}
+		}
+		
+		if(1){
+			
+			/*dr.color = clFuchsia;
+			dr.lineWidth = -1;
+			dr.fontHeight = -18;
+			foreach(n; visibleNamedNodes){
+				//n.node.fullIdentifier.print;
+				dr.drawRect(n.bnd);
+				dr.textOut(n.bnd.topLeft, n.node.identifier);
+				
+			}*/
+			
+			
+			if(lod.zoomFactor<0.5){
+				dr.lineWidth = -1;
+				foreach_reverse(n; visibleNamedNodes){
+					dr.fontHeight = min(8512, n.bnd.height);
+					
+					const id = n.node.identifier;
+					
+					const width = dr.textWidth(id);
+					if(width > n.bnd.width) dr.fontHeight *= n.bnd.width/width;
+					
+					auto visibleHeight = dr.fontHeight * lod.zoomFactor;
+					if(!visibleHeight.inRange(4, 64)) continue; 
+					
+					dr.alpha = 0.5;
+					dr.color = mix(n.node.bkColor, clBlack, 0.75);
+					dr.fillRect(n.bnd);
+					
+					dr.alpha = 1;
+					dr.color = n.node.bkColor;
+					dr.drawRect(n.bnd);
+					
+					dr.alpha = 1;
+					dr.color = mix(n.node.bkColor, clWhite, 0.75);
+					dr.textOut(n.bnd.topLeft, id);
+					
+				}
+			}
+		}
+	}
+}
+
+
 // CodeNode //////////////////////////////////////////
 class CodeNode : Row{
 	Container parent;
@@ -2386,11 +2465,42 @@ class CodeNode : Row{
 		parent = null;
 	}
 	
-	@property abstract string sourceText();
-
 	override inout(Container) getParent() inout { return parent; }
 	override void setParent(Container p){ parent = p; }
-
+	
+	@property abstract string sourceText();
+	
+	@property string identifier(){ return ""; }
+	
+	CodeNode parentNode(){
+		if(auto r = cast(CodeRow) parent)
+			if(auto c = cast(CodeColumn) r.parent)
+				if(auto n = cast(CodeNode) c.parent)
+					return n;
+		return null;
+	}
+	
+	CodeNode namedParentNode(){
+		for(auto p = parentNode; p; p = p.parentNode){
+			auto id = p.identifier;
+			if(id!="") return p;
+		}
+		return null;
+	}
+	
+	string fullIdentifier(){
+		/*if(identifier=="") return "";
+		auto identifierPath = allParents!CodeNode.map!(a => a.identifier).filter!"a.length".array.retro;
+		return chain(identifierPath, only(identifier)).join('.');*/
+		
+		auto i = identifier; if(i=="") return "";
+		
+		for(auto n = namedParentNode; n; n = n.namedParentNode)
+			i = n.identifier ~ '.' ~ i;
+		
+		return i;
+	}
+	
 	auto rearrangeHelper(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init){
 		
 		struct Helper{
@@ -2437,6 +2547,10 @@ class CodeNode : Row{
 	}
 	
 	override void draw(Drawing dr){
+		//collect structuremap data (It's preceding draw, to add the parent first)
+		if(StructureMap.collector)
+			StructureMap.collector.onCollect(dr, this);
+
 		super.draw(dr);
 
 		//visualize changed/created/modified
@@ -2712,7 +2826,12 @@ class Module : CodeBlock{ //this is any file in the project
 		file = file_.actualFile;
 		reload;
 	}
-
+	
+	override @property string identifier(){ 
+		//todo: process the module statement.
+		return file.nameWithoutExt;
+	}
+	
 	///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
 	bool isReadOnly(){
 		//return inputs["ScrollLockState"].active;
@@ -2790,19 +2909,19 @@ class Module : CodeBlock{ //this is any file in the project
 		}
 		
 		void doManaged(){
-			doManaged; 
+			doStructured; 
 			if(isStructured){
 				try{
 					processHighLevelPatterns(content);
 					structureLevel = StructureLevel.managed;
 				}catch(Exception e){
 					WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg);
-					doManaged;
+					doStructured;
 				}
 			}
 		}
 		
-		enum targetLevel = StructureLevel.structured;
+		enum targetLevel = StructureLevel.managed;
 		[&doPlain, &doHighlighted, &doStructured, &doManaged][targetLevel]();
 		
 		needMeasure;
@@ -2813,10 +2932,6 @@ class Module : CodeBlock{ //this is any file in the project
 	override void rearrange(){
 		detectModuleTypeFlags;
 		super.rearrange;
-	}
-
-	override void draw(Drawing dr){
-		super.draw(dr);
 	}
 
 	void save(){
@@ -3223,24 +3338,38 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		return true;;
 	}
 	
-	auto identifier(){
+	private bool _identifierValid; //todo: use Nullable!string
+	private string _identifier;
+	override @property string identifier(){
 		
-		if(isBlock){ 
-			if(keyword==""){
-				auto s = header.extractThisLevelDString.text;
-				foreach(p; s.strip.split('(').retro.drop(1)){
-					auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array;
-					if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back;
+		string calcIdentifier(){
+			if(isBlock){ 
+				if(keyword==""){
+					auto s = header.extractThisLevelDString.text;
+					foreach(p; s.strip.split('(').retro.drop(1)){
+						auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array;
+						if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back;
+					}
 				}
+				if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+					return header.shallowText.strip.wordAt(0); //todo: this is nasty!!! Should use proper DLang identifier detection.
 			}
-			if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
-				return header.shallowText.strip.wordAt(0);
+			return "";
 		}
-		return "";
 		
+		if(_identifierValid.chkSet){
+			_identifier = calcIdentifier;
+		}
+		
+		return _identifier;
 	}
 	
 	override void rearrange(){
+		_identifierValid = false;
+		
+		//for debugging, the internalNewline can be overrided
+		bool IN(bool b){ return b; }
+		
 		auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
 		with(rh){
 			//set subColumn bkColors
@@ -3251,7 +3380,6 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 			}
 			
 			enum showParens = false, showBraces = true;
-			//internalNewLine = true;
 			
 			if(isBlock){
 				if(isSimpleBlock){
@@ -3262,7 +3390,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				}
 				
 				if(internalComments.length) put(internalComments.length.format!" C%s ");
-				if(internalNewLine) put("\n    ");
+				if(IN(internalNewLine)) put("\n    ");
 				
 				if(showBraces) put('{'); 
 				put(block); 
@@ -3282,7 +3410,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 					
 					if(internalComments.length) put(internalComments.length.format!" C%s ");
 					//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
-					if(internalNewLine) put("\n    ");
+					if(IN(internalNewLine)) put("\n    ");
 					
 					if(showBraces && explicitPrepositionBlock) put('{');
 					put(block); 
@@ -3290,7 +3418,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 					put(' ');
 					
 					if(nextJoinedPreposition){
-						if(nextJoinedPreposition.internalNewLine) put("\n");	
+						if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
 						/+note: It doesn't matter if the newline is bewore or	after or on both sides 
 						       around an "else". As it is either joined horizontally or vertically. +/
 						emit(nextJoinedPreposition); //RECURSIVE!!!
@@ -3306,13 +3434,14 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				put(' ');
 			}
 		}
+		
 		super.rearrange;
 	}
 	
 	override void draw(Drawing dr){ // draw ///////////////////////////////////
 		super.draw(dr);
 		
-		if(lod.pixelSize>2){
+		/*if(lod.pixelSize>2){ //experimental node identifier display
 			auto id = identifier;
 			dr.fontHeight = lod.pixelSize*12;
 			if(outerHeight>=dr.fontHeight && id!=""){
@@ -3322,7 +3451,7 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				dr.color = clBlack	; dr.fontBold = true	; dr.textOut(p, id);
 				dr.color = clWhite	; dr.fontBold = false	; dr.textOut(p, id);
 			}
-		}
+		}*/
 	}
 
 }

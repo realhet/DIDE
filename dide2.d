@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -55,6 +55,8 @@
 	c) A () a felso es also negyede kozott ciklikusan ismetelgetve van
 	d) A {} a felso es also harmadanal meg is van toldva illetve a kozepe ciklikusan ismetelgetve van.
 +/
+
+//todo: implement culling for Container. Can be tested using Workspace.
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
@@ -666,12 +668,15 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	ResyntaxEntry[] resyntaxQueue;
 
 	SyntaxHighlightWorker syntaxHighlightWorker;
-
+	
+	StructureMap structureMap;
+	
 	this(){
 		flags.targetSurface = 0;
 		flags.noBackground = true;
 		fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)");
 		syntaxHighlightWorker = new SyntaxHighlightWorker;
+		structureMap = new StructureMap;
 		needMeasure;
 	}
 
@@ -1731,63 +1736,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 //	 @VERB("F10"																										 ) void stepOver												 () { NOTIMPL; }
 //	 @VERB("F11"																										 ) void stepInto												 () { NOTIMPL; }
 
-	@VERB("F1"                  ) void testInsert       (){
-		
-		/*auto ts = textSelectionsGet;
-		if(ts.length==1){
-			auto sel = ts.front;
-			if(sel.valid){
-				if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
-					row.insertSomething(sel.caret.pos.x, {
-						//row.append(new CodeComment(row, CommentType.slash, "Comment"));
-
-						row.moduleOf.print;
-						(cast(const)row).moduleOf.print;
-						(cast(const)row).thisAndAllParents.each!print;
-
-					});
-				}
-			}
-		}*/
-	}
-
-	@VERB("F2") void testInsert2(){
-		foreach(m; selectedModules){
-			if(m.isStructured){
-				processHighLevelPatterns(m.content);
-				m.structureLevel = StructureLevel.managed;
-			}else beep;
-			//m.content.needMeasure;
-			//m.content.measure;
-			//m.isStructured = true;
-			//m.reload;
-		}
-	}
-
-	@VERB("F3"                  ) void testInsert3       (){
-		foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
-	}
-	
-	@VERB("F4"                  ) void test4(){
-		auto files = dirPerS(Path(`c:\d`), "*.d").files.map!"a.file".array;
-		//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
-		dDeclarationRecords.clear;
-		foreach(i, f; files){
-			print(i, files.length, dDeclarationRecords.length, f);
-			auto m = scoped!Module(this, f);
-			if(m.isStructured){
-				m.content.processHighLevelPatterns;
-			}else	{ print("Is not structured"); beep; }
-		}
-		dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`);
-		print("DONE.");
-		
-		//todo: implement identifier qString  File(`c:\D\ldc2\import\std\json.d`) File(`c:\D\ldc2\import\std\xml.d`) File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
-		//bad tokenString, not my bad...  File(`c:\D\ldc-master\dmd\iasmgcc.d`) File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token
-		
-	}
-
-
 	void preserveTextSelections(void delegate() fun){ //todo: preserve module selections too
 		const savedTextSelections = textSelectionsGet.map!(a => a.toReference.text).array;
 		scope(exit) textSelectionsSet = savedTextSelections.map!(a => TextSelection(a, &findModule)).array;
@@ -2761,7 +2709,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	override void onDraw(Drawing dr){ //onDraw //////////////////////////////
 		if(textSelectionsGet.empty){ //select means module selection
 			foreach(m; modules) if(m.flags.selected) drawHighlight(dr, m, clAccent, .25);
-			if(!lod.codeLevel) drawHighlight(dr, hoveredModule, clWhite, .125);
+			if(!lod.codeLevel) { if(0/+ It's annoying, so I disabled it.+/) drawHighlight(dr, hoveredModule, clWhite, .125);  }
 		}else{ //select means text editing
 			foreach(m; modules) if(!m.flags.selected) drawHighlight(dr, m, clGray, .25);
 		}
@@ -2775,7 +2723,6 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		drawFolders(dr, clGray, clWhite);
 		drawSelectionRect(dr, clWhite);
 
-
 		resetNearestSearchResult;
 		foreach_reverse(t; EnumMembers!BuildMessageType)
 			if(markerLayers[t].visible)
@@ -2786,20 +2733,84 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		if(nearestSearchResult.bounds){
 			drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f));
 		}
-
-
+		
 		.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear;
-
+		
 		drawTextSelections(dr, frmMain.view); //bug: this will not work for multiple workspace views!!!
 	}
 
 	override void draw(Drawing dr){
 		globalChangeindicatorsAppender.clear;
-
+		
+		structureMap.beginCollect;
 		super.draw(dr);
+		structureMap.endCollect(dr);
 	}
 
+	// Test functions ///////////////////////////////////////
+	
+	void test_insert(){
+		auto ts = textSelectionsGet;
+		if(ts.length==1){
+			auto sel = ts.front;
+			if(sel.valid){
+				if(auto row = sel.codeColumn.getRow(sel.caret.pos.y)){
+					row.insertSomething(sel.caret.pos.x, {
+						//row.append(new CodeComment(row, CommentType.slash, "Comment"));
+						
+						row.moduleOf.print;
+						(cast(const)row).moduleOf.print;
+						(cast(const)row).thisAndAllParents.each!print;
+						
+					});
+				}
+			}
+		}
+	}
+	
+	
+	void test_structureMap(){
+		foreach(m; selectedModules){
+			if(m.isStructured){
+				processHighLevelPatterns(m.content);
+				m.structureLevel = StructureLevel.managed;
+			};
+			//m.content.needMeasure;
+			//m.content.measure;
+			//m.isStructured = true;
+			//m.reload;
+		}
+		
+		structureMap.debugTrigger = true;
+	}
+	
+	
+	void test_resyntax(){
+		//foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
+		
+	}
+	
+	void test_declarationStatistics(){
+		auto files = dirPerS(Path(`c:\d`), "*.d").files.map!"a.file".array;
+		//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
+		dDeclarationRecords.clear;
+		foreach(i, f; files){
+			print(i, files.length, dDeclarationRecords.length, f);
+			auto m = scoped!Module(this, f);
+			if(m.isStructured){
+				m.content.processHighLevelPatterns;
+			}else	{ print("Is not structured"); beep; }
+		}
+		dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`);
+		print("DONE.");
+		
+		//todo: implement identifier qString  File(`c:\D\ldc2\import\std\json.d`) File(`c:\D\ldc2\import\std\xml.d`) File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
+		//bad tokenString, not my bad...  File(`c:\D\ldc-master\dmd\iasmgcc.d`) File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token
+		
+	}
 
+	
+	
 }
 
 
@@ -2845,7 +2856,11 @@ auto cellInfoText(T)(T a){ return a.cellInfo.text; }
 //! FrmMain ///////////////////////////////////////////////
 
 class FrmMain : GLWindow { mixin autoCreate;
-
+	
+	@STORED{
+		bool mainMenuOpened;
+	}
+	
 	Workspace workspace;
 	MainOverlayContainer overlay;
 
@@ -2932,13 +2947,18 @@ class FrmMain : GLWindow { mixin autoCreate;
 		baseCaption = appFile.nameWithoutExt.uc;
 		isSpecialVersion = baseCaption != "DIDE2";
 		
+		{ auto a = this; a.fromJson(ini.read("settings", "")); } //todo: this.fromJson
+		
 		initBuildSystem;
 		workspace = new Workspace;
 		workspaceFile = appFile.otherExt(Workspace.defaultExt);
 		overlay = new MainOverlayContainer;
+		
+		
 	}
 
 	override void onDestroy(){
+		ini.write("settings", this.toJson);
 		if(initialized) workspace.saveWorkspace(workspaceFile);
 		workspace.destroy;
 		destroyBuildSystem;
@@ -2977,9 +2997,25 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 		if(canProcessUserInput) callVerbs(this);
 
-		if(0) with(im) Panel(PanelPosition.topClient, { margin = "0"; padding = "0";// border = "1 normal gray";
+		// Menu //////////////////////////////////////////////
+		if(1) with(im) Panel(PanelPosition.topLeft, { margin = "0"; padding = "0";// border = "1 normal gray";
 			Row({
-				BtnRow(mouseCursor);
+				if(Btn("\u2630")) mainMenuOpened.toggle;
+				
+				if(mainMenuOpened){
+					
+					with(workspace){
+						auto B(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args){
+							return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); 
+						}
+						
+						if(B("F1", "insert"	)) test_insert;
+						if(B("F2", "StructureMap"	)) test_structureMap;
+						if(B("F3", "resyntax"	)) test_resyntax;
+						if(B("F4", "declaration"	)) test_declarationStatistics;
+					}
+					
+				}
 			});
 		});
 
@@ -3028,6 +3064,8 @@ class FrmMain : GLWindow { mixin autoCreate;
 
 		void VLine(){ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); }
 
+		
+		
 		//StatusBar
 		with(im) Panel(PanelPosition.bottomClient, { margin = "0"; padding = "0";
 			Row({
@@ -3122,9 +3160,11 @@ class FrmMain : GLWindow { mixin autoCreate;
 	void drawOverlay(Drawing dr){
 		//dr.mmGrid(view);
 		
+		enum visualizeMarginsAndPaddingUnderMouse = false; //todo: make this a debug option in a menu
+		
 		dr.alpha = .5f;
 		dr.lineWidth = -1;
-		foreach(cl; workspace.locate(view.mousePos)){
+		if(visualizeMarginsAndPaddingUnderMouse) foreach(cl; workspace.locate(view.mousePos)){
 			auto rOuter 	= cl.globalOuterBounds;
 			auto rMargin 	= rOuter;	cl.cell.margin.apply(rMargin);
 			auto rInner 	= rMargin; 	cl.cell.padding.apply(rInner);
@@ -3154,7 +3194,6 @@ class FrmMain : GLWindow { mixin autoCreate;
 	}
 
 	override void afterPaint(){ // afterPaint //////////////////////////////////
-
 	}
 
 }
