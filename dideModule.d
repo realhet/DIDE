@@ -16,6 +16,9 @@ __gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 const clModuleBorder = clGray;
 const clModuleText = clBlack;
 
+enum specialCommentMarker = "$DIDE_"; //used in /++/ comments to mark DIDE special comments
+enum compoundObjectChar = '\uFFFC';
+
 // ChangeIndicator ////////////////////////////////////////////
 
 struct ChangeIndicator{ //todo: this is quite similar to CaretPos
@@ -961,7 +964,8 @@ class CodeRow: Row{
 	Cell singleCellOrNull(){ return subCells.length==1 ? subCells[0] : null; }
 
 	auto glyphs()	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
-	auto chars()	{ return glyphs.map!"a ? a.ch : '\u26A0'"; }
+	
+	auto chars()	{ return glyphs.map!(a => a ? a.ch : compoundObjectChar); }
 	
 	string shallowText() { return chars.to!string; } //todo: combine this with extractThisLevelDString
 
@@ -1698,10 +1702,24 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		if(rowIdx.inRange(subCells)) return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
 		return 0;
 	}
-
+	
 	string rowShallowText	(int rowIdx){ if(auto row = getRow(rowIdx)) return row.shallowText	; return ""; }
 	string rowDeepText	(int rowIdx){ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
-
+	
+	auto byShallowChar(){ 
+		return rows.map!(r => r.chars).joiner(only('\n'));
+	}
+	
+	dchar firstChar(){
+		return byShallowChar.frontOr('\0');
+	}
+	
+	T firstCell(T:Cell = Cell)(){ //newline is not a valid first cell
+		if(auto r = getRow(0))
+			return cast(T) r.subCells.get(0);
+		return null;
+	}
+	
 	TextCursor homeCursor(){ return TextCursor(this, ivec2(0)); }
 	TextCursor endCursor(){ 
 		return TextCursor(this, ivec2(rowCount-1, lastRowLength)); 
@@ -2380,7 +2398,7 @@ class StructureMap{ //StructureMap //////////////////////////////////////////
 	void onCollect(Drawing dr, CodeNode node){
 		assert(collector is this);
 		
-		if(node.identifier != "")
+		if(node.caption != "")
 			visibleNamedNodes ~= Rec(node, dr.inputTransform(node.outerBounds));
 	}
 	
@@ -2412,9 +2430,9 @@ class StructureMap{ //StructureMap //////////////////////////////////////////
 				foreach_reverse(n; visibleNamedNodes){
 					dr.fontHeight = min(8512, n.bnd.height);
 					
-					const id = n.node.identifier;
+					const caption = n.node.caption;
 					
-					const width = dr.textWidth(id);
+					const width = dr.textWidth(caption);
 					if(width > n.bnd.width) dr.fontHeight *= n.bnd.width/width;
 					
 					auto visibleHeight = dr.fontHeight * lod.zoomFactor;
@@ -2430,7 +2448,7 @@ class StructureMap{ //StructureMap //////////////////////////////////////////
 					
 					dr.alpha = 1;
 					dr.color = mix(n.node.bkColor, clWhite, 0.75);
-					dr.textOut(n.bnd.topLeft, id);
+					dr.textOut(n.bnd.topLeft, caption);
 					
 				}
 			}
@@ -2471,6 +2489,7 @@ class CodeNode : Row{
 	@property abstract string sourceText();
 	
 	@property string identifier(){ return ""; }
+	@property string caption(){ return ""; }
 	
 	CodeNode parentNode(){
 		if(auto r = cast(CodeRow) parent)
@@ -2655,7 +2674,19 @@ class CodeComment : CodeContainer{ // CodeComment //////////////////////////////
 		
 		needMeasure;
 	}
+	
+	bool isSpecialComment(){
+		return content.byShallowChar.startsWith(specialCommentMarker);
+	}
+	
+	string extractSpecialComment(){
+		return isSpecialComment ? content.deepText.withoutStarting(specialCommentMarker) : "";
+	}
 
+	bool isSpecialComment(string keyword){
+		return extractSpecialComment.wordAt(0)==keyword;
+	}
+	
 }
 
 class CodeString : CodeContainer{ // CodeString //////////////////////////////////////////
@@ -3049,6 +3080,7 @@ RGB structuredColor(string name, RGB def = clGray){
 		case "mixin"	: return clPiko.DKW;
 		case "statement"	: return clGray;
 		case "function"	: return clSilver;
+		case "__region"	: return clGray;
 		default	: return def;
 	}
 }
@@ -3077,6 +3109,7 @@ static immutable prepositionPatterns = [
 	"switch (", 	"final switch (",		
 	"try", 	"catch (", 	"finally",	
 	"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
+	"__region", //decoded from: version(/+$D*DE_REGION title+/all)
 	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
 ].sort!"a>b".array; //note: descending order is important.  "debug (" must be checked before "debug"
 
@@ -3206,6 +3239,9 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	bool isSection	() const{ return ending==':'; }
 	bool isPreposition	() const{ return ending==')'; }
 	
+	bool isRegion; //detected automatically
+	bool regionDisabled;
+	
 	Declaration lastJoinedPreposition(){
 		auto d = this;
 		while(d.nextJoinedPreposition)
@@ -3294,22 +3330,19 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		this.block	= block; if(block) block.setParent(this);
 		this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
 		this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells	.withoutStartingSpace.withoutEndingSpace));
+		
+		decodeSpecial;
+		
 		verify;
 		
 		if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
 	}
 	
-	override string sourceText(){
-		//todo: handle invalid characters. Ensure valid syntax.
-		if(isPreposition) return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
-		return only(attributes.deepText, keyword, header.deepText, isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
-	}
-	
-	string type() const{
-		if(keyword.length	) return keyword;
+	string type(){
+		if(keyword.length) return keyword;
 		if(isStatement	) return "statement";
-		if(isSection	) return "section";
 		if(isPreposition	) return "preposition";
+		if(isSection	) return "section";
 		if(isBlock	) return "function";
 		return "";
 	}
@@ -3364,6 +3397,67 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		return _identifier;
 	}
 	
+	override string caption(){
+		//todo: cache this too
+		if(isRegion) return header.rowDeepText(0);
+		return identifier;
+	}
+	
+	private void decodeSpecial(){
+		//note: only callable from within this(), as it does not reset flags.
+		
+		if(isPreposition && keyword=="version" && header.rowCount==1)
+		if(auto cmt = header.firstCell!CodeComment)
+		if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
+		if(cmt.isSpecialComment("REGION"))
+		{
+			//todo: extract "all" or "none" from version(). Handle enabled/disabled region.
+			
+			isRegion = true;
+			regionDisabled = optionIdx==2;
+			keyword = "__region";
+			
+			header = cmt.content;
+			header.setParent(this);
+			
+			//remove the marker
+			with(header.rows[0]){
+				subCells = subCells[specialCommentMarker.length + "REGION".length .. $];
+				if(!subCells.empty && chars[0]==' ') subCells.popFront;
+				needMeasure;
+			}
+			
+			/* apply new colors.... Rather use comment colors.
+			
+			const bkc = RGB(0x606060), fc = clWhite;
+			
+			header.bkColor = bkc;
+			
+			foreach(r; header.rows){
+				foreach(c; r.subCells)
+					if(auto g = cast(Glyph)c){
+						g.bkColor = clRegionBk;
+						g.fontColor = clRegionFont;
+					}
+			}*/
+			
+			return;
+		}
+	}
+	
+	bool isSpecial(){
+		return isRegion;
+	}
+	
+	override string sourceText(){
+		//todo: handle invalid characters. Ensure valid syntax.
+		if(isPreposition){
+			if(isRegion) return "version(/+"~only(specialCommentMarker~"REGION", header.deepText).join(' ')~"+/"~(regionDisabled ? "none":"all")~")";
+			return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
+		}
+		return only(attributes.deepText, keyword, header.deepText, isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
+	}
+	
 	override void rearrange(){
 		_identifierValid = false;
 		
@@ -3374,9 +3468,9 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 		with(rh){
 			//set subColumn bkColors
 			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
+			
 			foreach(a; only(attributes, header)) if(a){
-				a.bkColor = darkColor;
-				if(a.empty) a.bkColor	 = mix(darkColor, brightColor, 0.75f);
+				a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor;
 			}
 			
 			enum showParens = false, showBraces = true;
@@ -3397,36 +3491,43 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 				if(showBraces) put('}'); 
 				put(' ');
 			}else if(isPreposition){
-				
-				void emit(Declaration decl){ with(decl){
-					put(keyword);
-					put(' ');
-					if(canHaveHeader){ 
-						if(showParens) put('('); 
+				if(isRegion){
+					header.bkColor = syntaxBkColor(skComment);
+					if(!header.empty){
 						put(header); 
-						if(showParens) put(')'); 
-						put(' ');
+						if(IN(internalNewLine)) put('\n'); else put(' ');
 					}
-					
-					if(internalComments.length) put(internalComments.length.format!" C%s ");
-					//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
-					if(IN(internalNewLine)) put("\n    ");
-					
-					if(showBraces && explicitPrepositionBlock) put('{');
 					put(block); 
-					if(showBraces && explicitPrepositionBlock) put('}');
-					put(' ');
+				}else{
+					void emit(Declaration decl){ with(decl){
+						put(keyword);
+						put(' ');
+						if(canHaveHeader){ 
+							if(showParens) put('('); 
+							put(header); 
+							if(showParens) put(')'); 
+							put(' ');
+						}
+						
+						if(internalComments.length) put(internalComments.length.format!" C%s ");
+						//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
+						if(IN(internalNewLine)) put("\n    ");
+						
+						if(showBraces && explicitPrepositionBlock) put('{');
+						put(block); 
+						if(showBraces && explicitPrepositionBlock) put('}');
+						put(' ');
+						
+						if(nextJoinedPreposition){
+							if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
+							/+note: It doesn't matter if the newline is bewore or	after or on both sides 
+							       around an "else". As it is either joined horizontally or vertically. +/
+							emit(nextJoinedPreposition); //RECURSIVE!!!
+						}	
+					}}
 					
-					if(nextJoinedPreposition){
-						if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
-						/+note: It doesn't matter if the newline is bewore or	after or on both sides 
-						       around an "else". As it is either joined horizontally or vertically. +/
-						emit(nextJoinedPreposition); //RECURSIVE!!!
-					}	
-				}}
-				
-				emit(this);
-				
+					emit(this);
+				}
 			}else{ //statement or section
 				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
 				if(canHaveHeader){ put(header); } 
@@ -3441,6 +3542,17 @@ class Declaration : CodeNode { // Declaration /////////////////////////////
 	override void draw(Drawing dr){ // draw ///////////////////////////////////
 		super.draw(dr);
 		
+		if(isRegion && regionDisabled){
+			dr.color = syntaxBkColor(skComment); 
+			dr.alpha = .66; 
+			dr.fillRect(outerBounds);
+			
+			dr.lineWidth = 2;
+			dr.color = syntaxFontColor(skComment); 
+			dr.alpha = .5;
+			dr.drawX(outerBounds);
+			dr.alpha = 1;
+		}
 		/*if(lod.pixelSize>2){ //experimental node identifier display
 			auto id = identifier;
 			dr.fontHeight = lod.pixelSize*12;
@@ -4165,7 +4277,33 @@ version(abcd){
 				if(0){
 				}else{}
 			}
-
+			
+			version(/+$DIDE_REGION+/all){
+				c = a + 5; //enabled region
+			}
+			
+			version(/+$DIDE_REGION+/none){
+				c = a + 5; //disabled region
+			}
+			
+			version(/+$DIDE_REGION This is the title+/all){
+				c = a + 5; //enabled region with title
+			}
+			
+			version(/+$DIDE_REGION This is the title+/none)
+			{
+				c = a + 5;
+				//disabled region with title
+			}
+		
+			// Melyik bankfiokban lehet szamlat nyitni? Velence, Kapolnasnyek?
+			// Lehet-e szamlat nyitni videoChat-tal?
+			// Melyik bankfiokba lehet a szamlara kezpenzt? Velence, Kapolnasnyek?
+			// Sukoroi postan lehet-e kezpenzt kuldeni a szamlara? Mennyibe kerul?
+			// Melyik a legolcsobb bankszamla, amire nincs rendszeres utalas?
+			// Legolcsobb Debit Bankkartya?
+			// Internetes fizetes? VISA? MasterCard?  Koltsege?
+			// Atutalas bankszamlara koltseg?
 		}
 	}
 	

@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -216,11 +216,15 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 			foreach(a; items) if(a.flags.selected){
 				a.outerPos += mouseDelta + accumulatedMoveStartDelta;
 
-			accumulatedMoveStartDelta = 0;
+				accumulatedMoveStartDelta = 0;
 
 				//todo: jelezni kell valahogy az elmozdulast!!!
-				/*static if(is(a.cachedDrawing))
-					a.cachedDrawing.free;*/
+				version(/+$DIDE_REGION+/none)
+				{
+					//this is a good example of a disabled DIDE region
+					static if(is(a.cachedDrawing))
+						a.cachedDrawing.free;
+				}
 			}
 		}
 
@@ -242,7 +246,7 @@ struct ContainerSelectionManager(T : Container){ // ContainerSelectionManager //
 // TextSelectionManager /////////////////////////////////////////
 struct TextSelectionManager
 {
-	public //declarations
+	version(/+$DIDE_REGION declarations+/all)
 	{
 		struct SELECTIONS;
 		@SELECTIONS
@@ -259,7 +263,7 @@ struct TextSelectionManager
 			
 		Nullable!vec2 	scrollInRequest;
 		
-		private //lazy validation of local textSelections
+		version(/+$DIDE_REGION validation of textSelections+/all)
 		{
 			bool mustValidateInternalSelections;
 			
@@ -281,7 +285,8 @@ struct TextSelectionManager
 			}
 		}
 		
-		private //update input odifiers, detect doubleClick and mouse travel
+		version(/+$DIDE_REGION preprocess mouse input+/all) 
+		private
 		{
 			bool 	opSelectColumn,
 				opSelectColumnAdd,
@@ -317,7 +322,7 @@ struct TextSelectionManager
 				
 			}
 		}
-	}   public //public methods
+	}   version(/+$DIDE_REGION+/all)
 	{
 		void update(
 			View2D 	view	, //input: mouse position,  output: zoom/scroll.
@@ -335,8 +340,8 @@ struct TextSelectionManager
 			scrollInRequest.nullify;
 			if(doubleClick) wordSelecting = true;
 			
-			static if(1/+region+/)
-				{
+			version(/+$DIDE_REGION+/all)
+			{
 				void initiateMouseOperations()
 				{
 					if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
@@ -435,7 +440,7 @@ struct TextSelectionManager
 						wordSelecting = false;
 					}
 				}
-			}    static if(1/+region+/)
+			}   version(/+$DIDE_REGION+/all)
 			{	
 				void combineFinalSelection()
 				{
