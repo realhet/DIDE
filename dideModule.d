@@ -1791,16 +1791,20 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 		padding.set(.5, 4);
 	}
 
-	override void rearrange(){
+	override void rearrange()
+	{
 		setupBorder;
 		
 		//ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
 		auto rows = cast(Row[])subCells;
 		assert(rows.map!(a => cast(Row)a).all);
 
-		if(rows.empty){
+		if(rows.empty)
+		{
 			innerSize = DefaultFontEmptyEditorSize;
-		}else{
+		}
+		else
+		{
 			//measure and spread rows vertically rows
 			float y=0, maxW=0;
 			const totalGap = rows.front.totalGapSize; //note: assume all rows have the same margin, padding, border settings
@@ -1814,7 +1818,9 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 			const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
 			innerSize = vec2(maxInnerWidth + totalGap.x, y);
-			//todo: this is not possible with the immediate UI because the autoWidth/autoHeigh information is lost. And there is no functions to return the required content size. The container should have a current size, a minimal required size and separate autoWidth flags.
+			/+todo: this is not possible with the immediate UI because the autoWidth/autoHeigh 
+			information is lost. And there is no functions to return the required content size.
+			The container should have a current size, a minimal required size and separate autoWidth flags.+/
 
 			if(!flags.dontStretchSubCells)
 				foreach(r; rows) r.innerWidth = maxInnerWidth;
@@ -1923,7 +1929,7 @@ class CodeColumn: Column{ // CodeColumn ////////////////////////////////////////
 
 	override void draw(Drawing dr){ // draw ///////////////////////////////////
 		super.draw(dr);
-
+		
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
 	}
@@ -4295,15 +4301,24 @@ version(abcd){
 				c = a + 5;
 				//disabled region with title
 			}
-		
-			// Melyik bankfiokban lehet szamlat nyitni? Velence, Kapolnasnyek?
-			// Lehet-e szamlat nyitni videoChat-tal?
-			// Melyik bankfiokba lehet a szamlara kezpenzt? Velence, Kapolnasnyek?
-			// Sukoroi postan lehet-e kezpenzt kuldeni a szamlara? Mennyibe kerul?
-			// Melyik a legolcsobb bankszamla, amire nincs rendszeres utalas?
-			// Legolcsobb Debit Bankkartya?
-			// Internetes fizetes? VISA? MasterCard?  Koltsege?
-			// Atutalas bankszamlara koltseg?
+			
+			
+			//todo: parse this correctly:
+			if(1) labe3: label2: 1 ? f, f : f, f, i=5;
+			
+			
+			//todo: Extra empty statement at the end.  Must distinguish "while();" and "do ; while();}
+			do{}while(0);
+			
+			
+			//todo: do-uble bad parsing
+			double f(){ return 0; } 
+			
+			
+			//todo: this if else looks bad
+			if(1)	a;
+			else	b;
+			
 		}
 	}
 	

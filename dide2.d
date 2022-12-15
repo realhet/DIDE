@@ -58,6 +58,9 @@
 
 //todo: implement culling for Container. Can be tested using Workspace.
 
+//todo: handle newline before and after else.
+//todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
+
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;
 }
@@ -675,6 +678,29 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 	SyntaxHighlightWorker syntaxHighlightWorker;
 	
 	StructureMap structureMap;
+	
+	
+	struct AutoReloader{
+		@STORED bool enabled;
+		
+		size_t idx;
+		
+		void update(Module[] modules){
+			if(!enabled) return;
+			if(modules.empty) return;
+			
+			version(/+$DIDE_REGION advance idx+/all)
+			{
+				idx ++;  if(idx>=modules.length) idx = 0;
+			}
+			
+			auto m = modules[idx];
+			if(!m.changed && m.fileModified < m.file.modified/+It takes 120us for a file+/)
+				m.reload;
+		}
+	}
+	
+	@STORED AutoReloader autoReloader;
 	
 	this(){
 		flags.targetSurface = 0;
@@ -1932,6 +1958,7 @@ class Workspace : Container, WorkspaceInterface { //this is a collection of open
 		handleXBox;
 		handleKeyboard;
 		updateCodeLocationJump;  if(KeyCombo("MMB").released/+pressed is not good because when I pan I don't see where the mouse is.+/ && nearestSearchResult.reference!="") jumpTo(nearestSearchResult.reference);  //todo: only do this when there was no lmouseTravelSinceLastPress
+		autoReloader.enabled = true;  autoReloader.update(modules);
 		updateOpenQueue(1);
 		updateResyntaxQueue;
 
