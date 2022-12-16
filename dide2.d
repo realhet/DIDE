@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 //note: debug is not needed to get proper exception information
 
@@ -60,6 +60,7 @@
 
 //todo: handle newline before and after else.
 //todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
+//todo: tab removal from the left side of multiline comments
 
 @(q{DIDEREGION "Region Name" /DIDEREGION}){
 	enum LogRequestPermissions = false;

@@ -2869,6 +2869,10 @@ class Module : CodeBlock{ //this is any file in the project
 		return file.nameWithoutExt;
 	}
 	
+	override @property string caption(){ 
+		return file.name;
+	}
+	
 	///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
 	bool isReadOnly(){
 		//return inputs["ScrollLockState"].active;
