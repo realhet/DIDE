@@ -3079,16 +3079,16 @@ class StructureMap
 			struct Helper
 			{
 				CodeNode node;
-				TextStyle ts;
+				TextStyle style;
 				int inverse; //0, 1, 2
 				RGB darkColor, brightColor, halfColor;
 				
 				void put(T)(T a)
 				{ 
 					static if(isSomeString!T)
-						node.appendStr(a, ts);
+						node.appendStr(a, style);
 					else static if(isSomeChar!T)
-						node.appendChar(a, ts);
+						node.appendChar(a, style);
 					else static if(is(T:Cell))
 						node.appendCell(a);
 					else
@@ -3099,15 +3099,15 @@ class StructureMap
 			Helper res;
 			with(res){
 				node 	= this;
-				ts 	= tsSyntax(syntax);  if(!customColor.isNull) ts.fontColor = customColor.get;
+				style 	= tsSyntax(syntax);  if(!customColor.isNull) style.fontColor = customColor.get;
 				inverse 	= inverse_;
-				darkColor	= ts.bkColor,
-				brightColor 	= ts.fontColor,
+				darkColor	= style.bkColor,
+				brightColor 	= style.fontColor,
 				halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1));
 				
-				ts.bkColor = border.color = bkColor	= halfColor; 
-				ts.fontColor	= inverse ? darkColor : brightColor;
-				ts.bold 	= true;
+				style.bkColor = border.color = bkColor	= halfColor; 
+				style.fontColor	= inverse ? darkColor : brightColor;
+				style.bold 	= true;
 			}
 			
 			//initialize node
@@ -3169,6 +3169,10 @@ class StructureMap
 		return res;
 	}
 	
+	final void rearrange_node(){
+		super.rearrange;
+	}
+	
 	override void rearrange()
 	{
 		with(rearrangeHelper(syntax, prefix.among("[", "(", "{") ? 0 : 1))
@@ -3179,8 +3183,8 @@ class StructureMap
 			put(content);	const i2 = subCells.length;
 			put(postfix); //todo: //slashComment must ensure that after it there is a newLine
 		
-			super.rearrange;
-		
+			rearrange_node;
+			
 			//yAlign prefix to top and postfix to bottom
 			//todo: 4 modes to align: center, top/bottom, stretch, stretch-repeat
 			if(0) if(content.rowCount>1)
@@ -3257,6 +3261,7 @@ class StructureMap
 	bool isSpecialComment()
 	{
 		return content.byShallowChar.startsWith(specialCommentMarker);
+		//opt: startsWith should get a real range, not a copy of the full string.
 	}
 	
 	string extractSpecialComment()
@@ -3267,6 +3272,36 @@ class StructureMap
 	bool isSpecialComment(string keyword)
 	{
 		return extractSpecialComment.wordAt(0)==keyword;
+	}
+	
+	override void rearrange()
+	{
+		if(isSpecialComment){
+			auto scmt = extractSpecialComment;
+			if(scmt.wordAt(0)=="IMG")
+			{
+				with(rearrangeHelper(syntax, 0))
+				{
+					auto cmd = scmt.commandLineToMap;
+					auto f = File(cmd.get("1"));
+					
+					style.italic = false;
+					put('\U0001F5BC');
+					
+					//load it immediatelly
+					//todo: autorefresh code images
+					bitmaps(f, No.delayed);
+					
+					auto img = new Img(f, darkColor);
+					put(img);
+					
+					rearrange_node;
+				}
+				return;
+			}
+		}
+		
+		super.rearrange;
 	}
 }class CodeString : CodeContainer
 {// CodeString //////////////////////////////////////////

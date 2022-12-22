@@ -75,6 +75,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		//todo: BOM handling in copy/paste operations
 		
+		//todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
+		
 	}
 	
 	// globals ////////////////////////////////////////
@@ -1547,11 +1549,11 @@ version(/+$DIDE_REGION main+/all)
 		
 		/+ 	3 levels
 		1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
-			   beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
-			   meg lenne 2 extra: removedNextRow, removedPrevRow)
+				  beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
+				  meg lenne 2 extra: removedNextRow, removedPrevRow)
 		2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
-			   nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
-			   Innentol nem idovonal van, hanem graph.
+				  nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
+				  Innentol nem idovonal van, hanem graph.
 		3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
 			allapotot. Ezt kesobb delta codinggal tomoriteni kell. +/
 		
