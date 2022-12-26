@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -84,14 +84,14 @@ version(/+$DIDE_REGION main+/all)
 	import het, het.keywords, het.tokenizer, het.ui, het.dialogs;
 	import buildsys, core.thread, std.concurrency;
 	
-	import dideui, didemodule;
+	import didemodule;
 	
 	
 	enum 	LogRequestPermissions	= false,
 		DisableSyntaxHighlightWorkerJob 	= true;
 	
 	
-	alias blink = dideui.blink;
+	alias blink = didemodule.blink;
 	
 	auto frmMain()
 	{ return (cast(FrmMain)mainWindow); }
@@ -316,7 +316,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//dr.mmGrid(view);
 				
-				enum visualizeMarginsAndPaddingUnderMouse = false; //todo: make this a debug option in a menu
+				enum visualizeMarginsAndPaddingUnderMouse = true; //todo: make this a debug option in a menu
 				
 				dr.alpha = .5f;
 				dr.lineWidth = -1;
@@ -377,7 +377,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(application.tick>5 && initialized.chkSet)
 				{
-					test_CodeColumn;
+					CodeColumn.selfTest;
 					if(workspaceFile.exists){
 						workspace.loadWorkspace(workspaceFile);
 					}
@@ -1549,11 +1549,11 @@ version(/+$DIDE_REGION main+/all)
 		
 		/+ 	3 levels
 		1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
-				  beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
-				  meg lenne 2 extra: removedNextRow, removedPrevRow)
+					 beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
+					 meg lenne 2 extra: removedNextRow, removedPrevRow)
 		2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
-				  nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
-				  Innentol nem idovonal van, hanem graph.
+					 nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
+					 Innentol nem idovonal van, hanem graph.
 		3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
 			allapotot. Ezt kesobb delta codinggal tomoriteni kell. +/
 		

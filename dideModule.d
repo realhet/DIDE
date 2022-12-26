@@ -3,7 +3,7 @@ version(/+$DIDE_REGION+/all)
 {
 	
 	
-	import het, het.ui, het.tokenizer, het.structurescanner ,dideui, buildsys;
+	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
 	//version identifiers: AnimatedCursors
 	enum MaxAnimatedCursors = 100;
@@ -177,15 +177,17 @@ version(/+$DIDE_REGION+/all)
 			@property bool empty() const
 			{
 				if(forward)
-					return cursor.pos.y>=cursor.codeColumn.lastRowIdx;
+					return cursor.pos.y>cursor.codeColumn.lastRowIdx;
 				else
 					return cursor.pos.y<0;
 			}
 			
 			void popFront()
 			{
-				if(forward) cursor.moveRight_unsafe;
-							 else cursor.moveLeft_unsafe;
+				if(forward)
+					cursor.moveRight_unsafe;
+				else
+					cursor.moveLeft_unsafe;
 			}
 		
 			auto save(){ return this; }
@@ -288,6 +290,218 @@ version(/+$DIDE_REGION+/all)
 			{ return bounds2(top, bottom); }
 		}
 	}	
+}version(/+$DIDE_REGION UI functions+/all)
+{
+	version(/+$DIDE_REGION+/all)
+	{
+		
+		__gshared float blink;
+		
+		void updateBlink()
+		{
+			blink = float(sqr(sin(blinkf(134.0f/60)*PIf)));
+		}
+		
+		void setRoundBorder(Container cntr, float borderWidth)
+		{with(cntr){
+			border.width = borderWidth;
+			border.color = bkColor;
+			border.inset = true;
+			border.borderFirst = true;
+		}}
+		
+		void RoundBorder(float borderWidth)
+		{with(im){
+			border.width = borderWidth;
+			border.color = bkColor;
+			border.inset = true;
+			border.borderFirst = true;
+		}}
+		
+		//! UI ///////////////////////////////
+		
+		static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
+		{with(im)
+			Container!T({
+				margin = "0.5";
+				padding = "1.5";
+				style.bkColor = bkColor = color;
+				style.fontColor = blackOrWhiteFor(color);
+				flags.yAlign = YAlign.top;
+				RoundBorder(8);
+				if(contents) contents();
+			});
+		}
+		
+		static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate() contents)
+		{with(im)
+			Container!T({
+				margin = "0";
+				padding = "0 4";
+				style.bkColor = bkColor = color;
+				style.fontColor = fontColor;
+				flags.yAlign = YAlign.top;
+				RoundBorder(8);
+				if(contents) contents();
+			});
+		}
+		
+		static void UI_BuildMessageContents(CodeLocation location, string title, void delegate() contents)
+		{with(im){
+			location.UI;   //opt: this is FUCKING slow
+			if(title!="") Text(bold(" "~title~" "));
+			if(contents) contents();
+		}}
+		
+		static void UI_ConsoleTextBlock(string contents)
+		{with(im){
+			UI_InnerBlockFrame(clBlack, clWhite, {
+				style.font = "Lucida Console";
+				Text(contents);
+				//todo: Use codeRow here for optimized LOD. Refer to -> UI_BuildMessageTextBlock()
+			});
+		}}
+		
+		static void UI_CompilerOutput(File file, string text)
+		{
+			UI_OuterBlockFrame(RGB(0xD0D0D0), {
+				UI_BuildMessageContents(CodeLocation(file), "Output:", {
+					UI_ConsoleTextBlock(text);
+				});
+			});
+		}
+		
+		void UI(in CodeLocation cl)
+		{ with(cl) with(im)
+			UI_InnerBlockFrame(clSilver, clBlack, {
+				auto s = cl.text;
+		
+				actContainer.id = "CodeLocation:"~s;
+		
+				FileIcon_small(file.ext);
+		
+				Text(s);
+			});
+		}
+		
+		
+		void UI(in BuildSystemWorkerState bsws)
+		{ with(bsws) with(im){
+			Row({
+				width = 6*fh;
+				Row({
+					if(building) style.fontColor = mix(style.fontColor, style.bkColor, blink);
+					Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready");
+				});
+				Row({ flex=1; flags.hAlign = HAlign.right;
+					if(building && !cancelling && totalModules)
+						Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules));
+					else if(building && cancelling){
+						Text(format!"\u2026%d"(inFlight));
+					}
+				});
+			});
+		}}
+	}version(/+$DIDE_REGION+/all)
+	{
+		void UI_BuildMessageTextBlock(string message, RGB clFont)
+		{
+			//Apply syntax highlight on the texts between `` quotes.
+			auto isCode = new bool[message.length];
+			{
+				bool inCode = false;
+				size_t i;
+				foreach(ch; message.byChar)
+				{
+					if(!inCode)
+					{
+						if(ch=='`') inCode=true;
+					}
+					else
+					{
+						if(ch=='`') inCode=false; else isCode[i]=true;
+					}
+					i++;
+				}
+			}
+		
+			auto codeOnly = message.dup;
+			foreach(i, b; isCode) if(!b) codeOnly.ptr[i] = ' ';
+		
+			auto sc = scoped!SourceCode(cast(string)codeOnly);
+		
+			void appendLine(int idx){ with(im){
+				auto cr = cast(CodeRow)actContainer;
+				auto r = sc.getLineRange(idx);
+				cr.set(message[r[0]..r[1]], sc.syntax[r[0]..r[1]]);
+				auto g = cr.glyphs;
+				foreach(i, b; isCode[r[0]..r[1]])
+					if(!b) g[i].fontColor = clFont;
+			}}
+		
+			const lineCount = sc.lineCount;
+			if(lineCount>=1)
+			{
+				with(im)
+				UI_InnerBlockFrame!CodeColumn(
+					clCodeBackground,
+					clFont,
+					{
+						foreach(i; 0..lineCount)
+							Container!CodeRow({ appendLine(i); });
+					}
+				);
+			}
+		}
+		
+		
+		void UI(in BuildMessage msg, BuildResult br)
+		{ UI(msg, br.subMessagesOf(msg.location)); }
+		
+		void UI(in BuildMessage msg, in BuildMessage[] subMessages)
+		{with(msg)
+		with(im)
+			UI_OuterBlockFrame(
+				type.color,
+				{
+					UI_BuildMessageContents(
+						location,
+						parentLocation ? "\u2026" : type.to!string.capitalize~":",
+						{
+							const clFont = avg(type.color, clWhite);
+							
+							UI_BuildMessageTextBlock(message, clFont);
+							
+							foreach(sm; subMessages)
+							{
+								Text("\n    "); sm.UI([]);
+							}
+						}
+					);
+				}
+			);
+		}
+		
+		//! Draw //////////////////////////////////////////////////////
+		
+		void drawHighlight(Drawing dr, bounds2 bnd, RGB color, float alpha)
+		{
+			if(!bnd) return;
+			dr.color = color;
+			dr.alpha = alpha;
+			dr.fillRect(bnd);
+			dr.lineWidth = -1;
+			dr.drawRect(bnd);
+			dr.alpha = 1;
+		}
+		
+		void drawHighlight(Drawing dr, Cell c, RGB color, float alpha)
+		{
+			if(!c) return;
+			drawHighlight(dr, c.outerBounds, color, alpha);
+		}
+		
+	}
 }struct CellPath
 {//CellPath ///////////////////////////////
 	Cell[] path; //todo: constness
@@ -1043,6 +1257,7 @@ version(/+$DIDE_REGION+/all)
 				{
 					const cnt = 	CharFetcher(c, dir>0)
 						.drop(dir<0 ? 1 : 0)
+						.chain("+"d) //extend with a dummy symbol to stop at
 						.countUntil!(ch => lookingForWords ? !isWord(ch)
 							: lookingForSpaces	? !isSpace(ch)
 							: true);
@@ -1246,1671 +1461,1693 @@ version(/+$DIDE_REGION+/all)
 }
 class CodeRow: Row
 {/// CodeRow ////////////////////////////////////////////////
-	CodeColumn parent;
-	
-	static if(rearrangeFlash) DateTime rearrangeTime;
-	
-	override inout(Container) getParent() inout
-	{ return parent; }
-	override void setParent(Container p)
-	{ parent = enforce(cast(CodeColumn)p); }
-	
-	int index()
-	{ return parent.subCellIndex(this); }
-	
-	bool empty() const
-	{ return subCells.empty; }
-	
-	Cell singleCellOrNull()
-	{ return subCells.length==1 ? subCells[0] : null; }
-	
-	auto glyphs()
-	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
-	
-	auto chars()
-	{ return glyphs.map!(a => a ? a.ch : compoundObjectChar); }
-	
-	string shallowText()
-	{ return chars.to!string; } 
-	//todo: combine this with extractThisLevelDString
-	
-	string deepText()
+	version(/+$DIDE_REGION+/all)
 	{
-		string res; //opt: appender
-		foreach(c; subCells)
+		CodeColumn parent;
+		
+		static if(rearrangeFlash) DateTime rearrangeTime;
+		
+		override inout(Container) getParent() inout
+		{ return parent; }
+		override void setParent(Container p)
+		{ parent = enforce(cast(CodeColumn)p); }
+		
+		int index()
+		{ return parent.subCellIndex(this); }
+		
+		bool empty() const
+		{ return subCells.empty; }
+		
+		Cell singleCellOrNull()
+		{ return subCells.length==1 ? subCells[0] : null; }
+		
+		auto glyphs()
+		{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
+		
+		auto chars()
+		{ return glyphs.map!(a => a ? a.ch : compoundObjectChar); }
+		
+		string shallowText()
+		{ return chars.to!string; } 
+		//todo: combine this with extractThisLevelDString
+		
+		string deepText()
+		{
+			string res; //opt: appender
+			foreach(c; subCells)
+			{
+				if(auto g = cast(Glyph)c)
+				{
+					res ~= g.ch;
+				}
+				else if(auto n = cast(CodeNode)c)
+				{
+					res ~= n.sourceText;
+				}
+				else
+				{
+					enforce(0, "deepText: unsupported obj");
+				}
+			}
+			return res;
+		}
+		
+		//todo: mode isSpace inside elastic tab detection, it's way too specialized
+		
+		private static bool isCodeSpace(Cell c)
 		{
 			if(auto g = cast(Glyph)c)
-			{
-				res ~= g.ch;
-			}
-			else if(auto n = cast(CodeNode)c)
-			{
-				res ~= n.sourceText;
-			}
-			else
-			{
-				enforce(0, "deepText: unsupported obj");
-			}
+				return g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; 
+			return false; 
 		}
-		return res;
-	}
-	
-	//todo: mode isSpace inside elastic tab detection, it's way too specialized
-	
-	private static bool isCodeSpace(Cell c)
+		private static bool isCodeTab(Cell c)
+		{
+			if(auto g = cast(Glyph)c)
+				return g.ch=='\t' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/;
+			return false;
+		}
+		private static bool isAnyWhitespace(Cell c)
+		{ 
+			if(auto g = cast(Glyph)c)
+				return !!g.ch.among(' ', '\t');
+			return false;
+		}
+		private auto isCodeSpaces()
+		{ return subCells.map!isCodeSpace; }
+		
+		auto leadingCodeSpaces()
+		{ return subCells.until!(not!isCodeSpace	); }
+		auto leadingCodeTabs()
+		{ return subCells.until!(not!isCodeTab	); }
+		auto leadingAnyWhitespaces()
+		{ return subCells.until!(not!isAnyWhitespace	); }
+		
+		auto leadingCodeSpaceCount()
+		{ return cast(int)leadingCodeSpaces.walkLength; }
+		auto leadingCodeTabCount()
+		{ return cast(int)leadingCodeTabs.walkLength; }
+		auto leadingAnyWhitespaceCount()
+		{ return cast(int)leadingAnyWhitespaces.walkLength; }
+	}version(/+$DIDE_REGION+/all)
 	{
-		if(auto g = cast(Glyph)c)
-			return g.ch==' ' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/; 
-		return false; 
-	}
-	private static bool isCodeTab(Cell c)
-	{
-		if(auto g = cast(Glyph)c)
-			return g.ch=='\t' && g.syntax.among(0/*whitespace*/, 9/*comment*/)/+don't count string literals+/;
-		return false;
-	}
-	private static bool isAnyWhitespace(Cell c)
-	{ 
-		if(auto g = cast(Glyph)c)
-			return !!g.ch.among(' ', '\t');
-		return false;
-	}
-	private auto isCodeSpaces()
-	{ return subCells.map!isCodeSpace; }
-	
-	auto leadingCodeSpaces()
-	{ return subCells.until!(not!isCodeSpace	); }
-	auto leadingCodeTabs()
-	{ return subCells.until!(not!isCodeTab	); }
-	auto leadingAnyWhitespaces()
-	{ return subCells.until!(not!isAnyWhitespace	); }
-	
-	auto leadingCodeSpaceCount()
-	{ return cast(int)leadingCodeSpaces.walkLength; }
-	auto leadingCodeTabCount()
-	{ return cast(int)leadingCodeTabs.walkLength; }
-	auto leadingAnyWhitespaceCount()
-	{ return cast(int)leadingAnyWhitespaces.walkLength; }
-
-	this(CodeColumn parent_)
-	{
-		parent = enforce(parent_);
-		id.value = this.identityStr;
+		this(CodeColumn parent_)
+		{
+			parent = enforce(parent_);
+			id.value = this.identityStr;
+			
+			needMeasure;
+			//also sets measureOnlyOnce flag. This is an on-demand realigned Container.
+			
+			flags.wordWrap	= false;
+			flags.clipSubCells	= true;
+			flags.cullSubCells	= true;
+			flags.rowElasticTabs	= false;
+			flags.dontHideSpaces	= true;
+			flags.noBackground	= true;
+			
+			//bkColor = parent.bkColor;
+		}
 		
-		needMeasure;
-		//also sets measureOnlyOnce flag. This is an on-demand realigned Container.
+		this(CodeColumn parent_, string line, ubyte[] syntax)
+		{
+			assert(line.length==syntax.length);
+			this(parent_);
+			set(line, syntax);
+		}
 		
-		flags.wordWrap	= false;
-		flags.clipSubCells	= true;
-		flags.cullSubCells	= true;
-		flags.rowElasticTabs	= false;
-		flags.dontHideSpaces	= true;
-		flags.noBackground	= true;
+		this(CodeColumn parent_, string line)
+		{
+			this(parent_);
+			set(line, [ubyte(0)].replicate(line.length));
+		}
 		
-		//bkColor = parent.bkColor;
-	}
-	
-	this(CodeColumn parent_, string line, ubyte[] syntax)
-	{
-		assert(line.length==syntax.length);
-		this(parent_);
-		set(line, syntax);
-	}
-	
-	this(CodeColumn parent_, string line)
-	{
-		this(parent_);
-		set(line, [ubyte(0)].replicate(line.length));
-	}
-	
-	this(CodeColumn parent_, Cell[] cells)
-	{
-		this(parent_);
+		this(CodeColumn parent_, Cell[] cells)
+		{
+			this(parent_);
+			
+			//take ownership of the cells.
+			cells.each!(c => c.setParent(this));
+			subCells = cells;
+			refreshTabIdx;
+			needMeasure;
+		}
 		
-		//take ownership of the cells.
-		cells.each!(c => c.setParent(this));
-		subCells = cells;
-		refreshTabIdx;
-		needMeasure;
-	}
-	
-	void set(string line, ubyte[] syntax)
-	{
-		internal_setSubCells([]);
-		
-		static TextStyle style; //it is needed by appendCode/applySyntax
-		this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); },
-			style/+, must paste tabs!!! DefaultIndentSize+/);
-		
-		//note: tabIdx is already refreshed by appendCode
-		spreadElasticNeedMeasure;
-	}
-	
-	/// Returns inserted count
-	int insertSomething(int at, void delegate() appendFun)
-	{
-		enforce(at>=0 && at<=subCells.length, "Out of bounds");
-		
-		auto after = subCells[at..$];
-		subCells = subCells[0..at];
-		
-		const cnt0 = subCells.length;
-		
-		appendFun();
-		
-		const insertedCnt = (subCells.length-cnt0).to!int;
-		if(insertedCnt) setChangedCreated;
-		
-		subCells ~= after;
-		
-		refreshTabIdx;
-		spreadElasticNeedMeasure;
-		
-		return insertedCnt;
-	}
-
-	/// Returns inserted count
-	int insertText(int at, string str)
-	{
-		if(str.empty) return 0;
-		return insertSomething(at, {
+		void set(string line, ubyte[] syntax)
+		{
+			internal_setSubCells([]);
+			
 			static TextStyle style; //it is needed by appendCode/applySyntax
-			auto syntax = [ubyte(0)].replicate(str.length);
-			this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); },
+			this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); },
 				style/+, must paste tabs!!! DefaultIndentSize+/);
-		});
-	}
-	
-	/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
-	CodeRow splitRow(int x)
-	{
-		assert(x>=0 && x<=cellCount);
-		
-		auto nextRow = new CodeRow(parent);
-		nextRow.setChangedCreated;
-		
-		nextRow.subCells = this.subCells[x..$];
-		nextRow.adoptSubCells;
-		this.subCells = this.subCells[0..x];
-		
-		if(nextRow.subCells.length)
-			this.setChangedRemoved;
-		
-		only(this, nextRow).each!"a.refreshTabIdx";
-		only(this, nextRow).each!"a.spreadElasticNeedMeasure";
-		
-		return nextRow;
-	}
-	
-	///must be called after the code changed. It tracks elasticTabs, and realigns if needed
-	void spreadElasticNeedMeasure()
-	{//todo: such beautyful name... NOT!
-		if(needMeasure)
-		{
 			
-			//extend up and down along elastic tabs
-			auto i = index; //opt: this index calculation is slow. Feed index from the inside
-			assert(i>=0);
-			
-			//simple but unefficient criteria: has any tabs or not
-			foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
-			foreach(a; parent.rows[i+1..$]  .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
+			//note: tabIdx is already refreshed by appendCode
+			spreadElasticNeedMeasure;
 		}
-	}
-	
-	override void rearrange()
+		
+		CaretPos localCaretPos(int idx)
+		{
+			const len = cellCount;
+			if(len==0) return CaretPos(vec2(0, 0), innerHeight);
+			
+			idx = idx.clamp(0, len);
+			//if(idx<0 || idx>len) return CaretPos.init;
+			
+			if(idx==len) with(subCells.back) return CaretPos(outerTopRight, outerHeight);
+			if(idx==0) with(subCells[0]) return CaretPos(outerPos, outerHeight);
+			
+			const 	y0 = min(subCells[idx-1].outerTop   , subCells[idx].outerTop   ),
+				y1 = max(subCells[idx-1].outerBottom, subCells[idx].outerBottom);
+			
+			return CaretPos(vec2(subCells[idx].outerLeft, y0), y1-y0);
+		}
+		
+		bounds2 newLineBounds()
+		{
+			const p = newLinePos;
+			return bounds2(p, p + DefaultFontNewLineSize);
+		}
+		
+		vec2 newLinePos()
+		{
+			assert(innerHeight>=DefaultFontHeight);
+			return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f);
+		}
+	}version(/+$DIDE_REGION+/all)
 	{
-		
-		assert(verifyTabIdx, "tabIdxInternal check fail");
-		
-		adjustCharWidths;
-		
-		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
-		
-		super.rearrange;
-		
-		innerSize = max(innerSize, DefaultFontEmptyEditorSize);
-		
-		static if(rearrangeLOG) LOG("rearranging", this);
-		
-		static if(rearrangeFlash) rearrangeTime = now;
-		
-		//opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
-	}
+		/// Returns inserted count
+		int insertSomething(int at, void delegate() appendFun)
+		{
+			enforce(at>=0 && at<=subCells.length, "Out of bounds");
+			
+			auto after = subCells[at..$];
+			subCells = subCells[0..at];
+			
+			const cnt0 = subCells.length;
+			
+			appendFun();
+			
+			const insertedCnt = (subCells.length-cnt0).to!int;
+			if(insertedCnt) setChangedCreated;
+			
+			subCells ~= after;
+			
+			refreshTabIdx;
+			spreadElasticNeedMeasure;
+			
+			return insertedCnt;
+		}
 	
-	protected
-	{
-		static immutable float 	NormalSpaceWidth	= 7.25f, //same as '0'..'9' and +-_
-			LeadingSpaceWidth 	= NormalSpaceWidth;
+		/// Returns inserted count
+		int insertText(int at, string str)
+		{
+			if(str.empty) return 0;
+			return insertSomething(at, {
+				static TextStyle style; //it is needed by appendCode/applySyntax
+				auto syntax = [ubyte(0)].replicate(str.length);
+				this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); },
+					style/+, must paste tabs!!! DefaultIndentSize+/);
+			});
+		}
 		
-		void adjustCharWidths()
+		/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
+		CodeRow splitRow(int x)
+		{
+			assert(x>=0 && x<=cellCount);
+			
+			auto nextRow = new CodeRow(parent);
+			nextRow.setChangedCreated;
+			
+			nextRow.subCells = this.subCells[x..$];
+			nextRow.adoptSubCells;
+			this.subCells = this.subCells[0..x];
+			
+			if(nextRow.subCells.length)
+				this.setChangedRemoved;
+			
+			only(this, nextRow).each!"a.refreshTabIdx";
+			only(this, nextRow).each!"a.spreadElasticNeedMeasure";
+			
+			return nextRow;
+		}
+		
+		///must be called after the code changed. It tracks elasticTabs, and realigns if needed
+		void spreadElasticNeedMeasure()
+		{//todo: such beautyful name... NOT!
+			if(needMeasure)
+			{
+				
+				//extend up and down along elastic tabs
+				auto i = index; //opt: this index calculation is slow. Feed index from the inside
+				assert(i>=0);
+				
+				//simple but unefficient criteria: has any tabs or not
+				foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
+				foreach(a; parent.rows[i+1..$]  .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break;
+			}
+		}
+		
+		override void rearrange()
 		{
 			
-			bool isLeading = true;
-			foreach(g; glyphs)
-			if(g)
-			{//todo: make this nicer
-				if(isCodeSpace(g))
-				{
-					g.outerWidth = isLeading 	? LeadingSpaceWidth
-						: NormalSpaceWidth;
+			assert(verifyTabIdx, "tabIdxInternal check fail");
+			
+			adjustCharWidths;
+			
+			innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true;
+			
+			super.rearrange;
+			
+			innerSize = max(innerSize, DefaultFontEmptyEditorSize);
+			
+			static if(rearrangeLOG) LOG("rearranging", this);
+			
+			static if(rearrangeFlash) rearrangeTime = now;
+			
+			//opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		protected
+		{
+			static immutable float 	NormalSpaceWidth	= 7.25f, //same as '0'..'9' and +-_
+				LeadingSpaceWidth 	= NormalSpaceWidth;
+			
+			void adjustCharWidths()
+			{
+				
+				bool isLeading = true;
+				foreach(g; glyphs)
+				if(g)
+				{//todo: make this nicer
+					if(isCodeSpace(g))
+					{
+						g.outerWidth = isLeading 	? LeadingSpaceWidth
+							: NormalSpaceWidth;
+					}
+					else
+					{
+						isLeading = false;
+						
+						//non-leading char width modifications
+						if(g.syntax==5 && g.ch!='.'	//number except '.'
+						|| g.ch.among('+', '-', '_')	//symbols next to numbers
+						/* || g.syntax==6/+string+/*/) g.outerWidth = NormalSpaceWidth;
+					}
 				}
 				else
 				{
 					isLeading = false;
-					
-					//non-leading char width modifications
-					if(g.syntax==5 && g.ch!='.'	//number except '.'
-					|| g.ch.among('+', '-', '_')	//symbols next to numbers
-					/* || g.syntax==6/+string+/*/) g.outerWidth = NormalSpaceWidth;
 				}
+				
+				//foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
 			}
-			else
+			
+			private void spaceToTab(long i)
 			{
-				isLeading = false;
+				auto g = glyphs[i];
+				assert(isCodeSpace(g));
+				g.ch = '\t';
+				g.isTab = true;
+				//note: refreshTabIdx must be called later
 			}
 			
-			//foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
-		}
-		
-		private void spaceToTab(long i)
-		{
-			auto g = glyphs[i];
-			assert(isCodeSpace(g));
-			g.ch = '\t';
-			g.isTab = true;
-			//note: refreshTabIdx must be called later
-		}
-		
-		void replaceSpacesWithTabs(int xStart, int xTab, size_t tabCount)
-		{
-			assert(xStart<=xTab	, "invalid xStart, xTab");
-			assert(xStart>=0	, "xStart out of range");
-			assert(xTab<subCells.length	, "xTab out of range");
-			assert(glyphs[xStart..xTab+1].all!(g => isCodeSpace(g))	, "All must be spaces");
-			assert(tabCount <= xTab-xStart+1	, "tabCount too much.");
-			
-			auto normalizeLeadingSpaces(Cell[] sc)
+			void replaceSpacesWithTabs(int xStart, int xTab, size_t tabCount)
 			{
-				sc	.until!(a => !(isCodeSpace(a) && a.outerWidth!=NormalSpaceWidth))
-					.each!(a => a.outerWidth = NormalSpaceWidth);
-				return sc;
-			}
-			
-			internal_setSubCells(
-				subCells[0..xStart+tabCount] ~
-				(xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : []));
-			foreach(i; xStart..xStart+tabCount) spaceToTab(i); //promote spaces to tabs
-			
-			refreshTabIdx; //todo: should only be done once at the end...
-		}
-		
-		void convertLeadingSpacesToTabs(int spaceCnt)
-		{
-			//todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
-			//subCells.each!LOG;
-			assert(spaceCnt>0);
-			const tabCnt = leadingCodeSpaceCount/spaceCnt;
-			//LOG(leadingCodeSpaceCount, spaceCnt);
-			if(tabCnt>0){
-				const removeCnt = tabCnt*spaceCnt-tabCnt;
-				internal_setSubCells(subCells[removeCnt..$]);
-				foreach(i; 0..tabCnt) spaceToTab(i);
+				assert(xStart<=xTab	, "invalid xStart, xTab");
+				assert(xStart>=0	, "xStart out of range");
+				assert(xTab<subCells.length	, "xTab out of range");
+				assert(glyphs[xStart..xTab+1].all!(g => isCodeSpace(g))	, "All must be spaces");
+				assert(tabCount <= xTab-xStart+1	, "tabCount too much.");
+				
+				auto normalizeLeadingSpaces(Cell[] sc)
+				{
+					sc	.until!(a => !(isCodeSpace(a) && a.outerWidth!=NormalSpaceWidth))
+						.each!(a => a.outerWidth = NormalSpaceWidth);
+					return sc;
+				}
+				
+				internal_setSubCells(
+					subCells[0..xStart+tabCount] ~
+					(xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : []));
+				foreach(i; xStart..xStart+tabCount) spaceToTab(i); //promote spaces to tabs
+				
 				refreshTabIdx; //todo: should only be done once at the end...
 			}
-		}
-	}
-	
-	CaretPos localCaretPos(int idx)
-	{
-		const len = cellCount;
-		if(len==0) return CaretPos(vec2(0, 0), innerHeight);
-		
-		idx = idx.clamp(0, len);
-		//if(idx<0 || idx>len) return CaretPos.init;
-		
-		if(idx==len) with(subCells.back) return CaretPos(outerTopRight, outerHeight);
-		if(idx==0) with(subCells[0]) return CaretPos(outerPos, outerHeight);
-		
-		const 	y0 = min(subCells[idx-1].outerTop   , subCells[idx].outerTop   ),
-			y1 = max(subCells[idx-1].outerBottom, subCells[idx].outerBottom);
-		
-		return CaretPos(vec2(subCells[idx].outerLeft, y0), y1-y0);
-	}
-
-	override void draw(Drawing dr)
-	{//draw ////////////////////////////////
-		if(/*lod.level>1*/ lod.zoomFactor*outerHeight<3 && im.actTargetSurface==0)
-		{ //note: LOD is only enabled on the world view, not on the UI
 			
-			if(subCells.length)
+			void convertLeadingSpacesToTabs(int spaceCnt)
 			{
-				const lwsCnt = leadingAnyWhitespaceCount; //opt: this should be memoized
-				if(lwsCnt<subCells.length)
-				{
-					auto cell = subCells[lwsCnt];
-					const r = bounds2(cell.outerPos, subCells.back.outerBottomRight) + innerPos;
-					
-					//decide row's average color. For simplicity choose the first char's color
-					if(auto glyph = cast(Glyph)cell)
-					{
-						dr.color = avg(glyph.bkColor, glyph.fontColor);
-					}
-					else if(auto cntr = cast(Container)cell)
-					{
-						dr.color = cntr.bkColor;
-					}
-					else
-					{
-						assert(0, "Invalid class in CodeRow");
-					}
-					
-					dr.fillRect(r.inflated(vec2(0, -r.height/4)));
+				//todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
+				//subCells.each!LOG;
+				assert(spaceCnt>0);
+				const tabCnt = leadingCodeSpaceCount/spaceCnt;
+				//LOG(leadingCodeSpaceCount, spaceCnt);
+				if(tabCnt>0){
+					const removeCnt = tabCnt*spaceCnt-tabCnt;
+					internal_setSubCells(subCells[removeCnt..$]);
+					foreach(i; 0..tabCnt) spaceToTab(i);
+					refreshTabIdx; //todo: should only be done once at the end...
 				}
+			}
+		}
+		
+	}version(/+$DIDE_REGION+/all)
+	{
+		override void draw(Drawing dr)
+		{//draw ////////////////////////////////
+			if(/*lod.level>1*/ lod.zoomFactor*outerHeight<3 && im.actTargetSurface==0)
+			{ //note: LOD is only enabled on the world view, not on the UI
 				
-				//todo: Draw bigger subNodes.
-			}
-			
-		}
-		else
-		{
-			super.draw(dr);
-			
-			//visualize tabs ---------------------------------------
-			
-			//opt: these calculations operqations should be cached. Seems not that slow however
-			/+todo: only display this when there is an editor cursor active in the codeColumn
-			(or in the module)+/
-			dr.translate(innerPos); dr.alpha = .4f;
-			scope(exit){ dr.pop; dr.alpha = 1; }
-			dr.color = clGray;
-			
-			if(tabIdxInternal.length)
-			{
-				dr.lineWidth = .5f;
-				foreach(ti; tabIdxInternal)
+				if(subCells.length)
 				{
-					assert(ti.inRange(subCells));
-					auto g = cast(Glyph)subCells.get(ti);
-					assert(g, "tabIdxInternal fail");
-					if(g){
-						dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
-						//const y = g.outerPos.y + g.outerHeight*.5f;
-						//dr.vLine(g.outerRight, y-2, y+2);
-						//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
-					}
-				}
-			}
-			
-			//visualize spaces ------------------------------
-			dr.pointSize = 1;
-			foreach(g; glyphs.filter!(a => a && a.ch==' '))
-			{
-				assert(g);
-				dr.point(g.outerBounds.center);
-				/+todo: don't highlight single spaces only if there is a tab or character 
-				or end of line next to them.+/
-			}
-		}
-		
-		//visualize changed/created/modified
-		addGlobalChangeIndicator(dr, this/*, vec2(padding.left, innerHeight)*.5f*/);
-		
-		static if(rearrangeFlash)
-		if(now-rearrangeTime < 1*second)
-		{
-			dr.color = clGold;
-			dr.alpha = (1-(now-rearrangeTime).value(second)).sqr*.5f;
-			dr.fillRect(outerBounds);
-			dr.alpha = 1;
-		}
-	}
-	
-	bounds2 newLineBounds()
-	{
-		const p = newLinePos;
-		return bounds2(p, p + DefaultFontNewLineSize);
-	}
-	
-	vec2 newLinePos()
-	{
-		assert(innerHeight>=DefaultFontHeight);
-		return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f);
-	}
-}
-
-
-static struct CodeColumnBuilder(bool rebuild)
-{//CodeColumnBuilder /////////////////////////////////////////
-	enum resyntax = !rebuild;
-	
-	CodeColumn col;
-	TextStyle tsWhitespace, ts;
-	SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace;
-	
-	CodeRow actRow;
-	bool skipNextN; //after \r, skip the next \n
-	
-	static if(rebuild){
-		void NL()
-		{ 
-			col.appendCell(actRow = new CodeRow(col, "", null)); 
-		}
-		
-		void initialize()
-		{
-			col.clearSubCells;
-			NL; //there must be 1 row always. Empty column is a single empty row.
-		}
-		
-		void appendChar(dchar ch)
-		{
-			switch(ch)
-			{
-				case '\n', '\r', '\u2028', '\u2029':
-					if(skipNextN.chkClear && ch=='\n') break;
-					skipNextN = ch=='\r';
-					NL;
-				break;
-				default: 
-					//update cached textStyle
-					if(_currentSk.chkSet(syntax))
-						applySyntax(ts, syntax);
-					
-					actRow.appendSyntaxChar(ch, ts, syntax); 
-			}
-		}
-		
-		void appendNode(CodeNode node)
-		{
-			assert(node);
-			assert(node.parent is actRow);
-			actRow.appendCell(node);
-		}
-	}
-	
-	static if(resyntax){
-		
-		ivec2 actPos;
-		
-		void initialize()
-		{
-			//seek to the first character
-			actPos = ivec2(0);
-			actRow = col.rowCount ? col.rows[0] : null; //todo: there must be a first row.
-			enforce(actRow, "Resyntax: Invalid CodeColumn: No rows at all.");
-		}
-		
-		void moveToNextRow()
-		{
-			enforce(actRow.cellCount==actPos.x, "Resyntax: Longer row than expected. "~actPos.text);
-			actPos.y++;
-			actPos.x = 0;
-			actRow = actPos.y<col.rowCount ? col.rows[actPos.y] : null;
-			enforce("Resyntax: More rows expected. "~actPos.text);
-		}
-		
-		void moveToNextChar()
-		{ 
-			actPos.x++;
-			//this position is allowed to be out of range, because here comes the newline
-		}
-		
-		void appendChar(dchar ch)
-		{
-			switch(ch)
-			{
-				case '\n', '\r', '\u2028', '\u2029':
-					if(skipNextN.chkClear && ch=='\n') break;
-					skipNextN = ch=='\r';
-					moveToNextRow;
-				break;
-				default: 
-					/+debug 
-					//const prevSyntax = syntax; 
-					if(ch=='a') syntax = skKeyword; 
-					scope(exit) if(ch=='a') syntax = prevSyntax;
-					+/
-					
-					//update cached textStyle
-					if(_currentSk.chkSet(syntax))
-						applySyntax(ts, syntax);
-					
-					auto g = cast(Glyph)(actRow.subCells.get(actPos.x));
-					//opt: cache this array per each row
-					
-					enforce(g, "Resyntax: Glyph expected "~actPos.text);
-					enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text);
-					if(g.syntax.chkSet(syntax))
+					const lwsCnt = leadingAnyWhitespaceCount; //opt: this should be memoized
+					if(lwsCnt<subCells.length)
 					{
-						//syntaxChanged = true;
-						g.bkColor	= ts.bkColor;
-						g.fontColor	= ts.fontColor;
+						auto cell = subCells[lwsCnt];
+						const r = bounds2(cell.outerPos, subCells.back.outerBottomRight) + innerPos;
 						
-						const prevFontFlags = g.fontFlags;
-						g.fontFlags = ts.fontFlags;
-						if(auto delta = g.adjustBoldWidth(prevFontFlags))
+						//decide row's average color. For simplicity choose the first char's color
+						if(auto glyph = cast(Glyph)cell)
 						{
-							actRow.needMeasure; 
-							//opt: cache this and call only once per each row
-							//todo: Ensure elastic tabs recursive spread.
+							dr.color = avg(glyph.bkColor, glyph.fontColor);
 						}
-					}
-					moveToNextChar;
-			}
-		}
-		
-		void appendNode(CodeNode node)
-		{
-			auto n = cast(CodeNode)(actRow.subCells.get(actPos.x));
-			//opt: cache this array per each row
-			enforce(n, "Resyntax: Glyph expected "~actPos.text);
-			
-			//no need to check anything
-			//opt: no need to rebuild the node, only skip it.
-			
-			moveToNextChar;
-		}
-	}
-	
-	void appendStr(string str)
-	{
-		foreach(dchar ch; str) appendChar(ch);
-	}
-	
-	void appendPlain(string sourceText)
-	{
-		syntax = skIdentifier1; //no skWhiteSpace handling either.
-		appendStr(sourceText);
-	}
-	
-	private void appendHighlighted_internal(string sourceText)
-	{
-		
-		static char categorize(dchar ch)
-		{ 
-			if(isAlphaNum(ch) || ch.among('_', '#', '@')) return 'a';
-			if(ch.among(' ', '\t', '\x0b', '\x0c')) return ' ';
-			return '+';
-		}
-		
-		foreach(s; sourceText.splitWhen!((a, b) => categorize(a) != categorize(b)).map!text)
-		{
-			switch(s[0])
-			{
-				case ' ', '\t', '\x0b', '\x0c': 	syntax = skWhitespace; 	break;
-				case '0': ..case '9':	syntax = skNumber; 	break;
-				case '#':	syntax = skDirective; 	break;
-				case '@':	syntax = skLabel; 	break;
-				
-				default:	if(s[0].isAlpha || s[0]=='_')
-					{ 
-						if(auto kw = kwLookup(s))
+						else if(auto cntr = cast(Container)cell)
 						{
-							with(KeywordCat) 
-							switch(kwCatOf(kw))
-							{
-								case Attribute:	syntax = skAttribute;	break;
-								case Value:	syntax = skBasicType; 	break;
-								case BasicType:	syntax = skBasicType;	break;
-								case UserDefiniedType :	syntax = skKeyword;	break;
-								case SpecialFunct:	syntax = skAttribute;	break;
-								case SpecialKeyword:	syntax = skKeyword;	break;
-								default:	syntax = skKeyword;	break;
-							}
-						}
-						else syntax = skIdentifier1;
-					}
-					else if(s[0].isSymbol || s[0].isPunctuation)
-						syntax = skSymbol; 
-					else
-						syntax = skIdentifier1;
-			}
-			
-			appendStr(s);
-		}
-		
-		syntax = skIdentifier1;
-	}
-	
-	void appendHighlighted(string sourceText)
-	{ appendHighlighted	(sourceText.DLangScanner); }
-	void appendStructured(string sourceText)
-	{ appendStructured	(sourceText.DLangScanner); }
-	
-	void appendHighlighted(R)(R scanner) if(isScannerRange!R)
-	{ appendHighlightedOrStructured!false(scanner); }
-	void appendStructured(R)(R scanner) if(isScannerRange!R)
-	{ appendHighlightedOrStructured!true(scanner); }
-	
-	void appendHighlightedOrStructured(bool structured=false, R)(R scanner)
-	if(isScannerRange!R)
-	{
-		auto syntaxStack = [syntax];
-		while(!scanner.empty)
-		{ 
-			auto sr = scanner.front;
-			
-			//structural exit handling
-			static if(structured)
-			{
-				if(syntaxStack.length==1 && sr.op==ScanOp.pop)
-				{
-					//only read until the end of the current level
-					break; 
-				}
-			}
-			
-			void handleHighlightedPush()
-			{
-				syntaxStack ~= syntax;
-				switch(sr.src){
-					case "//", "/*", "/+":	syntax = skComment; 	appendStr(sr.src); 		break;
-					case "{", "(", "[":	syntax = skSymbol;	appendStr(sr.src);	syntax = skWhitespace; 	break;
-					case `q{`:	syntax = skString;	appendStr(sr.src);	syntax = skWhitespace;	break;
-					case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`: 	syntax = skString;	appendStr(sr.src);		break;
-					default:	syntax = skError;	appendStr(sr.src);		break;
-					//todo: identifier quoted string `q"id`
-				}
-			}
-			
-			switch(sr.op)
-			{
-				case ScanOp.push:
-					{
-						static if(structured)
-						{
-							auto N(T)()
-							{ auto c = new T(actRow); c.rebuild(scanner); appendNode(c); }
-							switch(sr.src)
-							{
-								//todo: //comment must ensure that after it, there will be a NewLine
-								case "//":	N!CodeComment; appendChar('\n'); 	continue; 
-								case "/*", "/+",:	N!CodeComment;	continue; 
-								case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`: 	N!CodeString;	continue;
-								case "{", "(", "[":	N!CodeBlock;	continue;
-								default: handleHighlightedPush;
-							}
+							dr.color = cntr.bkColor;
 						}
 						else
 						{
-							handleHighlightedPush;
+							assert(0, "Invalid class in CodeRow");
 						}
-					}
-				break;
-				case ScanOp.pop:
-					if(syntaxStack.empty)
-					{
-						syntax = skError;
-						appendStr(sr.src);
-					}
-					else
-					{
-						if(!syntax.among(skComment, skString)) syntax = skSymbol;
-						appendStr(sr.src);
 						
-						syntax = syntaxStack.back;
-						syntaxStack.length--;
-						//todo: error checking for compatible closing tags. Maybe it can be implemented in the scanner too.
+						dr.fillRect(r.inflated(vec2(0, -r.height/4)));
 					}
-				break;
-				//case ScanOp.trans: setSyntax(skError); break;
-				case ScanOp.content: 
-					if(syntax.among(skComment, skString))
-					{
-						appendStr(sr.src); 
-						//todo: highlight string escapes
-						//todo: advanced comment formatting
-					}
-					else
-					{
-						appendHighlighted_internal(sr.src);
-					}
-				break;
-				default:
-					syntax = skError; 
-					appendStr(sr.src); //todo: it should optionally raise an exception. Example: when a structural scan fails, it should revert to highlighted.
-			}
-			
-			scanner.popFront;
-		}
-		
-		col.convertSpacesToTabs(Yes.outdent);
-		col.needMeasure;
-	}
-	
-	
-	this(CodeColumn col)
-	{
-		this. col = col;
-		
-		tsWhitespace 	= tsNormal	; applySyntax(tsWhitespace	, skWhitespace	);
-		ts 	= tsWhitespace	; applySyntax(ts	, _currentSk	);
-		
-		initialize;
-	}
-	
-}
-
-
-class CodeColumn: Column
-{// CodeColumn ////////////////////////////////////////////
-	//note: this is basically the CodeBlock
-	Container parent;
-	//CodeContext context;
-	
-	enum defaultSpacesPerTab = 4; //default in std library
-	int spacesPerTab = defaultSpacesPerTab; //autodetected on load
-	
-	DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
-	
-	/+deprecated("Only needed for compile.err builder") this(Container parent){
-		this(parent, ccPlain);
-	}+/
-	
-	/// Minimal constructor creating an empty codeColumn with 0 rows.
-	this(Container parent)
-	{
-		this.parent = parent;
-		//this.context = context;
-		//id.value = this.identityStr;  //id is not used anymore for this
-		
-		needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
-		flags.wordWrap	= false;
-		flags.clipSubCells	= true;
-		flags.cullSubCells	= true;
-		flags.columnElasticTabs = true;
-		bkColor = mix(clCodeBackground, clGray, .25f);
-	}
-	
-	this(Container parent_, Cell[][] cells)
-	{
-		this(parent_);
-		subCells = cast(Cell[])(cells.map!(r => new CodeRow(this, r)).array);
-		
-		//one row must always present.
-		if(subCells.empty) subCells ~= new CodeRow(this);
-	}
-	
-	bool empty() const
-	{ return !rows.length || rows.length==1 && rows[0].empty; }
-	
-	Cell singleCellOrNull()
-	{ return rows.length==1 ? rows[0].singleCellOrNull : null; }
-	
-	auto rebuilder()
-	{ return CodeColumnBuilder!true	(this); }
-	auto resyntaxer()
-	{ return CodeColumnBuilder!false	(this); }
-	
-	auto calcWhitespaceStats()
-	{
-		import het.tokenizer : WhitespaceStats;
-		WhitespaceStats whitespaceStats;
-		foreach(r; rows)
-		{//todo: optimize it somehow... Statistically...
-			if(!r.leadingCodeTabs.empty)
-			{
-				whitespaceStats.tabCnt++;
+					
+					//todo: Draw bigger subNodes.
+				}
+				
 			}
 			else
 			{
-				auto spaceCnt = r.leadingCodeSpaceCount;
-				whitespaceStats.addSpaceCnt(spaceCnt);
-			}
-		}
-		//note: this is just lame statistics to detect the size of a tab only for converting spaces to tabs.
-		return whitespaceStats;
-	}
-	
-	void convertSpacesToTabs(Flag!"outdent" outdent)
-	{
-		//todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
-		createElasticTabs;
-		
-		spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize);
-		//opt: this can be slow. Maybe put it on a keyboard shortcut.
-		
-		rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
-		
-		//outdent
-		if(outdent)
-		{
-			
-			bool isWhitespaceRow(CodeRow r)
-			{
-				return r.subCells.empty || r.subCells.all!((c){
-					if(auto g = cast(Glyph)c)
-						if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true;
-					return false;
-				});
-				//return r.leadingCodeTabCount<r.cellCount; 
-			}
-			
-			//remove first and last whitespace row
-			const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front);	if(firstRowRemoved) subCells.popFront;
-			const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back);	if(lastRowRemoved) subCells.popBack;
-			
-			//only rows that not only tabs are relevant
-			bool relevant(CodeRow r)
-			{
-				return r.subCells.any!((c){
-					if(auto g = cast(Glyph)c){
-						if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false;
-						return true;
-					}
-					if(cast(CodeComment)c) return false; //comments are irrelevant
-					return true;
-				});
-			}
-			//find minimum amount of tabs
-			const canIgnoreFirstRow = !firstRowRemoved && rows.drop(1).any!relevant;
-			auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant;
-			if(!relevantRows.empty)
-			{
-				const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
-				if(numTabs)
-				foreach(r; rows)
-				if(r.leadingCodeTabCount>=numTabs){
-					r.subCells = r.subCells[numTabs..$];
-					r.refreshTabIdx;
-					/+note: no need to call needRefresh_elastic because all rows will be refreshed.
-					It's in convertSpacesToTabs which only kicks right after row creation.+/
-				}
-			}
-			else
-			{
-				//there are no relevant rows at all. : cleanup the tabs
-				foreach(r; rows)
-				if(auto cnt = r.leadingCodeTabCount)
+				super.draw(dr);
+				
+				//visualize tabs ---------------------------------------
+				
+				//opt: these calculations operqations should be cached. Seems not that slow however
+				/+todo: only display this when there is an editor cursor active in the codeColumn
+				(or in the module)+/
+				dr.translate(innerPos); dr.alpha = .4f;
+				scope(exit){ dr.pop; dr.alpha = 1; }
+				dr.color = clGray;
+				
+				if(tabIdxInternal.length)
 				{
-					r.subCells = r.subCells[cnt..$];
-					r.refreshTabIdx;
-				}
-			}
-		}
-		
-		needMeasure;
-	}
-	
-	void resyntax(string sourceText)
-	{
-		//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
-		//todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
-		//todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-		try{ 
-			resyntaxer.appendHighlighted(sourceText);
-		}catch(Exception e){
-			WARN(e.simpleMsg);
-		}
-	}
-	
-	override inout(Container) getParent() inout
-	{ return parent; }
-	override void setParent(Container p)
-	{ parent = p; }
-	
-	override void appendCell(Cell cell)
-	{
-		assert(cast(CodeRow)cell);
-		super.appendCell(cell);
-	}
-	
-	auto const rows()
-	{ return cast(CodeRow[])subCells; }
-	int rowCount() const
-	{ return cast(int)subCells.length; }
-	int lastRowIdx() const
-	{ return rowCount-1; }
-	int lastRowLength() const
-	{ return rows.back.cellCount; }
-	
-	auto getRow(int rowIdx)
-	{ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
-
-	int rowCharCount(int rowIdx) const
-	{
-		//todo: it's ugly because of the constness. Make it nicer.
-		if(rowIdx.inRange(subCells))
-			return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
-		return 0;
-	}
-	
-	string rowShallowText(int rowIdx)
-	{ if(auto row = getRow(rowIdx)) return row.shallowText	; return ""; }
-	string rowDeepText(int rowIdx)
-	{ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
-	
-	auto byShallowChar()
-	{
-		return rows.map!(r => r.chars).joiner(only('\n'));
-	}
-	
-	dchar firstChar()
-	{
-		return byShallowChar.frontOr('\0');
-	}
-	
-	T firstCell(T:Cell = Cell)()
-	{//newline is not a valid first cell
-		if(auto r = getRow(0))
-			return cast(T) r.subCells.get(0);
-		return null;
-	}
-	
-	TextCursor homeCursor()
-	{ return TextCursor(this, ivec2(0)); }
-	TextCursor endCursor()
-	{ 
-		return TextCursor(this, ivec2(rowCount-1, lastRowLength)); 
-		/* auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; */ 
-	}
-	TextSelection allSelection(bool primary)
-	{ return TextSelection(homeCursor, endCursor, primary); }
-	
-	TextSelection lineSelection(bool selectWholeLine)(int line, bool primary)
-	{
-		auto y = line-1;
-		if(y.inRange(rows))
-		{
-			auto ts = TextSelection(TextCursor(this, ivec2(0, y)), primary);
-			if(selectWholeLine) ts.cursors[1].move(ivec2(TextCursor.end, 0));
-			return ts;
-		}
-		return TextSelection.init;
-	}
-	
-	TextSelection lineSelection_home(int line, bool primary)
-	{ return lineSelection!false(line, primary); }
-	
-	TextSelection cellSelection(int line, int column, bool primary)
-	{
-		auto ts = lineSelection_home(line, primary);
-		if(ts){
-			auto dx = (column-1).clamp(0, rowCharCount(ts.cursors[0].pos.y));
-			if(dx) ts.move(ivec2(dx, 0), false);
-		}
-		return ts;
-	}
-	
-	
-	@property string shallowText()
-	{
-		return rows.map!(r => r.shallowText).join(DefaultNewLine);
-		// \r\n is the default in std library
-	}
-	@property string deepText()
-	{
-		return rows.map!(r => r.deepText).join(DefaultNewLine);
-	}
-	
-	//index, location calculations
-	int maxIdx() const
-	{//inclusive end position
-		assert(rowCount>0);
-		return rows.map!(r => r.cellCount + 1/+newLine+/).sum - 1/+except last newLine+/;
-	}
-
-	ivec2 idx2pos(int idx) const
-	{
-		if(idx<0) return ivec2(0); //clamp to min
-		
-		const rowCount = this.rowCount;
-		assert(rowCount>0, "One row must present even when the CodeColumn is empty.");
-		int y;
-		while(1){
-			const actRowLen = rows[y].cellCount+1;
-			if(idx<actRowLen)
-			{
-				return ivec2(idx, y);
-			}
-			else
-			{
-				y++;
-				if(y<rowCount)
-				{
-					idx -= actRowLen;
-				}
-				else
-				{
-					return ivec2(rows[rowCount-1].cellCount, rowCount-1); //clamp to max
-				}
-			}
-		}
-	}
-	
-	int pos2idx(ivec2 p) const
-	{
-		if(p.y<0) return 0; //clamp to min
-		if(p.y>=rowCount) return maxIdx; //lamp to max
-		return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount);
-	}
-	
-	void setupBorder()
-	{
-		this.setRoundBorder(8);
-		margin.set(.5);
-		padding.set(.5, 4);
-	}
-	
-	override void rearrange()
-	{
-		setupBorder;
-		
-		//ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
-		auto rows = cast(Row[])subCells;
-		assert(rows.map!(a => cast(Row)a).all);
-		
-		if(rows.empty)
-		{
-			innerSize = DefaultFontEmptyEditorSize;
-		}
-		else
-		{
-			//measure and spread rows vertically rows
-			float y=0, maxW=0;
-			const totalGap = rows.front.totalGapSize; //note: assume all rows have the same margin, padding, border settings
-			foreach(r; rows){
-				r.measure;
-				r.outerPos = vec2(0, y);
-				y += r.innerHeight+totalGap.y;
-			}
-			
-			processElasticTabs(cast(Cell[])rows); //opt: apply this to a subset that has been remeasured
-			
-			const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
-			innerSize = vec2(maxInnerWidth + totalGap.x, y);
-			/+todo: this is not possible with the immediate UI because the autoWidth/autoHeigh 
-			information is lost. And there is no functions to return the required content size.
-			The container should have a current size, a minimal required size and separate autoWidth flags.+/
-
-			if(!flags.dontStretchSubCells)
-				foreach(r; rows) r.innerWidth = maxInnerWidth;
-		}
-
-		static if(rearrangeLOG) LOG("rearranging", this);
-	}
-	
-	void createElasticTabs()
-	{
-		//const t0=QPS; scope(exit) print(QPS-t0);
-		
-		bool detectTab(int x, int y)
-		{
-			if(cast(uint)y >= rowCount) return false;
-			with(rows[y])
-			{
-				if(cast(uint)x >= cellCount) return false;
-				return isCodeSpaces[x] && (x+1 >= cellCount || !isCodeSpaces[x+1]);
-			}
-		}
-		
-		bool[long] visited;
-		
-		static struct TabInfo{ int y, xStart, xTab; }
-		TabInfo[] newTabs;
-		
-		void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount)
-		{
-			if(!canGoDown && !canGoUp) return;
-			
-			//assume: x, y is a valid tab position
-			if(visited.get(x+(long(y)<<32))) return;
-			
-			int y0 = y;	 if(canGoUp  ) while(y0 > 0	&& detectTab(x, y0-1)) y0--;
-			int y1 = y;	 if(canGoDown) while(y1 < rowCount-1	&& detectTab(x, y1+1)) y1++;
-			
-			int maxLen = 0, minLen = int.max;
-			if(y0<y1)
-			foreach(yy; y0..y1+1)
-			with(rows[yy]) {
-				visited[x+(long(yy)<<32)] = true;
-				
-				int x0 = x; while(x0 > 0 && isCodeSpaces[x0-1]) x0--;
-				int x1 = x;
-				
-				int len = x1-x0+1;
-				maxLen.maximize(len);
-				minLen.minimize(len);
-			}
-			
-			if(maxLen>1)
-			{
-				
-				int xStartMin = 0;
-				if(!canGoUp) xStartMin = leadingSpaceCount.to!int;
-				//ez egy behuzas. Nem mehet balrabb a tab, mint a legfelso sor indent-je.
-				
-				//if(xStartMin>0) "------------------".print;
-				
-				foreach(yy; y0..y1+1)
-				with(rows[yy]){
-					int xStart	= x; while(xStart > xStartMin && isCodeSpaces[xStart-1]) xStart--;
-					int xTab	= x+1-minLen;
-					
-					newTabs ~= TabInfo(yy, xStart, xTab);
-					
-					//if(xStartMin>0) print(lines[yy].text, "         ", newTabs.back);
-				}
-			}
-		}
-		
-		//scan through all the rows and initiate floodFills
-		foreach(y, row; rows)
-		with(row){
-			int st = 0;
-			foreach(isSpace, len; isCodeSpaces.group)
-			{
-				const en = st + cast(int)len;
-				
-				if(isSpace && st>0)
-				{
-					bool canGoUp, canGoDown;
-					
-					if(len==1 && st>0 && chars[st-1].among('[', '('))
+					dr.lineWidth = .5f;
+					foreach(ti; tabIdxInternal)
 					{
-						canGoDown = true;
-						//todo: the tabs below this one should inherit the indent of this first line
-					}
-					else
-					{
-						canGoUp = canGoDown = canGoDown = len>=2;
-					}
-					
-					/+const leftChar = st>0 ? chars[st-1] : '\0';
-					const rightChar = en+1<len ? chars[en+1] : '\0';
-					if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;+/
-					
-					flood(en-1, cast(int)y, canGoUp, canGoDown, leadingCodeSpaceCount);
-				}
-				
-				st = en;
-			}
-		}
-		
-		//replace spaces with tabs
-		auto sortedTabs = newTabs.sort!((a, b) => cmpChain(cmp(a.y, b.y), cmp(b.xTab, a.xTab))<0); //x is descending!!
-		
-		int idx;
-		foreach(const tabInfo; sortedTabs)
-		with(rows[tabInfo.y]){
-			
-			//tabs on the previous line will split this tab if it is long enough
-			auto tabsOnPrevLine = sortedTabs[0..idx]	.retro
-				.until!(t => t.y< tabInfo.y-1)
-				.filter!(t => t.y==tabInfo.y-1);
-			auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1));
-			const tabCount = 1 + splitThisTabAt.walkLength;
-			//print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
-			replaceSpacesWithTabs(tabInfo.xStart, tabInfo.xTab, tabCount);
-			
-			idx++;
-		}
-		
-		//todo: bug with labels: c:\D\ldc2\import\std\internal\math\biguintcore.d search-> div3by2correction
-		
-	}
-
-	override void draw(Drawing dr)
-	{// draw ///////////////////////////////////
-		super.draw(dr);
-		
-		//visualize changed/created/modified
-		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
-	}
-
-}
-
-void test_CodeColumn()
-{
-	void test_RowCount(string src, int rowCount, string dst="*")
-	{
-		if(dst=="*") dst = src;
-		auto cc = scoped!CodeColumn(null);
-		cc.rebuilder.appendPlain(src);
-		void expect(T, U)(T a, U b)
-		{ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
-		expect(cc.rows.length, rowCount);
-		expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.shallowText).join('\n')));
-	}
-
-	test_RowCount("", 1);
-	test_RowCount(" ", 1);
-	test_RowCount("\n", 2);
-	test_RowCount("\n ", 2, "\n "); /+todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
-		 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
-		De ezt majd kesobb. Most minden tab lesz.+/
-	test_RowCount("\r\n", 2, "\n");
-	test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //todo: a tabokat visszaalakitani space-ra
-	test_RowCount(" \n \n \r\n ", 4, " \n \n \n "); //todo: a tabokat visszaalakitani space-ra
-}
-
-/// Label //////////////////////////////////////////
-
-enum LabelType{ folder, module_, mainRegion, subRegion }
-
-class Label : Row
-{
-	Cell reference;
-	bool alignRight;
-	
-	this(LabelType labelType, vec2 pos, string str, Cell reference=null)
-	{
-		this.reference = reference;
-		
-		auto ts = tsNormal;
-		ts.fontColor = clWhite;
-		ts.bkColor = clBlack;
-		ts.transparent = true;
-		
-		with(LabelType){
-			const isRegion = labelType.among(mainRegion, subRegion)!=0;
-			ts.fontHeight = isRegion ? 180 : 255;
-			ts.bold = false && labelType != subRegion;
-			alignRight = isRegion;
-		}
-		
-		with(flags){
-			noHitTest = true;
-			dontSearch = true;
-			dontLocate = true;
-			noBackground = true;
-		}
-		
-		outerPos = pos;
-		
-		//icon
-		Img icon;
-		if(labelType==LabelType.module_)
-			icon = new Img(File(`icon:\`~File(str).ext.lc));
-		else if(labelType==LabelType.folder)
-			icon = new Img(File(`icon:\folder\`));
-		
-		if(icon){
-			icon.innerSize = vec2(ts.fontHeight);
-			icon.transparent = true;
-			appendCell(icon);
-		}
-		
-		//text
-		appendStr(str, ts);
-		measure;
-	}
-	
-	void reposition()
-	{
-		if(reference){
-			outerX = alignRight ? reference.outerWidth-this.outerWidth : 0;
-			outerY = reference.outerY;
-		}
-	}
-}
-
-// FolderLabel //////////////////////////////////
-
-auto cachedFolderLabel(string folderPath)
-{
-	return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
-}
-
-//! Undo/History System ////////////////////////////////////
-/+
-
-		 ----------------------> o.item[0] --------------------------->
-															.item[n] --------------------------->
-				doModifications ->
-			<- unDoModifivations
-															o.when
-
-	 ---X---> loaded -----> modified --Y--> saved --X---> loaded --------->
-	 X = unable to nndo, must go bact to the latest 'loaded' event
-	 Y = nothing to undo
-+/
-
-string encodePrevAndNextSourceText(string prev, string act)
-{//todo: ezt kiprobalni jsonnal is, hogy van-e egyaltalan ennek a manualis cuccnak valami ertelme
-	return prev.length.to!string~"\\"~prev~act;
-}
-
-string[2] decodePrevAndNextSourceText(string s)
-{
-	auto a = s.splitter("\\");
-	if(!a.empty) try
-	{
-		auto snum = a.front;
-		const prevLen = snum.to!size_t;
-		s = s[snum.length+1..$];
-		if(prevLen<=s.length) return [s[0..prevLen], s[prevLen..$]];
-	}
-	catch(Exception)
-	{ }
-	return typeof(return).init;
-}
-
-struct TextModificationRecord
-{ string where, what; }
-
-struct TextModification
-{
-	bool isInsert;
-	TextModificationRecord[] modifications; //Must preserve order!!!!
-}
-
-struct UndoManager
-{
-	//bug: UndoManager is sticking to a module. If the module is renamed, I don't know what happens...
-	//opt: Loaded event is wasting a lot of memory. It should use differential text coding. And zip.
-	//todo: also store the textSelections in the undoevents
-	
-	private uint lastUndoGroupId;
-	
-	enum EventType
-	{ loaded, saved, modified }
-	
-	class Event
-	{
-		DateTime id; //unique ID
-		EventType type;
-		TextModification[] modifications;
-		Event[] items;
-		
-		Event parent;
-		
-		this(Event parent, DateTime id, EventType type, bool isInsert, string where, string what)
-		{
-			this.parent = parent;
-			this.id = id;
-			this.type = type;
-			modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
-		}
-		
-		override int opCmp(in Object b) const
-		{
-			auto bb = cast(Event)b;
-			return cmp(id, bb ? bb.id : DateTime.init);
-		}
-		
-		string summaryText(string insMark = "(+)", string delMark = "(-)", string moreMark="...", bool isQuoted=true)(int maxStrLen = 20) const
-		{
-			final switch(type)
-			{
-				case EventType.loaded: return "Loaded";
-				case EventType.saved : return "Saved";
-				case EventType.modified:{
-					string res;
-					int actStrLen, actMode; // 1:ins, -1:del
-					foreach(const m; modifications)
-					{
-						const nextMode = m.isInsert ? 1 : -1;
-						if(actMode.chkSet(nextMode))
-						{
-							const s = actMode>0 ? insMark : delMark;
-							res ~= s;
-							//no, because it could be a markup symbol: actStrLen += cast(int)s.walkLength;
+						assert(ti.inRange(subCells));
+						auto g = cast(Glyph)subCells.get(ti);
+						assert(g, "tabIdxInternal fail");
+						if(g){
+							dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
+							//const y = g.outerPos.y + g.outerHeight*.5f;
+							//dr.vLine(g.outerRight, y-2, y+2);
+							//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
 						}
-
-						//todo: detect backspace (text selections are going backwards, and reverse order)
-						foreach(mr; m.modifications)
-						foreach(ch; mr.what)
+					}
+				}
+				
+				//visualize spaces ------------------------------
+				dr.pointSize = 1;
+				foreach(g; glyphs.filter!(a => a && a.ch==' '))
+				{
+					assert(g);
+					dr.point(g.outerBounds.center);
+					/+todo: don't highlight single spaces only if there is a tab or character 
+					or end of line next to them.+/
+				}
+			}
+			
+			//visualize changed/created/modified
+			addGlobalChangeIndicator(dr, this/*, vec2(padding.left, innerHeight)*.5f*/);
+			
+			static if(rearrangeFlash)
+			if(now-rearrangeTime < 1*second)
+			{
+				dr.color = clGold;
+				dr.alpha = (1-(now-rearrangeTime).value(second)).sqr*.5f;
+				dr.fillRect(outerBounds);
+				dr.alpha = 1;
+			}
+		}
+	}
+}static struct CodeColumnBuilder(bool rebuild)
+{//CodeColumnBuilder /////////////////////////////////////////
+	
+	version(/+$DIDE_REGION+/all)
+	{
+		enum resyntax = !rebuild;
+		
+		CodeColumn col;
+		TextStyle tsWhitespace, ts;
+		SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace;
+		
+		CodeRow actRow;
+		bool skipNextN; //after \r, skip the next \n
+		
+		static if(rebuild)
+		{
+			void NL()
+			{ 
+				col.appendCell(actRow = new CodeRow(col, "", null)); 
+			}
+			
+			void initialize()
+			{
+				col.clearSubCells;
+				NL; //there must be 1 row always. Empty column is a single empty row.
+			}
+			
+			void appendChar(dchar ch)
+			{
+				switch(ch)
+				{
+					case '\n', '\r', '\u2028', '\u2029':
+						if(skipNextN.chkClear && ch=='\n') break;
+						skipNextN = ch=='\r';
+						NL;
+					break;
+					default: 
+						//update cached textStyle
+						if(_currentSk.chkSet(syntax))
+							applySyntax(ts, syntax);
+						
+						actRow.appendSyntaxChar(ch, ts, syntax); 
+				}
+			}
+			
+			void appendNode(CodeNode node)
+			{
+				assert(node);
+				assert(node.parent is actRow);
+				actRow.appendCell(node);
+			}
+		}
+	
+	}version(/+$DIDE_REGION+/all)
+	{
+		static if(resyntax)
+		{
+			
+			ivec2 actPos;
+			
+			void initialize()
+			{
+				//seek to the first character
+				actPos = ivec2(0);
+				actRow = col.rowCount ? col.rows[0] : null; //todo: there must be a first row.
+				enforce(actRow, "Resyntax: Invalid CodeColumn: No rows at all.");
+			}
+			
+			void moveToNextRow()
+			{
+				enforce(actRow.cellCount==actPos.x, "Resyntax: Longer row than expected. "~actPos.text);
+				actPos.y++;
+				actPos.x = 0;
+				actRow = actPos.y<col.rowCount ? col.rows[actPos.y] : null;
+				enforce("Resyntax: More rows expected. "~actPos.text);
+			}
+			
+			void moveToNextChar()
+			{ 
+				actPos.x++;
+				//this position is allowed to be out of range, because here comes the newline
+			}
+			
+			void appendChar(dchar ch)
+			{
+				switch(ch)
+				{
+					case '\n', '\r', '\u2028', '\u2029':
+						if(skipNextN.chkClear && ch=='\n') break;
+						skipNextN = ch=='\r';
+						moveToNextRow;
+					break;
+					default: 
+						/+debug 
+						//const prevSyntax = syntax; 
+						if(ch=='a') syntax = skKeyword; 
+						scope(exit) if(ch=='a') syntax = prevSyntax;
+						+/
+						
+						//update cached textStyle
+						if(_currentSk.chkSet(syntax))
+							applySyntax(ts, syntax);
+						
+						auto g = cast(Glyph)(actRow.subCells.get(actPos.x));
+						//opt: cache this array per each row
+						
+						enforce(g, "Resyntax: Glyph expected "~actPos.text);
+						enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text);
+						if(g.syntax.chkSet(syntax))
 						{
-							if(ch<32)
+							//syntaxChanged = true;
+							g.bkColor	= ts.bkColor;
+							g.fontColor	= ts.fontColor;
+							
+							const prevFontFlags = g.fontFlags;
+							g.fontFlags = ts.fontFlags;
+							if(auto delta = g.adjustBoldWidth(prevFontFlags))
 							{
-								static if(isQuoted)
+								actRow.needMeasure; 
+								//opt: cache this and call only once per each row
+								//todo: Ensure elastic tabs recursive spread.
+							}
+						}
+						moveToNextChar;
+				}
+			}
+			
+			void appendNode(CodeNode node)
+			{
+				auto n = cast(CodeNode)(actRow.subCells.get(actPos.x));
+				//opt: cache this array per each row
+				enforce(n, "Resyntax: Glyph expected "~actPos.text);
+				
+				//no need to check anything
+				//opt: no need to rebuild the node, only skip it.
+				
+				moveToNextChar;
+			}
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		
+		this(CodeColumn col)
+		{
+			this. col = col;
+			
+			tsWhitespace 	= tsNormal	; applySyntax(tsWhitespace	, skWhitespace	);
+			ts 	= tsWhitespace	; applySyntax(ts	, _currentSk	);
+			
+			initialize;
+		}
+		
+		void appendStr(string str)
+		{
+			foreach(dchar ch; str) appendChar(ch);
+		}
+		
+		void appendPlain(string sourceText)
+		{
+			syntax = skIdentifier1; //no skWhiteSpace handling either.
+			appendStr(sourceText);
+		}
+		
+		private void appendHighlighted_internal(string sourceText)
+		{
+			
+			static char categorize(dchar ch)
+			{ 
+				if(isAlphaNum(ch) || ch.among('_', '#', '@')) return 'a';
+				if(ch.among(' ', '\t', '\x0b', '\x0c')) return ' ';
+				return '+';
+			}
+			
+			foreach(s; sourceText.splitWhen!((a, b) => categorize(a) != categorize(b)).map!text)
+			{
+				switch(s[0])
+				{
+					case ' ', '\t', '\x0b', '\x0c': 	syntax = skWhitespace; 	break;
+					case '0': ..case '9':	syntax = skNumber; 	break;
+					case '#':	syntax = skDirective; 	break;
+					case '@':	syntax = skLabel; 	break;
+					
+					default:	if(s[0].isAlpha || s[0]=='_')
+						{ 
+							if(auto kw = kwLookup(s))
+							{
+								with(KeywordCat) 
+								switch(kwCatOf(kw))
 								{
-									const s = ch.text.quoted[1..$-1];
-									res ~= s;
-									actStrLen += s.length.to!int;
-
-									//compact \r\n into \n
-									if(res.endsWith(`\r\n`)){
-										res = res[0..$-4]~`\n`;
-										actStrLen -= 2;
-									}
+									case Attribute:	syntax = skAttribute;	break;
+									case Value:	syntax = skBasicType; 	break;
+									case BasicType:	syntax = skBasicType;	break;
+									case UserDefiniedType :	syntax = skKeyword;	break;
+									case SpecialFunct:	syntax = skAttribute;	break;
+									case SpecialKeyword:	syntax = skKeyword;	break;
+									default:	syntax = skKeyword;	break;
 								}
-								else
+							}
+							else syntax = skIdentifier1;
+						}
+						else if(s[0].isSymbol || s[0].isPunctuation)
+							syntax = skSymbol; 
+						else
+							syntax = skIdentifier1;
+				}
+				
+				appendStr(s);
+			}
+			
+			syntax = skIdentifier1;
+		}
+		
+		void appendHighlighted(string sourceText)
+		{ appendHighlighted	(sourceText.DLangScanner); }
+		void appendStructured(string sourceText)
+		{ appendStructured	(sourceText.DLangScanner); }
+		
+		void appendHighlighted(R)(R scanner) if(isScannerRange!R)
+		{ appendHighlightedOrStructured!false(scanner); }
+		void appendStructured(R)(R scanner) if(isScannerRange!R)
+		{ appendHighlightedOrStructured!true(scanner); }
+	}version(/+$DIDE_REGION+/all)
+	{
+		void appendHighlightedOrStructured(bool structured=false, R)(R scanner)
+		if(isScannerRange!R)
+		{
+			auto syntaxStack = [syntax];
+			while(!scanner.empty)
+			{ 
+				auto sr = scanner.front;
+				
+				//structural exit handling
+				static if(structured)
+				{
+					if(syntaxStack.length==1 && sr.op==ScanOp.pop)
+					{
+						//only read until the end of the current level
+						break; 
+					}
+				}
+				
+				void handleHighlightedPush()
+				{
+					syntaxStack ~= syntax;
+					switch(sr.src)
+					{
+						case "//", "/*", "/+":	syntax = skComment; 	appendStr(sr.src); 		break;
+						case "{", "(", "[":	syntax = skSymbol;	appendStr(sr.src);	syntax = skWhitespace; 	break;
+						case `q{`:	syntax = skString;	appendStr(sr.src);	syntax = skWhitespace;	break;
+						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`: 	syntax = skString;	appendStr(sr.src);		break;
+						default:	syntax = skError;	appendStr(sr.src);		break;
+						//todo: identifier quoted string `q"id`
+					}
+				}
+				
+				switch(sr.op)
+				{
+					case ScanOp.push:
+						{
+							static if(structured)
+							{
+								auto N(T)()
+								{ auto c = new T(actRow); c.rebuild(scanner); appendNode(c); }
+								switch(sr.src)
 								{
-									res ~= ('\u2400'+ch); //visual control chars
-									actStrLen += 1;
+									//todo: //comment must ensure that after it, there will be a NewLine
+									case "//":	N!CodeComment; appendChar('\n'); 	continue; 
+									case "/*", "/+",:	N!CodeComment;	continue; 
+									case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`: 	N!CodeString;	continue;
+									case "{", "(", "[":	N!CodeBlock;	continue;
+									default: handleHighlightedPush;
 								}
 							}
 							else
 							{
-								res ~= ch; actStrLen++;
+								handleHighlightedPush;
 							}
-							
-							if(actStrLen>=maxStrLen)
-								return res ~ moreMark;
 						}
+					break;
+					case ScanOp.pop:
+						if(syntaxStack.empty)
+						{
+							syntax = skError;
+							appendStr(sr.src);
+						}
+						else
+						{
+							if(!syntax.among(skComment, skString)) syntax = skSymbol;
+							appendStr(sr.src);
+							
+							syntax = syntaxStack.back;
+							syntaxStack.length--;
+							//todo: error checking for compatible closing tags. Maybe it can be implemented in the scanner too.
+						}
+					break;
+					//case ScanOp.trans: setSyntax(skError); break;
+					case ScanOp.content: 
+						if(syntax.among(skComment, skString))
+						{
+							appendStr(sr.src); 
+							//todo: highlight string escapes
+							//todo: advanced comment formatting
+						}
+						else
+						{
+							appendHighlighted_internal(sr.src);
+						}
+					break;
+					default:
+						syntax = skError; 
+						appendStr(sr.src); //todo: it should optionally raise an exception. Example: when a structural scan fails, it should revert to highlighted.
+				}
+				
+				scanner.popFront;
+			}
+			
+			col.convertSpacesToTabs(Yes.outdent);
+			col.needMeasure;
+		}
+	}
+}class CodeColumn: Column
+{// CodeColumn ////////////////////////////////////////////
+	version(/+$DIDE_REGION+/all)
+	{
+		//note: this is basically the CodeBlock
+		Container parent;
+		//CodeContext context;
+		
+		enum defaultSpacesPerTab = 4; //default in std library
+		int spacesPerTab = defaultSpacesPerTab; //autodetected on load
+		
+		DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
+		
+		/+deprecated("Only needed for compile.err builder") this(Container parent){
+			this(parent, ccPlain);
+		}+/
+		
+		/// Minimal constructor creating an empty codeColumn with 0 rows.
+		this(Container parent)
+		{
+			this.parent = parent;
+			//this.context = context;
+			//id.value = this.identityStr;  //id is not used anymore for this
+			
+			needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
+			flags.wordWrap	= false;
+			flags.clipSubCells	= true;
+			flags.cullSubCells	= true;
+			flags.columnElasticTabs = true;
+			bkColor = mix(clCodeBackground, clGray, .25f);
+		}
+		
+		this(Container parent_, Cell[][] cells)
+		{
+			this(parent_);
+			subCells = cast(Cell[])(cells.map!(r => new CodeRow(this, r)).array);
+			
+			//one row must always present.
+			if(subCells.empty) subCells ~= new CodeRow(this);
+		}
+		
+		bool empty() const
+		{ return !rows.length || rows.length==1 && rows[0].empty; }
+		
+		Cell singleCellOrNull()
+		{ return rows.length==1 ? rows[0].singleCellOrNull : null; }
+		
+		auto rebuilder()
+		{ return CodeColumnBuilder!true	(this); }
+		auto resyntaxer()
+		{ return CodeColumnBuilder!false	(this); }
+		
+		auto calcWhitespaceStats()
+		{
+			import het.tokenizer : WhitespaceStats;
+			WhitespaceStats whitespaceStats;
+			foreach(r; rows)
+			{//todo: optimize it somehow... Statistically...
+				if(!r.leadingCodeTabs.empty)
+				{
+					whitespaceStats.tabCnt++;
+				}
+				else
+				{
+					auto spaceCnt = r.leadingCodeSpaceCount;
+					whitespaceStats.addSpaceCnt(spaceCnt);
+				}
+			}
+			//note: this is just lame statistics to detect the size of a tab only for converting spaces to tabs.
+			return whitespaceStats;
+		}
+		
+		void convertSpacesToTabs(Flag!"outdent" outdent)
+		{
+			//todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
+			createElasticTabs;
+			
+			spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize);
+			//opt: this can be slow. Maybe put it on a keyboard shortcut.
+			
+			rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab));
+			
+			//outdent
+			if(outdent)
+			{
+				
+				bool isWhitespaceRow(CodeRow r)
+				{
+					return r.subCells.empty || r.subCells.all!((c){
+						if(auto g = cast(Glyph)c)
+							if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true;
+						return false;
+					});
+					//return r.leadingCodeTabCount<r.cellCount; 
+				}
+				
+				//remove first and last whitespace row
+				const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front);	if(firstRowRemoved) subCells.popFront;
+				const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back);	if(lastRowRemoved) subCells.popBack;
+				
+				//only rows that not only tabs are relevant
+				bool relevant(CodeRow r)
+				{
+					return r.subCells.any!((c){
+						if(auto g = cast(Glyph)c){
+							if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false;
+							return true;
+						}
+						if(cast(CodeComment)c) return false; //comments are irrelevant
+						return true;
+					});
+				}
+				//find minimum amount of tabs
+				const canIgnoreFirstRow = !firstRowRemoved && rows.drop(1).any!relevant;
+				auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant;
+				if(!relevantRows.empty)
+				{
+					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
+					if(numTabs)
+					foreach(r; rows)
+					if(r.leadingCodeTabCount>=numTabs){
+						r.subCells = r.subCells[numTabs..$];
+						r.refreshTabIdx;
+						/+note: no need to call needRefresh_elastic because all rows will be refreshed.
+						It's in convertSpacesToTabs which only kicks right after row creation.+/
 					}
-					return res;
+				}
+				else
+				{
+					//there are no relevant rows at all. : cleanup the tabs
+					foreach(r; rows)
+					if(auto cnt = r.leadingCodeTabCount)
+					{
+						r.subCells = r.subCells[cnt..$];
+						r.refreshTabIdx;
+					}
+				}
+			}
+			
+			needMeasure;
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		void createElasticTabs()
+		{
+			//const t0=QPS; scope(exit) print(QPS-t0);
+			
+			bool detectTab(int x, int y)
+			{
+				if(cast(uint)y >= rowCount) return false;
+				with(rows[y])
+				{
+					if(cast(uint)x >= cellCount) return false;
+					return isCodeSpaces[x] && (x+1 >= cellCount || !isCodeSpaces[x+1]);
+				}
+			}
+			
+			bool[long] visited;
+			
+			static struct TabInfo{ int y, xStart, xTab; }
+			TabInfo[] newTabs;
+			
+			void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount)
+			{
+				if(!canGoDown && !canGoUp) return;
+				
+				//assume: x, y is a valid tab position
+				if(visited.get(x+(long(y)<<32))) return;
+				
+				int y0 = y;	 if(canGoUp  ) while(y0 > 0	&& detectTab(x, y0-1)) y0--;
+				int y1 = y;	 if(canGoDown) while(y1 < rowCount-1	&& detectTab(x, y1+1)) y1++;
+				
+				int maxLen = 0, minLen = int.max;
+				if(y0<y1)
+				foreach(yy; y0..y1+1)
+				with(rows[yy]) {
+					visited[x+(long(yy)<<32)] = true;
+					
+					int x0 = x; while(x0 > 0 && isCodeSpaces[x0-1]) x0--;
+					int x1 = x;
+					
+					int len = x1-x0+1;
+					maxLen.maximize(len);
+					minLen.minimize(len);
+				}
+				
+				if(maxLen>1)
+				{
+					
+					int xStartMin = 0;
+					if(!canGoUp) xStartMin = leadingSpaceCount.to!int;
+					//ez egy behuzas. Nem mehet balrabb a tab, mint a legfelso sor indent-je.
+					
+					//if(xStartMin>0) "------------------".print;
+					
+					foreach(yy; y0..y1+1)
+					with(rows[yy]){
+						int xStart	= x; while(xStart > xStartMin && isCodeSpaces[xStart-1]) xStart--;
+						int xTab	= x+1-minLen;
+						
+						newTabs ~= TabInfo(yy, xStart, xTab);
+						
+						//if(xStartMin>0) print(lines[yy].text, "         ", newTabs.back);
+					}
+				}
+			}
+			
+			//scan through all the rows and initiate floodFills
+			foreach(y, row; rows)
+			with(row){
+				int st = 0;
+				foreach(isSpace, len; isCodeSpaces.group)
+				{
+					const en = st + cast(int)len;
+					
+					if(isSpace && st>0)
+					{
+						bool canGoUp, canGoDown;
+						
+						if(len==1 && st>0 && chars[st-1].among('[', '('))
+						{
+							canGoDown = true;
+							//todo: the tabs below this one should inherit the indent of this first line
+						}
+						else
+						{
+							canGoUp = canGoDown = canGoDown = len>=2;
+						}
+						
+						/+const leftChar = st>0 ? chars[st-1] : '\0';
+						const rightChar = en+1<len ? chars[en+1] : '\0';
+						if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;+/
+						
+						flood(en-1, cast(int)y, canGoUp, canGoDown, leadingCodeSpaceCount);
+					}
+					
+					st = en;
+				}
+			}
+			
+			//replace spaces with tabs
+			auto sortedTabs = newTabs.sort!((a, b) => cmpChain(cmp(a.y, b.y), cmp(b.xTab, a.xTab))<0); //x is descending!!
+			
+			int idx;
+			foreach(const tabInfo; sortedTabs)
+			with(rows[tabInfo.y]){
+				
+				//tabs on the previous line will split this tab if it is long enough
+				auto tabsOnPrevLine = sortedTabs[0..idx]	.retro
+					.until!(t => t.y< tabInfo.y-1)
+					.filter!(t => t.y==tabInfo.y-1);
+				auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1));
+				const tabCount = 1 + splitThisTabAt.walkLength;
+				//print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
+				replaceSpacesWithTabs(tabInfo.xStart, tabInfo.xTab, tabCount);
+				
+				idx++;
+			}
+			
+			//todo: bug with labels: c:\D\ldc2\import\std\internal\math\biguintcore.d search-> div3by2correction
+			
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		void resyntax(string sourceText)
+		{
+			//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
+			//todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
+			//todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
+			try{ 
+				resyntaxer.appendHighlighted(sourceText);
+			}catch(Exception e){
+				WARN(e.simpleMsg);
+			}
+		}
+		
+		override inout(Container) getParent() inout
+		{ return parent; }
+		override void setParent(Container p)
+		{ parent = p; }
+		
+		override void appendCell(Cell cell)
+		{
+			assert(cast(CodeRow)cell);
+			super.appendCell(cell);
+		}
+		
+		auto const rows()
+		{ return cast(CodeRow[])subCells; }
+		int rowCount() const
+		{ return cast(int)subCells.length; }
+		int lastRowIdx() const
+		{ return rowCount-1; }
+		int lastRowLength() const
+		{ return rows.back.cellCount; }
+		
+		auto getRow(int rowIdx)
+		{ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
+	
+		int rowCharCount(int rowIdx) const
+		{
+			//todo: it's ugly because of the constness. Make it nicer.
+			if(rowIdx.inRange(subCells))
+				return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length);
+			return 0;
+		}
+		
+		string rowShallowText(int rowIdx)
+		{ if(auto row = getRow(rowIdx)) return row.shallowText	; return ""; }
+		string rowDeepText(int rowIdx)
+		{ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
+		
+		auto byShallowChar()
+		{
+			return rows.map!(r => r.chars).joiner(only('\n'));
+		}
+		
+		dchar firstChar()
+		{
+			return byShallowChar.frontOr('\0');
+		}
+		
+		T firstCell(T:Cell = Cell)()
+		{//newline is not a valid first cell
+			if(auto r = getRow(0))
+				return cast(T) r.subCells.get(0);
+			return null;
+		}
+		
+		TextCursor homeCursor()
+		{ return TextCursor(this, ivec2(0)); }
+		TextCursor endCursor()
+		{ 
+			return TextCursor(this, ivec2(rowCount-1, lastRowLength)); 
+			/* auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; */ 
+		}
+		TextSelection allSelection(bool primary)
+		{ return TextSelection(homeCursor, endCursor, primary); }
+		
+		TextSelection lineSelection(bool selectWholeLine)(int line, bool primary)
+		{
+			auto y = line-1;
+			if(y.inRange(rows))
+			{
+				auto ts = TextSelection(TextCursor(this, ivec2(0, y)), primary);
+				if(selectWholeLine) ts.cursors[1].move(ivec2(TextCursor.end, 0));
+				return ts;
+			}
+			return TextSelection.init;
+		}
+		
+		TextSelection lineSelection_home(int line, bool primary)
+		{ return lineSelection!false(line, primary); }
+		
+		TextSelection cellSelection(int line, int column, bool primary)
+		{
+			auto ts = lineSelection_home(line, primary);
+			if(ts){
+				auto dx = (column-1).clamp(0, rowCharCount(ts.cursors[0].pos.y));
+				if(dx) ts.move(ivec2(dx, 0), false);
+			}
+			return ts;
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		@property string shallowText()
+		{
+			return rows.map!(r => r.shallowText).join(DefaultNewLine);
+			// \r\n is the default in std library
+		}
+		@property string deepText()
+		{
+			return rows.map!(r => r.deepText).join(DefaultNewLine);
+		}
+		
+		//index, location calculations
+		int maxIdx() const
+		{//inclusive end position
+			assert(rowCount>0);
+			return rows.map!(r => r.cellCount + 1/+newLine+/).sum - 1/+except last newLine+/;
+		}
+	
+		ivec2 idx2pos(int idx) const
+		{
+			if(idx<0) return ivec2(0); //clamp to min
+			
+			const rowCount = this.rowCount;
+			assert(rowCount>0, "One row must present even when the CodeColumn is empty.");
+			int y;
+			while(1){
+				const actRowLen = rows[y].cellCount+1;
+				if(idx<actRowLen)
+				{
+					return ivec2(idx, y);
+				}
+				else
+				{
+					y++;
+					if(y<rowCount)
+					{
+						idx -= actRowLen;
+					}
+					else
+					{
+						return ivec2(rows[rowCount-1].cellCount, rowCount-1); //clamp to max
+					}
 				}
 			}
 		}
 		
-		override string toString() const
-		{ return format!"UndoEvent(%s, %s, items:%d)"(id, summaryText, items.length); }
-		
-		Container createUI(Event actEvent)
+		int pos2idx(ivec2 p) const
 		{
-			static bool tsInitialized;
-			static TextStyle tsEvent;
-			if(tsInitialized.chkSet){
-				tsEvent = tsNormal; //opt: save this
-			}
-			
-			auto outer = new Row;
-			
-			Row inner;
-			with(inner = new Row)
-			{
-				padding = "2";
-				margin = "4";
-				border = "1 normal black";
-				
-				auto ts = tsEvent;
-				inner.appendMarkupLine(this.id.text~"\n"~summaryText!(tag("style fontColor=green"),
-					tag("style fontColor=red"),
-					tag("style fontColor=black")~"\u2026", false), ts);
-			}
-			
-			Row innerWithArrow;
-			with(innerWithArrow = new Row)
-			{
-				appendCell(inner);
-				innerWithArrow.appendStr(this is actEvent ?  "\U0001F846" : "\u2b95", tsEvent); //arrow
-			}
-			inner = innerWithArrow;
-			
-			outer.appendCell(inner);
-			
-			if(items.length==1)
-			{
-				outer.appendCell(items[0].createUI(actEvent)); //recursive
-			}
-			else if(items.length>1)
-			{
-				auto col = new Column;
-				outer.appendCell(col);
-				
-				foreach(item; items)
-					col.appendCell(item.createUI(actEvent)); //recursive
-			}
-			
-			return outer;
+			if(p.y<0) return 0; //clamp to min
+			if(p.y>=rowCount) return maxIdx; //lamp to max
+			return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount);
 		}
 		
-	}
-	
-	Event[DateTime] allEvents;
-	
-	private DateTime latestId; //used for unique id generation
-	
-	Event actEvent, rootEvent;
-	
-	protected bool executing; //when executing, disable the recording of events.
-	
-	Event oldestEvent()
-	{ return allEvents.byValue.minElement(null); }
-	Event newestEvent()
-	{ return allEvents.byValue.maxElement(null); }
-
-	bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
-
-	void justLoaded(File file, string contents)
-	{ addEvent(0, EventType.loaded, file.fullName, contents, false); }  //todo: fileName, fileContents for history
-	void justSaved(File file, string contents)
-	{ addEvent(0, EventType.saved, file.fullName, ""      , false); }
-	void justInserted(uint undoGroupId, string where, string what)
-	{ addEvent(undoGroupId, EventType.modified , where, what, true ); }
-	void justRemoved(uint undoGroupId, string where, string what)
-	{ addEvent(undoGroupId, EventType.modified , where, what, false); }
-	
-	void addEvent(uint undoGroupId, EventType type, string where, string what, bool isInsert)
-	{
-		if(executing) return;
-		
-		//append latest event in the same group
-		const	    extendLastGroup = type==EventType.modified
-			&& actEvent && actEvent.type==EventType.modified
-			&& actEvent.modifications.length
-			&& lastUndoGroupId==undoGroupId;
-		if(extendLastGroup)
+		void setupBorder()
 		{
-			assert(actEvent.modifications.back.isInsert==isInsert);
-			actEvent.modifications.back.modifications ~= TextModificationRecord(where, what);
+			this.setRoundBorder(8);
+			margin.set(.5);
+			padding.set(.5, 4);
 		}
-		else
+		
+		override void rearrange()
 		{
-			lastUndoGroupId = undoGroupId;
+			setupBorder;
 			
-			latestId.actualize;
-			//a new unique Id. This garantees that all child is newer than the parent.
-			//Takes 150ns to get the precise system time.
+			//ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
+			auto rows = cast(Row[])subCells;
+			assert(rows.map!(a => cast(Row)a).all);
 			
-			//fusion of modification.
-			const fusion = 		type == EventType.modified
-				&& 	actEvent
-				&&	actEvent.type == EventType.modified
-				&&	latestId-actEvent.id < .75*second;
-			if(fusion)
+			if(rows.empty)
 			{
-				actEvent.id = latestId;
-				actEvent.modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
+				innerSize = DefaultFontEmptyEditorSize;
 			}
 			else
 			{
-				if(!actEvent) assert(allEvents.empty);
-				auto e = new Event(actEvent, latestId, type, isInsert, where, what);
-				allEvents[e.id] = e;
-				if(actEvent) actEvent.items ~= e;
-				actEvent = e; //this is the new act
-				if(!rootEvent) rootEvent = e;
+				//measure and spread rows vertically rows
+				float y=0, maxW=0;
+				const totalGap = rows.front.totalGapSize; //note: assume all rows have the same margin, padding, border settings
+				foreach(r; rows){
+					r.measure;
+					r.outerPos = vec2(0, y);
+					y += r.innerHeight+totalGap.y;
+				}
+				
+				processElasticTabs(cast(Cell[])rows); //opt: apply this to a subset that has been remeasured
+				
+				const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
+				innerSize = vec2(maxInnerWidth + totalGap.x, y);
+				/+todo: this is not possible with the immediate UI because the autoWidth/autoHeigh 
+				information is lost. And there is no functions to return the required content size.
+				The container should have a current size, a minimal required size and separate autoWidth flags.+/
+	
+				if(!flags.dontStretchSubCells)
+					foreach(r; rows) r.innerWidth = maxInnerWidth;
 			}
+	
+			static if(rearrangeLOG) LOG("rearranging", this);
 		}
-	}
-	
-	bool canUndo()
-	{
-		return actEvent && actEvent !is rootEvent; //rootEvent must be a Load event. That can't be cancelled.
-	}
-	
-	void undo(void delegate(in TextModification) execute, void delegate(string where, string what) reload)
-	{
-		assert(!executing);
 		
-		if(!canUndo) return;
-		
-		executing = true; scope(exit) executing = false;
-		
-		bool again;
-		do{
-			again = false;
-			final switch(actEvent.type)
-			{
-				case EventType.modified: 	actEvent.modifications.retro.each!execute; break;
-				case EventType.saved:	again = true; break; //nothing happened, "save event" is it's just a marking for the user
-				case EventType.loaded:	reload(actEvent.modifications[0].modifications[0].where,
-					actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[0]); break;
-					//todo: ^^^^^^ ugly and needs range checking
-			}
-			actEvent = actEvent.parent;
-		}
-		while(again && canUndo);
-	}
-	
-	bool canRedo()
-	{
-		return actEvent && actEvent.items.length;
-	}
-	
-	void redo(void delegate(in TextModification) execute, void delegate(string where, string what) reload)
-	{//todo: refactor undo/redo. Too much copy paste.
-		if(!canRedo) return;
-		
-		executing = true; scope(exit) executing = false;
-		
-		bool again;
-		do{
-			actEvent = actEvent.items.back; //choose different path optionally
+		override void draw(Drawing dr)
+		{// draw ///////////////////////////////////
+			super.draw(dr);
 			
-			again = false;
-			final switch(actEvent.type)
+			//visualize changed/created/modified
+			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+		}
+		
+		static void selfTest()
+		{
+			void test_RowCount(string src, int rowCount, string dst="*")
 			{
-				case EventType.modified: 	actEvent.modifications.each!execute; break; //it's in reverse text selection order.
-				case EventType.saved: 	again = true; break; //nothing happened, "save event" is it's just a marking for the user
-				case EventType.loaded: 	reload(actEvent.modifications[0].modifications[0].where,
-					actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]); break;
-					//todo: ^^^^ ugly and needs range check
+				if(dst=="*") dst = src;
+				auto cc = scoped!CodeColumn(null);
+				cc.rebuilder.appendPlain(src);
+				void expect(T, U)(T a, U b)
+				{ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
+				expect(cc.rows.length, rowCount);
+				expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.shallowText).join('\n')));
+			}
+		
+			test_RowCount("", 1);
+			test_RowCount(" ", 1);
+			test_RowCount("\n", 2);
+			test_RowCount("\n ", 2, "\n "); /+todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
+				 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
+				De ezt majd kesobb. Most minden tab lesz.+/
+			test_RowCount("\r\n", 2, "\n");
+			test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //todo: a tabokat visszaalakitani space-ra
+			test_RowCount(" \n \n \r\n ", 4, " \n \n \n "); //todo: a tabokat visszaalakitani space-ra
+		}
+	}
+}
+version(/+$DIDE_REGION+/all)
+{
+	
+	/// Label //////////////////////////////////////////
+	
+	enum LabelType{ folder, module_, mainRegion, subRegion }
+	
+	class Label : Row
+	{
+		Cell reference;
+		bool alignRight;
+		
+		this(LabelType labelType, vec2 pos, string str, Cell reference=null)
+		{
+			this.reference = reference;
+			
+			auto ts = tsNormal;
+			ts.fontColor = clWhite;
+			ts.bkColor = clBlack;
+			ts.transparent = true;
+			
+			with(LabelType){
+				const isRegion = labelType.among(mainRegion, subRegion)!=0;
+				ts.fontHeight = isRegion ? 180 : 255;
+				ts.bold = false && labelType != subRegion;
+				alignRight = isRegion;
+			}
+			
+			with(flags){
+				noHitTest = true;
+				dontSearch = true;
+				dontLocate = true;
+				noBackground = true;
+			}
+			
+			outerPos = pos;
+			
+			//icon
+			Img icon;
+			if(labelType==LabelType.module_)
+				icon = new Img(File(`icon:\`~File(str).ext.lc));
+			else if(labelType==LabelType.folder)
+				icon = new Img(File(`icon:\folder\`));
+			
+			if(icon){
+				icon.innerSize = vec2(ts.fontHeight);
+				icon.transparent = true;
+				appendCell(icon);
+			}
+			
+			//text
+			appendStr(str, ts);
+			measure;
+		}
+		
+		void reposition()
+		{
+			if(reference){
+				outerX = alignRight ? reference.outerWidth-this.outerWidth : 0;
+				outerY = reference.outerY;
 			}
 		}
-		while(again && canRedo);
-
 	}
-
-	Container createUI()
+	
+	// FolderLabel //////////////////////////////////
+	
+	auto cachedFolderLabel(string folderPath)
 	{
-		return rootEvent ? rootEvent.createUI(actEvent) : null;
+		return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name));
 	}
-}
-
-void dumpDDoc(string src)
-{
-	print("----Original DDoc---------------------------------------------------");
-	LOG(src);
-	print("----Processed DDoc-------------------------------------------------");
-	string stack="*";
-	auto scanner = src.DDocScanner;
-	if(1) f: foreach(sr; scanner)
+	
+	void dumpDDoc(string src)
 	{
-		with(EgaColor)
-		switch(sr.op)
+		print("----Original DDoc---------------------------------------------------");
+		LOG(src);
+		print("----Processed DDoc-------------------------------------------------");
+		string stack="*";
+		auto scanner = src.DDocScanner;
+		if(1) f: foreach(sr; scanner)
 		{
-			case ScanOp.content:	{
-				if(stack[$-1]=='`') write(ltGreen(sr.src));
-				else if(stack[$-1]=='*') write(ltWhite(sr.src));
-				else write(ltBlue(sr.src));
-			} break;
-			case ScanOp.push:	{
-				write(yellow(sr.src));
-				stack ~= sr.src[0];
-			} break;
-			case ScanOp.pop:	{
-				write(yellow(sr.src));
-				stack.popBack;
-				if(stack.empty){ write(ltRed("Out of stack")); break f; }
-			} break;
-			case ScanOp.trans:	{
-				write(ltCyan(sr.src));
-			} break;
-			default:	{
-				write(EgaColor.ltRed(sr.op.text~":"~sr.src));
-			} break;
+			with(EgaColor)
+			switch(sr.op)
+			{
+				case ScanOp.content:	{
+					if(stack[$-1]=='`') write(ltGreen(sr.src));
+					else if(stack[$-1]=='*') write(ltWhite(sr.src));
+					else write(ltBlue(sr.src));
+				} break;
+				case ScanOp.push:	{
+					write(yellow(sr.src));
+					stack ~= sr.src[0];
+				} break;
+				case ScanOp.pop:	{
+					write(yellow(sr.src));
+					stack.popBack;
+					if(stack.empty){ write(ltRed("Out of stack")); break f; }
+				} break;
+				case ScanOp.trans:	{
+					write(ltCyan(sr.src));
+				} break;
+				default:	{
+					write(EgaColor.ltRed(sr.op.text~":"~sr.src));
+				} break;
+			}
+		}
+		print("---End of Processed DDoc----------------------------------------------");
+	}
+
+	
+	//! Undo/History System ////////////////////////////////////
+	/+
+	
+			 ----------------------> o.item[0] --------------------------->
+																.item[n] --------------------------->
+					doModifications ->
+				<- unDoModifivations
+																o.when
+	
+		 ---X---> loaded -----> modified --Y--> saved --X---> loaded --------->
+		 X = unable to nndo, must go bact to the latest 'loaded' event
+		 Y = nothing to undo
+	+/
+	
+	string encodePrevAndNextSourceText(string prev, string act)
+	{//todo: ezt kiprobalni jsonnal is, hogy van-e egyaltalan ennek a manualis cuccnak valami ertelme
+		return prev.length.to!string~"\\"~prev~act;
+	}
+	
+	string[2] decodePrevAndNextSourceText(string s)
+	{
+		auto a = s.splitter("\\");
+		if(!a.empty) try
+		{
+			auto snum = a.front;
+			const prevLen = snum.to!size_t;
+			s = s[snum.length+1..$];
+			if(prevLen<=s.length) return [s[0..prevLen], s[prevLen..$]];
+		}
+		catch(Exception)
+		{ }
+		return typeof(return).init;
+	}
+	
+	struct TextModificationRecord
+	{ string where, what; }
+	
+	struct TextModification
+	{
+		bool isInsert;
+		TextModificationRecord[] modifications; //Must preserve order!!!!
+	}
+	
+}struct UndoManager
+{
+	version(/+$DIDE_REGION+/all)
+	{
+	
+		//bug: UndoManager is sticking to a module. If the module is renamed, I don't know what happens...
+		//opt: Loaded event is wasting a lot of memory. It should use differential text coding. And zip.
+		//todo: also store the textSelections in the undoevents
+		
+		private uint lastUndoGroupId;
+		
+		enum EventType
+		{ loaded, saved, modified }
+		
+		class Event
+		{
+			DateTime id; //unique ID
+			EventType type;
+			TextModification[] modifications;
+			Event[] items;
+			
+			Event parent;
+			
+			this(Event parent, DateTime id, EventType type, bool isInsert, string where, string what)
+			{
+				this.parent = parent;
+				this.id = id;
+				this.type = type;
+				modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
+			}
+			
+			override int opCmp(in Object b) const
+			{
+				auto bb = cast(Event)b;
+				return cmp(id, bb ? bb.id : DateTime.init);
+			}
+			
+			string summaryText(string insMark = "(+)", string delMark = "(-)", string moreMark="...", bool isQuoted=true)(int maxStrLen = 20) const
+			{
+				final switch(type)
+				{
+					case EventType.loaded: return "Loaded";
+					case EventType.saved : return "Saved";
+					case EventType.modified:{
+						string res;
+						int actStrLen, actMode; // 1:ins, -1:del
+						foreach(const m; modifications)
+						{
+							const nextMode = m.isInsert ? 1 : -1;
+							if(actMode.chkSet(nextMode))
+							{
+								const s = actMode>0 ? insMark : delMark;
+								res ~= s;
+								//no, because it could be a markup symbol: actStrLen += cast(int)s.walkLength;
+							}
+	
+							//todo: detect backspace (text selections are going backwards, and reverse order)
+							foreach(mr; m.modifications)
+							foreach(ch; mr.what)
+							{
+								if(ch<32)
+								{
+									static if(isQuoted)
+									{
+										const s = ch.text.quoted[1..$-1];
+										res ~= s;
+										actStrLen += s.length.to!int;
+	
+										//compact \r\n into \n
+										if(res.endsWith(`\r\n`)){
+											res = res[0..$-4]~`\n`;
+											actStrLen -= 2;
+										}
+									}
+									else
+									{
+										res ~= ('\u2400'+ch); //visual control chars
+										actStrLen += 1;
+									}
+								}
+								else
+								{
+									res ~= ch; actStrLen++;
+								}
+								
+								if(actStrLen>=maxStrLen)
+									return res ~ moreMark;
+							}
+						}
+						return res;
+					}
+				}
+			}
+			
+			override string toString() const
+			{ return format!"UndoEvent(%s, %s, items:%d)"(id, summaryText, items.length); }
+			
+			Container createUI(Event actEvent)
+			{
+				static bool tsInitialized;
+				static TextStyle tsEvent;
+				if(tsInitialized.chkSet){
+					tsEvent = tsNormal; //opt: save this
+				}
+				
+				auto outer = new Row;
+				
+				Row inner;
+				with(inner = new Row)
+				{
+					padding = "2";
+					margin = "4";
+					border = "1 normal black";
+					
+					auto ts = tsEvent;
+					inner.appendMarkupLine(this.id.text~"\n"~summaryText!(tag("style fontColor=green"),
+						tag("style fontColor=red"),
+						tag("style fontColor=black")~"\u2026", false), ts);
+				}
+				
+				Row innerWithArrow;
+				with(innerWithArrow = new Row)
+				{
+					appendCell(inner);
+					innerWithArrow.appendStr(this is actEvent ?  "\U0001F846" : "\u2b95", tsEvent); //arrow
+				}
+				inner = innerWithArrow;
+				
+				outer.appendCell(inner);
+				
+				if(items.length==1)
+				{
+					outer.appendCell(items[0].createUI(actEvent)); //recursive
+				}
+				else if(items.length>1)
+				{
+					auto col = new Column;
+					outer.appendCell(col);
+					
+					foreach(item; items)
+						col.appendCell(item.createUI(actEvent)); //recursive
+				}
+				
+				return outer;
+			}
+			
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		Event[DateTime] allEvents;
+		
+		private DateTime latestId; //used for unique id generation
+		
+		Event actEvent, rootEvent;
+		
+		protected bool executing; //when executing, disable the recording of events.
+		
+		Event oldestEvent()
+		{ return allEvents.byValue.minElement(null); }
+		Event newestEvent()
+		{ return allEvents.byValue.maxElement(null); }
+	
+		bool hasAnyModifications() const{ return allEvents.byValue.any!(e => e.type == EventType.modified); }
+	
+		void justLoaded(File file, string contents)
+		{ addEvent(0, EventType.loaded, file.fullName, contents, false); }  //todo: fileName, fileContents for history
+		void justSaved(File file, string contents)
+		{ addEvent(0, EventType.saved, file.fullName, ""      , false); }
+		void justInserted(uint undoGroupId, string where, string what)
+		{ addEvent(undoGroupId, EventType.modified , where, what, true ); }
+		void justRemoved(uint undoGroupId, string where, string what)
+		{ addEvent(undoGroupId, EventType.modified , where, what, false); }
+		
+		void addEvent(uint undoGroupId, EventType type, string where, string what, bool isInsert)
+		{
+			if(executing) return;
+			
+			//append latest event in the same group
+			const	    extendLastGroup = type==EventType.modified
+				&& actEvent && actEvent.type==EventType.modified
+				&& actEvent.modifications.length
+				&& lastUndoGroupId==undoGroupId;
+			if(extendLastGroup)
+			{
+				assert(actEvent.modifications.back.isInsert==isInsert);
+				actEvent.modifications.back.modifications ~= TextModificationRecord(where, what);
+			}
+			else
+			{
+				lastUndoGroupId = undoGroupId;
+				
+				latestId.actualize;
+				//a new unique Id. This garantees that all child is newer than the parent.
+				//Takes 150ns to get the precise system time.
+				
+				//fusion of modification.
+				const fusion = 		type == EventType.modified
+					&& 	actEvent
+					&&	actEvent.type == EventType.modified
+					&&	latestId-actEvent.id < .75*second;
+				if(fusion)
+				{
+					actEvent.id = latestId;
+					actEvent.modifications ~= TextModification(isInsert, [TextModificationRecord(where, what)]);
+				}
+				else
+				{
+					if(!actEvent) assert(allEvents.empty);
+					auto e = new Event(actEvent, latestId, type, isInsert, where, what);
+					allEvents[e.id] = e;
+					if(actEvent) actEvent.items ~= e;
+					actEvent = e; //this is the new act
+					if(!rootEvent) rootEvent = e;
+				}
+			}
+		}
+		
+		bool canUndo()
+		{
+			return actEvent && actEvent !is rootEvent; //rootEvent must be a Load event. That can't be cancelled.
+		}
+		
+		void undo(void delegate(in TextModification) execute, void delegate(string where, string what) reload)
+		{
+			assert(!executing);
+			
+			if(!canUndo) return;
+			
+			executing = true; scope(exit) executing = false;
+			
+			bool again;
+			do{
+				again = false;
+				final switch(actEvent.type)
+				{
+					case EventType.modified: 	actEvent.modifications.retro.each!execute; break;
+					case EventType.saved:	again = true; break; //nothing happened, "save event" is it's just a marking for the user
+					case EventType.loaded:	reload(actEvent.modifications[0].modifications[0].where,
+						actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[0]); break;
+						//todo: ^^^^^^ ugly and needs range checking
+				}
+				actEvent = actEvent.parent;
+			}
+			while(again && canUndo);
+		}
+		
+		bool canRedo()
+		{
+			return actEvent && actEvent.items.length;
+		}
+		
+		void redo(void delegate(in TextModification) execute, void delegate(string where, string what) reload)
+		{//todo: refactor undo/redo. Too much copy paste.
+			if(!canRedo) return;
+			
+			executing = true; scope(exit) executing = false;
+			
+			bool again;
+			do{
+				actEvent = actEvent.items.back; //choose different path optionally
+				
+				again = false;
+				final switch(actEvent.type)
+				{
+					case EventType.modified: 	actEvent.modifications.each!execute; break; //it's in reverse text selection order.
+					case EventType.saved: 	again = true; break; //nothing happened, "save event" is it's just a marking for the user
+					case EventType.loaded: 	reload(actEvent.modifications[0].modifications[0].where,
+						actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]); break;
+						//todo: ^^^^ ugly and needs range check
+				}
+			}
+			while(again && canRedo);
+	
+		}
+	
+		Container createUI()
+		{
+			return rootEvent ? rootEvent.createUI(actEvent) : null;
 		}
 	}
-	print("---End of Processed DDoc----------------------------------------------");
-}
-
-class StructureMap
+}class StructureMap
 {//StructureMap //////////////////////////////////////////
 	
 	private static StructureMap collector;
@@ -3459,900 +3696,911 @@ class StructureMap
 		
 		needMeasure;
 	}
-}
-
-/// Module ///////////////////////////////////////////////
-interface WorkspaceInterface
+}version(/+$DIDE_REGION+/all)
 {
-	@property bool isReadOnly();
-}
-
-enum StructureLevel : ubyte
-{ plain, highlighted, structured, managed }
-
-class Module : CodeBlock
-{//this is any file in the project
-	File file;
-	
-	DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
-	size_t sizeBytes;  //todo: update this form the outside
-	
-	StructureLevel structureLevel;
-	static foreach(e; EnumMembers!StructureLevel)
-		mixin(format!q{@property is%s() const
-		{ return structureLevel == StructureLevel.%s; }}(e.text.capitalize, e.text));
-	
-	ModuleBuildState buildState;
-	bool isCompiling;
-
-	bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
-	
-	UndoManager undoManager;
-	
-	override SyntaxKind syntax() const
-	{ return skWhitespace; }
-	override string prefix() const
-	{ return ""; }
-	override string postfix() const
-	{ return ""; }
-	
-	this(Container parent, File file_)
+	/// Module ///////////////////////////////////////////////
+	interface WorkspaceInterface
 	{
-		super(parent);
-		bkColor = clModuleBorder;
-		fileLoaded = now;
-		file = file_.actualFile;
-		reload;
+		@property bool isReadOnly();
 	}
 	
-	override @property string identifier()
-	{
-		//todo: process the module statement.
-		return file.nameWithoutExt;
-	}
+	enum StructureLevel : ubyte
+	{ plain, highlighted, structured, managed }
 	
-	override @property string caption()
-	{
-		return file.name;
-	}
-	
-	///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
-	bool isReadOnly()
-	{
-		//return inputs["ScrollLockState"].active;
-		return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly;
-	}
-
-	void resetModuleTypeFlags()
-	{
-		isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
-	}
-
-	void detectModuleTypeFlags()
-	{
-		
-		bool isMainSomething(string ext)()
+	class Module : CodeBlock
+	{//this is any file in the project
+		version(/+$DIDE_REGION+/all)
 		{
-			if(content) if(auto r = content.getRow(0))
-			{ 
-				/+todo: this detector is not so nice...
-				Need to develop more advanced source code parsing methods.+/
+			File file;
+			
+			DateTime fileLoaded, fileModified, fileSaved; //opt: detect these times from the outside
+			size_t sizeBytes;  //todo: update this form the outside
+			
+			StructureLevel structureLevel;
+			static foreach(e; EnumMembers!StructureLevel)
+				mixin(format!q{@property is%s() const
+				{ return structureLevel == StructureLevel.%s; }}(e.text.capitalize, e.text));
+			
+			ModuleBuildState buildState;
+			bool isCompiling;
+		
+			bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
+			
+			UndoManager undoManager;
+			
+			override SyntaxKind syntax() const
+			{ return skWhitespace; }
+			override string prefix() const
+			{ return ""; }
+			override string postfix() const
+			{ return ""; }
+			
+			this(Container parent, File file_)
+			{
+				super(parent);
+				bkColor = clModuleBorder;
+				fileLoaded = now;
+				file = file_.actualFile;
+				reload;
+			}
+			
+			override @property string identifier()
+			{
+				//todo: process the module statement.
+				return file.nameWithoutExt;
+			}
+			
+			override @property string caption()
+			{
+				return file.name;
+			}
+			
+			///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
+			bool isReadOnly()
+			{
+				//return inputs["ScrollLockState"].active;
+				return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly;
+			}
+		
+			void resetModuleTypeFlags()
+			{
+				isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false;
+			}
+		
+			void detectModuleTypeFlags()
+			{
 				
-				//structured
-				if(auto c = cast(CodeComment)(r.subCells.get(0)))
-					if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true;
-				//highlighted/plain
-				if(sameText(r.shallowText.stripRight, "//@"~ext)) return true;
-			}
-			return false;
-		}
-		isMainExe = isMainSomething!"exe";
-		isMainDll = isMainSomething!"dll";
-		isMainLib = isMainSomething!"lib";
-		isMain = isMainExe || isMainDll || isMainLib;
-		
-		isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`);
-		//todo: detect compiler import path correctly
-		
-		isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err");
-		//todo: periodically chenck if file is exists and other attributes in the IDE
-	}
-	
-	void resyntax()
-	{
-		content.resyntax("UNUSED0"/*code.sourceText*/);
-	}
-	
-	void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents="")
-	{
-		fileModified = file.modified;
-		sizeBytes = file.size;
-		resetModuleTypeFlags;
-
-		auto prevSourceText = sourceText;
-		string sourceText = useExternalContents	? externalContents
-			: this.file.readText;
-		undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
-		
-		void doPlain()
-		{
-			try
-			{
-				content.rebuilder.appendPlain(sourceText);
-				structureLevel = StructureLevel.plain;
-			}
-			catch(Exception e)
-			{
-				raise("Fatal error. Unable to load module even in plain mode. "~file.text~"\n"~e.simpleMsg);
-			}
-		}
-		
-		void doHighlighted()
-		{
-			try
-			{
-				content.rebuilder.appendHighlighted(sourceText);
-				/+todo: this is NOT raising an exception, only draws the error with 
-				red and and display a WARN. It should revert to plain...+/
-				structureLevel = StructureLevel.highlighted;
-			}
-			catch(Exception e)
-			{
-				WARN("Unable to load module in highlighted mode. "~file.text~"\n"~e.simpleMsg);
-				doPlain;
-			}
-		}
-		
-		void doStructured()
-		{
-			try
-			{
-				content.rebuilder.appendStructured(sourceText); 
-				structureLevel = StructureLevel.structured;
-			}
-			catch(Exception e)
-			{
-				WARN("Unable to load module in structured mode. "~file.text~"\n"~e.simpleMsg);
-				doHighlighted;
-			}
-		}
-		
-		void doManaged()
-		{
-			doStructured; 
-			if(isStructured)
-			{
-				try
+				bool isMainSomething(string ext)()
 				{
-					processHighLevelPatterns(content);
-					structureLevel = StructureLevel.managed;
+					if(content) if(auto r = content.getRow(0))
+					{ 
+						/+todo: this detector is not so nice...
+						Need to develop more advanced source code parsing methods.+/
+						
+						//structured
+						if(auto c = cast(CodeComment)(r.subCells.get(0)))
+							if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true;
+						//highlighted/plain
+						if(sameText(r.shallowText.stripRight, "//@"~ext)) return true;
+					}
+					return false;
 				}
-				catch(Exception e)
-				{
-					WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg);
-					doStructured;
-				}
+				isMainExe = isMainSomething!"exe";
+				isMainDll = isMainSomething!"dll";
+				isMainLib = isMainSomething!"lib";
+				isMain = isMainExe || isMainDll || isMainLib;
+				
+				isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`);
+				//todo: detect compiler import path correctly
+				
+				isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err");
+				//todo: periodically chenck if file is exists and other attributes in the IDE
 			}
-		}
-		
-		enum targetLevel = StructureLevel.managed;
-		[&doPlain, &doHighlighted, &doStructured, &doManaged][targetLevel]();
-		
-		needMeasure;
-	}
-	
-	size_t linesOfCode()
-	{
-		return content.rowCount;
-		//todo: update this. only good for unstructured code.
-	}
-	
-	override void rearrange()
-	{
-		detectModuleTypeFlags;
-		super.rearrange;
-	}
-	
-	void save()
-	{
-		if(isReadOnly) return;
-		sourceText.saveTo(file, Yes.onlyIfChanged);
-		clearChanged;
-		fileModified = file.modified; //opt: slow
-		fileSaved = now;
-	}
-
-}
-
-
-// ErrorList ////////////////////////////////////////////
-
-auto createErrorListCodeColumn(Container parent)
-{
-	auto code = new CodeColumn(parent);
-	code.padding = "1";
-	code.flags.dontStretchSubCells = true;
-
-	import dide2; //todo: should not import main module.
-	auto buildResult = global_getBuildResult;
-	auto markerLayerHideMask = global_getMarkerLayerHideMask;
-
-	foreach(file; buildResult.remainings.keys.sort)
-	{
-		auto pragmas = buildResult.remainings[file];
-		if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-	}
-
-	with(im) code.append({
-		foreach(loc; buildResult.messages.keys.sort)
+		}version(/+$DIDE_REGION+/all)
 		{
-			auto msg = buildResult.messages[loc];
-			if(msg.parentLocation) continue;
-			if((1<<msg.type) & markerLayerHideMask) continue;
-			msg.UI(buildResult.subMessagesOf(msg.location));
-		}
-	});
-
-	return code;
-}
-
-
-//bug: ErrorListModule is fucked up
-deprecated class ErrorListModule : Module
-{// ErrorListModule ////////////////////////////////////////////////////////
-	this(Container parent, File file_)
-	{
-		super(parent, file_);
-		
-		reload;
-	}
-	
-	override bool isReadOnly()
-	{ return true; }
-	
-	override void resyntax()
-	{ }
-	
-	override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents="")
-	{
-		clearSubCells;
-		fileModified = now;
-		sizeBytes = 0; //todo: note this has no file.
-		resetModuleTypeFlags;
-		content = createErrorListCodeColumn(this); //todo: remake this with a parser
-		appendCell(enforce(content));
-		needMeasure;
-	}
-}
-
-
-// High level stuff ///////////////////////////////////
-
-RGB brighter(RGB a, float f)
-{
-	return (a.rgbToFloat*(1+f)).floatToRgb;
-}
-
-enum clPiko : RGB8
-{
-	G940 	= RGB(139, 59, 43).brighter(.25f),
-	G239 	= RGB(245, 156, 0),
-	G231 	= RGB(238, 114, 3),
-	G119 	= RGB(221, 11, 47).brighter(.35f),
-	G115 	= RGB(222, 0, 126),
-	G107 	= RGB(158, 25, 129),
-	G62 	= RGB(92, 36, 131).brighter(.25f),
-	R1 	= RGB(22, 186, 231),
-	R2 	= RGB(0, 134, 192),
-	R3 	= RGB(0, 105, 180),
-	R4 	= RGB(0, 79, 159),
-	R9 	= RGB(0, 48, 93),
-	W 	= RGB(134, 188, 37),
-	BW 	= RGB(101, 179, 46),
-	W3 	= RGB(0, 120, 88),
-	WY 	= RGB(0, 169, 132),
-	K15 	= RGB(255, 227, 126),
-	K30 	= RGB(255, 237, 0),
-	DKW 	= RGB(255, 204, 0),
-	GE31 	= RGB(157, 157, 156),
-}
-
-//bug mix(clOrange, clPiko.G119, .5).floatToRgb   FUCKING FAILS to compile!!!!
-
-RGB structuredColor(string name, RGB def = clGray)
-{
-	switch(name)
-	{
-		case "template":	return clPiko.G940;
-		case "enum":	return clPiko.G239;
-		case "alias":	return clPiko.G231;
-		case "if", "switch", "final switch", "else":	return clPiko.G119;
-		case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66);
-		case "version", "debug", "static if", "static foreach":	return mix(clPiko.G115, clPiko.G119, .5);
-		case "module", "import":	return clPiko.G107;
-		case "unittest":	return clPiko.G62;
+			void resyntax()
+			{
+				content.resyntax("UNUSED0"/*code.sourceText*/);
+			}
 			
-		case "section":	return clPiko.R1;
-		case "with":	return clPiko.R2;
-		case "__unused1":	return clPiko.R4;
-			
-		case "class":	return clPiko.W;
-		case "interface":	return clPiko.BW;
-		case "struct":	return clPiko.W3;
-		case "union":	return clPiko.WY;
-		case "mixin template":	return clPiko.K15;
-		case "mixin":	return clPiko.DKW;
-		case "statement":	return clGray;
-		case "function":	return clSilver;
-		case "__region":	return clGray;
-		default:	return def;
-	}
-}
-
-// keyword tables /////////////////////////////////////
-
-static immutable namedSymbols =
-[ //["none", ""] is mandatory
-	["none"	, ""	],   	["semicolon"	, ";"	],   	["colon"	, ":"	],   	["comma"	, ","	],
-	["equal"	, "="	],   	["question"	, "?"	],   	["block"	, "{"	],   	["params"	, "("	],
-];
-
-static immutable sentenceDetectionRules =
-[
-	["; = ? module import alias"	, ";"	],
-	["{ template unittest"	, "{"	],
-	["enum struct union class interface"	, "; {"	],
-	[":"	, ":"	],
-];
-
-static immutable prepositionPatterns =
-[
-	"with (",
-	"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (", "for iTO (",
-	"while (", 	"do",		
-	"version (", 	"debug (",  	"debug", 	
-	"if (", 	"static if (", 	"else if (", 	"else static if (",
-	"else", 	"else version (", 	"else debug (", 	"else debug", 
-	"switch (", 	"final switch (",		
-	"try", 	"catch (", 	"finally",	
-	"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
-	"__region", //decoded from: version(/+$D*DE_REGION title+/all)
-	//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
-].sort!"a>b".array;
-//note: descending order is important.  "debug (" must be checked before "debug"
-
-static immutable prepositionLinkingRules =
-[
-	[["do"	], ["while"	]],
-	[["if", "static if", "version", "debug", "else if", "else static if", "else version", "else debug"	], ["else", "else if", "else static if", "else version", "else debug"	]],
-	[["try", "catch"	], ["catch", "finally"	]]
-];
-
-static immutable attributeKeywords =
-[
-	"extern", "align", "deprecated",
-	"private", "package", "package", "protected", "public", "export",
-	"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
-	"const", "immutable", "inout", "shared", "__gshared", 
-	"nothrow", "pure", "ref", "return"
-];
-
-// keyword helper functions ///////////////////////////////////////////////
-
-alias nameOfSymbol = arraySwitch!(namedSymbols[].map!"a[1]", namedSymbols[].map!"a[0]");
-alias symbolOfName = arraySwitch!(namedSymbols[].map!"a[0]", namedSymbols[].map!"a[1]");
-
-bool isNamedSymbol(string symbol)
-{ return namedSymbols.map!"a[1]".canFind(symbol); }
-bool isSymbolName(string name)
-{ return namedSymbols.map!"a[0]".canFind(name); }
-
-string toSymbolEnum(string s)
-{
-	return isNamedSymbol(s) ? nameOfSymbol(s) : "_"~s;
-}
-
-/// do conversion from simple string symbols/identifiers to enum members
-/// "; : alias if" -> "semicolon, colon, _alias, _if"
-string toSymbolEnumList(string s)
-{
-	return s.split.filter!"a.length".map!toSymbolEnum.join(", ");
-}
-
-
-//todo: move to utils
-bool isDLangIdentifier(alias fStart=isDLangIdentifierStart, alias fCont=isDLangIdentifierCont, S)(in S s)
-{
-	auto a = s.byDchar;
-	if(a.empty) return false;
-	if(!a.front.unaryFun!fStart) return false;
-	a.popFront;
-	return a.all!(unaryFun!fCont);
-}
-
-alias isDLangNumber(S) = isDLangIdentifier!(isDLangNumberStart, isDLangNumberCont, S);
-
-auto genExtractIdentifiers(string ending)()
-{ 
-	return ending.format!q{ 
-		sentenceDetectionRules.filter!"a[1].canFind(`%s`)".map!"a[0].split".join.filter!(a => a.length && a[0].isDLangIdentifierStart).array //todo: isDLangIdentifier
-	};
-}
-
-static immutable 	prepositionKeywords 	= prepositionPatterns.map!(a => a.stripRight(" (=")).array.sort.uniq.array, 
- 	blockKeywords 	= mixin(genExtractIdentifiers!"{"),
-	statementKeywords 	= mixin(genExtractIdentifiers!";");
-
-static foreach(name; "preposition attribute statement block".split)
-{
-	mixin( format!q{
-		bool is%sKeyword	(string s){ return %sKeywords	.canFind(s); } 
-	}(name.capitalize, name) );
-}
-
-
-//getLeadingAttributesAndComments /////////////////////////////////////////
-
-/+auto getLeadingAttributesAndComments(Token[] tokens){
-	auto orig = tokens;
-
-	ref Token t(){ assert(tokens.length); return tokens[0]; }
-	void advance(){ assert(tokens.length); tokens = tokens[1..$]; }
-	void skipComments(){ while(t.isComment) advance; }
-	void skipBlock(){ auto level = t.level; while(!t.among!")"(level)) advance; advance; }
-
-	while(tokens.length){
-		if(t.isComment){              //comments
-			advance;
-		}else if(t.among!"@"){
-			advance; skipComments;
-			if(t.isIdentifier){         //@UDA
-				advance; skipComments;
-				if(t.among!"(") skipBlock;//@UDA(params)
-			}else if(t.among!"("){         //@(params)
-				skipBlock;
-			}else{
-				WARN("Garbage after @");  //todo: it is some garbage, what to do with the error
-				break;
-			}
-		}else if(t.isAttribute){      //attr
-			advance; skipComments;
-			if(t.among!"(") skipBlock;  //attr(params)
-		}else{
-			break; //reached the end normally
-		}
-	}
-
-	return orig[0..$-tokens.length];
-}+/
-
-
-auto withoutStartingSpace(Cell[][] a)
-{
-	if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
-	return a;
-}
-
-auto withoutEndingSpace(Cell[][] a)
-{
-	if(a.length && a.back.length) if(auto g = cast(Glyph)a.back.back) if(g.ch==' ') a.back = a.back[0..$-1];
-	return a;
-}
-
-
-class Declaration : CodeNode
-{// Declaration /////////////////////////////
-	CodeColumn attributes;
-	string keyword;
-	CodeColumn header, block;
-	char ending;
-	
-	CodeComment[] internalComments;
-	bool internalNewLine;
-	
-	bool explicitPrepositionBlock;
-	
-	Declaration nextJoinedPreposition;
-	
-	bool isBlock() const
-	{ return ending=='}'; }
-	bool isStatement() const
-	{ return ending==';'; }
-	bool isSection() const
-	{ return ending==':'; }
-	bool isPreposition() const
-	{ return ending==')'; }
-	
-	bool isRegion; //detected automatically
-	bool regionDisabled;
-	
-	Declaration lastJoinedPreposition()
-	{
-		auto d = this;
-		while(d.nextJoinedPreposition)
-			d = d.nextJoinedPreposition;
-		return d;
-	}
-	
-	Declaration[] allJoinedPrepositions()
-	{
-		Declaration[] res;
-		auto act = this;
-		while(act)
-		{
-			res ~= act;
-			act = act.nextJoinedPreposition;
-		}
-		return res;
-	}
-	
-	void appendJoinedPreposition(Declaration decl)
-	{
-		static bugcnt = 0;
-		if(!bugcnt++){ beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
+			void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents="")
+			{
+				fileModified = file.modified;
+				sizeBytes = file.size;
+				resetModuleTypeFlags;
 		
-		assert(decl && decl.isPreposition);
-		lastJoinedPreposition.nextJoinedPreposition = decl;
-	}
-	
-	Declaration nestedPreposition()
-	{
-		if(isPreposition)
-			if(auto a = cast(Declaration) block.singleCellOrNull)
-				if(a.isPreposition)
-					return a;
-		return null;
-	}
-	
-	Declaration[] allNestedPrepositions()
-	{
-		Declaration[] res;
-		auto act = this;
-		
-		while(act && act.isPreposition)
-		{
-			res ~= act;
-			act = act.nestedPreposition;
-		}
-		
-		return res;
-	}
-	
-	bool canHaveHeader() const
-	{
-		if(keyword.among("else", "unittest", "try", "finally", "do")) return false;
-		return true;
-	}
-	
-	bool isSimpleBlock() const
-	{ return isBlock && keyword=="" && header.empty && attributes.empty; }
-	
-	void verify(){
-		if(isBlock)
-		{
-			enforce(block, "Invalid null block.");
-			enforce(keyword=="" || keyword.isBlockKeyword, "Invalid declaration block keyword: "~keyword.quoted);
-		}
-		else if(isStatement)
-		{
-			enforce(keyword=="" || keyword.isStatementKeyword, "Invalid declaration statement keyword: "~keyword.quoted);
-		}
-		else if(isSection)
-		{
-			enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted);
-		}
-		else if(isPreposition)
-		{
-			enforce(keyword.isPrepositionKeyword, "Invalid declaration preposition keyword: "~keyword.quoted);
-		}
-		else
-			enforce(0, "Invalid declaration ending: "~ending.text.quoted);
-	}
-	
-	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
-	{
-		super(parent);
-		
-		auto detectInternalNewLine(Cell[][] a) //blabla
-		{
-			if(!isBlock) return a;
-			if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '"){
-				a.popBack; 
-				internalNewLine = true;
-			}
-			return a;
-		}
-		
-		this.keyword = keyword;
-		this.ending = ending;
-		this.block	= block; if(block) block.setParent(this);
-		this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
-		this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells	.withoutStartingSpace.withoutEndingSpace));
-		
-		decodeSpecial;
-		
-		verify;
-		
-		if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
-	}
-	
-	string type()
-	{
-		if(keyword.length) return keyword;
-		if(isStatement	) return "statement";
-		if(isPreposition	) return "preposition";
-		if(isSection	) return "section";
-		if(isBlock	) return "function";
-		return "";
-	}
-	
-	char opening() const
-	{ return ending.predSwitch('}', '{', ')', '(', ' '); }
-	
-	bool isLabel() const
-	{
-		if(!isSection) return false;
-		auto src = header.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
-		
-		while(!src.empty && src.front==' ') src.popFront;
-		
-		if(src.empty || !src.front.isDLangIdentifierStart) return false;
-		
-		string id = src.front.text;
-		src.popFront;
-		while(!src.empty && src.front.isDLangIdentifierCont)
-		{
-			id ~= src.front.text;
-			src.popFront;
-		}
-		
-		if(isAttributeKeyword(id)) return false;
-		
-		if(!src.all!"a==' '") return false; //something els at the end
-		
-		return true;;
-	}
-	
-	private bool _identifierValid; //todo: use Nullable!string
-	private string _identifier;
-	override @property string identifier()
-	{
-		
-		string calcIdentifier()
-		{
-			if(isBlock)
-			{ 
-				if(keyword=="")
+				auto prevSourceText = sourceText;
+				string sourceText = useExternalContents	? externalContents
+					: this.file.readText;
+				undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
+				
+				void doPlain()
 				{
-					auto s = header.extractThisLevelDString.text;
-					foreach(p; s.strip.split('(').retro.drop(1))
+					try
 					{
-						auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array;
-						if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back;
+						content.rebuilder.appendPlain(sourceText);
+						structureLevel = StructureLevel.plain;
+					}
+					catch(Exception e)
+					{
+						raise("Fatal error. Unable to load module even in plain mode. "~file.text~"\n"~e.simpleMsg);
 					}
 				}
-				if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+				
+				void doHighlighted()
 				{
-					return header.shallowText.strip.wordAt(0);
-					//todo: this is nasty!!! Should use proper DLang identifier detection.
+					try
+					{
+						content.rebuilder.appendHighlighted(sourceText);
+						/+todo: this is NOT raising an exception, only draws the error with 
+						red and and display a WARN. It should revert to plain...+/
+						structureLevel = StructureLevel.highlighted;
+					}
+					catch(Exception e)
+					{
+						WARN("Unable to load module in highlighted mode. "~file.text~"\n"~e.simpleMsg);
+						doPlain;
+					}
 				}
-			}
-			return "";
-		}
-		
-		if(_identifierValid.chkSet){
-			_identifier = calcIdentifier;
-		}
-		
-		return _identifier;
-	}
-	
-	override string caption()
-	{
-		//todo: cache this too
-		if(isRegion) return header.rowDeepText(0);
-		return identifier;
-	}
-	
-	private void decodeSpecial()
-	{
-		//note: only callable from within this(), as it does not reset flags.
-		
-		if(isPreposition && keyword=="version" && header.rowCount==1)
-		if(auto cmt = header.firstCell!CodeComment)
-		if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
-		if(cmt.isSpecialComment("REGION"))
-		{
-			//todo: extract "all" or "none" from version(). Handle enabled/disabled region.
-			
-			isRegion = true;
-			regionDisabled = optionIdx==2;
-			keyword = "__region";
-			
-			header = cmt.content;
-			header.setParent(this);
-			
-			//remove the marker
-			with(header.rows[0])
-			{
-				subCells = subCells[specialCommentMarker.length + "REGION".length .. $];
-				if(!subCells.empty && chars[0]==' ') subCells.popFront;
+				
+				void doStructured()
+				{
+					try
+					{
+						content.rebuilder.appendStructured(sourceText); 
+						structureLevel = StructureLevel.structured;
+					}
+					catch(Exception e)
+					{
+						WARN("Unable to load module in structured mode. "~file.text~"\n"~e.simpleMsg);
+						doHighlighted;
+					}
+				}
+				
+				void doManaged()
+				{
+					doStructured; 
+					if(isStructured)
+					{
+						try
+						{
+							processHighLevelPatterns(content);
+							structureLevel = StructureLevel.managed;
+						}
+						catch(Exception e)
+						{
+							WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg);
+							doStructured;
+						}
+					}
+				}
+				
+				enum targetLevel = StructureLevel.managed;
+				[&doPlain, &doHighlighted, &doStructured, &doManaged][targetLevel]();
+				
 				needMeasure;
 			}
 			
-			/* apply new colors.... Rather use comment colors.
+			size_t linesOfCode()
+			{
+				return content.rowCount;
+				//todo: update this. only good for unstructured code.
+			}
 			
-			const bkc = RGB(0x606060), fc = clWhite;
+			override void rearrange()
+			{
+				detectModuleTypeFlags;
+				super.rearrange;
+			}
 			
-			header.bkColor = bkc;
-			
-			foreach(r; header.rows){
-				foreach(c; r.subCells)
-					if(auto g = cast(Glyph)c){
-						g.bkColor = clRegionBk;
-						g.fontColor = clRegionFont;
-					}
-			}*/
-			
-			return;
+			void save()
+			{
+				if(isReadOnly) return;
+				sourceText.saveTo(file, Yes.onlyIfChanged);
+				clearChanged;
+				fileModified = file.modified; //opt: slow
+				fileSaved = now;
+			}
 		}
 	}
+}version(/+$DIDE_REGION ErrorList+/all)
+{// ErrorList ////////////////////////////////////////////
 	
-	bool isSpecial()
+	auto createErrorListCodeColumn(Container parent)
 	{
-		return isRegion;
-	}
+		auto code = new CodeColumn(parent);
+		code.padding = "1";
+		code.flags.dontStretchSubCells = true;
 	
-	override string sourceText()
-	{
-		//todo: handle invalid characters. Ensure valid syntax.
-		if(isPreposition)
+		import dide2; //todo: should not import main module.
+		auto buildResult = global_getBuildResult;
+		auto markerLayerHideMask = global_getMarkerLayerHideMask;
+	
+		foreach(file; buildResult.remainings.keys.sort)
 		{
-			if(isRegion)
-			{//todo: replace this with format!""
-				return 	"version(/+" ~
-					only(specialCommentMarker~"REGION",
-						header.deepText).join(' ') ~
-					"+/" ~ (regionDisabled ? "none":"all") ~ ")";
-			}
-			return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
+			auto pragmas = buildResult.remainings[file];
+			if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
 		}
-		return only(attributes.deepText,
-			keyword,
-			header.deepText,
-			isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
+	
+		with(im) code.append({
+			foreach(loc; buildResult.messages.keys.sort)
+			{
+				auto msg = buildResult.messages[loc];
+				if(msg.parentLocation) continue;
+				if((1<<msg.type) & markerLayerHideMask) continue;
+				msg.UI(buildResult.subMessagesOf(msg.location));
+			}
+		});
+	
+		return code;
 	}
 	
-	override void rearrange()
-	{
-		_identifierValid = false;
-		
-		//for debugging, the internalNewline can be overrided
-		bool IN(bool b){ return b; }
-		
-		auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
-		with(rh){
-			//set subColumn bkColors
-			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
+	
+	//bug: ErrorListModule is fucked up
+	deprecated class ErrorListModule : Module
+	{// ErrorListModule ////////////////////////////////////////////////////////
+		this(Container parent, File file_)
+		{
+			super(parent, file_);
 			
-			foreach(a; only(attributes, header)) 
-			if(a){
-				a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor;
+			reload;
+		}
+		
+		override bool isReadOnly()
+		{ return true; }
+		
+		override void resyntax()
+		{ }
+		
+		override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents="")
+		{
+			clearSubCells;
+			fileModified = now;
+			sizeBytes = 0; //todo: note this has no file.
+			resetModuleTypeFlags;
+			content = createErrorListCodeColumn(this); //todo: remake this with a parser
+			appendCell(enforce(content));
+			needMeasure;
+		}
+	}
+}
+version(/+$DIDE_REGION+/all)
+{
+	version(/+$DIDE_REGION+/all)
+	{
+		version(/+$DIDE_REGION color tables+/all)
+		{
+			
+			// High level stuff ///////////////////////////////////
+			
+			RGB brighter(RGB a, float f)
+			{
+				return (a.rgbToFloat*(1+f)).floatToRgb;
 			}
 			
-			enum showParens = false, showBraces = true;
+			enum clPiko : RGB8
+			{
+				G940 	= RGB(139, 59, 43).brighter(.25f),
+				G239 	= RGB(245, 156, 0),
+				G231 	= RGB(238, 114, 3),
+				G119 	= RGB(221, 11, 47).brighter(.35f),
+				G115 	= RGB(222, 0, 126),
+				G107 	= RGB(158, 25, 129),
+				G62 	= RGB(92, 36, 131).brighter(.25f),
+				R1 	= RGB(22, 186, 231),
+				R2 	= RGB(0, 134, 192),
+				R3 	= RGB(0, 105, 180),
+				R4 	= RGB(0, 79, 159),
+				R9 	= RGB(0, 48, 93),
+				W 	= RGB(134, 188, 37),
+				BW 	= RGB(101, 179, 46),
+				W3 	= RGB(0, 120, 88),
+				WY 	= RGB(0, 169, 132),
+				K15 	= RGB(255, 227, 126),
+				K30 	= RGB(255, 237, 0),
+				DKW 	= RGB(255, 204, 0),
+				GE31 	= RGB(157, 157, 156),
+			} RGB structuredColor(string name, RGB def = clGray)
+			{
+				switch(name)
+				{
+					case "template":	return clPiko.G940;
+					case "enum":	return clPiko.G239;
+					case "alias":	return clPiko.G231;
+					case "if", "switch", "final switch", "else":	return clPiko.G119;
+					case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66);
+					case "version", "debug", "static if", "static foreach":	return mix(clPiko.G115, clPiko.G119, .5);
+					case "module", "import":	return clPiko.G107;
+					case "unittest":	return clPiko.G62;
+						
+					case "section":	return clPiko.R1;
+					case "with":	return clPiko.R2;
+					case "__unused1":	return clPiko.R4;
+						
+					case "class":	return clPiko.W;
+					case "interface":	return clPiko.BW;
+					case "struct":	return clPiko.W3;
+					case "union":	return clPiko.WY;
+					case "mixin template":	return clPiko.K15;
+					case "mixin":	return clPiko.DKW;
+					case "statement":	return clGray;
+					case "function":	return clSilver;
+					case "__region":	return clGray;
+					default:	return def;
+				}
+			}
 			
+			//bug mix(clOrange, clPiko.G119, .5).floatToRgb   FUCKING FAILS to compile!!!!
+			
+		}
+		version(/+$DIDE_REGION keyword tables+/all)
+		{
+		
+			// keyword tables /////////////////////////////////////
+			
+			static immutable namedSymbols =
+			[ //["none", ""] is mandatory
+				["none"	, ""	],   	["semicolon"	, ";"	],   	["colon"	, ":"	],   	["comma"	, ","	],
+				["equal"	, "="	],   	["question"	, "?"	],   	["block"	, "{"	],   	["params"	, "("	],
+			];
+			
+			static immutable sentenceDetectionRules =
+			[
+				["; = ? module import alias"	, ";"	],
+				["{ template unittest"	, "{"	],
+				["enum struct union class interface"	, "; {"	],
+				[":"	, ":"	],
+			];
+			
+			static immutable prepositionPatterns =
+			[
+				"with (",
+				"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (", "for iTO (",
+				"while (", 	"do",		
+				"version (", 	"debug (",  	"debug", 	
+				"if (", 	"static if (", 	"else if (", 	"else static if (",
+				"else", 	"else version (", 	"else debug (", 	"else debug", 
+				"switch (", 	"final switch (",		
+				"try", 	"catch (", 	"finally",	
+				"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
+				"__region", //decoded from: version(/+$D*DE_REGION title+/all)
+				//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
+			].sort!"a>b".array;
+			//note: descending order is important.  "debug (" must be checked before "debug"
+			
+			static immutable prepositionLinkingRules =
+			[
+				[["do"	], ["while"	]],
+				[["if", "static if", "version", "debug", "else if", "else static if", "else version", "else debug"	], ["else", "else if", "else static if", "else version", "else debug"	]],
+				[["try", "catch"	], ["catch", "finally"	]]
+			];
+			
+			static immutable attributeKeywords =
+			[
+				"extern", "align", "deprecated",
+				"private", "package", "package", "protected", "public", "export",
+				"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
+				"const", "immutable", "inout", "shared", "__gshared", 
+				"nothrow", "pure", "ref", "return"
+			];
+		}
+	}version(/+$DIDE_REGION keyword helper fun+/all)
+	{// keyword helper functions ///////////////////////////////////////////////
+		
+		alias nameOfSymbol = arraySwitch!(namedSymbols[].map!"a[1]", namedSymbols[].map!"a[0]");
+		alias symbolOfName = arraySwitch!(namedSymbols[].map!"a[0]", namedSymbols[].map!"a[1]");
+		
+		bool isNamedSymbol(string symbol)
+		{ return namedSymbols.map!"a[1]".canFind(symbol); }
+		bool isSymbolName(string name)
+		{ return namedSymbols.map!"a[0]".canFind(name); }
+		
+		string toSymbolEnum(string s)
+		{
+			return isNamedSymbol(s) ? nameOfSymbol(s) : "_"~s;
+		}
+		
+		/// do conversion from simple string symbols/identifiers to enum members
+		/// "; : alias if" -> "semicolon, colon, _alias, _if"
+		string toSymbolEnumList(string s)
+		{
+			return s.split.filter!"a.length".map!toSymbolEnum.join(", ");
+		}
+		
+		
+		//todo: move to utils
+		bool isDLangIdentifier(alias fStart=isDLangIdentifierStart, alias fCont=isDLangIdentifierCont, S)(in S s)
+		{
+			auto a = s.byDchar;
+			if(a.empty) return false;
+			if(!a.front.unaryFun!fStart) return false;
+			a.popFront;
+			return a.all!(unaryFun!fCont);
+		}
+		
+		alias isDLangNumber(S) = isDLangIdentifier!(isDLangNumberStart, isDLangNumberCont, S);
+		
+		auto genExtractIdentifiers(string ending)()
+		{ 
+			return ending.format!q{ 
+				sentenceDetectionRules.filter!"a[1].canFind(`%s`)".map!"a[0].split".join.filter!(a => a.length && a[0].isDLangIdentifierStart).array //todo: isDLangIdentifier
+			};
+		}
+		
+		static immutable 	prepositionKeywords 	= prepositionPatterns.map!(a => a.stripRight(" (=")).array.sort.uniq.array, 
+		 	blockKeywords 	= mixin(genExtractIdentifiers!"{"),
+			statementKeywords 	= mixin(genExtractIdentifiers!";");
+		
+		static foreach(name; "preposition attribute statement block".split)
+		{
+			mixin( format!q{
+				bool is%sKeyword	(string s){ return %sKeywords	.canFind(s); } 
+			}(name.capitalize, name) );
+		}
+		
+		
+		//getLeadingAttributesAndComments /////////////////////////////////////////
+		
+		/+auto getLeadingAttributesAndComments(Token[] tokens){
+			auto orig = tokens;
+		
+			ref Token t(){ assert(tokens.length); return tokens[0]; }
+			void advance(){ assert(tokens.length); tokens = tokens[1..$]; }
+			void skipComments(){ while(t.isComment) advance; }
+			void skipBlock(){ auto level = t.level; while(!t.among!")"(level)) advance; advance; }
+		
+			while(tokens.length){
+				if(t.isComment){              //comments
+					advance;
+				}else if(t.among!"@"){
+					advance; skipComments;
+					if(t.isIdentifier){         //@UDA
+						advance; skipComments;
+						if(t.among!"(") skipBlock;//@UDA(params)
+					}else if(t.among!"("){         //@(params)
+						skipBlock;
+					}else{
+						WARN("Garbage after @");  //todo: it is some garbage, what to do with the error
+						break;
+					}
+				}else if(t.isAttribute){      //attr
+					advance; skipComments;
+					if(t.among!"(") skipBlock;  //attr(params)
+				}else{
+					break; //reached the end normally
+				}
+			}
+		
+			return orig[0..$-tokens.length];
+		}+/
+		
+		
+		auto withoutStartingSpace(Cell[][] a)
+		{
+			if(a.length && a.front.length) if(auto g = cast(Glyph)a.front.front) if(g.ch==' ') a.front = a.front[1..$];
+			return a;
+		}
+		
+		auto withoutEndingSpace(Cell[][] a)
+		{
+			if(a.length && a.back.length) if(auto g = cast(Glyph)a.back.back) if(g.ch==' ') a.back = a.back[0..$-1];
+			return a;
+		}
+	}
+}class Declaration : CodeNode
+{// Declaration /////////////////////////////
+	version(/+$DIDE_REGION+/all)
+	{
+		CodeColumn attributes;
+		string keyword;
+		CodeColumn header, block;
+		char ending;
+		
+		CodeComment[] internalComments;
+		bool internalNewLine;
+		
+		bool explicitPrepositionBlock;
+		
+		Declaration nextJoinedPreposition;
+		
+		bool isBlock() const
+		{ return ending=='}'; }
+		bool isStatement() const
+		{ return ending==';'; }
+		bool isSection() const
+		{ return ending==':'; }
+		bool isPreposition() const
+		{ return ending==')'; }
+		
+		bool isRegion; //detected automatically
+		bool regionDisabled;
+		
+		Declaration lastJoinedPreposition()
+		{
+			auto d = this;
+			while(d.nextJoinedPreposition)
+				d = d.nextJoinedPreposition;
+			return d;
+		}
+		
+		Declaration[] allJoinedPrepositions()
+		{
+			Declaration[] res;
+			auto act = this;
+			while(act)
+			{
+				res ~= act;
+				act = act.nextJoinedPreposition;
+			}
+			return res;
+		}
+		
+		void appendJoinedPreposition(Declaration decl)
+		{
+			static bugcnt = 0;
+			if(!bugcnt++){ beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
+			
+			assert(decl && decl.isPreposition);
+			lastJoinedPreposition.nextJoinedPreposition = decl;
+		}
+		
+		Declaration nestedPreposition()
+		{
+			if(isPreposition)
+				if(auto a = cast(Declaration) block.singleCellOrNull)
+					if(a.isPreposition)
+						return a;
+			return null;
+		}
+		
+		Declaration[] allNestedPrepositions()
+		{
+			Declaration[] res;
+			auto act = this;
+			
+			while(act && act.isPreposition)
+			{
+				res ~= act;
+				act = act.nestedPreposition;
+			}
+			
+			return res;
+		}
+		
+		bool canHaveHeader() const
+		{
+			if(keyword.among("else", "unittest", "try", "finally", "do")) return false;
+			return true;
+		}
+		
+		bool isSimpleBlock() const
+		{ return isBlock && keyword=="" && header.empty && attributes.empty; }
+		
+		void verify(){
 			if(isBlock)
 			{
-				if(isSimpleBlock)
-				{
-					/+todo: the transition from simpleBlock to non-simple block is not clear.
-					A boolean flag is needed to let the user write into the header.+/
-				}
-				else
-				{
-					if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-					if(canHaveHeader){ put(header); put(' '); } 
-				}
-				
-				if(internalComments.length) put(internalComments.length.format!" C%s ");
-				if(IN(internalNewLine)) put("\n    ");
-				
-				if(showBraces) put('{'); 
-				put(block); 
-				if(showBraces) put('}'); 
-				put(' ');
+				enforce(block, "Invalid null block.");
+				enforce(keyword=="" || keyword.isBlockKeyword, "Invalid declaration block keyword: "~keyword.quoted);
+			}
+			else if(isStatement)
+			{
+				enforce(keyword=="" || keyword.isStatementKeyword, "Invalid declaration statement keyword: "~keyword.quoted);
+			}
+			else if(isSection)
+			{
+				enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted);
 			}
 			else if(isPreposition)
 			{
-				if(isRegion)
-				{
-					header.bkColor = syntaxBkColor(skComment);
-					if(!header.empty){
-						put(header); 
-						if(IN(internalNewLine)) put('\n'); else put(' ');
-					}
-					put(block); 
-				}
-				else
-				{
-					void emit(Declaration decl)
-					{with(decl){
-						put(keyword);
-						put(' ');
-						if(canHaveHeader){ 
-							if(showParens) put('('); 
-							put(header); 
-							if(showParens) put(')'); 
-							put(' ');
-						}
-						
-						if(internalComments.length) put(internalComments.length.format!" C%s ");
-						//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
-						if(IN(internalNewLine)) put("\n    ");
-						
-						if(showBraces && explicitPrepositionBlock) put('{');
-						put(block); 
-						if(showBraces && explicitPrepositionBlock) put('}');
-						put(' ');
-						
-						if(nextJoinedPreposition)
-						{
-							if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
-							//note: It doesn't matter if the newline is bewore or	after or on both sides
-							//note: ...around an "else". As it is either joined horizontally or vertically.
-							emit(nextJoinedPreposition); //RECURSIVE!!!
-						}	
-					}}
-					
-					emit(this);
-				}
+				enforce(keyword.isPrepositionKeyword, "Invalid declaration preposition keyword: "~keyword.quoted);
 			}
 			else
-			{//statement or section
-				if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-				if(canHaveHeader){ put(header); } 
-				put(ending); 
-				put(' ');
-			}
+				enforce(0, "Invalid declaration ending: "~ending.text.quoted);
 		}
 		
-		super.rearrange;
-	}
-	
-	override void draw(Drawing dr)
-	{// draw ///////////////////////////////////
-		super.draw(dr);
-		
-		if(isRegion && regionDisabled)
+		this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
 		{
-			dr.color = syntaxBkColor(skComment); 
-			dr.alpha = .66; 
-			dr.fillRect(outerBounds);
+			super(parent);
 			
-			dr.lineWidth = 2;
-			dr.color = syntaxFontColor(skComment); 
-			dr.alpha = .5;
-			dr.drawX(outerBounds);
-			dr.alpha = 1;
-		}
-		/*if(lod.pixelSize>2){ //experimental node identifier display
-			auto id = identifier;
-			dr.fontHeight = lod.pixelSize*12;
-			if(outerHeight>=dr.fontHeight && id!=""){
-				
-				auto p = outerPos + vec2(max(0, outerWidth-dr.textWidth(id)), 0);
-				
-				dr.color = clBlack	; dr.fontBold = true	; dr.textOut(p, id);
-				dr.color = clWhite	; dr.fontBold = false	; dr.textOut(p, id);
+			auto detectInternalNewLine(Cell[][] a) //blabla
+			{
+				if(!isBlock) return a;
+				if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '"){
+					a.popBack; 
+					internalNewLine = true;
+				}
+				return a;
 			}
-		}*/
+			
+			this.keyword = keyword;
+			this.ending = ending;
+			this.block	= block; if(block) block.setParent(this);
+			this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
+			this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells	.withoutStartingSpace.withoutEndingSpace));
+			
+			decodeSpecial;
+			
+			verify;
+			
+			if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		string type()
+		{
+			if(keyword.length) return keyword;
+			if(isStatement	) return "statement";
+			if(isPreposition	) return "preposition";
+			if(isSection	) return "section";
+			if(isBlock	) return "function";
+			return "";
+		}
+		
+		char opening() const
+		{ return ending.predSwitch('}', '{', ')', '(', ' '); }
+		
+		bool isLabel() const
+		{
+			if(!isSection) return false;
+			auto src = header.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
+			
+			while(!src.empty && src.front==' ') src.popFront;
+			
+			if(src.empty || !src.front.isDLangIdentifierStart) return false;
+			
+			string id = src.front.text;
+			src.popFront;
+			while(!src.empty && src.front.isDLangIdentifierCont)
+			{
+				id ~= src.front.text;
+				src.popFront;
+			}
+			
+			if(isAttributeKeyword(id)) return false;
+			
+			if(!src.all!"a==' '") return false; //something els at the end
+			
+			return true;;
+		}
+		
+		private bool _identifierValid; //todo: use Nullable!string
+		private string _identifier;
+		override @property string identifier()
+		{
+			
+			string calcIdentifier()
+			{
+				if(isBlock)
+				{ 
+					if(keyword=="")
+					{
+						auto s = header.extractThisLevelDString.text;
+						foreach(p; s.strip.split('(').retro.drop(1))
+						{
+							auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array;
+							if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back;
+						}
+					}
+					if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+					{
+						return header.shallowText.strip.wordAt(0);
+						//todo: this is nasty!!! Should use proper DLang identifier detection.
+					}
+				}
+				return "";
+			}
+			
+			if(_identifierValid.chkSet){
+				_identifier = calcIdentifier;
+			}
+			
+			return _identifier;
+		}
+		
+		override string caption()
+		{
+			//todo: cache this too
+			if(isRegion) return header.rowDeepText(0);
+			return identifier;
+		}
+		
+		private void decodeSpecial()
+		{
+			//note: only callable from within this(), as it does not reset flags.
+			
+			if(isPreposition && keyword=="version" && header.rowCount==1)
+			if(auto cmt = header.firstCell!CodeComment)
+			if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
+			if(cmt.isSpecialComment("REGION"))
+			{
+				//todo: extract "all" or "none" from version(). Handle enabled/disabled region.
+				
+				isRegion = true;
+				regionDisabled = optionIdx==2;
+				keyword = "__region";
+				
+				header = cmt.content;
+				header.setParent(this);
+				
+				//remove the marker
+				with(header.rows[0])
+				{
+					subCells = subCells[specialCommentMarker.length + "REGION".length .. $];
+					if(!subCells.empty && chars[0]==' ') subCells.popFront;
+					needMeasure;
+				}
+				
+				/* apply new colors.... Rather use comment colors.
+				
+				const bkc = RGB(0x606060), fc = clWhite;
+				
+				header.bkColor = bkc;
+				
+				foreach(r; header.rows){
+					foreach(c; r.subCells)
+						if(auto g = cast(Glyph)c){
+							g.bkColor = clRegionBk;
+							g.fontColor = clRegionFont;
+						}
+				}*/
+				
+				return;
+			}
+		}
+		
+		bool isSpecial()
+		{
+			return isRegion;
+		}
+		
+		override string sourceText()
+		{
+			//todo: handle invalid characters. Ensure valid syntax.
+			if(isPreposition)
+			{
+				if(isRegion)
+				{//todo: replace this with format!""
+					return 	"version(/+" ~
+						only(specialCommentMarker~"REGION",
+							header.deepText).join(' ') ~
+						"+/" ~ (regionDisabled ? "none":"all") ~ ")";
+				}
+				return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
+			}
+			return only(attributes.deepText,
+				keyword,
+				header.deepText,
+				isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
+		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		override void rearrange()
+		{
+			_identifierValid = false;
+			
+			//for debugging, the internalNewline can be overrided
+			bool IN(bool b){ return b; }
+			
+			auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
+			with(rh){
+				//set subColumn bkColors
+				if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
+				
+				foreach(a; only(attributes, header)) 
+				if(a){
+					a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor;
+				}
+				
+				enum showParens = false, showBraces = true;
+				
+				if(isBlock)
+				{
+					if(isSimpleBlock)
+					{
+						/+todo: the transition from simpleBlock to non-simple block is not clear.
+						A boolean flag is needed to let the user write into the header.+/
+					}
+					else
+					{
+						if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+						if(canHaveHeader){ put(header); put(' '); } 
+					}
+					
+					if(internalComments.length) put(internalComments.length.format!" C%s ");
+					if(IN(internalNewLine)) put("\n    ");
+					
+					if(showBraces) put('{'); 
+					put(block); 
+					if(showBraces) put('}'); 
+					put(' ');
+				}
+				else if(isPreposition)
+				{
+					if(isRegion)
+					{
+						header.bkColor = syntaxBkColor(skComment);
+						if(!header.empty){
+							put(header); 
+							if(IN(internalNewLine)) put('\n'); else put(' ');
+						}
+						put(block); 
+					}
+					else
+					{
+						void emit(Declaration decl)
+						{with(decl){
+							put(keyword);
+							put(' ');
+							if(canHaveHeader){ 
+								if(showParens) put('('); 
+								put(header); 
+								if(showParens) put(')'); 
+								put(' ');
+							}
+							
+							if(internalComments.length) put(internalComments.length.format!" C%s ");
+							//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
+							if(IN(internalNewLine)) put("\n    ");
+							
+							if(showBraces && explicitPrepositionBlock) put('{');
+							put(block); 
+							if(showBraces && explicitPrepositionBlock) put('}');
+							put(' ');
+							
+							if(nextJoinedPreposition)
+							{
+								if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
+								//note: It doesn't matter if the newline is bewore or	after or on both sides
+								//note: ...around an "else". As it is either joined horizontally or vertically.
+								emit(nextJoinedPreposition); //RECURSIVE!!!
+							}	
+						}}
+						
+						emit(this);
+					}
+				}
+				else
+				{//statement or section
+					if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
+					if(canHaveHeader){ put(header); } 
+					put(ending); 
+					put(' ');
+				}
+			}
+			
+			super.rearrange;
+		}
+		
+		override void draw(Drawing dr)
+		{// draw ///////////////////////////////////
+			super.draw(dr);
+			
+			if(isRegion && regionDisabled)
+			{
+				dr.color = syntaxBkColor(skComment); 
+				dr.alpha = .66; 
+				dr.fillRect(outerBounds);
+				
+				dr.lineWidth = 2;
+				dr.color = syntaxFontColor(skComment); 
+				dr.alpha = .5;
+				dr.drawX(outerBounds);
+				dr.alpha = 1;
+			}
+			/*if(lod.pixelSize>2){ //experimental node identifier display
+				auto id = identifier;
+				dr.fontHeight = lod.pixelSize*12;
+				if(outerHeight>=dr.fontHeight && id!=""){
+					
+					auto p = outerPos + vec2(max(0, outerWidth-dr.textWidth(id)), 0);
+					
+					dr.color = clBlack	; dr.fontBold = true	; dr.textOut(p, id);
+					dr.color = clWhite	; dr.fontBold = false	; dr.textOut(p, id);
+				}
+			}*/
+		}
 	}
-}
-
-
-
-version(/+$DIDE_REGION parsing helper fun+/all)
+}version(/+$DIDE_REGION parsing helper fun+/all)
 {// parsing helper fun ////////////////////////////////////////////////
 	
 	dchar structuredCellToChar(Cell c)
@@ -4670,74 +4918,72 @@ version(/+$DIDE_REGION parsing helper fun+/all)
 		auto fetchUntil(int targetIdx){ processSrc!(Operation.fetch)(targetIdx); return resultCells; }
 		void transferWhitespaceAndComments(){ processSrc!(Operation.transfer, true)(srcDStr.length.to!int); }
 	}
-}
-
-auto findCellPattern(string[] patterns)(ref Cell[][] cellRows)
-{//findCellPattern ////////////////////////////////
-	
-	struct Result{
-		string pattern;
-		size_t idx;
+}version(/+$DIDE_REGION+/all)
+{
+	auto findCellPattern(string[] patterns)(ref Cell[][] cellRows)
+	{//findCellPattern ////////////////////////////////
 		
-		//CodeComment[] comments;
-		//int newLineCount;
+		struct Result{
+			string pattern;
+			size_t idx;
+			
+			//CodeComment[] comments;
+			//int newLineCount;
+			
+			bool opCast(T : bool)() const
+			{ return pattern!=""; }
+		}
+		Result res;
 		
-		bool opCast(T : bool)() const
-		{ return pattern!=""; }
-	}
-	Result res;
-	
-	foreach(pattern; patterns)
-	{
-		
-		static bugCnt=0;
-		if(!bugCnt++){ beep; ERR("MUST DETECT WORD BOUNDARIES!!!  `done` generates false positive `do` "); }
-		
-		auto src = cellRows.map
-		!(row => row.map!((cell){ 
-			//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
-			return cell.structuredCellToChar; 
-		}))
-		.joiner([dchar('\n')]);
-		
-		size_t idx;
-		bool match=true;
-		foreach(dchar pch; pattern)
+		foreach(pattern; patterns)
 		{
-			void step()
-			{ src.popFront; idx++; }
 			
-			void stepWhite(){ 
-				//if(pch=='\n') res.newLineCount++; //collect newlines
-				step; 
-			}
+			static bugCnt=0;
+			if(!bugCnt++){ beep; ERR("MUST DETECT WORD BOUNDARIES!!!  `done` generates false positive `do` "); }
 			
-			if(pch==' ')
+			auto src = cellRows.map
+			!(row => row.map!((cell){ 
+				//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
+				return cell.structuredCellToChar; 
+			}))
+			.joiner([dchar('\n')]);
+			
+			size_t idx;
+			bool match=true;
+			foreach(dchar pch; pattern)
 			{
-				while(!src.empty && src.front.among(' ', '\n')) stepWhite;
-			}
-			else
-			{
-				if(!src.empty && pch==src.front){ 
-					step;
-				}else{
-					match = false; 
-					break; 
+				void step()
+				{ src.popFront; idx++; }
+				
+				void stepWhite(){ 
+					//if(pch=='\n') res.newLineCount++; //collect newlines
+					step; 
+				}
+				
+				if(pch==' ')
+				{
+					while(!src.empty && src.front.among(' ', '\n')) stepWhite;
+				}
+				else
+				{
+					if(!src.empty && pch==src.front){ 
+						step;
+					}else{
+						match = false; 
+						break; 
+					}
 				}
 			}
+			if(match){
+				res.pattern = pattern;
+				res.idx = idx;
+				break;
+			}
 		}
-		if(match){
-			res.pattern = pattern;
-			res.idx = idx;
-			break;
-		}
-	}
-	
-	return res;
-}Declaration[] extractPrepositions(ref Cell[][] cellRows)
-{// extractPrepositions ///////////////////////////////
-	version(/+$DIDE_REGION+/all)
-	{
+		
+		return res;
+	}Declaration[] extractPrepositions(ref Cell[][] cellRows)
+	{// extractPrepositions ///////////////////////////////
 		Declaration[] res;
 		
 		int totalNewLineCount;
@@ -4780,8 +5026,7 @@ auto findCellPattern(string[] patterns)(ref Cell[][] cellRows)
 				totalComments 	= [];
 			}
 		}
-	}version(/+$DIDE_REGION+/all)
-	{
+		
 		void append(string keyword, Cell[][] paramCells)
 		{
 			//write("	"~keyword~"  "); //todo
@@ -4827,17 +5072,16 @@ auto findCellPattern(string[] patterns)(ref Cell[][] cellRows)
 		
 		return res;
 	}
-}
-
-
-struct DDeclarationRecord{
-	string type;
-	string header;
-}
-DDeclarationRecord[] dDeclarationRecords;
-
-
-void processHighLevelPatterns(CodeColumn col_)
+	
+	
+	struct DDeclarationRecord{
+		string type;
+		string header;
+	}
+	DDeclarationRecord[] dDeclarationRecords;
+	
+	
+}void processHighLevelPatterns(CodeColumn col_)
 {// processHighLevelPatterns ////////////////////////////////
 	
 	//generate Token enum from sentence detection rules.
@@ -4847,229 +5091,235 @@ void processHighLevelPatterns(CodeColumn col_)
 	with(proc)
 	with(DeclToken)
 	{
-		
-		Declaration receiver;
-		
-		void appendDeclaration(Declaration decl)
+		version(/+$DIDE_REGION+/all)
 		{
+			Declaration receiver;
 			
-			if(receiver)
+			void appendDeclaration(Declaration decl)
 			{
 				
-				if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition)
+				if(receiver)
 				{
-					//unpack the declaration block
-					receiver.explicitPrepositionBlock = true;
-					receiver.block = decl.block;
-					receiver.block.setParent(receiver);
-				}
-				else
-				{
-					auto row = receiver.block.rows.back;
-					row.appendCell(decl);
-					decl.setParent(row);
-				}
-				
-				if(decl.isPreposition)
-					receiver = decl;
-				else if(decl.isStatement || decl.isBlock) 
-					receiver = null;
-				else if(decl.isSection)
-				{
-					if(!decl.isLabel) receiver = null;
-					/+note: A preposition can receive any number of labels, but only one attribute section. +/
-				} 
-				else
-					assert(0, "Unidentified declaration type");
-			}
-			else
-			{
-				proc.appendCell(decl);
-				
-				if(decl.isPreposition) receiver = decl;
-			}
-			
-		}void joinPrepositions()
-		{
-			size_t backTrackCount = 0;
-			
-			Declaration findSrcPreposition(in string[] validKeywords)
-			{
-				
-				Declaration recursiveSearch(Declaration decl)
-				{
-					Declaration res;
-					if(decl) foreach_reverse(d; decl.allNestedPrepositions)
+					
+					if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition)
 					{
-						d = d.lastJoinedPreposition;
-						if(validKeywords.canFind(d.keyword))
-						{ 
-							enum danglingIsValid = true;
-							static if(danglingIsValid)
-							{
-								return d; //return the nearest match
-							}
-							else
-							{
-								if(!res) 	res = d;
-								else	return null; //multiple opportinities means: dangling
-								/*todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
-									and ensure that no other propositions could join to them. */
-							}
-							
-						}
-					}
-					return res;
-				}
-				
-				backTrackCount = 1; //first is the dstPreposition, it's always dropped
-				auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
-				while(!a.empty)
-				{ 
-					if(a.front is null)
-					{
-						//note: this newline is in front of the else.
-						//Currently the trigger to put the else on a new line is the newline after the else.
-						//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
-					}
-					else if(a.front.isWhitespaceOrComment)
-					{
-						//todo: collect the comment and and at least make a WARN
-						if(auto cmt = cast(CodeComment) a.front) WARN("Lost comment: "~cmt.sourceText);
+						//unpack the declaration block
+						receiver.explicitPrepositionBlock = true;
+						receiver.block = decl.block;
+						receiver.block.setParent(receiver);
 					}
 					else
-						break;
+					{
+						auto row = receiver.block.rows.back;
+						row.appendCell(decl);
+						decl.setParent(row);
+					}
 					
-					//advance
-					a.popFront;
-					backTrackCount++;
-				}
-				auto rootDecl = cast(Declaration) a.frontOrNull;
-				
-				//dstPrepositionRootDecl = rootDecl; //return this on the side
-				return recursiveSearch(rootDecl);
-			}
-			
-			if(auto row = dst.backOrNull)
-				if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
-					if(dstPreposition.isPreposition)
-						foreach(rule; prepositionLinkingRules)
-							if(rule[1].canFind(dstPreposition.keyword))
-							{
-								if(auto srcPreposition = findSrcPreposition(rule[0]))
-								{
-									//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
-									
-									//backTrack until the receiver
-									assert(backTrackCount>0);
-									auto removed = dst.removeBack(backTrackCount);
-									dstPreposition.internalComments ~= removed.comments;
-									dstPreposition.internalNewLine |= removed.newLineCount > 0;
-									
-									srcPreposition.appendJoinedPreposition(dstPreposition);
-								}
-								break; //dstPreposition can present in only one rule
-							}
-		}while(tokens.length)
-		{
-			transferWhitespaceAndComments; //these comments are going into the body of the block
-			
-			const main = tokens.front;
-			auto mainIsKeyword()
-			{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
-			sw: switch(main.token)
-			{
-				static foreach(a; sentenceDetectionRules)
-					mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
-				default:	fetchSingleToken;
-			}
-			const ending = sentence.back;
-			
-			const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
-			const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
-			
-			if(endingChar.among(';', '}', ':'))
-			{
-				
-				Cell[][] attrs;
-				if(keyword != ""){
-					attrs = fetchUntil(main.pos);
-					skipUntil(main.end);
-				}
-				
-				auto header = fetchUntil(ending.pos);
-				
-				CodeColumn block;
-				if(endingChar.among(';', ':', '('))
-				{
-					skipUntil(ending.end);
-				}
-				else if(endingChar == '}')
-				{
-					auto container = fetchUntil(ending.end);
-					block = (cast(CodeBlock) container.front.front).content;
+					if(decl.isPreposition)
+						receiver = decl;
+					else if(decl.isStatement || decl.isBlock) 
+						receiver = null;
+					else if(decl.isSection)
+					{
+						if(!decl.isLabel) receiver = null;
+						/+note: A preposition can receive any number of labels, but only one attribute section. +/
+					} 
+					else
+						assert(0, "Unidentified declaration type");
 				}
 				else
-					enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
+				{
+					proc.appendCell(decl);
+					
+					if(decl.isPreposition) receiver = decl;
+				}
 				
-				auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
-					new Declaration(null, attrs, keyword, header, block, endingChar);
-				
-				foreach(decl; declarationChain) appendDeclaration(decl);
-				
-				//collect statistics
-				/+if(1) dDeclarationRecords ~= DDeclarationRecord(
-					only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
-					(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
-				);+/
-				
-				joinPrepositions;
-				
-				//print(dDeclarationRecords.back);
 			}
-			else
+			void joinPrepositions()
 			{
-				ERR("Unhandled token"~ending.text);
-				transferUntil(ending.end);
+				size_t backTrackCount = 0;
+				
+				Declaration findSrcPreposition(in string[] validKeywords)
+				{
+					
+					Declaration recursiveSearch(Declaration decl)
+					{
+						Declaration res;
+						if(decl) foreach_reverse(d; decl.allNestedPrepositions)
+						{
+							d = d.lastJoinedPreposition;
+							if(validKeywords.canFind(d.keyword))
+							{ 
+								enum danglingIsValid = true;
+								static if(danglingIsValid)
+								{
+									return d; //return the nearest match
+								}
+								else
+								{
+									if(!res) 	res = d;
+									else	return null; //multiple opportinities means: dangling
+									/*todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
+										and ensure that no other propositions could join to them. */
+								}
+								
+							}
+						}
+						return res;
+					}
+					
+					backTrackCount = 1; //first is the dstPreposition, it's always dropped
+					auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
+					while(!a.empty)
+					{ 
+						if(a.front is null)
+						{
+							//note: this newline is in front of the else.
+							//Currently the trigger to put the else on a new line is the newline after the else.
+							//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
+						}
+						else if(a.front.isWhitespaceOrComment)
+						{
+							//todo: collect the comment and and at least make a WARN
+							if(auto cmt = cast(CodeComment) a.front) WARN("Lost comment: "~cmt.sourceText);
+						}
+						else
+							break;
+						
+						//advance
+						a.popFront;
+						backTrackCount++;
+					}
+					auto rootDecl = cast(Declaration) a.frontOrNull;
+					
+					//dstPrepositionRootDecl = rootDecl; //return this on the side
+					return recursiveSearch(rootDecl);
+				}
+				
+				if(auto row = dst.backOrNull)
+					if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
+						if(dstPreposition.isPreposition)
+							foreach(rule; prepositionLinkingRules)
+								if(rule[1].canFind(dstPreposition.keyword))
+								{
+									if(auto srcPreposition = findSrcPreposition(rule[0]))
+									{
+										//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
+										
+										//backTrack until the receiver
+										assert(backTrackCount>0);
+										auto removed = dst.removeBack(backTrackCount);
+										dstPreposition.internalComments ~= removed.comments;
+										dstPreposition.internalNewLine |= removed.newLineCount > 0;
+										
+										srcPreposition.appendJoinedPreposition(dstPreposition);
+									}
+									break; //dstPreposition can present in only one rule
+								}
 			}
-		
+		}version(/+$DIDE_REGION+/all)
+		{
+			while(tokens.length)
+			{
+				transferWhitespaceAndComments; //these comments are going into the body of the block
+				
+				const main = tokens.front;
+				auto mainIsKeyword()
+				{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
+				sw: switch(main.token)
+				{
+					static foreach(a; sentenceDetectionRules)
+						mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
+					default:	fetchSingleToken;
+				}
+				const ending = sentence.back;
+				
+				const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
+				const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
+				
+				if(endingChar.among(';', '}', ':'))
+				{
+					
+					Cell[][] attrs;
+					if(keyword != ""){
+						attrs = fetchUntil(main.pos);
+						skipUntil(main.end);
+					}
+					
+					auto header = fetchUntil(ending.pos);
+					
+					CodeColumn block;
+					if(endingChar.among(';', ':', '('))
+					{
+						skipUntil(ending.end);
+					}
+					else if(endingChar == '}')
+					{
+						auto container = fetchUntil(ending.end);
+						block = (cast(CodeBlock) container.front.front).content;
+					}
+					else
+						enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
+					
+					auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
+						new Declaration(null, attrs, keyword, header, block, endingChar);
+					
+					foreach(decl; declarationChain) appendDeclaration(decl);
+					
+					//collect statistics
+					/+if(1) dDeclarationRecords ~= DDeclarationRecord(
+						only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
+						(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
+					);+/
+					
+					joinPrepositions;
+					
+					//print(dDeclarationRecords.back);
+				}
+				else
+				{
+					ERR("Unhandled token"~ending.text);
+					transferUntil(ending.end);
+				}
+			
+			}
 		}
 	}
 }
 
 
 // Test codes ////////////////////////////////////////
-
-unittest { hello; }public mixin template TestMixinTemplate(){ int a; int b; }
-public template TestTemplate(){ int a; int b; }
-public alias aaa = TestClass2;
-public enum TestEnum = 5, TestEnum2 = 6;
-public enum TestBlock : int {a = 5, b = a}
-public struct TestStruct{ int a; int b; }
-public union TestUnion{ int a; int b; }
-public class TestClass1 { int a; int b; }
-public class TestClass2 : TestClass1 { }
-public interface TestInterface { int a(); int b(); }
-public:
-public{
-	public int kkk;
-	public int iii=5, jjj=6;
-	const xxxx0 = 0x0.5p3;
-	public int function() funcptrdecl;
-	public int forward();
-	public int hello(){ label1: label2: return 1 ? 2 : 3; }
-}
-
-struct OpaqueStruct; union OpaqueUnion; class OpaqueClass; interface OpaqueInterface;
-struct OpaqueStruct2(T); union OpaqueUnion2(T);
-
-static if(1==1):
-
-struct SSSS1{
-	static if(0) private: public:  //must encapsulate only "private:" 
-}
-
-version(abcd)
+struct TestCodeStruct
+{
+	unittest { hello; }public mixin template TestMixinTemplate(){ int a; int b; }
+	public template TestTemplate(){ int a; int b; }
+	public alias aaa = TestClass2;
+	public enum TestEnum = 5, TestEnum2 = 6;
+	public enum TestBlock : int {a = 5, b = a}
+	public struct TestStruct{ int a; int b; }
+	public union TestUnion{ int a; int b; }
+	public class TestClass1 { int a; int b; }
+	public class TestClass2 : TestClass1 { }
+	public interface TestInterface { int a(); int b(); }
+	public:
+	public{
+		public int kkk;
+		public int iii=5, jjj=6;
+		const xxxx0 = 0x0.5p3;
+		public int function() funcptrdecl;
+		public int forward();
+		public int hello(){ label1: label2: return 1 ? 2 : 3; }
+	}
+	
+	struct OpaqueStruct; union OpaqueUnion; class OpaqueClass; interface OpaqueInterface;
+	struct OpaqueStruct2(T); union OpaqueUnion2(T);
+	
+	static if(1==1):
+	
+	struct SSSS1{
+		static if(0) private: public:  //must encapsulate only "private:" 
+	}
+}version(abcd)
 {
 	//nothing
 }
@@ -5103,6 +5353,8 @@ else debug
 			
 			return typeof(return).max;
 			
+		}with(TestClass1)
+		{
 			static if(0) label1: label2: writeln; //if/else must encapsulate all the labels
 			else label3: label4: { label5: }
 			
@@ -5125,6 +5377,8 @@ else debug
 			
 			if/*comment08*/(0) statement;
 			
+		}with(TestClass1)
+		{
 			// vertical
 			
 			if(0)//comment01
@@ -5155,6 +5409,8 @@ else debug
 			if(0){ stm;
 				stm2; }
 			
+		}with(TestClass1)
+		{
 			//if else variations
 			
 			if(0) bla; else bla;
@@ -5181,7 +5437,9 @@ else debug
 			}
 			
 			if(0){} else if(0){} else {}
-			
+		}with(TestClass1)
+		{
+		
 			//fixed bug: extra new line at the end of this if. The unwanted extra newline is before the else.
 			if(0){
 				if(0){}
@@ -5210,8 +5468,8 @@ else debug
 				c = a + 5;
 				//disabled region with title
 			}
-			
-			
+		}with(TestClass1)
+		{
 			//todo: parse this correctly:
 			if(1) labe3: label2: 1 ? f, f : f, f, i=5;
 			
@@ -5236,6 +5494,16 @@ else debug
 			if(isDLangIdentifierStart(ch)) s = 'a';
 			else if(isDLangNumberStart(ch)) s = '0';
 			else s = ' ';
+			
+			//bug: joinPreposition is WRONG!!!!!
+			if(!inCode)
+			{
+				if(ch=='`') inCode=true;
+			}
+			else
+			{
+				if(ch=='`') inCode=false; else isCode[i]=true;
+			}
 
 		}
 	}
@@ -5249,9 +5517,7 @@ else
 		//todo: process lambda's  =>{ or (){ , but not ={
 		do sleep(1); while(0);
 	};
-}
-
-version(none){
+}version(none){
 	//static initializer vs labmda
 	
 	auto l1 = { lambda1; };
