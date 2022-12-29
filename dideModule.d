@@ -3440,6 +3440,7 @@ version(/+$DIDE_REGION+/all)
 	
 	Type type;
 	bool isDDoc;
+	bool isJoined; //it's right before an "else", for example.
 	
 	override SyntaxKind syntax() const
 	{ return skComment; }
@@ -4197,7 +4198,10 @@ version(/+$DIDE_REGION+/all)
 		char ending;
 		
 		CodeComment[] internalComments;
-		bool internalNewLine;
+		
+		int internalNewLineCount; //todo: this counter only needed to count up to 2.
+		@property bool hasInternalNewLine() const{ return internalNewLineCount>0; }
+		bool hasJoinedNewLine;
 		
 		bool explicitPrepositionBlock;
 		
@@ -4247,9 +4251,10 @@ version(/+$DIDE_REGION+/all)
 		Declaration nestedPreposition()
 		{
 			if(isPreposition)
-				if(auto a = cast(Declaration) block.singleCellOrNull)
-					if(a.isPreposition)
-						return a;
+				if(!explicitPrepositionBlock) //bugfix: if(1){if(2)a;}else b;  else is wrongly moved inside blocks
+					if(auto a = cast(Declaration) block.singleCellOrNull)
+						if(a.isPreposition)
+							return a;
 			return null;
 		}
 		
@@ -4307,7 +4312,7 @@ version(/+$DIDE_REGION+/all)
 				if(!isBlock) return a;
 				if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '"){
 					a.popBack; 
-					internalNewLine = true;
+					internalNewLineCount++;
 				}
 				return a;
 			}
@@ -4316,7 +4321,7 @@ version(/+$DIDE_REGION+/all)
 			this.ending = ending;
 			this.block	= block; if(block) block.setParent(this);
 			this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
-			this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells	.withoutStartingSpace.withoutEndingSpace));
+			this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace));
 			
 			decodeSpecial;
 			
@@ -4507,7 +4512,7 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 					if(internalComments.length) put(internalComments.length.format!" C%s ");
-					if(IN(internalNewLine)) put("\n    ");
+					if(IN(hasInternalNewLine)) put("\n    ");
 					
 					if(showBraces) put('{'); 
 					put(block); 
@@ -4521,7 +4526,7 @@ version(/+$DIDE_REGION+/all)
 						header.bkColor = syntaxBkColor(skComment);
 						if(!header.empty){
 							put(header); 
-							if(IN(internalNewLine)) put('\n'); else put(' ');
+							if(IN(hasInternalNewLine)) put('\n'); else put(' ');
 						}
 						put(block); 
 					}
@@ -4538,9 +4543,17 @@ version(/+$DIDE_REGION+/all)
 								put(' ');
 							}
 							
-							if(internalComments.length) put(internalComments.length.format!" C%s ");
+							version(/+$DIDE_REGION debug internal comments+/all)
+							{
+								if(internalComments.length) put(format!" C%s ,%s"(internalComments.filter!"a.isJoined".walkLength, internalComments.filter!"!a.isJoined".walkLength));
+							}
+							version(/+$DIDE_REGION debug internal newLines+/none)
+							{
+								put("IN"~((internalNewLineCount*10)+(hasJoinedNewLine ? 1 : 0)).text);
+							}
+							
 							//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
-							if(IN(internalNewLine)) put("\n    ");
+							if(IN(internalNewLineCount > hasJoinedNewLine)) put("\n    ");
 							
 							if(showBraces && explicitPrepositionBlock) put('{');
 							put(block); 
@@ -4549,7 +4562,7 @@ version(/+$DIDE_REGION+/all)
 							
 							if(nextJoinedPreposition)
 							{
-								if(IN(nextJoinedPreposition.internalNewLine)) put("\n");	
+								if(IN(/+nextJoinedPreposition.hasInternalNewLine && +/nextJoinedPreposition.hasJoinedNewLine)) put("\n");	
 								//note: It doesn't matter if the newline is bewore or	after or on both sides
 								//note: ...around an "else". As it is either joined horizontally or vertically.
 								emit(nextJoinedPreposition); //RECURSIVE!!!
@@ -5011,8 +5024,8 @@ version(/+$DIDE_REGION+/all)
 			{
 				if(res.length)
 				{
-					res.back.internalNewLine 	|= totalNewLineCount>0;  	
-					res.back.internalComments 	~= totalComments;	
+					res.back.internalNewLineCount 	+= totalNewLineCount;
+					res.back.internalComments 	~= totalComments;
 				}
 				else
 				{
@@ -5138,6 +5151,8 @@ version(/+$DIDE_REGION+/all)
 			void joinPrepositions()
 			{
 				size_t backTrackCount = 0;
+				//CodeComment[] precedingComments;
+				bool hasJoinedNewLine;
 				
 				Declaration findSrcPreposition(in string[] validKeywords)
 				{
@@ -5169,6 +5184,8 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 					backTrackCount = 1; //first is the dstPreposition, it's always dropped
+					//precedingComments = [];
+					hasJoinedNewLine = false;
 					auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
 					while(!a.empty)
 					{ 
@@ -5177,11 +5194,17 @@ version(/+$DIDE_REGION+/all)
 							//note: this newline is in front of the else.
 							//Currently the trigger to put the else on a new line is the newline after the else.
 							//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
+							hasJoinedNewLine = true;
 						}
 						else if(a.front.isWhitespaceOrComment)
 						{
 							//todo: collect the comment and and at least make a WARN
-							if(auto cmt = cast(CodeComment) a.front) WARN("Lost comment: "~cmt.sourceText);
+							if(auto cmt = cast(CodeComment) a.front)
+							{
+								//WARN("Lost comment: "~cmt.sourceText);  
+								//precedingComments ~= cmt;
+								//Note: This comment is saved somewhere else.
+							}
 						}
 						else
 							break;
@@ -5209,8 +5232,12 @@ version(/+$DIDE_REGION+/all)
 										//backTrack until the receiver
 										assert(backTrackCount>0);
 										auto removed = dst.removeBack(backTrackCount);
-										dstPreposition.internalComments ~= removed.comments;
-										dstPreposition.internalNewLine |= removed.newLineCount > 0;
+										
+										removed.comments.each!(c => c.isJoined = true);
+										dstPreposition.internalComments = removed.comments ~ dstPreposition.internalComments;
+										
+										dstPreposition.internalNewLineCount += removed.newLineCount;
+										dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
 										
 										srcPreposition.appendJoinedPreposition(dstPreposition);
 									}
@@ -5437,6 +5464,35 @@ else debug
 			}
 			
 			if(0){} else if(0){} else {}
+		}with("if else newLine combinations")
+		{
+			if(0){}else{} //OK 00 00
+			
+			if(0)
+			{}else{} //OK 10 00
+			
+			if(0){}
+			else{} //FIXED 00 11  (extra NL after "else")
+			
+			if(0)
+			{}
+			else{} //FIXED 10 11  (extra NL after "else")
+			
+			if(0){}else
+			{} //OK 00 10
+			
+			if(0)
+			{}else
+			{}//OK 10 10
+			
+			if(0){}
+			else
+			{} //OK 00 11
+			
+			if(0)
+			{}
+			else
+			{} //OK 10 11
 		}with(TestClass1)
 		{
 		
@@ -5495,16 +5551,10 @@ else debug
 			else if(isDLangNumberStart(ch)) s = '0';
 			else s = ' ';
 			
-			//bug: joinPreposition is WRONG!!!!!
-			if(!inCode)
-			{
-				if(ch=='`') inCode=true;
-			}
-			else
-			{
-				if(ch=='`') inCode=false; else isCode[i]=true;
-			}
-
+			//fixed: joinPreposition is WRONG!!!!!
+			if(1){if(2)a;}else b; //bad: else goes inside the explicit {} block
+			if(1)if(2)a;else b; //good + Warning
+			if(1){if(2)a;else b; }//good
 		}
 	}
 	
