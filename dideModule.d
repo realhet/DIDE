@@ -1656,7 +1656,7 @@ class CodeRow: Row
 			
 			return insertedCnt;
 		}
-	
+		
 		/// Returns inserted count
 		int insertText(int at, string str)
 		{
@@ -3440,7 +3440,6 @@ version(/+$DIDE_REGION+/all)
 	
 	Type type;
 	bool isDDoc;
-	bool isJoined; //it's right before an "else", for example.
 	
 	override SyntaxKind syntax() const
 	{ return skComment; }
@@ -4197,8 +4196,6 @@ version(/+$DIDE_REGION+/all)
 		CodeColumn header, block;
 		char ending;
 		
-		CodeComment[] internalComments;
-		
 		int internalNewLineCount; //todo: this counter only needed to count up to 2.
 		@property bool hasInternalNewLine() const{ return internalNewLineCount>0; }
 		bool hasJoinedNewLine;
@@ -4511,7 +4508,6 @@ version(/+$DIDE_REGION+/all)
 						if(canHaveHeader){ put(header); put(' '); } 
 					}
 					
-					if(internalComments.length) put(internalComments.length.format!" C%s ");
 					if(IN(hasInternalNewLine)) put("\n    ");
 					
 					if(showBraces) put('{'); 
@@ -4543,10 +4539,6 @@ version(/+$DIDE_REGION+/all)
 								put(' ');
 							}
 							
-							version(/+$DIDE_REGION debug internal comments+/all)
-							{
-								if(internalComments.length) put(format!" C%s ,%s"(internalComments.filter!"a.isJoined".walkLength, internalComments.filter!"!a.isJoined".walkLength));
-							}
 							version(/+$DIDE_REGION debug internal newLines+/none)
 							{
 								put("IN"~((internalNewLineCount*10)+(hasJoinedNewLine ? 1 : 0)).text);
@@ -5025,7 +5017,15 @@ version(/+$DIDE_REGION+/all)
 				if(res.length)
 				{
 					res.back.internalNewLineCount 	+= totalNewLineCount;
-					res.back.internalComments 	~= totalComments;
+					
+					//append internal comments to the end of the (block)
+					foreach(cmt; totalComments)
+					{
+						auto r = res.back.header.rows.back;
+						cmt.setParent(r);
+						r.appendCell(cmt);
+						r.needMeasure;
+					}
 				}
 				else
 				{
@@ -5233,8 +5233,15 @@ version(/+$DIDE_REGION+/all)
 										assert(backTrackCount>0);
 										auto removed = dst.removeBack(backTrackCount);
 										
-										removed.comments.each!(c => c.isJoined = true);
-										dstPreposition.internalComments = removed.comments ~ dstPreposition.internalComments;
+										//place the joined internal comments at beginning of the block
+										foreach(cmt; removed.comments)
+										{
+											auto r = dstPreposition.block.rows.back;
+											cmt.setParent(row);
+											r.subCells = cmt ~ r.subCells;
+											r.refreshTabIdx;
+											r.needMeasure;
+										}
 										
 										dstPreposition.internalNewLineCount += removed.newLineCount;
 										dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
