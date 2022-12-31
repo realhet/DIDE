@@ -4324,7 +4324,40 @@ version(/+$DIDE_REGION+/all)
 			
 			verify;
 			
-			if(isBlock && keyword!="enum") processHighLevelPatterns(block); //RECURSIVE!!!
+			//RECURSIVE!!!
+			const isCertainBlock = isBlock && keyword!="enum";
+			
+			if(isCertainBlock)
+			{
+				processHighLevelPatterns(block);
+			}
+			
+			//if it's not a statement of declaration block, then don't process it, only recursively look inside {} () [] q{} blocks
+			/+if(!isCertainBlock)
+			{
+				bool check(){
+					auto shallowStr = block.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
+					
+					if(shallowStr.canFind(';')) return true;
+					
+					return false;
+				}
+				if(!check())
+				{
+					print("NOT A CERTAIN BLOCK----------------------------");
+					auto shallowStr = block.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
+					print(shallowStr.text);
+					print("-------------------------------------------------");
+					
+					//recursively search for more uncertain blocks
+					return;
+				}
+			}+/
+			
+			//if(attributes) processHighLevelPatterns(attributes, No.isCertainBlock);
+			//if(header) processHighLevelPatterns(header, No.isCertainBlock);
+			//if(block) processHighLevelPatterns(block, isCertainBlock ? Yes.isCertainBlock : No.isCertainBlock);
+			
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
@@ -5096,6 +5129,8 @@ version(/+$DIDE_REGION+/all)
 	
 }void processHighLevelPatterns(CodeColumn col_)
 {// processHighLevelPatterns ////////////////////////////////
+	
+	//from here, process statements and declarations
 	
 	//generate Token enum from sentence detection rules.
 	mixin( format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", ")) );
