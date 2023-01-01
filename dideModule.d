@@ -3864,7 +3864,7 @@ version(/+$DIDE_REGION+/all)
 					{
 						try
 						{
-							processHighLevelPatterns(content);
+							processHighLevelPatterns_block(content);
 							structureLevel = StructureLevel.managed;
 						}
 						catch(Exception e)
@@ -4324,13 +4324,24 @@ version(/+$DIDE_REGION+/all)
 			
 			verify;
 			
-			//RECURSIVE!!!
-			const isCertainBlock = isBlock && keyword!="enum";
 			
-			if(isCertainBlock)
+			
+			//RECURSIVE!!!
+			
+			if(isBlock)
 			{
-				processHighLevelPatterns(block);
+				if(keyword=="enum")
+					processHighLevelPatterns_enum(block);
+				else
+					processHighLevelPatterns_block(block);
 			}
+			else if(isStatement)
+			{
+				if(keyword==""){
+					processHighLevelPatterns_statement(header);
+				}
+			}
+			
 			
 			//if it's not a statement of declaration block, then don't process it, only recursively look inside {} () [] q{} blocks
 			/+if(!isCertainBlock)
@@ -5127,236 +5138,279 @@ version(/+$DIDE_REGION+/all)
 	DDeclarationRecord[] dDeclarationRecords;
 	
 	
-}void processHighLevelPatterns(CodeColumn col_)
-{// processHighLevelPatterns ////////////////////////////////
-	
-	//from here, process statements and declarations
-	
-	//generate Token enum from sentence detection rules.
-	mixin( format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", ")) );
-	
-	auto proc = TokenProcessor!DeclToken(col_);
-	with(proc)
-	with(DeclToken)
-	{
-		version(/+$DIDE_REGION+/all)
+}version(/+$DIDE_REGION+/all)
+{
+	void processHighLevelPatterns_block(CodeColumn col_)
+	{// processHighLevelPatterns ////////////////////////////////
+		
+		//from here, process statements and declarations
+		
+		//generate Token enum from sentence detection rules.
+		mixin( format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", ")) );
+		
+		auto proc = TokenProcessor!DeclToken(col_);
+		with(proc)
+		with(DeclToken)
 		{
-			Declaration receiver;
-			
-			void appendDeclaration(Declaration decl)
+			version(/+$DIDE_REGION+/all)
 			{
+				Declaration receiver;
 				
-				if(receiver)
+				void appendDeclaration(Declaration decl)
 				{
 					
-					if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition)
+					if(receiver)
 					{
-						//unpack the declaration block
-						receiver.explicitPrepositionBlock = true;
-						receiver.block = decl.block;
-						receiver.block.setParent(receiver);
-					}
-					else
-					{
-						auto row = receiver.block.rows.back;
-						row.appendCell(decl);
-						decl.setParent(row);
-					}
-					
-					if(decl.isPreposition)
-						receiver = decl;
-					else if(decl.isStatement || decl.isBlock) 
-						receiver = null;
-					else if(decl.isSection)
-					{
-						if(!decl.isLabel) receiver = null;
-						/+note: A preposition can receive any number of labels, but only one attribute section. +/
-					} 
-					else
-						assert(0, "Unidentified declaration type");
-				}
-				else
-				{
-					proc.appendCell(decl);
-					
-					if(decl.isPreposition) receiver = decl;
-				}
-				
-			}
-			void joinPrepositions()
-			{
-				size_t backTrackCount = 0;
-				//CodeComment[] precedingComments;
-				bool hasJoinedNewLine;
-				
-				Declaration findSrcPreposition(in string[] validKeywords)
-				{
-					
-					Declaration recursiveSearch(Declaration decl)
-					{
-						Declaration res;
-						if(decl) foreach_reverse(d; decl.allNestedPrepositions)
+						
+						if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition)
 						{
-							d = d.lastJoinedPreposition;
-							if(validKeywords.canFind(d.keyword))
-							{ 
-								enum danglingIsValid = true;
-								static if(danglingIsValid)
-								{
-									return d; //return the nearest match
-								}
-								else
-								{
-									if(!res) 	res = d;
-									else	return null; //multiple opportinities means: dangling
-									/*todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
-										and ensure that no other propositions could join to them. */
-								}
-								
-							}
-						}
-						return res;
-					}
-					
-					backTrackCount = 1; //first is the dstPreposition, it's always dropped
-					//precedingComments = [];
-					hasJoinedNewLine = false;
-					auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
-					while(!a.empty)
-					{ 
-						if(a.front is null)
-						{
-							//note: this newline is in front of the else.
-							//Currently the trigger to put the else on a new line is the newline after the else.
-							//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
-							hasJoinedNewLine = true;
-						}
-						else if(a.front.isWhitespaceOrComment)
-						{
-							//todo: collect the comment and and at least make a WARN
-							if(auto cmt = cast(CodeComment) a.front)
-							{
-								//WARN("Lost comment: "~cmt.sourceText);  
-								//precedingComments ~= cmt;
-								//Note: This comment is saved somewhere else.
-							}
+							//unpack the declaration block
+							receiver.explicitPrepositionBlock = true;
+							receiver.block = decl.block;
+							receiver.block.setParent(receiver);
 						}
 						else
-							break;
+						{
+							auto row = receiver.block.rows.back;
+							row.appendCell(decl);
+							decl.setParent(row);
+						}
 						
-						//advance
-						a.popFront;
-						backTrackCount++;
-					}
-					auto rootDecl = cast(Declaration) a.frontOrNull;
-					
-					//dstPrepositionRootDecl = rootDecl; //return this on the side
-					return recursiveSearch(rootDecl);
-				}
-				
-				if(auto row = dst.backOrNull)
-					if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
-						if(dstPreposition.isPreposition)
-							foreach(rule; prepositionLinkingRules)
-								if(rule[1].canFind(dstPreposition.keyword))
-								{
-									if(auto srcPreposition = findSrcPreposition(rule[0]))
-									{
-										//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
-										
-										//backTrack until the receiver
-										assert(backTrackCount>0);
-										auto removed = dst.removeBack(backTrackCount);
-										
-										//place the joined internal comments at beginning of the block
-										foreach(cmt; removed.comments)
-										{
-											auto r = dstPreposition.block.rows.back;
-											cmt.setParent(row);
-											r.subCells = cmt ~ r.subCells;
-											r.refreshTabIdx;
-											r.needMeasure;
-										}
-										
-										dstPreposition.internalNewLineCount += removed.newLineCount;
-										dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
-										
-										srcPreposition.appendJoinedPreposition(dstPreposition);
-									}
-									break; //dstPreposition can present in only one rule
-								}
-			}
-		}version(/+$DIDE_REGION+/all)
-		{
-			while(tokens.length)
-			{
-				transferWhitespaceAndComments; //these comments are going into the body of the block
-				
-				const main = tokens.front;
-				auto mainIsKeyword()
-				{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
-				sw: switch(main.token)
-				{
-					static foreach(a; sentenceDetectionRules)
-						mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
-					default:	fetchSingleToken;
-				}
-				const ending = sentence.back;
-				
-				const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
-				const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
-				
-				if(endingChar.among(';', '}', ':'))
-				{
-					
-					Cell[][] attrs;
-					if(keyword != ""){
-						attrs = fetchUntil(main.pos);
-						skipUntil(main.end);
-					}
-					
-					auto header = fetchUntil(ending.pos);
-					
-					CodeColumn block;
-					if(endingChar.among(';', ':', '('))
-					{
-						skipUntil(ending.end);
-					}
-					else if(endingChar == '}')
-					{
-						auto container = fetchUntil(ending.end);
-						block = (cast(CodeBlock) container.front.front).content;
+						if(decl.isPreposition)
+							receiver = decl;
+						else if(decl.isStatement || decl.isBlock) 
+							receiver = null;
+						else if(decl.isSection)
+						{
+							if(!decl.isLabel) receiver = null;
+							/+note: A preposition can receive any number of labels, but only one attribute section. +/
+						} 
+						else
+							assert(0, "Unidentified declaration type");
 					}
 					else
-						enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
+					{
+						proc.appendCell(decl);
+						
+						if(decl.isPreposition) receiver = decl;
+					}
 					
-					auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
-						new Declaration(null, attrs, keyword, header, block, endingChar);
-					
-					foreach(decl; declarationChain) appendDeclaration(decl);
-					
-					//collect statistics
-					/+if(1) dDeclarationRecords ~= DDeclarationRecord(
-						only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
-						(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
-					);+/
-					
-					joinPrepositions;
-					
-					//print(dDeclarationRecords.back);
 				}
-				else
+				void joinPrepositions()
 				{
-					ERR("Unhandled token"~ending.text);
-					transferUntil(ending.end);
+					size_t backTrackCount = 0;
+					//CodeComment[] precedingComments;
+					bool hasJoinedNewLine;
+					
+					Declaration findSrcPreposition(in string[] validKeywords)
+					{
+						
+						Declaration recursiveSearch(Declaration decl)
+						{
+							Declaration res;
+							if(decl) foreach_reverse(d; decl.allNestedPrepositions)
+							{
+								d = d.lastJoinedPreposition;
+								if(validKeywords.canFind(d.keyword))
+								{ 
+									enum danglingIsValid = true;
+									static if(danglingIsValid)
+									{
+										return d; //return the nearest match
+									}
+									else
+									{
+										if(!res) 	res = d;
+										else	return null; //multiple opportinities means: dangling
+										/*todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
+											and ensure that no other propositions could join to them. */
+									}
+									
+								}
+							}
+							return res;
+						}
+						
+						backTrackCount = 1; //first is the dstPreposition, it's always dropped
+						//precedingComments = [];
+						hasJoinedNewLine = false;
+						auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
+						while(!a.empty)
+						{ 
+							if(a.front is null)
+							{
+								//note: this newline is in front of the else.
+								//Currently the trigger to put the else on a new line is the newline after the else.
+								//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
+								hasJoinedNewLine = true;
+							}
+							else if(a.front.isWhitespaceOrComment)
+							{
+								//todo: collect the comment and and at least make a WARN
+								if(auto cmt = cast(CodeComment) a.front)
+								{
+									//WARN("Lost comment: "~cmt.sourceText);  
+									//precedingComments ~= cmt;
+									//Note: This comment is saved somewhere else.
+								}
+							}
+							else
+								break;
+							
+							//advance
+							a.popFront;
+							backTrackCount++;
+						}
+						auto rootDecl = cast(Declaration) a.frontOrNull;
+						
+						//dstPrepositionRootDecl = rootDecl; //return this on the side
+						return recursiveSearch(rootDecl);
+					}
+					
+					if(auto row = dst.backOrNull)
+						if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
+							if(dstPreposition.isPreposition)
+								foreach(rule; prepositionLinkingRules)
+									if(rule[1].canFind(dstPreposition.keyword))
+									{
+										if(auto srcPreposition = findSrcPreposition(rule[0]))
+										{
+											//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
+											
+											//backTrack until the receiver
+											assert(backTrackCount>0);
+											auto removed = dst.removeBack(backTrackCount);
+											
+											//place the joined internal comments at beginning of the block
+											foreach(cmt; removed.comments)
+											{
+												auto r = dstPreposition.block.rows.back;
+												cmt.setParent(row);
+												r.subCells = cmt ~ r.subCells;
+												r.refreshTabIdx;
+												r.needMeasure;
+											}
+											
+											dstPreposition.internalNewLineCount += removed.newLineCount;
+											dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
+											
+											srcPreposition.appendJoinedPreposition(dstPreposition);
+										}
+										break; //dstPreposition can present in only one rule
+									}
 				}
-			
+			}version(/+$DIDE_REGION+/all)
+			{
+				while(tokens.length)
+				{
+					transferWhitespaceAndComments; //these comments are going into the body of the block
+					
+					const main = tokens.front;
+					auto mainIsKeyword()
+					{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
+					sw: switch(main.token)
+					{
+						static foreach(a; sentenceDetectionRules)
+							mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
+						default:	fetchSingleToken;
+					}
+					const ending = sentence.back;
+					
+					const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
+					const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
+					
+					if(endingChar.among(';', '}', ':'))
+					{
+						
+						Cell[][] attrs;
+						if(keyword != ""){
+							attrs = fetchUntil(main.pos);
+							skipUntil(main.end);
+						}
+						
+						auto header = fetchUntil(ending.pos);
+						
+						CodeColumn block;
+						if(endingChar.among(';', ':', '('))
+						{
+							skipUntil(ending.end);
+						}
+						else if(endingChar == '}')
+						{
+							auto container = fetchUntil(ending.end);
+							block = (cast(CodeBlock) container.front.front).content;
+						}
+						else
+							enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
+						
+						auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
+							new Declaration(null, attrs, keyword, header, block, endingChar);
+						
+						foreach(decl; declarationChain) appendDeclaration(decl);
+						
+						//collect statistics
+						/+if(1) dDeclarationRecords ~= DDeclarationRecord(
+							only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
+							(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
+						);+/
+						
+						joinPrepositions;
+						
+						//print(dDeclarationRecords.back);
+					}
+					else
+					{
+						ERR("Unhandled token"~ending.text);
+						transferUntil(ending.end);
+					}
+				
+				}
 			}
 		}
 	}
+	
+	void processHighLevelPatterns_enum(CodeColumn col_){
+		if(!col_) return;
+		NOTIMPL;
+		//print("enum block: "~col_.extractThisLevelDString.text);
+	}
+	
+	void processHighLevelPatterns_statement(CodeColumn col_){
+		if(!col_) return;
+		
+		//print("statement: "~col_.extractThisLevelDString.text);
+		processHighLevelPatterns_goInside(col_);
+	}
+	
+	void processHighLevelPatterns_goInside(CodeColumn col_)
+	{
+		//recursively look inside {} () [] q{} blocks
+		foreach(cell; col_.rows.map!(r => r.subCells).joiner)
+		{
+			if(auto blk = cast(CodeBlock) cell)
+			{
+				final switch(blk.type)
+				{
+					case CodeBlock.Type.block: blk.content.processHighLevelPatterns_optionalBlock;
+					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside;
+					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; //todo: argument list (params)
+				}
+			}
+			else if(auto str = cast(CodeString) cell)
+			{
+				/+if(str.type == CodeString.Type.tokenString)
+					processHighLevelPatterns_optionalBlock(str.content);+/
+			}
+		}
+	}
+	
+	void processHighLevelPatterns_optionalBlock(CodeColumn col_)
+	{
+		auto p = col_.extractThisLevelDString.text.replace("\n", " ").strip;
+		if(p!="" && !p.endsWith(';'))
+			print("optional Block:", p);
+	}
 }
-
-
 // Test codes ////////////////////////////////////////
 struct TestCodeStruct
 {

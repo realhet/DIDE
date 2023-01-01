@@ -3266,7 +3266,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(m.isStructured)
 					{
-						processHighLevelPatterns(m.content);
+						processHighLevelPatterns_block(m.content);
 						m.structureLevel = StructureLevel.managed;
 					};
 					//m.content.needMeasure;
@@ -3290,7 +3290,7 @@ version(/+$DIDE_REGION main+/all)
 					print(i, files.length, dDeclarationRecords.length, f);
 					auto m = scoped!Module(this, f);
 					if(m.isStructured){
-						m.content.processHighLevelPatterns;
+						m.content.processHighLevelPatterns_block;
 					}else	{ print("Is not structured"); beep; }
 				}
 				dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`);
