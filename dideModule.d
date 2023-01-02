@@ -4055,7 +4055,7 @@ version(/+$DIDE_REGION+/all)
 			static immutable prepositionPatterns =
 			[
 				"with (",
-				"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (", "for iTO (",
+				"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
 				"while (", 	"do",		
 				"version (", 	"debug (",  	"debug", 	
 				"if (", 	"static if (", 	"else if (", 	"else static if (",
@@ -4067,6 +4067,15 @@ version(/+$DIDE_REGION+/all)
 				//"scope (", "synchronized (", "synchronized" //todo: These are for statements only! 
 			].sort!"a>b".array;
 			//note: descending order is important.  "debug (" must be checked before "debug"
+			
+			//used in detectCurlyBlock()
+			static immutable statementDetecionEndings = [
+				"with(",	"for(", 	"foreach(", 	"foreach_reverse(",
+				"while(", 	"do", 	"if(", 	"else", 
+				"version(", 	"debug(",		
+				"switch(",	"try", 	"catch(", 	"finally"
+				//todo: 
+			].sort.array; //sorting is important: it is binary-searched
 			
 			static immutable prepositionLinkingRules =
 			[
@@ -4332,16 +4341,24 @@ version(/+$DIDE_REGION+/all)
 			{
 				if(keyword=="enum")
 					processHighLevelPatterns_enum(block);
-				else
+				else{
+					if(header) processHighLevelPatterns_goInside(header);
 					processHighLevelPatterns_block(block);
+				}
 			}
 			else if(isStatement)
 			{
 				if(keyword==""){
 					processHighLevelPatterns_statement(header);
 				}
+			}else if(isPreposition)
+			{
+				foreach(p; allJoinedPrepositions)
+				{
+					if(p.header) processHighLevelPatterns_goInside(p.header);
+					processHighLevelPatterns_block(p.block);
+				}
 			}
-			
 			
 			//if it's not a statement of declaration block, then don't process it, only recursively look inside {} () [] q{} blocks
 			/+if(!isCertainBlock)
@@ -4369,6 +4386,24 @@ version(/+$DIDE_REGION+/all)
 			//if(header) processHighLevelPatterns(header, No.isCertainBlock);
 			//if(block) processHighLevelPatterns(block, isCertainBlock ? Yes.isCertainBlock : No.isCertainBlock);
 			
+		}
+		
+		this(CodeBlock blk)
+		{
+			//promote the block.
+			assert(blk);
+			assert(blk.parent);
+			assert(blk.type == CodeBlock.Type.block);
+			
+			super(parent);
+			
+			blk.content.setParent(this);
+			this.ending	= '}';
+			this.block	= blk.content; if(block) block.setParent(this);
+			this.attributes 	= new CodeColumn(this, []);
+			this.header 	= new CodeColumn(this, []);
+			
+			verify;
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
@@ -4658,9 +4693,10 @@ version(/+$DIDE_REGION+/all)
 			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
 			(CodeComment 	_) 	=> ' '	,
 			(CodeString	_) 	=> '"'	,
-			(CodeBlock	b) 	=> b.prefix[0]
+			(CodeBlock	b) 	=> b.prefix[0]	,
+			(Declaration	d)	=> compoundObjectChar
 		);
-	}
+	} 
 	
 	bool isWhitespaceOrComment(Cell c)
 	{
@@ -5382,33 +5418,104 @@ version(/+$DIDE_REGION+/all)
 		processHighLevelPatterns_goInside(col_);
 	}
 	
+	bool isHighLevelBlock(CodeColumn col){
+		bool found;
+		foreach(cell; col.rows.map!(r => r.subCells).joiner){
+			if(cast(Declaration) cell){ found = true; continue; }
+			if(cast(CodeComment) cell) continue;
+			if(auto g = cast(Glyph) cell)
+				if(g.ch.isDLangWhitespace) continue;
+			return false;
+		}
+		return found;
+	}
+	
 	void processHighLevelPatterns_goInside(CodeColumn col_)
 	{
 		//recursively look inside {} () [] q{} blocks
-		foreach(cell; col_.rows.map!(r => r.subCells).joiner)
+		foreach(ref cell; col_.rows.map!(r => r.subCells).joiner)
 		{
 			if(auto blk = cast(CodeBlock) cell)
 			{
 				final switch(blk.type)
 				{
-					case CodeBlock.Type.block: blk.content.processHighLevelPatterns_optionalBlock;
-					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside;
-					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; //todo: argument list (params)
+					case CodeBlock.Type.block:
+						blk.content.processHighLevelPatterns_optionalBlock;
+						if(blk.content.isHighLevelBlock){
+							cell = new Declaration(blk);
+						}
+						break; 
+					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside; break;
+					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; break; //todo: function params augmentations: named params
 				}
 			}
 			else if(auto str = cast(CodeString) cell)
 			{
-				/+if(str.type == CodeString.Type.tokenString)
-					processHighLevelPatterns_optionalBlock(str.content);+/
+				if(str.type == CodeString.Type.tokenString)
+					str.content.processHighLevelPatterns_optionalBlock;
 			}
 		}
 	}
 	
+	
+	enum CurlyBlockKind { empty, declarationsOrStatements, list }
+	
+	auto detectCurlyBlock(CodeColumn col_){
+		/+opt: This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
+		That also should detect identifiers/keywords.+/
+		auto p = col_.extractThisLevelDString.text;
+		p = p.replace("\n", " ");
+		p = p.replace("  ", " ");
+		p = p.replace(" {", "{");
+		p = p.replace(" [", "]");
+		p = p.replace(" (", ")");
+		p = p.strip;
+		
+		//first start with easy decisions at the end of the block
+		if(p=="") return CurlyBlockKind.empty;
+		if(p.endsWith(';') || p.endsWith(':')) return CurlyBlockKind.declarationsOrStatements;
+		
+		if(p.canFind("{,") || p.canFind(",{")) return CurlyBlockKind.list;
+		if(p.canFind(';')||p.canFind('{')) return CurlyBlockKind.declarationsOrStatements;
+		
+		//note: no need to discover keywords. A {} alone is enough.
+		/+if(p.endsWith('{') && p.length>0){ //{ while(f()){} }
+			
+			/*string word;
+			version(/+$DIDE_REGION take the last word and an optional '(' before '{' +/all)
+			{
+				sizediff_t i = p.length-2;
+				void acc(){ word = p[i--] ~ word; }
+				if(i>=0 && p[i]=='(') acc;
+				while(i>=0 && p[i].isAlpha) acc;
+			}
+			
+			if(word.endsWith('(') || statementDetecionEndings.assumeSorted.contains(word))
+				return CurlyBlockKind.declarationsOrStatements; //actually this is a statement for sure
+				
+			print("!!!", word, "$$$", p);*/
+			return CurlyBlockKind.declarationsOrStatements;
+		}+/
+		
+		//do more complicated searches invlonving the entire block
+		
+		//give it up: it's not a declaration, neither a statement block
+		return CurlyBlockKind.list;
+	}
+	
+	
 	void processHighLevelPatterns_optionalBlock(CodeColumn col_)
 	{
-		auto p = col_.extractThisLevelDString.text.replace("\n", " ").strip;
-		if(p!="" && !p.endsWith(';'))
-			print("optional Block:", p);
+		//if(p!="" && !p.endsWith(';'))
+		//	print("optional Block:", p);
+		
+		if(detectCurlyBlock(col_)==CurlyBlockKind.declarationsOrStatements){
+			/+auto p = col_.extractThisLevelDString.text.replace("\n", " ").strip;
+			print("attempting: ", p);+/
+			processHighLevelPatterns_block(col_);
+		}else{
+			processHighLevelPatterns_goInside(col_); //keep continue to discover recursively
+		}
 	}
 }
 // Test codes ////////////////////////////////////////
@@ -5678,11 +5785,21 @@ else
 	struct S{ int i; }/+Extra semicolon+/;
 	S s1 = {};
 	S s2 = {5};
+	S[] s1 = [4, {5}];
 	S[] s1 = [{5}];
+	S[] s1 = [{5}, {6}];
 	S[] s2 = b({ lambda4; });
 	struct T{ S s; }
 	T[] t1 = [{{5}}];
 	
+	struct S { int a, b, c, d = 7; }
+	S s = { a:1, b:2 };
+	S u = { 1, 2 };
+	S v = { 1, d:3 };
+	S w = { b:1, 3 };
+	S w = { b:1, {} };
+	S w = {{/+nothing+/}};
+	void a(){ static if(5){{/+nothing+/}} }
 }
 
 
