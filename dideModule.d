@@ -2349,7 +2349,7 @@ class CodeRow: Row
 				}
 				else
 				{
-					//there are no relevant rows at all. : cleanup the tabs
+					//there are no relevant rows at all. : cleanup all the tabs
 					foreach(r; rows)
 					if(auto cnt = r.leadingCodeTabCount)
 					{
@@ -2357,6 +2357,7 @@ class CodeRow: Row
 						r.refreshTabIdx;
 					}
 				}
+				
 			}
 			
 			needMeasure;
@@ -3434,19 +3435,20 @@ version(/+$DIDE_REGION+/all)
 }class CodeComment : CodeContainer
 { // CodeComment //////////////////////////////////////////
 	enum Type
-	{slashComment, cComment, dComment}
-	enum TypePrefix 	= ["//"	, "/*", "/+"];
-	enum TypePostfix 	= [""	, "*/", "+/"];
+	{slashComment, cComment, dComment, directive}
+	enum TypePrefix 	= ["//"	, "/*", "/+", "#"];
+	enum TypePostfix 	= [""	, "*/", "+/", "" ];
+	//node: directive is detected by the high level parser, not the structured scanner.
 	
 	Type type;
 	bool isDDoc;
 	
 	override SyntaxKind syntax() const
-	{ return skComment; }
+	{ return type==Type.directive ? skDirective : skComment; }
 	override string prefix() const
 	{ return TypePrefix[type]; }
 	override string postfix() const
-	{ return TypePostfix[type]; }
+	{ return type==Type.directive ? (content.rowCount>1 ? "\\" : "") : TypePostfix[type]; }
 	
 	this(CodeRow parent)
 	{ 
@@ -3492,6 +3494,7 @@ version(/+$DIDE_REGION+/all)
 			scanner.popFront;
 		}
 		
+		content.convertSpacesToTabs(Yes.outdent);
 		needMeasure;
 	}
 	
@@ -4024,7 +4027,7 @@ version(/+$DIDE_REGION+/all)
 					case "mixin template":	return clPiko.K15;
 					case "mixin":	return clPiko.DKW;
 					case "statement":	return clGray;
-					case "function":	return clSilver;
+					case "function", "invariant":	return clSilver;
 					case "__region":	return clGray;
 					default:	return def;
 				}
@@ -4047,7 +4050,7 @@ version(/+$DIDE_REGION+/all)
 			static immutable sentenceDetectionRules =
 			[
 				["; = ? module import alias"	, ";"	],
-				["{ template unittest"	, "{"	],
+				["{ template unittest invariant"	, "{"	],
 				["enum struct union class interface"	, "; {"	],
 				[":"	, ":"	],
 			];
@@ -4280,7 +4283,7 @@ version(/+$DIDE_REGION+/all)
 		
 		bool canHaveHeader() const
 		{
-			if(keyword.among("else", "unittest", "try", "finally", "do")) return false;
+			if(keyword.among("else", "unittest", "invariant", "try", "finally", "do")) return false;
 			return true;
 		}
 		
@@ -4607,7 +4610,7 @@ version(/+$DIDE_REGION+/all)
 					}
 					else
 					{
-						void emit(Declaration decl)
+						void emit(Declaration decl, bool semicolonInsteadOfBlock = false)
 						{with(decl){
 							put(keyword);
 							put(' ');
@@ -4615,20 +4618,18 @@ version(/+$DIDE_REGION+/all)
 								if(showParens) put('('); 
 								put(header); 
 								if(showParens) put(')'); 
-								put(' ');
+								if(!semicolonInsteadOfBlock) put(' ');
 							}
 							
-							version(/+$DIDE_REGION debug internal newLines+/none)
+							if(semicolonInsteadOfBlock)
 							{
-								put("IN"~((internalNewLineCount*10)+(hasJoinedNewLine ? 1 : 0)).text);
+								put(';');
+							}else{
+								if(IN(internalNewLineCount > hasJoinedNewLine)) put("\n    ");
+								if(showBraces && explicitPrepositionBlock) put('{');
+								put(block); 
+								if(showBraces && explicitPrepositionBlock) put('}');
 							}
-							
-							//if(nextJoinedPreposition) put(allJoinedPrepositions.length.format!" JP%s ");
-							if(IN(internalNewLineCount > hasJoinedNewLine)) put("\n    ");
-							
-							if(showBraces && explicitPrepositionBlock) put('{');
-							put(block); 
-							if(showBraces && explicitPrepositionBlock) put('}');
 							put(' ');
 							
 							if(nextJoinedPreposition)
@@ -4636,7 +4637,9 @@ version(/+$DIDE_REGION+/all)
 								if(IN(/+nextJoinedPreposition.hasInternalNewLine && +/nextJoinedPreposition.hasJoinedNewLine)) put("\n");	
 								//note: It doesn't matter if the newline is bewore or	after or on both sides
 								//note: ...around an "else". As it is either joined horizontally or vertically.
-								emit(nextJoinedPreposition); //RECURSIVE!!!
+								
+								const nextSemicolonInsteadOfBlock = keyword=="do" && nextJoinedPreposition.keyword=="while";
+								emit(nextJoinedPreposition, nextSemicolonInsteadOfBlock); //RECURSIVE!!!
 							}	
 						}}
 						
@@ -4999,9 +5002,124 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		alias transferUntil = processSrc!(Operation.transfer);
+		
 		alias skipUntil = processSrc!(Operation.skip);
-		auto fetchUntil(int targetIdx){ processSrc!(Operation.fetch)(targetIdx); return resultCells; }
-		void transferWhitespaceAndComments(){ processSrc!(Operation.transfer, true)(srcDStr.length.to!int); }
+		
+		auto fetchUntil(int targetIdx)
+		{
+			processSrc!(Operation.fetch)(targetIdx); return resultCells;
+		}
+		
+		bool transferWhitespaceAndComments()
+		{
+			const lastIdx = srcIdx;
+			processSrc!(Operation.transfer, true)(srcDStr.length.to!int);
+			return lastIdx != srcIdx;
+		}
+		
+		auto peek(T : Cell)()
+		{
+			if(auto row = col.rows.get(srcPos.y))
+				return cast(T) row.subCells.get(srcPos.x);
+			return null;
+		}
+		
+		dchar peekChar()
+		{
+			if(auto g = peek!Glyph)
+				return g.ch;
+			return '\0';
+		}
+		
+		int remainingCellsOnLine()
+		{
+			if(auto row = col.rows.get(srcPos.y))
+				return row.subCells.length.to!int - srcPos.x;
+			return 0;
+		}
+		
+		void dropOutpacedTokens()
+		{
+			while(!tokens.empty && tokens.front.pos<srcIdx)
+				tokens.popFront;
+		}
+		
+		void transferWhitespaceAndCommentsAndDirectives()
+		{
+			//Directives are specialized CodeComments.
+			//They are detected and processed here.
+			//Preprocessor support is limited The low level parser
+			transferWhitespaceAndComments;
+			
+			again:
+			if(peekChar=='#')
+			{
+				skipUntil(srcIdx + 1); //skip the '#'
+				
+				Cell[][] directiveCells;
+				version(/+DIDE_REGION Collect all lines of the directive+/all)
+				{
+					while(1){
+						fetchUntil(srcIdx+remainingCellsOnLine);
+						assert(resultCells.length==1);
+						
+						bool isExtendedLine(){
+							if(auto g = cast(Glyph) resultCells[0].back)
+								if(g.ch == '\\') return true;
+							return false;
+						}
+						
+						if(isExtendedLine)
+						{
+							directiveCells ~= resultCells[0][0..$-1];
+							
+							if(srcIdx<srcDStr.length)
+							{
+								skipUntil(srcIdx+1); //skip newLine
+								continue;
+							}
+							else
+							{
+								break; //it's EOF
+							}
+						}
+						else
+						{
+							directiveCells ~= resultCells[0];
+							break;
+						}
+					}
+				}
+				
+				Cell[] endingWhite;
+				version(/+$DIDE_REGION Remove last comment and whitespace+/all)
+				{
+					//It looks nicer as elastic tabs can't go across multiple directives (yet)
+					ref lastRow(){ return directiveCells.back; }
+					
+					const cnt = lastRow.retro.until!(c => c.structuredCellToChar != ' ').walkLength;
+					const idx = lastRow.length - cnt;
+					
+					endingWhite = lastRow[idx..$];
+					
+					lastRow = lastRow[0..idx];
+				}
+				
+				auto directive = new CodeComment(null);
+				directive.type = CodeComment.Type.directive;
+				directive.content = new CodeColumn(directive, directiveCells);
+				
+				appendCell(directive);
+				endingWhite.each!(c => appendCell(c));
+				
+				//ignore tokens inside the directive
+				dropOutpacedTokens;
+					
+				//clean up the remaining NewLine and retry
+				if(transferWhitespaceAndComments)
+					goto again;
+			}
+		}
 	}
 }version(/+$DIDE_REGION+/all)
 {
@@ -5233,7 +5351,7 @@ version(/+$DIDE_REGION+/all)
 					
 				}
 				void joinPrepositions()
-				{
+				{//joinPrepositions //////////////////////////////////////////
 					size_t backTrackCount = 0;
 					//CodeComment[] precedingComments;
 					bool hasJoinedNewLine;
@@ -5339,9 +5457,9 @@ version(/+$DIDE_REGION+/all)
 			{
 				while(tokens.length)
 				{
-					transferWhitespaceAndComments; //these comments are going into the body of the block
+					transferWhitespaceAndCommentsAndDirectives; //these comments are going into the body of the block
 					
-					const main = tokens.front;
+					auto main = tokens.front;
 					auto mainIsKeyword()
 					{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
 					sw: switch(main.token)
@@ -5350,10 +5468,68 @@ version(/+$DIDE_REGION+/all)
 							mixin( format!q{ case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList));
 						default:	fetchSingleToken;
 					}
+					
+					version(/+$DIDE_REGION Handle DLang Function Contracts+/all)
+					{
+						bool isContract;
+						if(sentence.length && sentence.back.token == DeclToken.block){
+							
+							//step back on whitespace and zero or one () param block
+							int stepBackOnParamsAndWhitespace(int i0)
+							{
+								bool paramsFound;
+								int j=-1;
+								foreach_reverse(i; 0..i0)
+								{
+									const ch = srcDStr[i];
+									if(ch.isDLangWhitespace) continue;
+									else if(ch=='(' && !paramsFound) paramsFound = true;
+									else { j = i; break; }
+								}
+								return j;
+							}
+							
+							int checkContractKeyword(int endPos)
+							{//checks if there is an 'in' or an 'out' keyword is written backwards from endPos
+								if(endPos>=0)
+								{
+									auto A(int i){ return srcDStr.get(endPos-i); }
+									bool isEnd(dchar ch){ return !isDLangIdentifierCont(ch); }
+									
+									if(A(0).among('n', 't', 'o') && A(1).among('i', 'u', 'd'))
+										print(A(3), A(2), A(1), A(0));
+									
+									//todo: it's so ugly, but it works
+									if(A(0)=='n' && A(1)=='i' && isEnd(A(2))) return 1;
+									if(A(0)=='t' && A(1)=='u' && A(2)=='o' && isEnd(A(3))) return 2;
+									if(A(0)=='o' && A(1)=='d' && isEnd(A(2))) return -1;
+								}
+								return 0;
+							}
+							
+							while(tokens.length){
+								const t = checkContractKeyword(stepBackOnParamsAndWhitespace(main.pos-1));
+								if(t==0) break;
+								LOG(t);
+								main = tokens.front;
+								fetchTokens!([DeclToken.block]);
+								if(t<0) break;
+							}
+						}
+					}
+					
 					const ending = sentence.back;
 					
 					const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
 					const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
+					
+					/*if(isContract){
+						print("Contract Sentence debug-------------");
+						sentence.each!print;
+						print;
+						print("main:", main);
+						print("kw:", keyword);
+					}*/
 					
 					if(endingChar.among(';', '}', ':'))
 					{
@@ -5548,6 +5724,10 @@ struct TestCodeStruct
 	
 	struct SSSS1{
 		static if(0) private: public:  //must encapsulate only "private:" 
+		
+		invariant{
+			test;
+		}
 	}
 }version(abcd)
 {
@@ -5727,6 +5907,9 @@ else debug
 				c = a + 5;
 				//disabled region with title
 			}
+			
+			/+$DIDE_IMG c:\dl\smiley_face.bmp+/
+			/+$DIDE_IMG c:\dl\smiley_face2.bmp+/
 		}with(TestClass1)
 		{
 			//todo: parse this correctly:
@@ -5800,6 +5983,47 @@ else
 	S w = { b:1, {} };
 	S w = {{/+nothing+/}};
 	void a(){ static if(5){{/+nothing+/}} }
+	
+}version(none){
+	//test do/while
+	void xx()
+	{
+		do a; while(1);
+		
+		do{} while(1);
+		
+		do
+		{ xyz; }while(1);
+		
+		do{}
+		while(1);
+		
+		do
+		{}
+		while(1);
+		
+		do
+		{}
+		while(1);
+		{}
+	}
+	
+	//constraint if
+	void f1(int N)()
+	if(N & 1)
+	{}
+	
+	void fun()()
+	if(true)
+	in(true)
+	out(; true)
+	out(a; true)
+	in{ x; }
+	out{ y; }in{ x; }//c1
+	/+c7+/out(aaa)/+c2+/{ y; }//c3
+	do/+c4+/
+	{ z; }
+	
 }
 
 
