@@ -2306,7 +2306,8 @@ class CodeRow: Row
 			if(outdent)
 			{
 				
-				bool isWhitespaceRow(CodeRow r)
+				//todo: refactor it into CodeRow
+				static bool isWhitespaceRow(CodeRow r)
 				{
 					return r.subCells.empty || r.subCells.all!((c){
 						if(auto g = cast(Glyph)c)
@@ -2324,11 +2325,16 @@ class CodeRow: Row
 				bool relevant(CodeRow r)
 				{
 					return r.subCells.any!((c){
+						//non-stringLiteral whitespace is irrelevant
 						if(auto g = cast(Glyph)c){
 							if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false;
 							return true;
 						}
-						if(cast(CodeComment)c) return false; //comments are irrelevant
+						
+						enum commentsAreRelevant = true;
+						if(!commentsAreRelevant && cast(CodeComment)c) return false;
+						
+						//everything else is relevant
 						return true;
 					});
 				}
@@ -5138,12 +5144,10 @@ version(/+$DIDE_REGION+/all)
 		}
 		Result res;
 		
+		/+opt: this is a slow search, it tries all the patterns one by one through the whole string.
+		Calling structuredCellToChar too many times.+/
 		foreach(pattern; patterns)
 		{
-			
-			static bugCnt=0;
-			if(!bugCnt++){ beep; ERR("MUST DETECT WORD BOUNDARIES!!!  `done` generates false positive `do` "); }
-			
 			auto src = cellRows.map
 			!(row => row.map!((cell){ 
 				//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
@@ -5177,7 +5181,11 @@ version(/+$DIDE_REGION+/all)
 					}
 				}
 			}
-			if(match){
+			if(match) 
+			if(!pattern.back.isDLangIdentifierCont || src.empty || !src.front.isDLangIdentifierCont
+				//whole words only, if the pattern ends with a letter
+			)
+			{
 				res.pattern = pattern;
 				res.idx = idx;
 				break;
@@ -6055,8 +6063,19 @@ else
 	do/+c4+/
 	{ z; }
 	
-	//done is not do bug. Keyword detection must detect whole words.
-	void fun2(){ done(5); }
+	void fun2(){
+		//done is not do bug. Keyword detection must detect whole words.
+		done(5);
+		
+		if(1
+			//fixed: this comment has too much tabs in front of itself
+		){}
+		if(
+			1
+			//this way it's ok
+		){}
+
+	}
 }
 
 
