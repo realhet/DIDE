@@ -4012,7 +4012,7 @@ version(/+$DIDE_REGION+/all)
 					case "alias":	return clPiko.G231;
 					case "if", "switch", "final switch", "else":	return clPiko.G119;
 					case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66);
-					case "version", "debug", "static if", "static foreach":	return mix(clPiko.G115, clPiko.G119, .5);
+					case "version", "debug", "static if", "static foreach", "static foreach_reverse":	return mix(clPiko.G115, clPiko.G119, .5);
 					case "module", "import":	return clPiko.G107;
 					case "unittest":	return clPiko.G62;
 						
@@ -4838,7 +4838,7 @@ version(/+$DIDE_REGION+/all)
 				//and symbols are in the keywords and in the symbols.
 				
 				if(token != Token.none)
-					res ~= TokenLocation!Token(cast(int)pos, cast(int)s.length, token);
+					res ~= TokenLocation!Token(cast(int)pos, cast(int) s.length, token);
 			}
 			
 			static void categorizeDlangChar(dchar ch, ref char s/+state+/)
@@ -5459,9 +5459,10 @@ version(/+$DIDE_REGION+/all)
 				{
 					transferWhitespaceAndCommentsAndDirectives; //these comments are going into the body of the block
 					
-					auto main = tokens.front;
+					const main = tokens.front;
 					auto mainIsKeyword()
 					{ return main.token.functionSwitch!"a.text.startsWith('_')"; }
+					
 					sw: switch(main.token)
 					{
 						static foreach(a; sentenceDetectionRules)
@@ -5469,11 +5470,14 @@ version(/+$DIDE_REGION+/all)
 						default:	fetchSingleToken;
 					}
 					
+					auto ending = sentence.back;
+					const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
+					const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
+					
 					version(/+$DIDE_REGION Handle DLang Function Contracts+/all)
 					{
-						bool isContract;
-						if(sentence.length && sentence.back.token == DeclToken.block){
-							
+						if(sentence.length==1 && sentence.back.token == DeclToken.block){
+							/+
 							//step back on whitespace and zero or one () param block
 							int stepBackOnParamsAndWhitespace(int i0)
 							{
@@ -5508,20 +5512,44 @@ version(/+$DIDE_REGION+/all)
 							}
 							
 							while(tokens.length){
-								const t = checkContractKeyword(stepBackOnParamsAndWhitespace(main.pos-1));
+								const t = checkContractKeyword(stepBackOnParamsAndWhitespace(first-1));
 								if(t==0) break;
 								LOG(t);
-								main = tokens.front;
+								first = tokens.front;
 								fetchTokens!([DeclToken.block]);
 								if(t<0) break;
+							}
+							+/
+							
+							static auto isSkippableContractBlock(dstring s)
+							{
+								//opt: would be faster to check for invalid chars first. "dinotu({ \n"   Or check the number of letters first.
+								
+								// { whitespace in/out/do whitespace opt( whitespace {
+								assert(s.length>=2);
+								assert(s.startsWith('{'));
+								assert(s.endsWith('{'));
+								s = s[1..$-1].strip;
+								
+								// in/out/do whitespace opt(
+								s = s.withoutEnding('(').stripRight;
+								
+								// in/out/do
+								return s.among("in"d, "out"d, "do"d);
+							}
+							
+							int i = main.pos;
+							while(!tokens.empty && tokens.front.token == DeclToken.block && isSkippableContractBlock(srcDStr[i .. tokens.front.end]))
+							{
+								ending = tokens.front;
+								sentence ~= ending;
+								i = ending.pos;
+								tokens.popFront;
 							}
 						}
 					}
 					
-					const ending = sentence.back;
 					
-					const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' ');
-					const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : "";
 					
 					/*if(isContract){
 						print("Contract Sentence debug-------------");
@@ -5973,7 +6001,10 @@ else
 	S[] s1 = [{5}, {6}];
 	S[] s2 = b({ lambda4; });
 	struct T{ S s; }
-	T[] t1 = [{{5}}];
+	T[] t1 = [{{5}}]; /+todo: this is clear that the innermost block is not 
+		a statement/declaration block. 
+		It should use normal CodeBlock instead of Declaration. +/
+	T[] t1 = [{{5,6}}];
 	
 	struct S { int a, b, c, d = 7; }
 	S s = { a:1, b:2 };
@@ -6024,6 +6055,8 @@ else
 	do/+c4+/
 	{ z; }
 	
+	//done is not do bug. Keyword detection must detect whole words.
+	void fun2(){ done(5); }
 }
 
 
