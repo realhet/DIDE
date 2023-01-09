@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -90,6 +90,7 @@ version(/+$DIDE_REGION main+/all)
 	enum 	LogRequestPermissions	= false,
 		DisableSyntaxHighlightWorkerJob 	= true;
 	
+	enum visualizeMarginsAndPaddingUnderMouse = false; //todo: make this a debug option in a menu
 	
 	alias blink = didemodule.blink;
 	
@@ -315,8 +316,6 @@ version(/+$DIDE_REGION main+/all)
 			void drawOverlay(Drawing dr)
 			{
 				//dr.mmGrid(view);
-				
-				enum visualizeMarginsAndPaddingUnderMouse = true; //todo: make this a debug option in a menu
 				
 				dr.alpha = .5f;
 				dr.lineWidth = -1;
@@ -545,6 +544,12 @@ version(/+$DIDE_REGION main+/all)
 								Text(" "~log2(lod.pixelSize).format!"%.2f");
 							});
 							
+							if(1)
+							{
+								VLine;
+								workspace.UI_structureLevel;
+							}
+							
 							//this applies YAlign.stretch
 							with(actContainer){
 								measure;
@@ -696,6 +701,10 @@ version(/+$DIDE_REGION main+/all)
 			
 			StructureMap structureMap;
 			
+			@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted;
+			@property StructureLevel getDesiredStructureLevel(){ return desiredStructureLevel; }
+			
+			
 		}version(/+$DIDE_REGION+/all)
 		{
 			struct AutoReloader
@@ -716,7 +725,7 @@ version(/+$DIDE_REGION main+/all)
 					
 					auto m = modules[idx];
 					if(!m.changed && m.fileModified < m.file.modified/+It takes 120us for a file+/)
-						m.reload;
+						m.reload(m.structureLevel);
 				}
 			}
 			
@@ -1515,6 +1524,11 @@ version(/+$DIDE_REGION main+/all)
 		{
 			auto res = requestModifyPermission(ts.codeColumn);
 			
+			//todo: there could be additional checks based on the input text
+			import het.structurescanner;
+			if(DLangScanner(str).any!"a.isError")
+				WARN("Invalid DLang source code inserted.\n"~str);
+			
 			if(res){
 				auto m = moduleOf(ts).enforce;
 				static if(LogRequestPermissions)
@@ -1598,7 +1612,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			if(auto m=findModule(File(where)))
 			{
-				m.reload(Yes.useExternalContents, what);
+				m.reload(desiredStructureLevel, Yes.useExternalContents, what);
 				//selectAll
 				textSelectionsSet = [m.content.allSelection(true)];
 				//todo: refactor codeColumn.allTextSelection(bool primary or not)
@@ -1783,7 +1797,7 @@ version(/+$DIDE_REGION main+/all)
 			//todo: insertText with fake local syntax highlighting. until the background syntax highlighter finishes.
 			
 			///inserts text at cursor, moves the corsor to the end of the text
-			void simpleInsert(ref TextSelection ts, string str)
+			void insertSingleLine(ref TextSelection ts, string str)
 			{
 				assert(ts.valid);
 				assert(ts.isZeroLength);
@@ -1793,7 +1807,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(requestInsertPermission_prepare(ts, str))
 					{
-						const insertedCnt = row.insertText(ts.caret.pos.x, str);
+						const insertedCnt = row.insertText(ts.caret.pos.x, str); //INS
 						//todo: shift adjust selections that are on this row
 						
 						//adjust caret and save
@@ -1808,7 +1822,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 				else
 					assert("Row out if range");
-			} void multiInsert(ref TextSelection ts, string[] lines )
+			} void insertMultiLine(ref TextSelection ts, string[] lines )
 			{
 				assert(ts.valid);
 				assert(ts.isZeroLength);
@@ -1832,20 +1846,20 @@ version(/+$DIDE_REGION main+/all)
 						auto lastRow = row.splitRow(ts.caret.pos.x);
 						
 						//insert at the end of the first row
-						row.insertText(row.cellCount, lines.front);
+						row.insertText(row.cellCount, lines.front);  //INS
 						
 						//create extra rows in the middle
 						Cell[] midRows;
 						foreach(line; lines[1..$-1])
 						{
-							auto r = new CodeRow(ts.codeColumn, line);
+							auto r = new CodeRow(ts.codeColumn, line);  //INS
 							//todo: this should be insertText
 							r.setChangedCreated;
 							midRows ~= r;
 						}
 						
 						//insert at the beginning of the last row
-						const insertedCnt = lastRow.insertText(0, lines.back);
+						const insertedCnt = lastRow.insertText(0, lines.back);  //INS
 						
 						//insert modified rows into column
 						ts.codeColumn.subCells 	= ts.codeColumn.subCells[0..ts.caret.pos.y+1]
@@ -1875,11 +1889,11 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(lines.length==1)
 				{//simple text without newline
-					simpleInsert(ts, lines[0]);
+					insertSingleLine(ts, lines[0]);
 				}
 				else if(lines.length>1)
 				{//insert multiline text
-					multiInsert(ts, lines);
+					insertMultiLine(ts, lines);
 				}
 			}
 			
@@ -1897,7 +1911,7 @@ version(/+$DIDE_REGION main+/all)
 				else
 				{ //cyclically paste the lines of the clipboard
 					foreach_reverse(ref ts, line; lockstep(textSelections, lines.cycle.take(textSelections.length)))
-						simpleInsert(ts, line);
+						insertSingleLine(ts, line);
 				}
 			}
 			
@@ -2408,7 +2422,7 @@ version(/+$DIDE_REGION main+/all)
 		static struct Job
 		{
 			DateTime changeId; //must be a globally unique id, also sorted by chronology
-			string resourceId; //only one object allowed with the same referenceId
+			CodeColumn col; //only one object allowed with the same referenceId
 			string sourceText;
 			
 			static if(!DisableSyntaxHighlightWorkerJob)
@@ -2423,11 +2437,11 @@ version(/+$DIDE_REGION main+/all)
 		private int destroyLevel;
 		private Job[] inputQueue, outputQueue;
 	
-		void addJob(DateTime changeId, string resourceId, string sourceText)
+		void addJob(DateTime changeId, CodeColumn col, string sourceText)
 		{
 			synchronized(this)
-				inputQueue = 	inputQueue.remove!(j => j.resourceId==resourceId) 
-					~ Job(changeId, resourceId, sourceText);
+				inputQueue = 	inputQueue.remove!(j => j.col is col) 
+					~ Job(changeId, col, sourceText);
 		}
 	
 		Job getResult()
@@ -2461,10 +2475,14 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(auto job = shw._workerGetJob)
 				{
-					//LOG("Working on Job: " ~ job.changeId.text ~ " " ~job.resourceId);
-					static if(!DisableSyntaxHighlightWorkerJob)
+					//todo: dead code.
+					//LOG("Working on Job: " ~ job.changeId.text ~ " " ~job.sourceText);
+					static if(!DisableSyntaxHighlightWorkerJob){
 						job.sourceCode = new SourceCode(job.sourceText);
-					//LOG("parsed");
+						LOG("syntax job parsed");
+						//LOG(job.sourceCode.syntax.length, job.sourceCode.sourceText.length);
+						//LOG(job.sourceCode.syntax.take(20));
+					}
 					shw._workerCompleteJob(job);
 				}
 				else
@@ -2498,24 +2516,24 @@ version(/+$DIDE_REGION main+/all)
 		{
 			//LOG(cell.text);
 			
-			static DateTime resyntaxNow;
+			static DateTime uniqueTime;
 			if(auto col = cell.thisAndAllParents!CodeColumn.frontOrNull)
 			{
-				resyntaxNow.actualize;
+				uniqueTime.actualize;
 				
 				//fast update last item if possible
 				if(resyntaxQueue.map!"a.what".backOrNull is col)
 				{
-					resyntaxQueue.back.when = resyntaxNow;
-					col.lastResyntaxTime = resyntaxNow;
+					resyntaxQueue.back.when = uniqueTime;
+					col.lastResyntaxTime = uniqueTime;
 					return;
 				}
 				
 				//remove if alreay exists
 				resyntaxQueue = resyntaxQueue.remove!(e => e.what is col);
 				
-				resyntaxQueue ~= ResyntaxEntry(col, resyntaxNow);
-				col.lastResyntaxTime = resyntaxNow;
+				resyntaxQueue ~= ResyntaxEntry(col, uniqueTime);
+				col.lastResyntaxTime = uniqueTime;
 				
 			}
 			else
@@ -2535,61 +2553,55 @@ version(/+$DIDE_REGION main+/all)
 				});
 		}}
 		
-		bool resyntaxNowOrLater(Cell cell, DateTime changedId, Flag!"later" later)
+		void resyntaxNow(CodeColumn col)
 		{
-			if(auto col = cast(CodeColumn)cell)
-			{
-				if(later)
-				{
-					syntaxHighlightWorker.addJob
-					(
-						changedId,
-						TextCursor(col, ivec2(0)).toReference.text,
-						/*col.sourceText*/ "UNUSED"
-					);
-				}
-				else
-				{
-					if(auto mod = col.moduleOf)
-					{
-						mod.resyntax;
-					}
-					else
-						assert(0, "Unable to resyntax: No module");
-				}
-				return true;
-			}
-			else
-				assert(0, "Unable to resyntax: No CodeColumn");
+			col.resyntax("UNUSED0"/*code.sourceText*/);
 		}
-	
+		
+		void resyntaxLater(CodeColumn col, DateTime changedId)
+		{
+			syntaxHighlightWorker.addJob
+			(
+				changedId,
+				col, //TextCursor(col, ivec2(0)).toReference.text, //problem: should send the column object, not the text
+				"unused"
+				//col.shallowText.replace(compoundObjectChar, ' ') //opt: there should be a variant of shallowText that uses spaces instead of compoundChar
+				//col.sourceText
+				///*col.sourceText*/ "UNUSED"
+			);
+		}
+		
 		/// returns true if any work done or queued
 		bool updateResyntaxQueue()
 		{
 			if(auto job = syntaxHighlightWorker.getResult)
 			{
-				auto selRef = TextSelectionReference(job.resourceId, &findModule);
+				//auto selRef = TextSelectionReference(job.resourceId, &findModule);
 				/+todo: This string -> Object mapping is not flexible.
 				Should work for Cursor and also for Column or Row or Node +/
 				
-				if(selRef.valid)
+				//if(selRef.valid)
 				{
-					auto sel = selRef.fromReference;
-					if(sel.valid)
+					//auto sel = selRef.fromReference;
+					//if(sel.valid)
 					{
-						auto col = sel.codeColumn;
-						auto mod = col.moduleOf;
+						//auto col = sel.codeColumn;
+						auto col = job.col;
+						/*auto mod = col.moduleOf;
 						enforce(mod && mod.content is col,
 							"syntaxHighlightWorker.getResult: "
-							~"only codeColumns that has a Module parent are supported");
+							~"only codeColumns that has a Module parent are supported");*/
 						
-						static DateTime lastOutdatedResyncTime;
-						if(col.lastResyntaxTime==job.changeId
-						|| now-lastOutdatedResyncTime > .25*second)
+						if(col.getStructureLevel >= StructureLevel.highlighted)
 						{
-							//mod.resyntax_src(job.sourceCode);
-							mod.resyntax;
-							lastOutdatedResyncTime = now;
+							static DateTime lastOutdatedResyncTime;
+							if(col.lastResyntaxTime==job.changeId
+							|| now-lastOutdatedResyncTime > .25*second)
+							{
+								//mod.resyntax_src(job.sourceCode);
+								resyntaxNow(col);
+								lastOutdatedResyncTime = now;
+							}
 						}
 					}
 				}
@@ -2603,7 +2615,8 @@ version(/+$DIDE_REGION main+/all)
 			lastResyntaxLaterTime = now;
 	
 			auto act = resyntaxQueue.fetchBack;
-			return resyntaxNowOrLater(act.what, act.when, Yes.later);
+			resyntaxLater(act.what, act.when);
+			return true;
 		}
 	}version(/+$DIDE_REGION Update+/all)
 	{//! Update ///////////////////////////////////////
@@ -3166,7 +3179,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					preserveTextSelections({
 						foreach(m; selectedModules)
-						{ m.reload; m.fileLoaded = now; }
+						{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
 					});
 				}
 				@VERB("Alt+S") void saveSelectedModules()
@@ -3334,6 +3347,52 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				if(fileToClose) closeModule(fileToClose);
+			}}
+			
+			void UI_structureLevel()
+			{with(im){
+				BtnRow({
+					Module[] modules = selectedModules;
+					if(modules.empty) modules = modulesWithTextSelection.array;
+					
+					static foreach(lvl; EnumMembers!StructureLevel)
+					{{
+						const capt = lvl.text[0..1].capitalize;
+						if(Btn(
+							{
+								style.bold = modules.any!(m => m.structureLevel==lvl);
+								Text(capt);
+							}, 
+							genericId(capt), 
+							selected(desiredStructureLevel==lvl), 
+							{ width = fh/4; },
+							hint("Select desired StructureLevel.\n(Ctrl = reload and apply)")
+						))
+						{
+							desiredStructureLevel = lvl;
+							
+							if(inputs.Ctrl.down) //apply
+							preserveTextSelections({
+								Module[] cantReload;
+								foreach(m; modules)
+								if(m.structureLevel != desiredStructureLevel)
+								{
+									if(m.changed){
+										cantReload ~= m;
+									}else{
+										m.reload(desiredStructureLevel);
+									}
+								}
+								
+								if(!cantReload.empty)
+								{
+									beep;
+									WARN("Unable to reload modules because they has unsaved changes. ", cantReload.map!"a.file.name");
+								}
+							});
+						}
+					}}
+				});
 			}}
 			
 			void UI_SearchBox(View2D view)
@@ -3517,7 +3576,7 @@ version(/+$DIDE_REGION main+/all)
 					{
 						const loc = cellLocationToCodeLocation(st);
 						loc.UI;
-		
+						
 						/*if(loc.file && loc.line){
 							if(loc.column) with(findModule(loc.file).code){
 								const pos = ivec2(loc.column, loc.line)-1;
@@ -4081,8 +4140,8 @@ version(/+$DIDE_REGION main+/all)
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
-			override void onDraw(Drawing dr)
-			{//onDraw //////////////////////////////
+			void customDraw(Drawing dr)
+			{//customDraw //////////////////////////////
 				if(textSelectionsGet.empty)
 				{//select means module selection
 					foreach(m; modules)
@@ -4128,6 +4187,11 @@ version(/+$DIDE_REGION main+/all)
 				drawTextSelections(dr, frmMain.view); //bug: this will not work for multiple workspace views!!!
 			}
 			
+			
+			override void onDraw(Drawing dr)
+			{
+			}
+			
 			override void draw(Drawing dr)
 			{
 				globalChangeindicatorsAppender.clear;
@@ -4135,6 +4199,7 @@ version(/+$DIDE_REGION main+/all)
 				structureMap.beginCollect;
 				super.draw(dr);
 				structureMap.endCollect(dr);
+				customDraw(dr);
 			}
 		}
 	}

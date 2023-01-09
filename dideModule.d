@@ -2,7 +2,20 @@ module didemodule;
 version(/+$DIDE_REGION+/all)
 {
 	
-	
+	/+23.01.05: StructuredEditor note: Make the structured editing possible
+		[ ] insert a space
+			-> didemodule.d(2502): @CodeColumn.resyntax:  Resyntax: Glyph expected ivec2(0, 0)
+			(CodeColumn.resyntax() - resyntaxer.appendHighlighted(sourceText))
+		[ ] insert a newline
+		[ ] delete a whitespace
+		[ ] delete a letter
+		[ ] delete a CodeNode
+		[ ] all the above works for root level
+		[ ] all the above works for a nested Comment
+		[ ] all the above works for a nested String
+		[ ] all the above works for a nested CodeNode
+	+/
+
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
 	//version identifiers: AnimatedCursors
@@ -12,6 +25,8 @@ version(/+$DIDE_REGION+/all)
 	enum rearrangeFlash = false;
 	
 	enum LogModuleLoadPerformance = false;
+	
+	enum visualizeStructureLevels = false;
 	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
@@ -540,7 +555,7 @@ version(/+$DIDE_REGION+/all)
 			return mod.file.fullName ~ "|";
 		}
 		
-		if(auto cmt = cast(CodeNode)child)
+		if(auto node = cast(CodeNode)child)
 		{
 			if(!cast(CodeRow)parent) return "?WrongNodeParent?";
 			const idx = parent.subCellIndex(child);
@@ -1575,10 +1590,23 @@ class CodeRow: Row
 			set(line, syntax);
 		}
 		
+		void set(string line, ubyte[] syntax)
+		{
+			//set is called from CodeColumnBuilder.
+			internal_setSubCells([]);
+			
+			static TextStyle style; //it is needed by appendCode/applySyntax
+			this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); },
+				style/+, must paste tabs!!! DefaultIndentSize+/);
+			
+			//note: tabIdx is already refreshed by appendCode
+			//spreadElasticNeedMeasure;
+		}
+		
 		this(CodeColumn parent_, string line)
 		{
 			this(parent_);
-			set(line, [ubyte(0)].replicate(line.length));
+			insertText(0, line);
 		}
 		
 		this(CodeColumn parent_, Cell[] cells)
@@ -1590,18 +1618,7 @@ class CodeRow: Row
 			subCells = cells;
 			refreshTabIdx;
 			needMeasure;
-		}
-		
-		void set(string line, ubyte[] syntax)
-		{
-			internal_setSubCells([]);
-			
-			static TextStyle style; //it is needed by appendCode/applySyntax
-			this.appendCode(line, syntax, (ubyte s){ applySyntax(style, s); },
-				style/+, must paste tabs!!! DefaultIndentSize+/);
-			
-			//note: tabIdx is already refreshed by appendCode
-			spreadElasticNeedMeasure;
+			//note: this is used from the high level parser. It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
 		}
 		
 		CaretPos localCaretPos(int idx)
@@ -1652,6 +1669,7 @@ class CodeRow: Row
 			subCells ~= after;
 			
 			refreshTabIdx;
+			needMeasure;
 			spreadElasticNeedMeasure;
 			
 			return insertedCnt;
@@ -1661,12 +1679,31 @@ class CodeRow: Row
 		int insertText(int at, string str)
 		{
 			if(str.empty) return 0;
-			return insertSomething(at, {
-				static TextStyle style; //it is needed by appendCode/applySyntax
-				auto syntax = [ubyte(0)].replicate(str.length);
-				this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); },
-					style/+, must paste tabs!!! DefaultIndentSize+/);
+			const res = insertSomething(at, {
+				
+				CodeColumn col = parent.enforce("CodeRow must have a CodeColumn parent.");
+				
+				if(col.getStructureLevel >= StructureLevel.highlighted)
+				{
+					static TextStyle style; 
+					//it is needed by appendCode/applySyntax
+					//todo: Why it is not a problem, that style is NOT initialized with tsNormal???
+					
+					const sk = col.getSyntax(str.empty ? ' ' : str.front);
+					auto syntax = [ubyte(sk)].replicate(str.length);
+					this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); },
+						style/+, must paste tabs!!! DefaultIndentSize+/);
+				}
+				else
+				{
+					static TextStyle style;
+					const syntax = col.getSyntax(str.empty ? ' ' : str.front);
+					style.applySyntax(syntax);
+					this.appendStr(str, style);
+				}
 			});
+			
+			return res;
 		}
 		
 		/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
@@ -2006,32 +2043,42 @@ class CodeRow: Row
 						auto g = cast(Glyph)(actRow.subCells.get(actPos.x));
 						//opt: cache this array per each row
 						
-						enforce(g, "Resyntax: Glyph expected "~actPos.text);
-						enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text);
-						if(g.syntax.chkSet(syntax))
+						if(!g){
+							//StructuredEditor note: syntax highlighter ignores all classes except Glyph
+							//enforce(g, "Resyntax: Glyph expected "~actPos.text);
+						}
+						else
 						{
-							//syntaxChanged = true;
-							g.bkColor	= ts.bkColor;
-							g.fontColor	= ts.fontColor;
-							
-							const prevFontFlags = g.fontFlags;
-							g.fontFlags = ts.fontFlags;
-							if(auto delta = g.adjustBoldWidth(prevFontFlags))
+							enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text);
+							if(g.syntax.chkSet(syntax))
 							{
-								actRow.needMeasure; 
-								//opt: cache this and call only once per each row
-								//todo: Ensure elastic tabs recursive spread.
+								//syntaxChanged = true;
+								g.bkColor	= ts.bkColor;
+								g.fontColor	= ts.fontColor;
+								
+								const prevFontFlags = g.fontFlags;
+								g.fontFlags = ts.fontFlags;
+								if(auto delta = g.adjustBoldWidth(prevFontFlags)/+todo: must handle monospace too. skNumber should have a monospaced string.+/)
+								{
+									//row size changed. Later must call the spreadElasticTabs thing
+									actRow.needMeasure; 
+									//opt: cache this and call only once per each row
+									//todo: Ensure elastic tabs recursive spread.
+									//230109
+								}
 							}
 						}
+						
 						moveToNextChar;
 				}
 			}
 			
 			void appendNode(CodeNode node)
 			{
+				//StructuredEditor note: no need to check anything here
 				auto n = cast(CodeNode)(actRow.subCells.get(actPos.x));
 				//opt: cache this array per each row
-				enforce(n, "Resyntax: Glyph expected "~actPos.text);
+				enforce(n, "Resyntax: CodeNode expected "~actPos.text);
 				
 				//no need to check anything
 				//opt: no need to rebuild the node, only skip it.
@@ -2216,7 +2263,21 @@ class CodeRow: Row
 				scanner.popFront;
 			}
 			
-			col.convertSpacesToTabs(Yes.outdent);
+			static if(rebuild)
+				col.convertSpacesToTabs(Yes.outdent);
+			
+			static if(resyntax)
+				foreach(r; col.rows)
+					if(!r.flags._measured
+						/+these are the rows affected by a width-changing fontFlag resuntax.+/
+					)
+					{
+						r.adjustCharWidths; //todo: this should be replaced by monospace fontFlag.
+						//230109
+						//note: this is needed by the resized rows
+						r.spreadElasticNeedMeasure;
+					}
+			
 			col.needMeasure;
 		}
 	}
@@ -2232,10 +2293,6 @@ class CodeRow: Row
 		int spacesPerTab = defaultSpacesPerTab; //autodetected on load
 		
 		DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
-		
-		/+deprecated("Only needed for compile.err builder") this(Container parent){
-			this(parent, ccPlain);
-		}+/
 		
 		/// Minimal constructor creating an empty codeColumn with 0 rows.
 		this(Container parent)
@@ -2271,6 +2328,63 @@ class CodeRow: Row
 		{ return CodeColumnBuilder!true	(this); }
 		auto resyntaxer()
 		{ return CodeColumnBuilder!false	(this); }
+		
+		StructureLevel getStructureLevel()
+		{
+			enforce(parent, "CodeColumn must have a parent");
+			
+			if(auto d = cast(Declaration) parent)
+			{
+				if(d.isStatement){
+					if(d.keyword=="import") return StructureLevel.highlighted;
+					//todo: make more rules like this
+				}
+				return StructureLevel.managed;
+			}
+			else if(auto cmt = cast(CodeComment) parent)
+			{
+				return StructureLevel.plain;
+			}
+			else if(auto cmt = cast(CodeString) parent)
+			{
+				if(cmt.type != CodeString.Type.tokenString)
+					return StructureLevel.plain;
+			}
+			
+			//from here: module will tell
+			if(auto m = moduleOf(this))
+			{ 
+				return m.structureLevel;
+			}
+			return StructureLevel.plain;
+		}
+		
+		SyntaxKind getSyntax(dchar ch)
+		{
+			if(getStructureLevel==StructureLevel.plain){
+				if(auto cmt = cast(CodeComment) parent)
+				{
+					return skComment;
+				}
+				else if(auto cmt = cast(CodeString) parent)
+				{
+					if(cmt.type != CodeString.Type.tokenString) return skString;
+				}
+				return skIdentifier1;
+			}
+			
+			//from here: threat as highlighted
+			
+			if(ch=='@') return skAttribute;
+			if(ch.among('\'', '"', '`')) return skString;
+			if(ch.isDLangWhitespace) return skWhitespace;
+			if(ch.isDLangIdentifierStart) return skIdentifier1;
+			if(ch.isDLangNumberStart) return skNumber;
+			if(ch.isDLangSymbol) return skSymbol;
+			return skWhitespace;
+			
+			//todo: advanced version that checks the surroundings at the insert position.
+		}
 		
 		auto calcWhitespaceStats()
 		{
@@ -2497,7 +2611,7 @@ class CodeRow: Row
 			//todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
 			try{ 
-				resyntaxer.appendHighlighted(sourceText);
+				resyntaxer.appendHighlighted(shallowText);
 			}catch(Exception e){
 				WARN(e.simpleMsg);
 			}
@@ -2539,9 +2653,9 @@ class CodeRow: Row
 		string rowDeepText(int rowIdx)
 		{ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
 		
-		auto byShallowChar()
+		auto byShallowChar(dchar lineSep = '\n')()
 		{
-			return rows.map!(r => r.chars).joiner(only('\n'));
+			return rows.map!(r => r.chars).joiner(only(lineSep));
 		}
 		
 		dchar firstChar()
@@ -2560,8 +2674,7 @@ class CodeRow: Row
 		{ return TextCursor(this, ivec2(0)); }
 		TextCursor endCursor()
 		{ 
-			return TextCursor(this, ivec2(rowCount-1, lastRowLength)); 
-			/* auto res = homeCursor; res.move(ivec2(TextCursor.end, TextCursor.end)); return res; */ 
+			return TextCursor(this, ivec2(lastRowLength, rowCount-1)); 
 		}
 		TextSelection allSelection(bool primary)
 		{ return TextSelection(homeCursor, endCursor, primary); }
@@ -2695,6 +2808,14 @@ class CodeRow: Row
 			
 			//visualize changed/created/modified
 			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+			
+			//visualize structuredLevel
+			if(visualizeStructureLevels)
+			{
+				dr.color = syntaxFontColor(getSyntax('a'));//clWow[2+getStructureLevel];
+				dr.lineWidth = -2;
+				dr.drawRect(outerBounds);
+			}
 		}
 		
 		static void selfTest()
@@ -3711,6 +3832,7 @@ version(/+$DIDE_REGION+/all)
 	interface WorkspaceInterface
 	{
 		@property bool isReadOnly();
+		@property StructureLevel getDesiredStructureLevel();
 	}
 	
 	enum StructureLevel : ubyte
@@ -3750,7 +3872,7 @@ version(/+$DIDE_REGION+/all)
 				bkColor = clModuleBorder;
 				fileLoaded = now;
 				file = file_.actualFile;
-				reload;
+				reload((cast(WorkspaceInterface) parent) ? (cast(WorkspaceInterface) parent).getDesiredStructureLevel : StructureLevel.plain);
 			}
 			
 			override @property string identifier()
@@ -3807,16 +3929,12 @@ version(/+$DIDE_REGION+/all)
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
-			void resyntax()
-			{
-				content.resyntax("UNUSED0"/*code.sourceText*/);
-			}
-			
-			void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents="")
+			void reload(StructureLevel desiredStructureLevel, Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents="")
 			{
 				fileModified = file.modified;
 				sizeBytes = file.size;
 				resetModuleTypeFlags;
+				structureLevel = StructureLevel.plain; //reset to the most basic level
 		
 				auto prevSourceText = sourceText;
 				string sourceText = useExternalContents	? externalContents
@@ -3884,8 +4002,7 @@ version(/+$DIDE_REGION+/all)
 					}
 				}
 				
-				enum targetLevel = StructureLevel.managed;
-				[&doPlain, &doHighlighted, &doStructured, &doManaged][targetLevel]();
+				[&doPlain, &doHighlighted, &doStructured, &doManaged][desiredStructureLevel]();
 				
 				needMeasure;
 			}
@@ -3952,21 +4069,19 @@ version(/+$DIDE_REGION+/all)
 		{
 			super(parent, file_);
 			
-			reload;
+			reload(StructureLevel.plain);
 		}
 		
 		override bool isReadOnly()
 		{ return true; }
 		
-		override void resyntax()
-		{ }
-		
-		override void reload(Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents="")
+		override void reload(StructureLevel desiredLevel, Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents="")
 		{
 			clearSubCells;
 			fileModified = now;
 			sizeBytes = 0; //todo: note this has no file.
 			resetModuleTypeFlags;
+			structureLevel = StructureLevel.plain; //reset to the most basic level
 			content = createErrorListCodeColumn(this); //todo: remake this with a parser
 			appendCell(enforce(content));
 			needMeasure;
@@ -4242,7 +4357,23 @@ version(/+$DIDE_REGION+/all)
 			return d;
 		}
 		
-		Declaration[] allJoinedPrepositions()
+		Declaration firstJoinedPreposition()
+		{
+			if(!isPreposition) return null;
+			
+			Declaration a = this;
+			while(1)
+			{
+				assert(a.isPreposition);
+				if(auto b = cast(Declaration) a.parent)
+					a = b;
+				else
+					break;
+			}
+			return a;
+		}
+		
+		Declaration[] allJoinedPrepositionsFromThis()
 		{
 			Declaration[] res;
 			auto act = this;
@@ -4254,13 +4385,27 @@ version(/+$DIDE_REGION+/all)
 			return res;
 		}
 		
+		protected void setContentParent(Declaration p)
+		{
+			//used to set visual parents. The actual chain is stored in the linked list: nextJoinedPreposition.
+			void a(CodeColumn col){ if(col) col.setParent(p); }
+			a(attributes);
+			a(header);
+			a(block);
+		}
+		
 		void appendJoinedPreposition(Declaration decl)
 		{
 			static bugcnt = 0;
 			if(!bugcnt++){ beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
 			
 			assert(decl && decl.isPreposition);
-			lastJoinedPreposition.nextJoinedPreposition = decl;
+			auto last = lastJoinedPreposition;
+			last.nextJoinedPreposition = decl;
+			
+			decl.setParent(last); //The declaration's parent is the previous declaration
+			auto root = firstJoinedPreposition;
+			decl.setContentParent(root);
 		}
 		
 		Declaration nestedPreposition()
@@ -4362,7 +4507,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			}else if(isPreposition)
 			{
-				foreach(p; allJoinedPrepositions)
+				foreach(p; allJoinedPrepositionsFromThis)
 				{
 					if(p.header) processHighLevelPatterns_goInside(p.header);
 					processHighLevelPatterns_block(p.block);
@@ -4404,7 +4549,7 @@ version(/+$DIDE_REGION+/all)
 			assert(blk.parent);
 			assert(blk.type == CodeBlock.Type.block);
 			
-			super(parent);
+			super(blk.parent);
 			
 			blk.content.setParent(this);
 			this.ending	= '}';
