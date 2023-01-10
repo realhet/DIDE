@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -559,6 +559,8 @@ version(/+$DIDE_REGION main+/all)
 						});
 					}
 				);
+				
+				workspace.UI_flashErrorMessages;
 				
 				im.root ~= workspace;
 				im.root ~= overlay;
@@ -1499,13 +1501,18 @@ version(/+$DIDE_REGION main+/all)
 		
 		bool requestDeletePermission(TextSelection ts)
 		{
+			auto s = ts.sourceText; 
+			/+this can throw if the structured contents are invalid. 
+			If that goes into the undo, it would not be redo'd.+/
+			
 			auto res = requestModifyPermission(ts.codeColumn);
-			if(res){
+			if(res)
+			{
 				static if(LogRequestPermissions)
-					print(EgaColor.ltRed("DEL"), ts.toReference.text, ts.sourceText.quoted);
+					print(EgaColor.ltRed("DEL"), ts.toReference.text, s.quoted);
 					
 				auto m = moduleOf(ts).enforce;
-				m.undoManager.justRemoved(undoGroupId, ts.toReference.text, ts.sourceText);
+				m.undoManager.justRemoved(undoGroupId, ts.toReference.text, s);
 			}
 			return res;
 		}
@@ -1641,9 +1648,10 @@ version(/+$DIDE_REGION main+/all)
 		{// copy_impl ///////////////////////////////////////
 			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
 			
-			auto copiedSourceText = textSelections.sourceText;
-			bool valid = copiedSourceText.length>0;
-			if(valid) clipboard.asText = copiedSourceText;  //todo: BOM handling
+			auto s = textSelections.sourceText; //tjhis can throw if structured declarations has invalid contents
+			
+			bool valid = s.length>0;
+			if(valid) clipboard.asText = s;  //todo: BOM handling
 			return valid;
 		}
 		
@@ -2555,7 +2563,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		void resyntaxNow(CodeColumn col)
 		{
-			col.resyntax("UNUSED0"/*code.sourceText*/);
+			col.resyntax;
 		}
 		
 		void resyntaxLater(CodeColumn col, DateTime changedId)
@@ -2775,118 +2783,128 @@ version(/+$DIDE_REGION main+/all)
 		{
 			void update(View2D view, in BuildResult buildResult)
 			{//update ////////////////////////////////////
-				//textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
-				
-				//note:	all verbs can optonally validate textSelections by accessing them from validTextSelections
-				//	all verbs can call invalidateTextSelections if it does something that affects them
-				handleXBox;
-				handleKeyboard;
+				try
 				{
-					updateCodeLocationJump;
-					if(KeyCombo("MMB").released/+pressed is not good because when I 
-					pan I don't see where the mouse is.+/
-						&& nearestSearchResult.reference!="")
+					//textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
+					
+					//note:	all verbs can optonally validate textSelections by accessing them from validTextSelections
+					//	all verbs can call invalidateTextSelections if it does something that affects them
+					handleXBox;
+					handleKeyboard;
 					{
-						jumpTo(nearestSearchResult.reference);
-						//todo: only do this when there was no lmouseTravelSinceLastPress
-					}
-				}
-				{
-					autoReloader.enabled = true; autoReloader.update(modules);
-				}
-				updateOpenQueue(1);
-				updateResyntaxQueue;
-				
-				measure; //measures all containers if needed, updates ElasticTabstops
-				//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
-				//and scene drawing routines.
-				
-				// From here every positions and sizes are correct -----------------------------------------
-				
-				moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput
-					&& view.isMouseInside /+&& lod.moduleLevel+/,
-					view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; });
-				textSelectionManager.update(view, this, mouseMappings);
-		
-				//detect textSelection change
-				const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
-		
-				//if there are any cursors, module selection if forced to modules with textSelections
-				if(selectionChanged && textSelectionsGet.length)
-				{
-					foreach(m; modules) m.flags.selected = false;
-					foreach(m; modulesWithTextSelection) m.flags.selected = true;
-				}
-		
-				//focus at selection
-				if(!jumpRequest.isNull)
-				{
-					with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin);
-				}
-				else if(!scrollInBoundsRequest.isNull)
-				{
-					const b = scrollInBoundsRequest.get;
-					frmMain.view.scrollZoom(b);
-				}
-				else if(!textSelectionManager.scrollInRequest.isNull)
-				{
-					const p = textSelectionManager.scrollInRequest.get;
-					frmMain.view.scrollZoom(bounds2(p, p));
-				}
-				else if(selectionChanged)
-				{
-					if(!inputs[mouseMappings.main].down)
-					{//don't focus to changed selection when the main mouse button is held down
-						frmMain.view.scrollZoom(worldBounds(textSelectionsGet));
-						//todo: maybe it is problematic when the selection can't fit on the current screen
-					}
-				}
-				scrollInBoundsRequest.nullify;
-				jumpRequest.nullify;
-		
-				//animate cursors
-				version(AnimatedCursors)
-				{
-					if(textSelectionsGet.length<=MaxAnimatedCursors)
-					{
-						const 	animT	= calcAnimationT(application.deltaTime.value(second), .5, .25),
-							maxDist 	= 1.0f;
-						
-						foreach(ref ts; textSelectionsGet)
+						updateCodeLocationJump;
+						if(KeyCombo("MMB").released/+pressed is not good because when I 
+						pan I don't see where the mouse is.+/
+							&& nearestSearchResult.reference!="")
 						{
-							foreach(ref cr; ts.cursors[])
-							with(cr)
+							jumpTo(nearestSearchResult.reference);
+							//todo: only do this when there was no lmouseTravelSinceLastPress
+						}
+					}
+					{
+						autoReloader.enabled = true; autoReloader.update(modules);
+					}
+					updateOpenQueue(1);
+					updateResyntaxQueue;
+					
+					updateFlashErrorMessages;
+					
+					measure; //measures all containers if needed, updates ElasticTabstops
+					//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
+					//and scene drawing routines.
+					
+					// From here every positions and sizes are correct -----------------------------------------
+					
+					moduleSelectionManager.update(!im.wantMouse && mainWindow.canProcessUserInput
+						&& view.isMouseInside /+&& lod.moduleLevel+/,
+						view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; });
+					textSelectionManager.update(view, this, mouseMappings);
+			
+					//detect textSelection change
+					const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
+			
+					//if there are any cursors, module selection if forced to modules with textSelections
+					if(selectionChanged && textSelectionsGet.length)
+					{
+						foreach(m; modules) m.flags.selected = false;
+						foreach(m; modulesWithTextSelection) m.flags.selected = true;
+					}
+			
+					//focus at selection
+					if(!jumpRequest.isNull)
+					{
+						with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin);
+					}
+					else if(!scrollInBoundsRequest.isNull)
+					{
+						const b = scrollInBoundsRequest.get;
+						frmMain.view.scrollZoom(b);
+					}
+					else if(!textSelectionManager.scrollInRequest.isNull)
+					{
+						const p = textSelectionManager.scrollInRequest.get;
+						frmMain.view.scrollZoom(bounds2(p, p));
+					}
+					else if(selectionChanged)
+					{
+						if(!inputs[mouseMappings.main].down)
+						{//don't focus to changed selection when the main mouse button is held down
+							frmMain.view.scrollZoom(worldBounds(textSelectionsGet));
+							//todo: maybe it is problematic when the selection can't fit on the current screen
+						}
+					}
+					scrollInBoundsRequest.nullify;
+					jumpRequest.nullify;
+			
+					//animate cursors
+					version(AnimatedCursors)
+					{
+						if(textSelectionsGet.length<=MaxAnimatedCursors)
+						{
+							const 	animT	= calcAnimationT(application.deltaTime.value(second), .5, .25),
+								maxDist 	= 1.0f;
+							
+							foreach(ref ts; textSelectionsGet)
 							{
-								targetPos = localPos.pos; //todo: animate height as well
-								if(animatedPos.x.isnan)
-									animatedPos = targetPos;
-								else
-									animatedPos.follow(targetPos, animT, maxDist);
+								foreach(ref cr; ts.cursors[])
+								with(cr)
+								{
+									targetPos = localPos.pos; //todo: animate height as well
+									if(animatedPos.x.isnan)
+										animatedPos = targetPos;
+									else
+										animatedPos.follow(targetPos, animT, maxDist);
+								}
 							}
 						}
 					}
+					
+					//update buildresults if needed (compilation progress or layer mask change)
+					size_t calcBuildStateHash()
+					{
+						return modules	.map!"tuple(a.file, a.outerPos)"
+							.array
+							.hashOf(buildResult.lastUpdateTime.hashOf(
+								markerLayerHideMask
+								/+to filter compile.err+/
+							));
+					}
+					/+opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
+					all the layers with all the info, only move the affected layer items.+/
+					buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
+					if(buildStateChanged)
+					{
+						updateModuleBuildStates(buildResult);
+						convertBuildMessagesToSearchResults; //opt: limit this by change detection
+					}
+					
+					updateLastKnownModulePositions;
+					
 				}
-				
-				//update buildresults if needed (compilation progress or layer mask change)
-				size_t calcBuildStateHash()
+				catch(Exception e)
 				{
-					return modules	.map!"tuple(a.file, a.outerPos)"
-						.array
-						.hashOf(buildResult.lastUpdateTime.hashOf(
-							markerLayerHideMask
-							/+to filter compile.err+/
-						));
+					flashError(e.simpleMsg);
 				}
-				/+opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
-				all the layers with all the info, only move the affected layer items.+/
-				buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
-				if(buildStateChanged)
-				{
-					updateModuleBuildStates(buildResult);
-					convertBuildMessagesToSearchResults; //opt: limit this by change detection
-				}
-				
-				updateLastKnownModulePositions;
 			}
 			
 		}
@@ -3735,14 +3753,57 @@ version(/+$DIDE_REGION main+/all)
 					actContainer.append(mouseOverHintCntr);
 			}}
 			
+			//UI_FlashError //////////////////////////////////////
 			
 			///Brings up an error message on the center of the screen for a short duration
+			struct FlashErrorMessage{
+				DateTime when;
+				string msg;
+			}
+			
+			FlashErrorMessage[] flashErrorMessages;
+			
 			void flashError(string msg)
 			{
 				if(msg=="") return;
 				//todo: implement flashing error UI
+				enum maxLen = 10;
+				if(flashErrorMessages.length>maxLen)
+					flashErrorMessages = flashErrorMessages[$-maxLen..$];
+				flashErrorMessages ~= FlashErrorMessage(now, msg);
 				beep;
 			}
+			
+			enum flashErrorDuration = 4*second;
+			
+			void updateFlashErrorMessages()
+			{
+				const t = now-flashErrorDuration;
+				flashErrorMessages = flashErrorMessages.remove!(a => a.when<t);
+			}
+			
+			void UI_flashErrorMessages()
+			{with(im){
+				if(flashErrorMessages.empty) return;
+				Panel(PanelPosition.bottomCenter, 
+				{
+					bkColor = clRed;
+					style.bkColor = clRed;
+					style.fontColor = mix(clWhite, clRed, blink^^2);
+					style.bold = true;
+					flashErrorMessages.each!(m => Row(
+					{
+						padding = "4 24";
+						flags.hAlign = HAlign.center;
+						const 	tIn = (now-m.when).value(.5f*second),
+							tOut = (m.when+flashErrorDuration-now).value(.25f*second);
+						
+						fh = DefaultFontHeight*2 	* (tIn<1 ? easeOutElastic(tIn.clamp(0, 1), 0, 1, 1) : 1)
+							* (tOut<1 ? easeOutQuad(tOut.clamp(0, 1), 0, 1, 1) : 1);
+						Text(m.msg);
+					}));
+				});
+			}}
 		}	
 	}version(/+$DIDE_REGION Draw   +/all)
 	{//! draw routines ////////////////////////////////////////////////////

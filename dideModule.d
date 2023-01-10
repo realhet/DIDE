@@ -1042,7 +1042,7 @@ version(/+$DIDE_REGION+/all)
 							}
 							else if(auto n = cast(CodeNode)cell)
 							{
-								res ~= n.sourceText;
+								res ~= n.sourceText; //this can throw exceptions if the node has an invalid content
 							}
 							else
 							{
@@ -1517,7 +1517,7 @@ class CodeRow: Row
 				}
 				else if(auto n = cast(CodeNode)c)
 				{
-					res ~= n.sourceText;
+					res ~= n.sourceText;  //this can throw exceptions if the node contrnt is invalid
 				}
 				else
 				{
@@ -2605,16 +2605,35 @@ class CodeRow: Row
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
-		void resyntax(string sourceText)
+		void resyntax()
 		{
 			//note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 			//todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-			try{ 
-				resyntaxer.appendHighlighted(shallowText);
-			}catch(Exception e){
-				WARN(e.simpleMsg);
+			if(getStructureLevel>=StructureLevel.highlighted)
+			{
+				try{ 
+					resyntaxer.appendHighlighted(shallowText);
+				}catch(Exception e){
+					WARN(e.simpleMsg);
+					//todo: mark the error.
+				}
+				//todo: additionally highlight language specific keywords.
 			}
+			else
+			{
+				assert(0, "Unable to resyntax plain text.");
+			}
+		}
+		
+		void fillSyntax(SyntaxKind sk)
+		{
+			static TextStyle ts; ts.applySyntax(skString);
+			rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){
+				g.bkColor = ts.bkColor;
+				g.fontColor = ts.fontColor;
+				g.fontFlags = ts.fontFlags;  //todo: refactor this 3 assignments.
+			});
 		}
 		
 		override inout(Container) getParent() inout
@@ -3503,6 +3522,18 @@ version(/+$DIDE_REGION+/all)
 			//visualize changed/created/modified
 			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
 		}
+		
+		void fillSyntax(SyntaxKind sk)
+		{
+			static TextStyle ts; ts.applySyntax(sk);
+			subCells.map!(a => cast(Glyph) a).filter!"a".each!((g){
+				g.bkColor = ts.bkColor;
+				g.fontColor = ts.fontColor;
+				g.fontFlags = ts.fontFlags;  //todo: refactor this 3 assignments.
+			});
+			bkColor = ts.bkColor;
+		}
+
 	}
 }class CodeContainer : CodeNode
 {// CodeContainer /////////////////////////////
@@ -3641,6 +3672,94 @@ version(/+$DIDE_REGION+/all)
 		return extractSpecialComment.wordAt(0)==keyword;
 	}
 	
+	bool verify(bool markErrors = false)()
+	{
+		bool anyErrors;
+		void mark(Glyph g)
+		{
+			if(markErrors) if(g){
+				//todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
+				g.bkColor = clRed;
+				g.fontColor = clYellow;
+			}
+			anyErrors = true;
+		}
+		
+		auto byGlyph()
+		{ return content.rows.map!(r => r.glyphs).joiner(only(null)); }
+		
+		void checkInvalid(dchar ch)
+		{
+			content.fillSyntax(skString);
+			
+			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
+		}
+		
+		void checkInvalid2(dchar ch0, dchar ch1)
+		{
+			content.fillSyntax(skComment);
+			
+			bool lastCh0;
+			foreach(g; byGlyph)
+			{ 
+				const actCh0 = g && g.ch==ch0;
+				if(anyErrors || lastCh0 && g && g.ch==ch1) mark(g); 
+				lastCh0 = actCh0;
+			}
+		}
+		
+		//todo: redundant code
+		void checkNesting(dchar chOpen, dchar chClose)
+		{
+			if(chOpen==chClose)
+			{
+				checkInvalid(chOpen);
+			}
+			else
+			{
+				content.fillSyntax(skString);
+				
+				int cnt;
+				byGlyph.each!((g){
+					if(g)
+					{
+						if(g.ch==chOpen) cnt++;
+						else if(g.ch==chClose) cnt--;
+						
+						if(anyErrors || cnt<0) mark(g);
+					}
+				});
+				
+				if(cnt>0) //unclosed nesting!
+				{
+					anyErrors = true;
+					//todo: mark unclosed nesting
+				}
+			}
+		}
+		
+		void markButFirstRow()
+		{
+			auto a = content.rows.drop(1).map!(r => r.glyphs).joiner(only(null));
+			a.each!(g => mark(g));
+		}
+		
+		with(Type) final switch(type)
+		{
+			case slashComment: 	if(content.rowCount>1){ anyErrors = true; markButFirstRow; }	break;
+			case cComment: 	checkInvalid2('*', '/');	break;
+			case dComment: 	checkInvalid2('+', '/'); checkInvalid2('/', '+'); 	break;
+			case directive: 	checkNesting('(', ')'); 	break;
+		}
+		
+		if(anyErrors && markErrors)
+		{
+			fillSyntax(skError);
+		}
+		
+		return !anyErrors;
+	}
+	
 	override void rearrange()
 	{
 		if(isSpecialComment){
@@ -3669,6 +3788,14 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		super.rearrange;
+		
+		verify!true;
+	}
+	
+	override string sourceText()
+	{
+		enforce(verify, "Invalid comment format");
+		return super.sourceText;
 	}
 }class CodeString : CodeContainer
 {// CodeString //////////////////////////////////////////
@@ -3751,6 +3878,101 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		needMeasure;
+	}
+	
+	bool verify(bool markErrors = false)()
+	{
+		bool anyErrors;
+		void mark(Glyph g)
+		{
+			if(markErrors) if(g){
+				//todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
+				g.bkColor = clRed;
+				g.fontColor = clYellow;
+			}
+			anyErrors = true;
+		}
+		
+		auto byGlyph()
+		{ return content.rows.map!(r => r.glyphs).joiner(only(null)); }
+		
+		void checkInvalid(dchar ch)
+		{
+			content.fillSyntax(skString);
+			
+			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
+		}
+		
+		void checkInvalid_escape(dchar ch, dchar escape)
+		{
+			content.fillSyntax(skString);
+			
+			bool lastEscape;
+			foreach(g; byGlyph)
+			{ 
+				const actEscape = g && g.ch==escape;
+				if(anyErrors || !lastEscape && g && g.ch==ch) mark(g); 
+				lastEscape = actEscape;
+			}
+		}
+		
+		void checkNesting(dchar chOpen, dchar chClose)
+		{
+			if(chOpen==chClose)
+			{
+				checkInvalid(chOpen);
+			}
+			else
+			{
+				content.fillSyntax(skString);
+				
+				int cnt;
+				byGlyph.each!((g){
+					if(g)
+					{
+						if(g.ch==chOpen) cnt++;
+						else if(g.ch==chClose) cnt--;
+						
+						if(anyErrors || cnt<0) mark(g);
+					}
+				});
+				
+				if(cnt>0) //unclosed nesting!
+				{
+					anyErrors = true;
+					//todo: mark unclosed nesting
+				}
+			}
+		}
+		
+		with(Type) final switch(type)
+		{
+			case cString, cChar: 	checkInvalid_escape(TypePrefix[type].back, '\\');	break;
+			case dString, rString: 	checkInvalid(TypePrefix[type].back); 	break;
+			case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(TypePrefix[type].back, TypePostfix[type].front); 	break;
+			case tokenString: 		break;
+			/+todo: Any symbol can be used, not just slash '/'. The symbol in the qString must be a parameter.+/
+			//todo: Identifier delimited qString.
+		}
+		
+		if(anyErrors && markErrors)
+		{
+			fillSyntax(skError);
+		}
+		
+		return !anyErrors;
+	}
+	
+	override void rearrange()
+	{
+		super.rearrange;
+		verify!true;
+	}
+	
+	override string sourceText()
+	{
+		enforce(verify, "Invalid string literal format");
+		return super.sourceText;
 	}
 }class CodeBlock : CodeContainer
 {// CodeBlock //////////////////////////////////////////
@@ -4022,7 +4244,7 @@ version(/+$DIDE_REGION+/all)
 			void save()
 			{
 				if(isReadOnly) return;
-				sourceText.saveTo(file, Yes.onlyIfChanged);
+				sourceText.saveTo(file, Yes.onlyIfChanged); //sourceText can throw
 				clearChanged;
 				fileModified = file.modified; //opt: slow
 				fileSaved = now;
