@@ -1680,28 +1680,9 @@ class CodeRow: Row
 		{
 			if(str.empty) return 0;
 			const res = insertSomething(at, {
-				
 				CodeColumn col = parent.enforce("CodeRow must have a CodeColumn parent.");
-				
-				if(col.getStructureLevel >= StructureLevel.highlighted)
-				{
-					static TextStyle style; 
-					//it is needed by appendCode/applySyntax
-					//todo: Why it is not a problem, that style is NOT initialized with tsNormal???
-					
-					const sk = col.getSyntax(str.empty ? ' ' : str.front);
-					auto syntax = [ubyte(sk)].replicate(str.length);
-					this.appendCode(str, syntax, (ubyte s){ applySyntax(style, s); },
-						style/+, must paste tabs!!! DefaultIndentSize+/);
-				}
-				else
-				{
-					static TextStyle style;
-					const syntax = col.getSyntax(str.empty ? ' ' : str.front);
-					style.applySyntax(syntax);
-					
-					this.appendStr(str, style);
-				}
+				const syntax = col.getSyntax(str.empty ? ' ' : str.front);
+				this.appendCodeStr(str, syntax);
 			});
 			
 			return res;
@@ -1946,6 +1927,7 @@ class CodeRow: Row
 		enum resyntax = !rebuild;
 		
 		CodeColumn col;
+		
 		TextStyle tsWhitespace, ts;
 		SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace;
 		
@@ -1954,6 +1936,8 @@ class CodeRow: Row
 		
 		static if(rebuild)
 		{
+			static int staticLineCounter;
+			
 			void NL()
 			{ 
 				col.appendCell(actRow = new CodeRow(col, "", null)); 
@@ -1973,13 +1957,14 @@ class CodeRow: Row
 						if(skipNextN.chkClear && ch=='\n') break;
 						skipNextN = ch=='\r';
 						NL;
+						staticLineCounter++;
 					break;
 					default: 
 						//update cached textStyle
 						if(_currentSk.chkSet(syntax))
 							applySyntax(ts, syntax);
 						
-						actRow.appendSyntaxChar(ch, ts, syntax); 
+						actRow.appendSyntaxCharWithLineIdx(ch, ts, syntax, staticLineCounter); 
 				}
 			}
 			
@@ -2105,13 +2090,13 @@ class CodeRow: Row
 			foreach(dchar ch; str) appendChar(ch);
 		}
 		
-		void appendPlain(string sourceText)
+		void appendPlain(string str)
 		{
 			syntax = skIdentifier1; //no skWhiteSpace handling either.
-			appendStr(sourceText);
+			appendStr(str);
 		}
 		
-		private void appendHighlighted_internal(string sourceText)
+		private void appendHighlighted_internal(string src)
 		{
 			
 			static char categorize(dchar ch)
@@ -2121,13 +2106,14 @@ class CodeRow: Row
 				return '+';
 			}
 			
-			foreach(s; sourceText.splitWhen!((a, b) => categorize(a) != categorize(b)).map!text)
+			foreach(s; src.splitWhen!((a, b) => categorize(a) != categorize(b)).map!text)
 			{
 				switch(s[0])
 				{
 					case ' ', '\t', '\x0b', '\x0c': 	syntax = skWhitespace; 	break;
 					case '0': ..case '9':	syntax = skNumber; 	break;
 					case '#':	syntax = skDirective; 	break;
+					//todo: Support "#line n" directive for line numbering. Or ignore it... Just make karcshader.glsl work.
 					case '@':	syntax = skLabel; 	break;
 					
 					default:	if(s[0].isAlpha || s[0]=='_')
@@ -2160,10 +2146,10 @@ class CodeRow: Row
 			syntax = skIdentifier1;
 		}
 		
-		void appendHighlighted(string sourceText)
-		{ appendHighlighted	(sourceText.DLangScanner); }
-		void appendStructured(string sourceText)
-		{ appendStructured	(sourceText.DLangScanner); }
+		void appendHighlighted(string src)
+		{ appendHighlighted	(src.DLangScanner); }
+		void appendStructured(string src)
+		{ appendStructured	(src.DLangScanner); }
 		
 		void appendHighlighted(R)(R scanner) if(isScannerRange!R)
 		{ appendHighlightedOrStructured!false(scanner); }
@@ -2210,7 +2196,12 @@ class CodeRow: Row
 							static if(structured)
 							{
 								auto N(T)()
-								{ auto c = new T(actRow); c.rebuild(scanner); appendNode(c); }
+								{
+									auto c = new T(actRow);
+									static if(rebuild) c.line = staticLineCounter;
+									c.rebuild(scanner);
+									appendNode(c);
+								}
 								switch(sr.src)
 								{
 									//todo: //comment must ensure that after it, there will be a NewLine
@@ -2346,9 +2337,9 @@ class CodeRow: Row
 			{
 				return StructureLevel.plain;
 			}
-			else if(auto cmt = cast(CodeString) parent)
+			else if(auto str = cast(CodeString) parent)
 			{
-				if(cmt.type != CodeString.Type.tokenString)
+				if(str.type != CodeString.Type.tokenString)
 					return StructureLevel.plain;
 			}
 			
@@ -2365,7 +2356,7 @@ class CodeRow: Row
 			if(getStructureLevel==StructureLevel.plain){
 				if(auto cmt = cast(CodeComment) parent)
 				{
-					return skComment;
+					return cmt.isDirective ? skDirective : skComment; //todo: Not working. #define ispurple, just like skComment...
 				}
 				else if(auto str = cast(CodeString) parent)
 				{
@@ -2386,6 +2377,14 @@ class CodeRow: Row
 			return skWhitespace;
 			
 			//todo: advanced version that checks the surroundings at the insert position.
+		}
+		
+		int getLineOfFirstGlyphOrNode()
+		{
+			auto c = rows.map!(r => r.subCells).joiner.frontOrNull;
+			if(auto g = cast(Glyph) c) return g.line;
+			if(auto n = cast(CodeNode) c) return n.line;
+			return 0;
 		}
 		
 		auto calcWhitespaceStats()
@@ -2685,7 +2684,7 @@ class CodeRow: Row
 		}
 		
 		T firstCell(T:Cell = Cell)()
-		{//newline is not a valid first cell
+		{//newline is not a valid first cell -> it does access viola
 			if(auto r = getRow(0))
 				return cast(T) r.subCells.get(0);
 			return null;
@@ -3388,6 +3387,8 @@ version(/+$DIDE_REGION+/all)
 	{
 		Container parent;
 		
+		int line; //the starting source line
+		
 		auto subColumns()
 		{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
 		
@@ -3523,6 +3524,12 @@ version(/+$DIDE_REGION+/all)
 			
 			//visualize changed/created/modified
 			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+			
+			if(VisualizeCodeLineNumbers){
+				dr.color = clWhite;
+				dr.fontHeight = 1.25;
+				dr.textOut(outerPos, format!"%s"(line));
+			}
 		}
 		
 		void fillSyntax(SyntaxKind sk)
@@ -3604,8 +3611,11 @@ version(/+$DIDE_REGION+/all)
 	Type type;
 	bool isDDoc;
 	
+	@property bool isDirective() const
+	{ return type == Type.directive; }
+	
 	override SyntaxKind syntax() const
-	{ return type==Type.directive ? skDirective : skComment; }
+	{ return isDirective ? skDirective : skComment; }
 	override string prefix() const
 	{ return TypePrefix[type]; }
 	override string postfix() const
@@ -4165,6 +4175,8 @@ version(/+$DIDE_REGION+/all)
 				string sourceText = useExternalContents	? externalContents
 					: this.file.readText;
 				undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
+				
+				CodeColumnBuilder!true.staticLineCounter = 1;
 				
 				void doPlain()
 				{
@@ -4765,6 +4777,7 @@ version(/+$DIDE_REGION+/all)
 			//if(header) processHighLevelPatterns(header, No.isCertainBlock);
 			//if(block) processHighLevelPatterns(block, isCertainBlock ? Yes.isCertainBlock : No.isCertainBlock);
 			
+			calcLine;
 		}
 		
 		this(CodeBlock blk)
@@ -4783,7 +4796,24 @@ version(/+$DIDE_REGION+/all)
 			this.header 	= new CodeColumn(this, []);
 			
 			verify;
+			
+			calcLine;
 		}
+		
+		protected void calcLine()
+		{
+			void doIt(CodeColumn col)
+			{
+				if(!col) return;
+				line = col.getLineOfFirstGlyphOrNode;
+			}
+			
+			line = 0;
+			doIt(attributes); if(line) return;
+			doIt(header); if(line) return;
+			doIt(block); if(line) return;
+		}
+		
 	}version(/+$DIDE_REGION+/all)
 	{
 		string type()
@@ -5545,6 +5575,8 @@ version(/+$DIDE_REGION+/all)
 				auto directive = new CodeComment(null);
 				directive.type = CodeComment.Type.directive;
 				directive.content = new CodeColumn(directive, directiveCells);
+				directive.content.fillSyntax(skDirective); //todo: directive syntax highlight not working.
+				directive.line = directive.content.getLineOfFirstGlyphOrNode;
 				
 				appendCell(directive);
 				endingWhite.each!(c => appendCell(c));
@@ -6505,6 +6537,12 @@ else
 			1
 			//this way it's ok
 		){}
+		
+		if
+		//a
+		(1)
+		//b
+		{/+c+/}
 
 	}
 }
