@@ -1699,6 +1699,7 @@ class CodeRow: Row
 					static TextStyle style;
 					const syntax = col.getSyntax(str.empty ? ' ' : str.front);
 					style.applySyntax(syntax);
+					
 					this.appendStr(str, style);
 				}
 			});
@@ -2366,9 +2367,10 @@ class CodeRow: Row
 				{
 					return skComment;
 				}
-				else if(auto cmt = cast(CodeString) parent)
+				else if(auto str = cast(CodeString) parent)
 				{
-					if(cmt.type != CodeString.Type.tokenString) return skString;
+					if(str.type != CodeString.Type.tokenString)
+						return skString;
 				}
 				return skIdentifier1;
 			}
@@ -2628,7 +2630,7 @@ class CodeRow: Row
 		
 		void fillSyntax(SyntaxKind sk)
 		{
-			static TextStyle ts; ts.applySyntax(skString);
+			static TextStyle ts; ts.applySyntax(sk);
 			rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){
 				g.bkColor = ts.bkColor;
 				g.fontColor = ts.fontColor;
@@ -3530,6 +3532,7 @@ version(/+$DIDE_REGION+/all)
 				g.bkColor = ts.bkColor;
 				g.fontColor = ts.fontColor;
 				g.fontFlags = ts.fontFlags;  //todo: refactor this 3 assignments.
+				g.syntax = cast(ubyte) sk;
 			});
 			bkColor = ts.bkColor;
 		}
@@ -3690,7 +3693,7 @@ version(/+$DIDE_REGION+/all)
 		
 		void checkInvalid(dchar ch)
 		{
-			content.fillSyntax(skString);
+			content.fillSyntax(skComment);
 			
 			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
 		}
@@ -3717,7 +3720,7 @@ version(/+$DIDE_REGION+/all)
 			}
 			else
 			{
-				content.fillSyntax(skString);
+				content.fillSyntax(skComment);
 				
 				int cnt;
 				byGlyph.each!((g){
@@ -4910,125 +4913,186 @@ version(/+$DIDE_REGION+/all)
 			return isRegion;
 		}
 		
-		override string sourceText()
-		{
-			//todo: handle invalid characters. Ensure valid syntax.
-			if(isPreposition)
+	}version(/+$DIDE_REGION+/all)
+	{
+		
+		private final void emitDeclaration(string options = "({", R)(ref R outputRange)
+		{with(outputRange){
+			
+			enum showParens = options.canFind('(');
+			enum showBraces = options.canFind('{');
+			
+			//for debugging, the internalNewline can be overrided
+			bool IN(bool b){ return b; }
+			
+			//enum showParens = false, showBraces = true;
+			
+			void putParens(A)(A a)
+			{
+				if(showParens) put('(');
+				put(a);
+				if(showParens) put(')');
+			} void putBraces(A)(A a, bool enable = true)
+			{
+				if(showBraces && enable) put('{');
+				put(a);
+				if(showBraces && enable) put('}');
+			}
+			
+			void putNL()
+			{
+				put('\n'); 
+			} void putIndent()
+			{
+				put("    ");
+			} void putNLIndent()
+			{
+				putNL; putIndent;
+			}
+			
+			void putAttributesKeywordAndHeader()
+			{
+				if(keyword!=""){ put(attributes); put(' '); put(keyword); put(' '); }
+				if(canHaveHeader){ put(header); put(' '); } 
+			}
+			
+			if(isBlock)
+			{
+				if(isSimpleBlock)
+				{
+					/+todo: the transition from simpleBlock to non-simple block is not clear.
+					A boolean flag is needed to let the user write into the header.+/
+					putBraces(block);
+				}
+				else
+				{
+					putAttributesKeywordAndHeader;
+					if(IN(hasInternalNewLine)) putNLIndent;
+					putBraces(block);
+					put(' '); //this space makes the border thicker
+				}
+			}
+			else if(isPreposition)
 			{
 				if(isRegion)
-				{//todo: replace this with format!""
+				{
+					if(!header.empty){
+						put(header); 
+						if(IN(hasInternalNewLine)) putNL; else put(' ');
+					}
+					put(block);
+					//region has a thin border and no braces.
+				}
+				else
+				{
+					void emitPreposition(Declaration decl, bool semicolonInsteadOfBlock = false)
+					{with(decl){
+						//note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
+						put(keyword);
+						put(' ');
+						if(canHaveHeader){ 
+							putParens(header); 
+							if(!semicolonInsteadOfBlock) put(' ');
+						}
+						
+						if(semicolonInsteadOfBlock)
+						{
+							put(';');
+						}else{
+							if(IN(internalNewLineCount > hasJoinedNewLine)) putNLIndent;
+							putBraces(block, explicitPrepositionBlock);
+						}
+						put(' ');
+						
+						if(nextJoinedPreposition)
+						{
+							if(IN(nextJoinedPreposition.hasJoinedNewLine)) putNL;
+							//note: It doesn't matter if the newline is bewore or	 after or on both sides
+							//note: ...around an "else". As it is either joined horizontally or vertically.
+							
+							const nextSemicolonInsteadOfBlock = keyword=="do" && nextJoinedPreposition.keyword=="while";
+							emitPreposition(nextJoinedPreposition, nextSemicolonInsteadOfBlock); //RECURSIVE!!!
+						}	
+					}}
+					
+					emitPreposition(this);
+				}
+			}
+			else
+			{//statement or section
+				putAttributesKeywordAndHeader;
+				put(ending); 
+				put(' '); //this space makes the border thicker
+			}
+		}}
+		
+		override void rearrange()
+		{
+			//_identifierValid = false;
+			
+			auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
+			with(rh)
+			{
+				//set subColumn bkColors
+				if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
+				
+				foreach(a; only(attributes, header)) 
+				if(a)
+				{
+					a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor;
+				}
+				
+				if(isPreposition && isRegion)
+					header.bkColor = syntaxBkColor(skComment);
+				
+				emitDeclaration!"{"(rh);
+			}
+			
+			super.rearrange;
+		}
+		
+		override string sourceText()
+		{
+			if(isSpecial)
+			{
+				if(isRegion)
+				{	//todo: replace this with format!""
 					return 	"version(/+" ~
 						only(specialCommentMarker~"REGION",
 							header.deepText).join(' ') ~
 						"+/" ~ (regionDisabled ? "none":"all") ~ ")";
 				}
+				
+				enforce(0, "Unhandled special Declaration.");
+			}
+			
+			struct StringBuilder{
+				string str;
+				
+				void put(A)(A a)
+				{
+					static if(is(A==CodeColumn))
+						str ~= a.deepText;
+					else
+						str ~= a; 
+				}
+			}
+			
+			StringBuilder res;
+			emitDeclaration(res);
+			return res.str;
+			/*
+			
+			//todo: handle invalid characters. Ensure valid syntax.
+			if(isPreposition)
+			{
 				return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
 			}
 			return only(attributes.deepText,
 				keyword,
 				header.deepText,
 				isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
-		}
-	}version(/+$DIDE_REGION+/all)
-	{
-		override void rearrange()
-		{
-			_identifierValid = false;
-			
-			//for debugging, the internalNewline can be overrided
-			bool IN(bool b){ return b; }
-			
-			auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
-			with(rh){
-				//set subColumn bkColors
-				if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
-				
-				foreach(a; only(attributes, header)) 
-				if(a){
-					a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor;
-				}
-				
-				enum showParens = false, showBraces = true;
-				
-				if(isBlock)
-				{
-					if(isSimpleBlock)
-					{
-						/+todo: the transition from simpleBlock to non-simple block is not clear.
-						A boolean flag is needed to let the user write into the header.+/
-					}
-					else
-					{
-						if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-						if(canHaveHeader){ put(header); put(' '); } 
-					}
-					
-					if(IN(hasInternalNewLine)) put("\n    ");
-					
-					if(showBraces) put('{'); 
-					put(block); 
-					if(showBraces) put('}'); 
-					put(' ');
-				}
-				else if(isPreposition)
-				{
-					if(isRegion)
-					{
-						header.bkColor = syntaxBkColor(skComment);
-						if(!header.empty){
-							put(header); 
-							if(IN(hasInternalNewLine)) put('\n'); else put(' ');
-						}
-						put(block); 
-					}
-					else
-					{
-						void emit(Declaration decl, bool semicolonInsteadOfBlock = false)
-						{with(decl){
-							put(keyword);
-							put(' ');
-							if(canHaveHeader){ 
-								if(showParens) put('('); 
-								put(header); 
-								if(showParens) put(')'); 
-								if(!semicolonInsteadOfBlock) put(' ');
-							}
-							
-							if(semicolonInsteadOfBlock)
-							{
-								put(';');
-							}else{
-								if(IN(internalNewLineCount > hasJoinedNewLine)) put("\n    ");
-								if(showBraces && explicitPrepositionBlock) put('{');
-								put(block); 
-								if(showBraces && explicitPrepositionBlock) put('}');
-							}
-							put(' ');
-							
-							if(nextJoinedPreposition)
-							{
-								if(IN(/+nextJoinedPreposition.hasInternalNewLine && +/nextJoinedPreposition.hasJoinedNewLine)) put("\n");	
-								//note: It doesn't matter if the newline is bewore or	after or on both sides
-								//note: ...around an "else". As it is either joined horizontally or vertically.
-								
-								const nextSemicolonInsteadOfBlock = keyword=="do" && nextJoinedPreposition.keyword=="while";
-								emit(nextJoinedPreposition, nextSemicolonInsteadOfBlock); //RECURSIVE!!!
-							}	
-						}}
-						
-						emit(this);
-					}
-				}
-				else
-				{//statement or section
-					if(keyword!=""){ put(attributes); put(" "~keyword~" "); }
-					if(canHaveHeader){ put(header); } 
-					put(ending); 
-					put(' ');
-				}
-			}
-			
-			super.rearrange;
+			*/
 		}
 		
 		override void draw(Drawing dr)

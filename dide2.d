@@ -86,7 +86,6 @@ version(/+$DIDE_REGION main+/all)
 	
 	import didemodule;
 	
-	
 	enum 	LogRequestPermissions	= false,
 		DisableSyntaxHighlightWorkerJob 	= true;
 	
