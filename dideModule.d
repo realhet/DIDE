@@ -1316,7 +1316,7 @@ version(/+$DIDE_REGION+/all)
 	{ return sel.zeroLengthSelectionsToOne(No .toLeft); }
 	
 	
-	/// input newLine is '\n'
+	/// input newLine must be standardized. Only that type of newLine is recognized.
 	/// it only adds newLine when the last item doesn't have one at its end
 	/// replaces all '\n' to specidied newLine
 	string sourceTextJoin(R)(R r, string newLine)
@@ -1367,6 +1367,118 @@ version(/+$DIDE_REGION+/all)
 	
 		}
 	}+/
+	
+	struct SourceTextBuilder
+	{// SourceTextBuilder /////////////////////////
+		enum CODE = true, UI = !CODE;
+		
+		string result;
+		
+		int newLineCnt;
+		bool hasExtraNewLine;  //to support //comments and #directives
+		
+		void putNL()
+		{
+			if(hasExtraNewLine.chkClear) return;
+			
+			result ~= DefaultNewLine;
+			
+			newLineCnt++;
+		}
+		
+		void put(dchar ch)
+		{
+			assert(!ch.isDLangNewLine, "It's illegal to add newLine using put().  Use putNL() instead!");
+			result ~= ch; 
+		}
+		
+		void put(string str)
+		{
+			assert(str.byDchar.all!(not!isDLangNewLine), "It's illegal to add newLine using put().  Use putNL() instead!");
+			result ~= str; 
+		}
+		
+		void put(CodeRow row)
+		{
+			put(row.subCells);
+		}
+		
+		void put(CodeColumn col)
+		{
+			foreach(i, row; col.rows)
+			{
+				if(i) putNL;
+				put(row);
+			}
+		}
+		
+		void put(Cell cell)
+		{
+			if(auto glyph = cast(Glyph) cell)
+				result ~= glyph.ch;
+			else if(auto node = cast(CodeNode) cell)
+				node.buildSourceText(this);
+			else
+				enforce(0, "Unsupported cell type: "~typeid(cell).name);
+		}
+		
+		void put(R)(R cells)
+		if(isInputRange!R && __traits(compiles, cast(Cell) cells.front))
+		{
+			foreach(c; cells) put(c);
+		}
+		
+		void put(string prefix, CodeColumn block, string postfix, bool showFix=true)
+		{
+			put(prefix);
+			
+			const i = prefix.among("//", "#"); //todo: multiline #
+			if(i) assert(postfix=="");
+			//todo: string literal
+			
+			put(block);
+			
+			if(i){
+				putNL;
+				hasExtraNewLine = true;
+			}else{
+				put(postfix);
+			}
+		}
+	}
+	struct CodeNodeBuilder
+	{//CodeNodeBuilder ///////////////////////////////
+		enum UI = true, CODE = !UI;
+		
+		CodeNode node;
+		TextStyle style;
+		int inverse; //0, 1, 2
+		RGB darkColor, brightColor, halfColor;
+		
+		void putNL()
+		{
+			put('\n');
+		}
+		
+		void put(T)(T a)
+		{ 
+			static if(isSomeString!T)
+				node.appendStr(a, style);
+			else static if(isSomeChar!T)
+				node.appendChar(a, style);
+			else static if(is(T:Cell))
+				node.appendCell(a);
+			else
+				static assert(0, "unhandled type");
+		}
+		
+		void put(string prefix, CodeColumn block, string postfix, bool showFix=true)
+		{
+			if(showFix) put(prefix);
+			put(block);
+			if(showFix) put(postfix);
+		}
+	}
 	
 }version(/+$DIDE_REGION+/all)
 {
@@ -1506,27 +1618,6 @@ class CodeRow: Row
 		{ return chars.to!string; } 
 		//todo: combine this with extractThisLevelDString
 		
-		string deepText()
-		{
-			string res; //opt: appender
-			foreach(c; subCells)
-			{
-				if(auto g = cast(Glyph)c)
-				{
-					res ~= g.ch;
-				}
-				else if(auto n = cast(CodeNode)c)
-				{
-					res ~= n.sourceText;  //this can throw exceptions if the node contrnt is invalid
-				}
-				else
-				{
-					enforce(0, "deepText: unsupported obj");
-				}
-			}
-			return res;
-		}
-		
 		//todo: mode isSpace inside elastic tab detection, it's way too specialized
 		
 		private static bool isCodeSpace(Cell c)
@@ -1619,6 +1710,13 @@ class CodeRow: Row
 			refreshTabIdx;
 			needMeasure;
 			//note: this is used from the high level parser. It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
+		}
+		
+		final string sourceText()
+		{//todo: refactor this as a template mixin
+			SourceTextBuilder builder;
+			builder.put(this);
+			return builder.result;
 		}
 		
 		CaretPos localCaretPos(int idx)
@@ -2313,6 +2411,11 @@ class CodeRow: Row
 		bool empty() const
 		{ return !rows.length || rows.length==1 && rows[0].empty; }
 		
+		auto byCell()
+		{
+			return rows.map!(r => r.subCells).joiner(only(null));
+		}
+		
 		Cell singleCellOrNull()
 		{ return rows.length==1 ? rows[0].singleCellOrNull : null; }
 		
@@ -2668,10 +2771,12 @@ class CodeRow: Row
 			return 0;
 		}
 		
-		string rowShallowText(int rowIdx)
-		{ if(auto row = getRow(rowIdx)) return row.shallowText	; return ""; }
-		string rowDeepText(int rowIdx)
-		{ if(auto row = getRow(rowIdx)) return row.deepText	; return ""; }
+		final string sourceText()
+		{
+			SourceTextBuilder builder;
+			builder.put(this);
+			return builder.result;
+		}
 		
 		auto byShallowChar(dchar lineSep = '\n')()
 		{
@@ -2725,14 +2830,10 @@ class CodeRow: Row
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
-		@property string shallowText()
+		string shallowText()
 		{
-			return rows.map!(r => r.shallowText).join(DefaultNewLine);
-			// \r\n is the default in std library
-		}
-		@property string deepText()
-		{
-			return rows.map!(r => r.deepText).join(DefaultNewLine);
+			return rows.map!(r => r.shallowText).join('\n');
+			//note: it was joined bwith DefaultNewLine (\n\r), but can't remember why
 		}
 		
 		//index, location calculations
@@ -2848,7 +2949,7 @@ class CodeRow: Row
 				void expect(T, U)(T a, U b)
 				{ if(a!=b) ERR("Test fail: "~[src, rowCount.text, dst].text~" : "~a.text~" != "~b.text); }
 				expect(cc.rows.length, rowCount);
-				expect(cast(ubyte[])dst, cast(ubyte[])(cc.rows.map!(r => r.shallowText).join('\n')));
+				expect(cast(ubyte[])dst, cast(ubyte[])(cc.shallowText));
 			}
 		
 			test_RowCount("", 1);
@@ -3419,7 +3520,14 @@ version(/+$DIDE_REGION+/all)
 		override void setParent(Container p)
 		{ parent = p; }
 		
-		@property abstract string sourceText();
+		abstract void buildSourceText(ref SourceTextBuilder builder);
+		
+		final string sourceText()
+		{
+			SourceTextBuilder builder;
+			buildSourceText(builder);
+			return builder.result;
+		}
 		
 		@property string identifier()
 		{ return ""; }
@@ -3460,30 +3568,10 @@ version(/+$DIDE_REGION+/all)
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
-		auto rearrangeHelper(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
+		auto nodeBuilder(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
 		{
 			
-			struct Helper
-			{
-				CodeNode node;
-				TextStyle style;
-				int inverse; //0, 1, 2
-				RGB darkColor, brightColor, halfColor;
-				
-				void put(T)(T a)
-				{ 
-					static if(isSomeString!T)
-						node.appendStr(a, style);
-					else static if(isSomeChar!T)
-						node.appendChar(a, style);
-					else static if(is(T:Cell))
-						node.appendCell(a);
-					else
-						static assert(0, "unhandled type");
-				}
-			}
-			
-			Helper res;
+			CodeNodeBuilder res;
 			with(res){
 				node 	= this;
 				style 	= tsSyntax(syntax);  if(!customColor.isNull) style.fontColor = customColor.get;
@@ -3559,10 +3647,9 @@ version(/+$DIDE_REGION+/all)
 		content = new CodeColumn(this);
 	}
 	
-	override string sourceText()
+	override void buildSourceText(ref SourceTextBuilder builder)
 	{
-		//todo: handle invalid characters.
-		return prefix~content.deepText~postfix;
+		builder.put(prefix, content, postfix);
 	}
 	
 	protected T parseBlockPrefix(T, string[] tokens, R)(R scanner) if(isScannerRange!R)
@@ -3581,7 +3668,7 @@ version(/+$DIDE_REGION+/all)
 	
 	override void rearrange()
 	{
-		with(rearrangeHelper(syntax, prefix.among("[", "(", "{") ? 0 : 1))
+		with(nodeBuilder(syntax, prefix.among("[", "(", "{") ? 0 : 1))
 		{
 			content.bkColor = darkColor;
 		
@@ -3677,7 +3764,7 @@ version(/+$DIDE_REGION+/all)
 	
 	string extractSpecialComment()
 	{
-		return isSpecialComment ? content.deepText.withoutStarting(specialCommentMarker) : "";
+		return isSpecialComment ? content.sourceText.withoutStarting(specialCommentMarker) : "";
 	}
 
 	bool isSpecialComment(string keyword)
@@ -3779,7 +3866,7 @@ version(/+$DIDE_REGION+/all)
 			auto scmt = extractSpecialComment;
 			if(scmt.wordAt(0)=="IMG")
 			{
-				with(rearrangeHelper(syntax, 0))
+				with(nodeBuilder(syntax, 0))
 				{
 					auto cmd = scmt.commandLineToMap;
 					auto f = File(cmd.get("1"));
@@ -3805,10 +3892,10 @@ version(/+$DIDE_REGION+/all)
 		verify!true;
 	}
 	
-	override string sourceText()
+	override void buildSourceText(ref SourceTextBuilder builder)
 	{
 		enforce(verify, "Invalid comment format");
-		return super.sourceText;
+		super.buildSourceText(builder);
 	}
 }class CodeString : CodeContainer
 {// CodeString //////////////////////////////////////////
@@ -3982,10 +4069,10 @@ version(/+$DIDE_REGION+/all)
 		verify!true;
 	}
 	
-	override string sourceText()
+	override void buildSourceText(ref SourceTextBuilder builder)
 	{
 		enforce(verify, "Invalid string literal format");
-		return super.sourceText;
+		super.buildSourceText(builder);
 	}
 }class CodeBlock : CodeContainer
 {// CodeBlock //////////////////////////////////////////
@@ -4751,32 +4838,6 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 			
-			//if it's not a statement of declaration block, then don't process it, only recursively look inside {} () [] q{} blocks
-			/+if(!isCertainBlock)
-			{
-				bool check(){
-					auto shallowStr = block.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
-					
-					if(shallowStr.canFind(';')) return true;
-					
-					return false;
-				}
-				if(!check())
-				{
-					print("NOT A CERTAIN BLOCK----------------------------");
-					auto shallowStr = block.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" ");
-					print(shallowStr.text);
-					print("-------------------------------------------------");
-					
-					//recursively search for more uncertain blocks
-					return;
-				}
-			}+/
-			
-			//if(attributes) processHighLevelPatterns(attributes, No.isCertainBlock);
-			//if(header) processHighLevelPatterns(header, No.isCertainBlock);
-			//if(block) processHighLevelPatterns(block, isCertainBlock ? Yes.isCertainBlock : No.isCertainBlock);
-			
 			calcLine;
 		}
 		
@@ -4890,7 +4951,7 @@ version(/+$DIDE_REGION+/all)
 		override string caption()
 		{
 			//todo: cache this too
-			if(isRegion) return header.rowDeepText(0);
+			if(isRegion) return header.sourceText;
 			return identifier;
 		}
 		
@@ -4946,43 +5007,40 @@ version(/+$DIDE_REGION+/all)
 	}version(/+$DIDE_REGION+/all)
 	{
 		
-		private final void emitDeclaration(string options = "({", R)(ref R outputRange)
+		private final void emitDeclaration(R)(ref R outputRange)
 		{with(outputRange){
-			
-			enum showParens = options.canFind('(');
-			enum showBraces = options.canFind('{');
-			
-			//for debugging, the internalNewline can be overrided
-			bool IN(bool b){ return b; }
-			
-			//enum showParens = false, showBraces = true;
 			
 			void putParens(A)(A a)
 			{
-				if(showParens) put('(');
-				put(a);
-				if(showParens) put(')');
+				put("(", a, ")", CODE);
 			} void putBraces(A)(A a, bool enable = true)
 			{
-				if(showBraces && enable) put('{');
-				put(a);
-				if(showBraces && enable) put('}');
+				put("{", a, "}", enable);
 			}
 			
-			void putNL()
+			void putIndent()
 			{
-				put('\n'); 
-			} void putIndent()
-			{
-				put("    ");
+				static if(UI) put("    ");
 			} void putNLIndent()
 			{
 				putNL; putIndent;
 			}
+			void putUi(A)(A a)
+			{
+				static if(UI) put(a);
+			}
 			
 			void putAttributesKeywordAndHeader()
 			{
-				if(keyword!=""){ put(attributes); put(' '); put(keyword); put(' '); }
+				if(keyword!="")
+				{
+					if(1){
+						put(attributes); 
+						if(!attributes.empty) put(' '); 
+					}
+					put(keyword);
+					put(' ');
+				}
 				if(canHaveHeader){ put(header); put(' '); } 
 			}
 			
@@ -4992,56 +5050,71 @@ version(/+$DIDE_REGION+/all)
 				{
 					/+todo: the transition from simpleBlock to non-simple block is not clear.
 					A boolean flag is needed to let the user write into the header.+/
-					putBraces(block);
+					put("{", block, "}");
 				}
 				else
 				{
 					putAttributesKeywordAndHeader;
-					if(IN(hasInternalNewLine)) putNLIndent;
-					putBraces(block);
-					put(' '); //this space makes the border thicker
+					if(hasInternalNewLine) putNLIndent;
+					put("{", block, "}");
+					putUi(' ');
 				}
 			}
 			else if(isPreposition)
 			{
 				if(isRegion)
 				{
-					if(!header.empty){
-						put(header); 
-						if(IN(hasInternalNewLine)) putNL; else put(' ');
+					static if(UI)
+					{
+						if(!header.empty) //optional header title
+						{
+							put(header); 
+							if(hasInternalNewLine) putNL; else put(' ');
+						}
+						put(block);
+						//region has a thin border and no braces.
 					}
-					put(block);
-					//region has a thin border and no braces.
+					else
+					{
+						//verify that header is valid for a /+comment+/
+						const s = header.sourceText;
+						enforce(!s.canFind("/+") && !s.canFind("+/"), "/+ and +/ not alloved is special code markers.");
+						
+						put("version(/+$REGION ", header, "+/"~(regionDisabled ? "none":"all")~")");
+						if(hasInternalNewLine) putNL; else put(' ');
+						put("{", block, "}");
+					}
 				}
 				else
 				{
-					void emitPreposition(Declaration decl, bool semicolonInsteadOfBlock = false)
+					void emitPreposition(Declaration decl, bool closingSemicolon = false)
 					{with(decl){
 						//note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
+						
 						put(keyword);
 						put(' ');
 						if(canHaveHeader){ 
 							putParens(header); 
-							if(!semicolonInsteadOfBlock) put(' ');
+							if(!closingSemicolon) put(' ');
 						}
 						
-						if(semicolonInsteadOfBlock)
+						if(closingSemicolon)
 						{
 							put(';');
 						}else{
-							if(IN(internalNewLineCount > hasJoinedNewLine)) putNLIndent;
-							putBraces(block, explicitPrepositionBlock);
+							if(internalNewLineCount > hasJoinedNewLine) putNLIndent;
+							put("{", block, "}", explicitPrepositionBlock);
 						}
-						put(' ');
+						putUi(' ');
 						
 						if(nextJoinedPreposition)
 						{
-							if(IN(nextJoinedPreposition.hasJoinedNewLine)) putNL;
+							if(nextJoinedPreposition.hasJoinedNewLine) putNL;
 							//note: It doesn't matter if the newline is bewore or	 after or on both sides
 							//note: ...around an "else". As it is either joined horizontally or vertically.
 							
-							const nextSemicolonInsteadOfBlock = keyword=="do" && nextJoinedPreposition.keyword=="while";
-							emitPreposition(nextJoinedPreposition, nextSemicolonInsteadOfBlock); //RECURSIVE!!!
+							const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while";
+							emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
 						}	
 					}}
 					
@@ -5050,9 +5123,19 @@ version(/+$DIDE_REGION+/all)
 			}
 			else
 			{//statement or section
-				putAttributesKeywordAndHeader;
+				if(keyword!="")
+				{
+					put(attributes); 
+					if(!attributes.empty) put(' '); 
+					put(keyword);
+				}
+				if(canHaveHeader)
+				{
+					if(keyword!="") put(' '); 
+					put(header);
+				}
 				put(ending); 
-				put(' '); //this space makes the border thicker
+				putUi(' '); //this space makes the border thicker
 			}
 		}}
 		
@@ -5060,8 +5143,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			//_identifierValid = false;
 			
-			auto rh = rearrangeHelper(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
-			with(rh)
+			auto builder = nodeBuilder(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
+			with(builder)
 			{
 				//set subColumn bkColors
 				if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f);
@@ -5075,54 +5158,15 @@ version(/+$DIDE_REGION+/all)
 				if(isPreposition && isRegion)
 					header.bkColor = syntaxBkColor(skComment);
 				
-				emitDeclaration!"{"(rh);
+				emitDeclaration(builder);
 			}
 			
 			super.rearrange;
 		}
 		
-		override string sourceText()
+		override void buildSourceText(ref SourceTextBuilder builder)
 		{
-			if(isSpecial)
-			{
-				if(isRegion)
-				{	//todo: replace this with format!""
-					return 	"version(/+" ~
-						only(specialCommentMarker~"REGION",
-							header.deepText).join(' ') ~
-						"+/" ~ (regionDisabled ? "none":"all") ~ ")";
-				}
-				
-				enforce(0, "Unhandled special Declaration.");
-			}
-			
-			struct StringBuilder{
-				string str;
-				
-				void put(A)(A a)
-				{
-					static if(is(A==CodeColumn))
-						str ~= a.deepText;
-					else
-						str ~= a; 
-				}
-			}
-			
-			StringBuilder res;
-			emitDeclaration(res);
-			return res.str;
-			/*
-			
-			//todo: handle invalid characters. Ensure valid syntax.
-			if(isPreposition)
-			{
-				return keyword ~ (canHaveHeader ? "("~header.deepText~")" : ""); 
-			}
-			return only(attributes.deepText,
-				keyword,
-				header.deepText,
-				isBlock ? "{"~block.deepText~"}" : ending.text).filter!"a.length".join(' ');
-			*/
+			emitDeclaration(builder);
 		}
 		
 		override void draw(Drawing dr)

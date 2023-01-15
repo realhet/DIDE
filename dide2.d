@@ -5,6 +5,27 @@
 ///@release
 //@debug
 
+
+/+todo: this crashes the StructureScanner:
+
+			}
+			
+			__gshared const LodStruct lod;
+			
+			void setLod(float zoomFactor_)
+			{
+				with(cast(LodStruct*)(&lod))
+				{
+					zoomFactor = zoomFactor_;
+					pixelSize = 1/zoomFactor;
+					level = pixelSize>6 ? 2 :
+									pixelSize>2 ? 1 : 0;
+			
+					codeLevel = level==0;
+		
+
++/
+
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -361,6 +382,15 @@ version(/+$DIDE_REGION main+/all)
 			{ // onUpdate ////////////////////////////////////////
 				//showFPS = true;
 				//im.focus
+				
+				version(/+$DIDE_REGION update a virtual file from clipboard+/all){
+					static uint id;
+					if(id.chkSet(GetClipboardSequenceNumber))
+						File(`virtual:\clipboard.txt`).write(clipboard.asText);
+					//todo: sinchronize the clipboard both ways.
+					//todo: don't load too big files. And most importantly don't crash.
+				}
+				
 				dbgsrv.onDebugLog = &onDebugLog;
 				dbgsrv.onDebugException = &onDebugException;
 				
@@ -1008,7 +1038,11 @@ version(/+$DIDE_REGION main+/all)
 			}
 		
 			void queueModule(File f)
-			{ openQueue ~= f; }
+			{
+				//todo: this workaround is there to let the filedialog handle virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
+				if(f.fullName.isWild(`*\?*:*`)) f.fullName = wild[1].split('\\').back~':'~wild[2];
+				openQueue ~= f;
+			}
 			void queueModuleRecursive(File f)
 			{ if(f.exists) openQueue ~= allFilesFromModule(f); }
 		
