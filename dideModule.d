@@ -1389,13 +1389,15 @@ version(/+$DIDE_REGION+/all)
 		void put(dchar ch)
 		{
 			assert(!ch.isDLangNewLine, "It's illegal to add newLine using put().  Use putNL() instead!");
-			result ~= ch; 
+			result ~= ch;
+			hasExtraNewLine = false;
 		}
 		
 		void put(string str)
 		{
 			assert(str.byDchar.all!(not!isDLangNewLine), "It's illegal to add newLine using put().  Use putNL() instead!");
 			result ~= str; 
+			hasExtraNewLine = false;
 		}
 		
 		void put(CodeRow row)
@@ -1405,11 +1407,13 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(CodeColumn col)
 		{
+			if(col.rowCount>1) putNL;
 			foreach(i, row; col.rows)
 			{
 				if(i) putNL;
 				put(row);
 			}
+			if(col.rowCount>1) putNL;
 		}
 		
 		void put(Cell cell)
@@ -1430,15 +1434,18 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(string prefix, CodeColumn block, string postfix, bool showFix=true)
 		{
+			if(!showFix){ put(block); return; }
+			
 			put(prefix);
 			
-			const i = prefix.among("//", "#"); //todo: multiline #
-			if(i) assert(postfix=="");
+			const pIdx = prefix.among("//", "#"); //todo: multiline #
+			if(pIdx) assert(postfix=="");
 			//todo: string literal
 			
 			put(block);
 			
-			if(i){
+			if(pIdx){
+				hasExtraNewLine = false;
 				putNL;
 				hasExtraNewLine = true;
 			}else{
@@ -5010,22 +5017,13 @@ version(/+$DIDE_REGION+/all)
 		private final void emitDeclaration(R)(ref R outputRange)
 		{with(outputRange){
 			
-			void putParens(A)(A a)
-			{
-				put("(", a, ")", CODE);
-			} void putBraces(A)(A a, bool enable = true)
-			{
-				put("{", a, "}", enable);
-			}
-			
 			void putIndent()
 			{
 				static if(UI) put("    ");
 			} void putNLIndent()
 			{
 				putNL; putIndent;
-			}
-			void putUi(A)(A a)
+			} void putUi(A)(A a)
 			{
 				static if(UI) put(a);
 			}
@@ -5094,7 +5092,7 @@ version(/+$DIDE_REGION+/all)
 						put(keyword);
 						put(' ');
 						if(canHaveHeader){ 
-							putParens(header); 
+							put("(", header, ")", !UI); 
 							if(!closingSemicolon) put(' ');
 						}
 						
