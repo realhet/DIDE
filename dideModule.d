@@ -1374,30 +1374,38 @@ version(/+$DIDE_REGION+/all)
 		
 		string result;
 		
-		int newLineCnt;
-		bool hasExtraNewLine;  //to support //comments and #directives
+		bool enableIndent = true;
 		
-		void putNL()
+		int newLineCnt, indentCnt;
+		bool needsNewLine; //to support //comments and #directives
+		
+		void putNL(int indentAdjust = 0)()
 		{
-			if(hasExtraNewLine.chkClear) return;
-			
 			result ~= DefaultNewLine;
 			
+			if(enableIndent)
+				result ~= "\t".replicate(max(0, indentCnt + indentAdjust));
+			
 			newLineCnt++;
+			needsNewLine = false;
 		}
 		
 		void put(dchar ch)
 		{
+			
 			assert(!ch.isDLangNewLine, "It's illegal to add newLine using put().  Use putNL() instead!");
+			
+			if(needsNewLine) putNL;
 			result ~= ch;
-			hasExtraNewLine = false;
 		}
 		
 		void put(string str)
 		{
+			if(str=="") return;
 			assert(str.byDchar.all!(not!isDLangNewLine), "It's illegal to add newLine using put().  Use putNL() instead!");
+			
+			if(needsNewLine) putNL;
 			result ~= str; 
-			hasExtraNewLine = false;
 		}
 		
 		void put(CodeRow row)
@@ -1405,21 +1413,59 @@ version(/+$DIDE_REGION+/all)
 			put(row.subCells);
 		}
 		
-		void put(CodeColumn col)
+		void putStatementBody(CodeColumn col)
 		{
-			if(col.rowCount>1) putNL;
 			foreach(i, row; col.rows)
 			{
 				if(i) putNL;
 				put(row);
 			}
-			if(col.rowCount>1) putNL;
+		}
+		
+		void put(CodeColumn col)
+		{
+			if(!col.rowCount) return; //todo: there should be no CodeColumns without at least a single CodeRow inside. -> invatiant{}
+			//assert(col.rowCount>0, "Empty col: "~col.rowCount.text);
+			
+			const isMultiLine = col.rowCount>1;
+			/+todo: ennek rekurzivnak kellene lennie. Ebben a peldaban belul van a multiline rekurziv modon. { a({ b;<NL>c; }); }
+			+/
+			
+			if(enableIndent)
+			{
+				if(isMultiLine)
+				{
+					indentCnt++;
+					scope(exit) indentCnt--;
+					
+					foreach(i, row; col.rows)
+					{
+						putNL;
+						put(row);
+					}
+					
+					putNL!(-1);
+				}
+				else
+				{
+					auto row = col.rows.front;
+					
+					//todo: Transform {x} => { x }   to look nice
+					//const stylisticSpaces = result.endsWith('{') && row.chars.length>0 && row.chars.front!=' ' && row.chars.back!=' ';
+					
+					//if(stylisticSpaces) put(' ');
+					put(row);
+					//if(stylisticSpaces) put(' ');
+				}
+			}
+			else
+				putStatementBody(col);
 		}
 		
 		void put(Cell cell)
 		{
 			if(auto glyph = cast(Glyph) cell)
-				result ~= glyph.ch;
+				put(glyph.ch);
 			else if(auto node = cast(CodeNode) cell)
 				node.buildSourceText(this);
 			else
@@ -1434,22 +1480,38 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(string prefix, CodeColumn block, string postfix, bool showFix=true)
 		{
-			if(!showFix){ put(block); return; }
-			
-			put(prefix);
-			
-			const pIdx = prefix.among("//", "#"); //todo: multiline #
-			if(pIdx) assert(postfix=="");
-			//todo: string literal
-			
-			put(block);
-			
-			if(pIdx){
-				hasExtraNewLine = false;
-				putNL;
-				hasExtraNewLine = true;
-			}else{
-				put(postfix);
+			if(!showFix)
+			{
+				put(block);
+			}
+			else
+			{
+				const enableIndent_prev = enableIndent;
+				if(!prefix.empty && prefix.back.among('\'', '"', '`', '#')) enableIndent = false;
+				scope(exit) enableIndent = enableIndent_prev;
+				
+				put(prefix);
+				
+				if(prefix=="" && postfix==";")
+				{
+					//LOG("SB", block.sourceText);
+					putStatementBody(block);
+				}
+				else
+				{
+					put(block);
+				}
+				
+				const newLineRequired = !!prefix.among("//", "#"); //todo: multiline #
+				if(newLineRequired)
+				{
+					assert(postfix=="");
+					needsNewLine = true;
+				}
+				else
+				{
+					put(postfix);
+				}
 			}
 		}
 	}
@@ -5028,20 +5090,6 @@ version(/+$DIDE_REGION+/all)
 				static if(UI) put(a);
 			}
 			
-			void putAttributesKeywordAndHeader()
-			{
-				if(keyword!="")
-				{
-					if(1){
-						put(attributes); 
-						if(!attributes.empty) put(' '); 
-					}
-					put(keyword);
-					put(' ');
-				}
-				if(canHaveHeader){ put(header); put(' '); } 
-			}
-			
 			if(isBlock)
 			{
 				if(isSimpleBlock)
@@ -5052,8 +5100,27 @@ version(/+$DIDE_REGION+/all)
 				}
 				else
 				{
-					putAttributesKeywordAndHeader;
-					if(hasInternalNewLine) putNLIndent;
+					bool needSpace;
+					if(keyword!="")
+					{
+						put(attributes); 
+						if(!attributes.empty) put(' '); 
+						
+						put(keyword);
+						needSpace |= true;
+					}
+					
+					if(canHaveHeader)
+					{
+						if(needSpace.chkClear) put(' ');
+						put(header);
+						needSpace |= true;
+					}
+					
+					if(hasInternalNewLine)
+						putNLIndent;
+					else if(needSpace.chkClear) put(' ');
+					
 					put("{", block, "}");
 					putUi(' ');
 				}
@@ -5089,18 +5156,22 @@ version(/+$DIDE_REGION+/all)
 					{with(decl){
 						//note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
 						
-						put(keyword);
-						put(' ');
 						if(canHaveHeader){ 
+							put(keyword);
+							putUi(' ');
 							put("(", header, ")", !UI); 
 							if(!closingSemicolon) put(' ');
+						}else{
+							put(keyword);
+							putUi(' ');
 						}
 						
 						if(closingSemicolon)
 						{
 							put(';');
 						}else{
-							if(internalNewLineCount > hasJoinedNewLine) putNLIndent;
+							if(internalNewLineCount > hasJoinedNewLine)
+								putNLIndent;
 							put("{", block, "}", explicitPrepositionBlock);
 						}
 						putUi(' ');
@@ -5123,16 +5194,18 @@ version(/+$DIDE_REGION+/all)
 			{//statement or section
 				if(keyword!="")
 				{
-					put(attributes); 
+					put(attributes);
 					if(!attributes.empty) put(' '); 
 					put(keyword);
 				}
 				if(canHaveHeader)
 				{
 					if(keyword!="") put(' '); 
-					put(header);
+					put("", header, ending.text);
 				}
-				put(ending); 
+				else
+					put(ending); 
+					
 				putUi(' '); //this space makes the border thicker
 			}
 		}}
@@ -6092,6 +6165,9 @@ version(/+$DIDE_REGION+/all)
 						{
 							auto container = fetchUntil(ending.end);
 							block = (cast(CodeBlock) container.front.front).content;
+							
+							//todo: Transform { x } => {x}   Warning: It can be bad for undo/redo
+							//if(block.rowCount==1 && block.rows.front.length>=2 && block.rows.frontfirstChar==' '
 						}
 						else
 							enforce(0, "Unhandled endingChar: "~endingChar.text.quoted);
@@ -6596,3 +6672,41 @@ static if(0) /*skipped comment*/ //after a newline too
 	static foreach(ch; ['a', 'b']): //this must be the last test
 		mixin(format!"enum testEnum", ch, "='", ch, "';");
 		pragma(msg, mixin("testEnum", ch));
+		
+//c
+//d
+
+void multilineStringText()
+{
+	//comment to makeit harder
+	return r"
+" ~ q{
+		tokenString;
+		
+		isStillIndented;
+	} ~ "
+l1
+l2
+";
+}
+
+string infiniteTabsBug()
+{
+	string[] a = r.array;
+	
+	foreach(i; 0..a.length.to!int-1)
+	{
+		const 	n0 = a[i  ].endsWith(newLine),
+			n1 = a[i+1].startsWith(newLine);
+		if(n0 && n1)
+		{
+			a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
+		}
+		else if(!n0 && !n1)
+		{  //add a newLine when there are 0
+			a[i] ~= newLine;
+		}
+	}
+	
+	return a.join;
+}
