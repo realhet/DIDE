@@ -1376,17 +1376,25 @@ version(/+$DIDE_REGION+/all)
 		
 		bool enableIndent = true;
 		
-		int newLineCnt, indentCnt;
+		int newLineCount, indentCount;
 		bool needsNewLine; //to support //comments and #directives
+		
+		bool actLineIsClear()
+		{
+			auto s = result;
+			while(s.endsWith('\t')) s = s[0..$-1];
+			if(s=="" || s.endsWith(DefaultNewLine)) return true;
+			return false;
+		}
 		
 		void putNL(int indentAdjust = 0)()
 		{
 			result ~= DefaultNewLine;
 			
 			if(enableIndent)
-				result ~= "\t".replicate(max(0, indentCnt + indentAdjust));
+				result ~= "\t".replicate(max(0, indentCount + indentAdjust));
 			
-			newLineCnt++;
+			newLineCount++;
 			needsNewLine = false;
 		}
 		
@@ -1431,31 +1439,49 @@ version(/+$DIDE_REGION+/all)
 			/+todo: ennek rekurzivnak kellene lennie. Ebben a peldaban belul van a multiline rekurziv modon. { a({ b;<NL>c; }); }
 			+/
 			
+			void putMultiLine()
+			{
+				indentCount++;
+				scope(exit) indentCount--;
+				
+				foreach(i, row; col.rows)
+				{
+					putNL;
+					put(row);
+				}
+				
+				putNL!(-1);
+			}
+			
 			if(enableIndent)
 			{
-				if(isMultiLine)
+				if(isMultiLine || needsNewLine)
 				{
-					indentCnt++;
-					scope(exit) indentCnt--;
-					
-					foreach(i, row; col.rows)
-					{
-						putNL;
-						put(row);
-					}
-					
-					putNL!(-1);
+					putMultiLine;
 				}
 				else
 				{
 					auto row = col.rows.front;
 					
 					//todo: Transform {x} => { x }   to look nice
-					//const stylisticSpaces = result.endsWith('{') && row.chars.length>0 && row.chars.front!=' ' && row.chars.back!=' ';
+					const stylisticSpaces = result.endsWith('{') && !result.endsWith("q{") && row.chars.length>0;
 					
 					//if(stylisticSpaces) put(' ');
+					const prevNewLineCount = newLineCount;
+					const startPos = result.length;
+					const firstLineIsClear = actLineIsClear;
+					
+					if(stylisticSpaces && !row.isCodeSpaces.front) put(' ');
 					put(row);
-					//if(stylisticSpaces) put(' ');
+					if(stylisticSpaces && !row.isCodeSpaces.back) put(' ');
+					
+					if(!firstLineIsClear && (needsNewLine || newLineCount>prevNewLineCount))
+					{
+						//it's actually a multiline block. go back and repeat.
+						result.length = startPos;
+						
+						putMultiLine;
+					}
 				}
 			}
 			else
@@ -1492,7 +1518,7 @@ version(/+$DIDE_REGION+/all)
 				
 				put(prefix);
 				
-				if(prefix=="" && postfix==";")
+				if((prefix=="" && postfix.among(";", ":", "")))
 				{
 					//LOG("SB", block.sourceText);
 					putStatementBody(block);
@@ -1723,6 +1749,10 @@ class CodeRow: Row
 		{ return cast(int)leadingCodeTabs.walkLength; }
 		auto leadingAnyWhitespaceCount()
 		{ return cast(int)leadingAnyWhitespaces.walkLength; }
+		
+		auto codeTabCount()
+		{ return subCells.count!isCodeTab; }
+		
 	}version(/+$DIDE_REGION+/all)
 	{
 		this(CodeColumn parent_)
@@ -2581,6 +2611,14 @@ class CodeRow: Row
 		
 		void convertSpacesToTabs(Flag!"outdent" outdent)
 		{
+			// remove the 2 stylistic spaces at the front and back, in a single row block. { a; }
+			if(outdent) if(rows.length==1) with(rows.front)
+				if(isCodeSpaces.length >= 3)
+					if(isCodeSpaces[0] && !isCodeSpaces[1] && isCodeSpaces[$-1] && !isCodeSpaces[$-2]){
+						subCells = subCells[1..$-1];
+						refreshTabIdx;
+					}
+			
 			//todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
 			createElasticTabs;
 			
@@ -2625,8 +2663,29 @@ class CodeRow: Row
 						return true;
 					});
 				}
+				
+				static bool canBeStatement(CodeRow row)
+				{
+					/+note: this fixes	the following bug:
+					const 	a=1,   ->		const a=1,
+						b=2;	b=2; +/
+					
+					foreach_reverse(dchar ch; row.chars)
+					{
+						if(ch==';') return true;
+						if(ch.isDLangWhitespace) continue;
+						break;
+					}
+					return false;
+				}
+				
+				static bool hasNonLeadingTab(CodeRow row)
+				{
+					return row.leadingCodeTabCount > row.codeTabCount;
+				}
+				
 				//find minimum amount of tabs
-				const canIgnoreFirstRow = !firstRowRemoved && rows.drop(1).any!relevant;
+				const canIgnoreFirstRow = !firstRowRemoved && (canBeStatement(rows.front) || rows.front.isWhitespaceOrComment || hasNonLeadingTab(rows.front)) && rows.drop(1).any!relevant;
 				auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant;
 				if(!relevantRows.empty)
 				{
@@ -5113,7 +5172,7 @@ version(/+$DIDE_REGION+/all)
 					if(canHaveHeader)
 					{
 						if(needSpace.chkClear) put(' ');
-						put(header);
+						put("", header, "");
 						needSpace |= true;
 					}
 					
@@ -5156,14 +5215,25 @@ version(/+$DIDE_REGION+/all)
 					{with(decl){
 						//note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
 						
+						//todo: put a space before 'else;   ->    if(1) { a; }else b;
+						
 						if(canHaveHeader){ 
 							put(keyword);
+							
+							static bool isHeaderOmittableForKeyword(string keyword){
+								enum list = prepositionPatterns	.filter!(a => a.endsWith(" ("))
+									.map!(a => a[0..$-2])
+									.filter!(a => prepositionPatterns.canFind(a))
+									.array;
+								//Normally in DLang, these are the keywords havingoptionally omittable ()blocks: "debug", "else debug"
+								return list.canFind(keyword);
+							}
+							const omitHeader = header.empty && isHeaderOmittableForKeyword(keyword); //debug has an optional () block
+							
 							putUi(' ');
-							put("(", header, ")", !UI); 
-							if(!closingSemicolon) put(' ');
+							if(!omitHeader) put("(", header, ")", !UI); 
 						}else{
 							put(keyword);
-							putUi(' ');
 						}
 						
 						if(closingSemicolon)
@@ -5172,6 +5242,8 @@ version(/+$DIDE_REGION+/all)
 						}else{
 							if(internalNewLineCount > hasJoinedNewLine)
 								putNLIndent;
+							else
+								put(' ');
 							put("{", block, "}", explicitPrepositionBlock);
 						}
 						putUi(' ');
@@ -5290,6 +5362,11 @@ version(/+$DIDE_REGION+/all)
 			(CodeComment 	_) 	=> true	,
 			(Cell	c)	=> false
 		);
+	}
+	
+	bool isWhitespaceOrComment(CodeRow row)
+	{
+		return !row || row.subCells.all!isWhitespaceOrComment;
 	}
 	
 	dstring extractThisLevelDString(CodeRow row)
@@ -6382,6 +6459,9 @@ else debug
 			
 		}with(TestClass1)
 		{
+			/+todo: the next comment is handled badly (lost):
+				Ctrl+C puts it after the else
+				After reload it disappears+/
 			static if(0) label1: label2: writeln; //if/else must encapsulate all the labels
 			else label3: label4: { label5: }
 			
@@ -6709,4 +6789,15 @@ string infiniteTabsBug()
 	}
 	
 	return a.join;
+}
+
+struct divergentTabsBug()
+{//CellPath ///////////////////////////////
+	
+	auto byPathElements()
+	{
+		return path	.a
+			.b;
+	}
+	
 }
