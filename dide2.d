@@ -1566,7 +1566,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			//todo: there could be additional checks based on the input text
 			import het.structurescanner;
-			if(DLangScanner(str).any!"a.isError")
+			if(str.isValidDLang)
 				WARN("Invalid DLang source code inserted.\n"~str);
 			
 			if(res){

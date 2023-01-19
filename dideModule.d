@@ -2690,6 +2690,7 @@ class CodeRow: Row
 				if(!relevantRows.empty)
 				{
 					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
+					
 					if(numTabs)
 					foreach(r; rows)
 					if(r.leadingCodeTabCount>=numTabs){
@@ -5201,10 +5202,14 @@ version(/+$DIDE_REGION+/all)
 					else
 					{
 						//verify that header is valid for a /+comment+/
-						const s = header.sourceText;
-						enforce(!s.canFind("/+") && !s.canFind("+/"), "/+ and +/ not alloved is special code markers.");
+						const src = header.sourceText;
+						enforce(isValidDLang("/+"~src~"+/"), "Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src);
 						
-						put("version(/+$REGION ", header, "+/"~(regionDisabled ? "none":"all")~")");
+						put(
+							"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
+							header,
+							"+/"~(regionDisabled ? "none":"all")~")"
+						);
 						if(hasInternalNewLine) putNL; else put(' ');
 						put("{", block, "}");
 					}
@@ -6770,34 +6775,69 @@ l2
 ";
 }
 
-string infiniteTabsBug()
+struct StylisticBugs
 {
-	string[] a = r.array;
-	
-	foreach(i; 0..a.length.to!int-1)
+	string infiniteTabsBug()
 	{
-		const 	n0 = a[i  ].endsWith(newLine),
-			n1 = a[i+1].startsWith(newLine);
-		if(n0 && n1)
+		string[] a = r.array;
+		
+		foreach(i; 0..a.length.to!int-1)
 		{
-			a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
+			const 	n0 = a[i  ].endsWith(newLine),
+				n1 = a[i+1].startsWith(newLine);
+			if(n0 && n1)
+			{
+				a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
+			}
+			else if(!n0 && !n1)
+			{  //add a newLine when there are 0
+				a[i] ~= newLine;
+			}
 		}
-		else if(!n0 && !n1)
-		{  //add a newLine when there are 0
-			a[i] ~= newLine;
+		
+		return a.join;
+	} struct divergentTabsBug()
+	{//CellPath ///////////////////////////////
+		
+		auto byPathElements()
+		{
+			return path	.a
+				.b;
 		}
-	}
-	
-	return a.join;
-}
-
-struct divergentTabsBug()
-{//CellPath ///////////////////////////////
-	
-	auto byPathElements()
+		
+	} void userTabs()
 	{
-		return path	.a
-			.b;
+		if(lookingForWords || lookingForSpaces)
+		{
+			const cnt = 	CharFetcher(c, dir>0)
+				.drop(dir<0 ? 1 : 0)
+				.chain("+"d) //extend with a dummy symbol to stop at
+				.countUntil!(
+				ch => 	lookingForWords	? !isWord(ch)
+					: lookingForSpaces 	? !isSpace(ch)
+					: true
+			);
+			if(cnt>0)
+			c.moveRight(dir*cnt);
+		}
+	} void manyTabs()
+	{
+		bool again;
+		do{
+			actEvent = actEvent.items.back; //choose different path optionally
+			
+			again = false;
+			final switch(actEvent.type)
+			{
+				case EventType.modified: 	actEvent.modifications.each!execute; break; //it's in reverse text selection order.
+				case EventType.saved: 	again = true; break; //nothing happened, "save event" is it's just a marking for the user
+				case EventType.loaded: 	reload(
+					actEvent.modifications[0].modifications[0].where,
+					actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]
+				); break;
+					//todo: ^^^^ ugly and needs range check
+			}
+		}
+		while(again && canRedo);
 	}
-	
 }
