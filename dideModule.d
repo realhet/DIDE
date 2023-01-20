@@ -1407,6 +1407,8 @@ version(/+$DIDE_REGION+/all)
 		int newLineCount, indentCount;
 		bool needsNewLine; //to support //comments and #directives
 		
+		bool updateLineNumbers;
+		
 		bool actLineIsClear()
 		{
 			auto s = result;
@@ -1513,10 +1515,22 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(Cell cell)
 		{
+			void doUpdateLineNumber(T)(T a)
+			{
+				if(updateLineNumbers)
+				a.line = newLineCount+1;
+			}
+			
 			if(auto glyph = cast(Glyph) cell)
-			put(glyph.ch);
+			{
+				put(glyph.ch);
+				doUpdateLineNumber(glyph);
+			}
 			else if(auto node = cast(CodeNode) cell)
-			node.buildSourceText(this);
+			{
+				node.buildSourceText(this);
+				doUpdateLineNumber(node);
+			}
 			else
 			enforce(0, "Unsupported cell type: "~typeid(cell).name);
 		}
@@ -3675,6 +3689,7 @@ version(/+$DIDE_REGION+/all)
 		final string sourceText()
 		{
 			SourceTextBuilder builder;
+			if(cast(Module) this) builder.updateLineNumbers = true;
 			buildSourceText(builder);
 			return builder.result;
 		}
@@ -4813,9 +4828,12 @@ version(/+$DIDE_REGION+/all)
 		CodeColumn header, block;
 		char ending;
 		
-		int internalNewLineCount; //todo: this counter only needed to count up to 2.
+		int internalNewLineCount, internalTabCount; //todo: this counter only needed to count up to 2.
+		
 		@property bool hasInternalNewLine() const { return internalNewLineCount>0; }
-		bool hasJoinedNewLine;
+		@property bool hasInternalTab() const { return internalTabCount>0; }
+		
+		bool hasJoinedNewLine, hasJoinedTab;
 		
 		bool explicitPrepositionBlock;
 		
@@ -5262,21 +5280,42 @@ version(/+$DIDE_REGION+/all)
 								
 								if(closingSemicolon)
 								{ put(';'); }else {
-									if(internalNewLineCount > hasJoinedNewLine)
-									putNLIndent;
-									else
-									put(' ');
+									
+									if(internalNewLineCount > hasJoinedNewLine) putNLIndent;
+									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
+									
+									/+todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
+									Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
+									Viszont legyen a tab is detektalva! Az 3 allapot.
+									A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+									A newline eseten eleve ott a vastag elvalaszto sor.
+									Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+									+/
+									
+									//todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
+									
 									put("{", block, "}", explicitPrepositionBlock);
 								}
 								putUi(' ');
 								
 								if(nextJoinedPreposition)
 								{
+									//todo: I think this is dead code. It does nothing.
 									if(nextJoinedPreposition.hasJoinedNewLine) putNL;
+									else if(nextJoinedPreposition.hasJoinedTab) put('\t');
 									//note: It doesn't matter if the newline is bewore or	 after or on both sides
 									//note: ...around an "else". As it is either joined horizontally or vertically.
 									
 									const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while";
+									
+									//todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
+									/+static if(CODE)
+									{	//this puts too much tabs
+										const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
+										if(canIndent) indentCount++;
+										scope(exit) if(canIndent) indentCount--;
+									}+/
+									
 									emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
 								}	
 							}
@@ -5414,7 +5453,7 @@ version(/+$DIDE_REGION+/all)
 		struct RemovedCells {
 			CodeComment[] comments;
 			Cell lastCell;
-			int newLineCount;
+			int newLineCount, tabCount;
 			int removedCount;
 			bool overflow;
 		}
@@ -5447,7 +5486,10 @@ version(/+$DIDE_REGION+/all)
 				
 				res.lastCell = actCell; //LOG(structuredCellToChar(actCell));
 				if(auto cmt = cast(CodeComment) actCell)
-				res.comments ~= cmt;
+				{ res.comments ~= cmt; }
+				else if(auto glyph = cast(Glyph) actCell)
+				{ if(glyph.ch=='\t') res.tabCount++; }
+				
 				
 				static if(fromFront)
 				accessCells(rows.front).popFront;
@@ -5874,7 +5916,7 @@ version(/+$DIDE_REGION+/all)
 		//extractPrepositions ///////////////////////////////
 		Declaration[] res;
 		
-		int totalNewLineCount;
+		int totalNewLineCount, totalTabCount;
 		CodeComment[] totalComments;
 		
 		///remove from cellRows, return last removed cell
@@ -5882,6 +5924,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			auto res = cellRows.removeFront(idx);
 			totalNewLineCount += res.newLineCount;
+			totalTabCount += res.tabCount;
 			totalComments ~= res.comments;
 			return res.lastCell; 
 		}
@@ -5890,16 +5933,18 @@ version(/+$DIDE_REGION+/all)
 		{
 			auto res = cellRows.removeFront!(c => c.isWhitespaceOrComment)(int.max);
 			totalNewLineCount += res.newLineCount;
+			totalTabCount += res.tabCount;
 			totalComments ~= res.comments;
 		}
 		
 		void appendCommentsAndNewLines()
 		{
-			if(totalNewLineCount || !totalComments.empty)
+			if(totalTabCount || totalNewLineCount || !totalComments.empty)
 			{
 				if(res.length)
 				{
-					res.back.internalNewLineCount 	+= totalNewLineCount;
+					res.back.internalNewLineCount += totalNewLineCount;
+					res.back.internalTabCount += totalTabCount;
 					
 					//append internal comments to the end of the (block)
 					foreach(cmt; totalComments)
@@ -5919,7 +5964,8 @@ version(/+$DIDE_REGION+/all)
 				}
 				
 				totalNewLineCount 	= 0;
-				totalComments 	= [];
+				totalTabCount	= 0;
+				totalComments	= [];
 			}
 		}
 		
@@ -5936,6 +5982,7 @@ version(/+$DIDE_REGION+/all)
 		with(match) {
 			
 			//totalNewLineCount 	+= match.newLineCount;
+			//totalTabCount 	+= match.tabCount;
 			//totalComments 	~= match.comments;
 			
 			if(pattern.endsWith('='))
@@ -6042,7 +6089,7 @@ version(/+$DIDE_REGION+/all)
 					//joinPrepositions //////////////////////////////////////////
 					size_t backTrackCount = 0;
 					//CodeComment[] precedingComments;
-					bool hasJoinedNewLine;
+					bool hasJoinedNewLine, hasJoinedTab;
 					
 					Declaration findSrcPreposition(in string[] validKeywords)
 					{
@@ -6080,6 +6127,7 @@ version(/+$DIDE_REGION+/all)
 						backTrackCount = 1; //first is the dstPreposition, it's always dropped
 						//precedingComments = [];
 						hasJoinedNewLine = false;
+						hasJoinedTab = false;
 						auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1);
 						while(!a.empty)
 						{
@@ -6098,6 +6146,13 @@ version(/+$DIDE_REGION+/all)
 									//WARN("Lost comment: "~cmt.sourceText);  
 									//precedingComments ~= cmt;
 									//Note: This comment is saved somewhere else.
+									
+									//todo: process joined comments
+								}
+								else if(auto glyph = cast(Glyph)a.front)
+								{
+									if(glyph.ch=='\t')
+										hasJoinedTab = true;
 								}
 							}
 							else
@@ -6138,7 +6193,9 @@ version(/+$DIDE_REGION+/all)
 							}
 							
 							dstPreposition.internalNewLineCount += removed.newLineCount;
+							dstPreposition.internalTabCount += removed.tabCount;
 							dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
+							dstPreposition.hasJoinedTab = hasJoinedTab;
 							
 							srcPreposition.appendJoinedPreposition(dstPreposition);
 						}
