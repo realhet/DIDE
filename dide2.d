@@ -210,7 +210,7 @@ version(/+$DIDE_REGION main+/all)
 			bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
 					
 			@VERB("Alt+F4") void closeApp()
-			{ PostMessage(hwnd, WM_CLOSE, 0, 0); }
+			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); }
 					
 			bool building()const
 			{ return buildSystemWorkerState.building; }
@@ -391,7 +391,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				version(/+$DIDE_REGION update a virtual file from clipboard+/all) {
 					static uint id;
-					if(id.chkSet(GetClipboardSequenceNumber))
+					if(id.chkSet(clipboard.sequenceNumber))
 					File(`virtual:\clipboard.txt`).write(clipboard.asText);
 					//todo: sinchronize the clipboard both ways.
 					//todo: don't load too big files. And most importantly don't crash.

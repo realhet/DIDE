@@ -5284,12 +5284,13 @@ version(/+$DIDE_REGION+/all)
 									if(internalNewLineCount > hasJoinedNewLine) putNLIndent;
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
-									/+todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
-									Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
-									Viszont legyen a tab is detektalva! Az 3 allapot.
-									A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
-									A newline eseten eleve ott a vastag elvalaszto sor.
-									Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+									/+
+										todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
+																			Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
+																			Viszont legyen a tab is detektalva! Az 3 allapot.
+																			A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+																			A newline eseten eleve ott a vastag elvalaszto sor.
+																			Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
 									+/
 									
 									//todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
@@ -5309,12 +5310,14 @@ version(/+$DIDE_REGION+/all)
 									const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while";
 									
 									//todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
-									/+static if(CODE)
-									{	//this puts too much tabs
-										const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
-										if(canIndent) indentCount++;
-										scope(exit) if(canIndent) indentCount--;
-									}+/
+									/+
+										static if(CODE)
+																			{	//this puts too much tabs
+																				const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
+																				if(canIndent) indentCount++;
+																				scope(exit) if(canIndent) indentCount--;
+																			}
+									+/
 									
 									emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
 								}	
@@ -6152,7 +6155,7 @@ version(/+$DIDE_REGION+/all)
 								else if(auto glyph = cast(Glyph)a.front)
 								{
 									if(glyph.ch=='\t')
-										hasJoinedTab = true;
+									hasJoinedTab = true;
 								}
 							}
 							else
@@ -6196,6 +6199,8 @@ version(/+$DIDE_REGION+/all)
 							dstPreposition.internalTabCount += removed.tabCount;
 							dstPreposition.hasJoinedNewLine = hasJoinedNewLine;
 							dstPreposition.hasJoinedTab = hasJoinedTab;
+							
+							//todo: tab detection is bad: opengl.shaders.attrib is a good example.
 							
 							srcPreposition.appendJoinedPreposition(dstPreposition);
 						}
