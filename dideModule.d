@@ -3091,12 +3091,12 @@ class CodeRow: Row
 				{
 					if(getStructureLevel >= StructureLevel.structured)
 					{
-					static bool isBreakRow(Row r)
-					{
-						//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
-						if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/;
-						return false;
-					}
+						static bool isBreakRow(Row r)
+						{
+							//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
+							if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/;
+							return false;
+						}
 					
 					cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth);
 					}
