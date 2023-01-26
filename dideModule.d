@@ -3089,6 +3089,8 @@ class CodeRow: Row
 				enum enableColumnBreaks = true;
 				static if(enableColumnBreaks)
 				{
+					if(getStructureLevel >= StructureLevel.structured)
+					{
 					static bool isBreakRow(Row r)
 					{
 						//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
@@ -3097,6 +3099,7 @@ class CodeRow: Row
 					}
 					
 					cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth);
+					}
 				}
 			}
 				
