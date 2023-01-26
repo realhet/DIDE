@@ -1199,20 +1199,71 @@ version(/+$DIDE_REGION main+/all)
 			return [];
 		}
 			
-		CellLocation[] locate_snapToRow(in vec2 mouse)
+		CellLocation[] locate_snapToRow(vec2 mouse, float epsilon = .5f)
 		{
 			auto st = locate(mouse);
-				
-			if(st.length)
-			with(st.back)
-			if(auto col = cast(CodeColumn)cell)
-			{
-				const ofs = calcSnapOffsetFromPadding;
-				if(ofs) st = locate(mouse+ofs);
-			}
-				
 			
-				
+			auto getLastCol(){ return cast(CodeColumn) st.map!"a.cell".backOrNull; }
+			
+			//try snap it from the edge
+			if(auto col = getLastCol)
+			{
+				const ofs = st.back.calcSnapOffsetFromPadding(epsilon);
+				if(ofs)
+				{
+					mouse += ofs;  st = locate(mouse);
+				}
+			}
+			
+			//try to avoid the gaps if it is a multiPage Column
+			if(auto col = getLastCol)
+			{
+				auto pages = col.getPageRowRanges;
+				if(pages.length>1)
+				{	
+					const p = st.back.localPos;
+					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted;
+					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1);
+					if(idx<pages.length-1)
+					{
+						const 	xLeft	= pages[idx].front.outerRight - epsilon,
+							xRight 	= pages[idx+1].front.outerLeft + epsilon,
+							xMid	= avg(xLeft, xRight);
+						
+						if(p.x.inRange(xLeft, xRight))
+						{
+							mouse += (p.x<xMid ? xLeft : xRight) - p.x;
+							st = locate(mouse);
+						}
+					}
+				}
+			}
+			
+			//try to snap up from the bottom of a page
+			if(auto col = getLastCol)
+			{
+				auto pages = col.getPageRowRanges;
+				if(pages.length>1)
+				{	
+					const p = st.back.localPos;
+					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted;
+					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1);
+					//todo: too much copy paste. Must refactor these ifs.
+					
+					if(idx<pages.length/+ it needs only one page, not two+/)
+					{
+						const limit = pages[idx].back.outerBottom - epsilon;
+						
+						if(p.y > limit)
+						{
+							mouse.y += limit - p.y;
+							st = locate(mouse);
+						}
+					}
+				}
+			}
+
+
 			return st;
 		}
 	}version(/+$DIDE_REGION+/all)
@@ -3183,13 +3234,12 @@ version(/+$DIDE_REGION main+/all)
 			}
 			version(/+$DIDE_REGION Cursor selection+/all)
 			{
-				
-				
-				
+				@VERB("Shift+Left") void cursorLeftSelect()
+				{ cursorLeft(true); }
 				@VERB("Shift+Right") void cursorRightSelect()
-				{ cursorRight	(true); }
+				{ cursorRight(true); }
 				@VERB("Shift+Ctrl+Left") void cursorWordLeftSelect()
-				{ cursorWordLeft	(true); }
+				{ cursorWordLeft(true); }
 				@VERB("Shift+Ctrl+Right") void cursorWordRightSelect()
 				{ cursorWordRight	(true); }
 				@VERB("Shift+Home") void cursorHomeSelect()
@@ -3295,9 +3345,13 @@ version(/+$DIDE_REGION main+/all)
 					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t");
 					//todo: tab and shift+tab when multiple lines are selected
 				}
+				@VERB("Ctrl+Tab") void insertNewPage()
+				{
+					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\x0B"); //Vertical Tab -> MultiColumn
+				}
 				@VERB("Enter") void insertNewLine()
 				{
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard	, "\n", Yes.duplicateTabs);
+					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs);
 					//todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 				}
 				

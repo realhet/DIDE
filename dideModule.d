@@ -31,6 +31,8 @@ version(/+$DIDE_REGION+/all)
 	
 	enum visualizeStructureLevels = false;
 	
+	enum MultiPageGapWidth = DefaultFontHeight;
+	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 	
@@ -1394,7 +1396,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 	+/
-	
+	
 	struct SourceTextBuilder
 	{
 		//SourceTextBuilder /////////////////////////
@@ -1457,7 +1459,7 @@ version(/+$DIDE_REGION+/all)
 				put(row);
 			}
 		}
-		
+		
 		void put(CodeColumn col)
 		{
 			if(!col.rowCount) return; //todo: there should be no CodeColumns without at least a single CodeRow inside. -> invatiant{}
@@ -1512,7 +1514,7 @@ version(/+$DIDE_REGION+/all)
 			else
 			putStatementBody(col);
 		}
-		
+		
 		void put(Cell cell)
 		{
 			void doUpdateLineNumber(T)(T a)
@@ -1569,7 +1571,7 @@ version(/+$DIDE_REGION+/all)
 				{ put(postfix); }
 			}
 		}
-	}
+	}
 	struct CodeNodeBuilder
 	{
 		//CodeNodeBuilder ///////////////////////////////
@@ -2606,7 +2608,7 @@ class CodeRow: Row
 			
 			//todo: advanced version that checks the surroundings at the insert position.
 		}
-		
+		
 		int getLineOfFirstGlyphOrNode()
 		{
 			auto c = rows.map!(r => r.subCells).joiner.frontOrNull;
@@ -3044,11 +3046,17 @@ class CodeRow: Row
 			padding.set(.5, 4);
 		}
 		
+		Row[][] cachedPageRowRanges;
+		override Row[][] getPageRowRanges()
+		{ return cachedPageRowRanges; }
+		
 		override void rearrange()
 		{
+			cachedPageRowRanges = [];
+			
 			setupBorder;
 			
-			//ote: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
+			//note: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
 			auto rows = cast(Row[])subCells;
 			assert(rows.map!(a => cast(Row)a).all);
 			
@@ -3070,22 +3078,57 @@ class CodeRow: Row
 				const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
 				innerSize = vec2(maxInnerWidth + totalGap.x, y);
 				/+
-					todo: this is not possible with the immediate UI because the autoWidth/autoHeigh 
-									information is lost. And there is no functions to return the required content size.
-									The container should have a current size, a minimal required size and separate autoWidth flags.
+					todo: 	this is not possible with the immediate UI because the autoWidth/autoHeigh 
+						information is lost. And there is no functions to return the required content size.
+						The container should have a current size, a minimal required size and separate autoWidth flags.
 				+/
 					
 				if(!flags.dontStretchSubCells)
 				foreach(r; rows) r.innerWidth = maxInnerWidth;
+				
+				enum enableColumnBreaks = true;
+				static if(enableColumnBreaks)
+				{
+					static bool isBreakRow(Row r)
+					{
+						//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
+						if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/;
+						return false;
+					}
+					
+					cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth);
+				}
 			}
 				
 			static if(rearrangeLOG) LOG("rearranging", this);
+		}
+		
+		void drawMultiPageGaps(Drawing dr)
+		{
+			auto pages = cachedPageRowRanges;
+			
+			if(pages.length<2) return;
+			
+			dr.translate(innerPos); scope(exit) dr.pop;
+			
+			const ofs = -1; //min(DefaultFontHeight/2, innerHeight*.25f);
+			auto 	y0 = ofs,
+				y1 = innerHeight - ofs;
+			
+			dr.lineWidth = .5f;
+			if(auto n = cast(CodeNode) getParent)	dr.color = n.bkColor;
+			else	dr.color = clGray;
+			
+			foreach(x; pages.drop(1).map!(a => a.front.outerLeft - MultiPageGapWidth/2))
+			dr.vLine(x, y0, y1);
 		}
 		
 		override void draw(Drawing dr)
 		{
 			//draw ///////////////////////////////////
 			super.draw(dr);
+			
+			drawMultiPageGaps(dr);
 			
 			//visualize changed/created/modified
 			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
@@ -3932,7 +3975,7 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isSpecialComment(string keyword)
 	{ return extractSpecialComment.wordAt(0)==keyword; }
-	
+	
 	bool verify(bool markErrors = false)()
 	{
 		bool anyErrors;
@@ -4141,7 +4184,7 @@ version(/+$DIDE_REGION+/all)
 		
 		needMeasure;
 	}
-	
+	
 	bool verify(bool markErrors = false)()
 	{
 		bool anyErrors;
@@ -4935,7 +4978,7 @@ version(/+$DIDE_REGION+/all)
 			
 			return res;
 		}
-		
+		
 		bool canHaveHeader() const
 		{
 			if(keyword.among("else", "unittest", "invariant", "try", "finally", "do")) return false;
@@ -5348,7 +5391,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		}
-		
+		
 		override void rearrange()
 		{
 			//_identifierValid = false;
@@ -5723,7 +5766,7 @@ version(/+$DIDE_REGION+/all)
 				srcIdx++;
 			}
 		}
-		
+		
 		alias transferUntil = processSrc!(Operation.transfer);
 		
 		alias skipUntil = processSrc!(Operation.skip);
@@ -6366,8 +6409,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		}
-	}
-	
+	}
 	void processHighLevelPatterns_enum(CodeColumn col_) {
 		if(!col_) return;
 		NOTIMPL;
