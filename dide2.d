@@ -136,7 +136,6 @@ version(/+$DIDE_REGION main+/all)
 		return res;
 	}
 	
-	
 	//MainOverlay //////////////////////////////////////////////////////////
 	class MainOverlayContainer : het.uibase.Container {
 		this()
@@ -641,7 +640,7 @@ version(/+$DIDE_REGION main+/all)
 				);
 				
 				
-				workspace.UI_flashErrorMessages;
+				workspace.UI_flashMessages;
 				
 				im.root ~= workspace;
 				im.root ~= overlay;
@@ -998,7 +997,10 @@ version(/+$DIDE_REGION main+/all)
 			Module expectOneSelectedModule()
 			{
 				auto m = oneSelectedModule;
-				if(!m) flashError("This operation requires 1 selected module.");
+				if(!m)
+				flashWarning("This operation requires a single selected module.");
+				//todo: put the operation's name in the message.
+				
 				return m;
 			}
 					
@@ -1456,7 +1458,7 @@ version(/+$DIDE_REGION main+/all)
 			if(fun) fun();
 		}
 		
-		auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
+		auto insertCursorAt___OfEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
 		{
 			auto res = 	textSelections
 				.filter!"a.valid"  //just to make sure
@@ -1468,16 +1470,44 @@ version(/+$DIDE_REGION main+/all)
 				.joiner
 				.map!(
 				(c){
-					//move the cursor to	the end of the line
-					c.moveRight(TextCursor.end); //todo: it's not functional yet
+					//move the cursor to the end or home of the line
+					if(toTheEnd) c.moveToLineEnd;
+					else c.moveToLineStart; //todo: it's not functional yet
 					return TextSelection(c, c, false); //make a selection out of them
 				}
 			)
 				.merge /+merge it, because there can be duplicates+/;
 				
-			if(res.length) res[0].primary = true;
+			if(res.length) res[0].primary = true; //todo: primary selection is inconsistent when multiselect
 			
 			return res;
+		}
+		
+		auto insertCursorAtStartOfEachLineSelected_impl(R)(R textSelections)
+		{ return insertCursorAt___OfEachLineSelected_impl(textSelections, No.toTheEnd); }
+		
+		auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
+		{ return insertCursorAt___OfEachLineSelected_impl(textSelections, Yes.toTheEnd); }
+		
+		auto selectCharAtEachSelection(R)(R textSelections, dchar ch)
+		{
+			TextSelection transform(TextSelection sel)
+			{
+				TextSelection res;
+				if(sel.cursors[0].charAt == ch)
+				{
+					res = sel.dup;
+					res.cursors[1] = res.cursors[0];
+					res.cursors[1].moveRight(1);
+				}
+				return res;
+			}
+			
+			return 	textSelections
+				.map!(a => transform(a))
+				.cache
+				.filter!"a.valid"
+				.merge;
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
@@ -1822,7 +1852,7 @@ version(/+$DIDE_REGION main+/all)
 			//copy_impl ///////////////////////////////////////
 			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
 			
-			auto s = textSelections.sourceText; //tjhis can throw if structured declarations has invalid contents
+			auto s = textSelections.sourceText; //this can throw if structured declarations has invalid contents
 			
 			bool valid = s.length>0;
 			if(valid) clipboard.asText = s;  //todo: BOM handling
@@ -1958,9 +1988,9 @@ version(/+$DIDE_REGION main+/all)
 	{
 		auto paste_impl(bool dontMeasure=false)(
 			TextSelection[] textSelections,
-						Flag!"fromClipboard" fromClipboard,
-						string input,
-						Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs
+			Flag!"fromClipboard" fromClipboard,
+			string input,
+			Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs
 		)
 		{
 			//paste_impl //////////////////////////////////
@@ -2024,8 +2054,10 @@ version(/+$DIDE_REGION main+/all)
 					//handle leadingTab duplication
 					if(duplicateTabs && row.leadingCodeTabCount)
 					{
+						const newTabCnt = min(row.leadingCodeTabCount, ts.caret.pos.x);
+						
 						lines = lines.dup;
-						lines.back = "\t".replicate(row.leadingCodeTabCount) ~ lines.back;
+							lines.back = "\t".replicate(newTabCnt) ~ lines.back;
 					}
 					
 					if(requestInsertPermission_prepare(ts, lines.join(DefaultNewLine)))
@@ -3004,7 +3036,7 @@ version(/+$DIDE_REGION main+/all)
 					updateOpenQueue(1);
 					updateResyntaxQueue;
 					
-					updateFlashErrorMessages;
+					updateFlashMessages;
 					
 					measure; //measures all containers if needed, updates ElasticTabstops
 					//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
@@ -3211,6 +3243,105 @@ version(/+$DIDE_REGION main+/all)
 			@VERB("Shift+Home"	) void zoomClose2()
 			{ if(textSelectionsGet.empty) frmMain.view.scale = 1; }
 			
+		}version(/+$DIDE_REGION Locations, memory slots+/all)
+		{
+			struct Location
+			{
+				vec2 origin = vec2(0);
+				float zoomFactor = 1;
+			}
+			
+			@STORED Location[10] storedLocations;
+			
+			void enforceLocationIndex(int n)
+			{
+				enforce(
+					n.inRange(storedLocations),
+					n.format!"Location index out of range: %s"
+				);
+			}
+			
+			void storeLocation(int n)
+			{
+				enforceLocationIndex(n);
+				with(storedLocations[n])
+				{
+					origin	= frmMain.view.origin,
+					zoomFactor 	= frmMain.view.scale;
+				}
+				flashInfo(n.format!"Location %s stored.");
+			}
+			
+			void jumpToLocation(int n)
+			{
+				enforceLocationIndex(n);
+				if(storedLocations[n] == Location.init)
+				{
+					flashWarning(n.format!"Location %s is uninitialized.");
+					return;
+				}
+				with(storedLocations[n])
+				{
+					frmMain.view.origin	= origin,
+					frmMain.view.scale 	= zoomFactor;
+				}
+			}
+			
+			static foreach(i; iota(storedLocations.length).map!text)
+			mixin
+			(
+				q{
+					@VERB("Shift+Alt+#") void storeLocation#()
+					{ storeLocation(#); }
+					@VERB("Alt+#"     ) void jumpToLocation#()
+					{ jumpToLocation(#); }
+				}
+				.replace("#", i)
+			);
+			
+			
+			@STORED string[10] storedMemSlots;
+			
+			void enforceMemSlotIndex(int n)
+			{
+				enforce(
+					n.inRange(storedMemSlots),
+					n.format!"MemSlot index out of range: %s"
+				);
+			}
+			
+			void copyMemSlot(int n)
+			{
+				enforceMemSlotIndex(n);
+				auto s = textSelectionsGet.sourceText;
+				storedMemSlots[n] = s;
+				flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored"));
+			}
+			
+			void pasteMemSlot(int n)
+			{
+				enforceMemSlotIndex(n);
+				if(storedMemSlots[n].empty)
+				{
+					flashWarning(n.format!"MemSlot %s is empty.");
+					return;
+				}
+				textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, storedMemSlots[n]);
+			}
+			
+			static foreach(i; iota(storedMemSlots.length).map!text)
+			mixin
+			(
+				q{
+					@VERB("Shift+Ctrl+#") void copyMemSlot#()
+					{ copyMemSlot(#);	 }
+					@VERB("Ctrl+#"	) void pasteMemSlot#()
+					{ pasteMemSlot(#); }
+				}
+				.replace("#", i)
+			);
+			
+			
 		}version(/+$DIDE_REGION+/all)
 		{
 			version(/+$DIDE_REGION Cursor movement+/all)
@@ -3294,6 +3425,9 @@ version(/+$DIDE_REGION main+/all)
 					//todo: shrink/extend Ast Selection
 				} @VERB("Shift+Alt+Right") void extendAstSelection()
 				{}
+				@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
+				{ textSelectionsSet = insertCursorAtStartOfEachLineSelected_impl(textSelectionsGet); }
+				
 				@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
 				{ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
 				
@@ -3329,9 +3463,9 @@ version(/+$DIDE_REGION main+/all)
 				{
 					copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows);
 					/+
-						bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. 
-											Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. 
-											A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
+						bug:	selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. 
+							Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. 
+							A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
 					+/
 				}
 				@VERB("Ctrl+X Shift+Del") void cut()
@@ -3351,25 +3485,44 @@ version(/+$DIDE_REGION main+/all)
 					cut_impl2(s1, s2); textSelectionsSet = s2;
 					/+
 						bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
-											ha van non-readonly selecton is, akkor azt meg el is bassza. 
+						ha van non-readonly selecton is, akkor azt meg el is bassza. 
 					+/
 				}
 				
 				@VERB("Ctrl+V Shift+Ins") void paste()
 				{ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard, ""	); }
+				
 				@VERB("Tab") void insertTab()
+				{ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); }
+				
+				@VERB("Ctrl+]") void indent()
 				{
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t");
-					//todo: tab and shift+tab when multiple lines are selected
+					insertCursorAtStartOfEachLineSelected;
+					paste_impl(textSelectionsGet, No.fromClipboard, "\t");
 				}
-				@VERB("Ctrl+Tab") void insertNewPage()
+				@VERB("Ctrl+[") void outdent()
+				{
+					insertCursorAtStartOfEachLineSelected;
+					auto ts = selectCharAtEachSelection(textSelectionsGet, '\t');
+					if(!ts.empty)
+					{
+						textSelectionsSet = ts;
+						deleteToLeft;
+					}
+					else
+					{ flashWarning("Unable to outdent."); }
+				}
+				
+				@VERB("Ctrl+Enter") void insertNewPage()
 				{
 					/+
 						todo: it should automatically insert at the end of the selected rows.
-											But what if the selection spans across multiple rows...
+						But what if the selection spans across multiple rows...
 					+/
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\x0B"); //Vertical Tab -> MultiColumn
+					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\v");
+					//Vertical Tab -> MultiColumn
 				}
+				
 				@VERB("Enter") void insertNewLine()
 				{
 					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs);
@@ -3393,11 +3546,6 @@ version(/+$DIDE_REGION main+/all)
 		{
 			version(/+$DIDE_REGION File operations  +/all)
 			{
-							
-							
-							
-							
-							
 				@VERB("Ctrl+O") void openModule()
 				{ fileDialog.openMulti.each!(f => queueModule(f)); }
 				@VERB("Ctrl+Shift+O") void openModuleRecursive()
@@ -4122,56 +4270,89 @@ version(/+$DIDE_REGION main+/all)
 			//UI_FlashError //////////////////////////////////////
 			
 			///Brings up an error message on the center of the screen for a short duration
-			struct FlashErrorMessage {
+			struct FlashMessage {
 				DateTime when;
+				enum Type { info, warning, error }
+				Type type;
 				string msg;
+				
+				RGB color()
+				{
+					with(Type)
+					final switch(type)
+					{
+						case info: 	return clWhite;
+						case warning: 	return clYellow;
+						case error:	return clRed;
+					}
+					
+				}
 			}
 			
-			FlashErrorMessage[] flashErrorMessages;
+			FlashMessage[] flashMessages;
 			
-			void flashError(string msg)
+			void flashMessage(FlashMessage.Type type, string msg)
 			{
 				if(msg=="") return;
 				//todo: implement flashing error UI
 				enum maxLen = 10;
-				if(flashErrorMessages.length>maxLen)
-				flashErrorMessages = flashErrorMessages[$-maxLen..$];
-				flashErrorMessages ~= FlashErrorMessage(now, msg);
-				beep;
+				if(flashMessages.length>maxLen)
+				flashMessages = flashMessages[$-maxLen..$];
+				flashMessages ~= FlashMessage(now, type, msg);
+				
+				with(FlashMessage.Type) 
+				final switch(type)
+				{
+					case error:	winSnd("Windows Critical Stop");	break;
+					case warning:	winSnd("Windows Default");	break;
+					case info: 	winSnd("Windows Information Bar");	
+				}
 			}
 			
-			enum flashErrorDuration = 4*second;
+			void flashInfo(string msg)
+			{ flashMessage(FlashMessage.Type.info, msg); }
 			
-			void updateFlashErrorMessages()
+			void flashWarning(string msg)
+			{ flashMessage(FlashMessage.Type.warning, msg); }
+			
+			void flashError(string msg)
+			{ flashMessage(FlashMessage.Type.error, msg); }
+			
+			enum flashMessageDuration = 4*second;
+			
+			void updateFlashMessages()
 			{
-				const t = now-flashErrorDuration;
-				flashErrorMessages = flashErrorMessages.remove!(a => a.when<t);
+				const t = now-flashMessageDuration;
+				flashMessages = flashMessages.remove!(a => a.when<t);
 			}
 			
-			void UI_flashErrorMessages()
+			void UI_flashMessages()
 			{
 				with(im) {
-					if(flashErrorMessages.empty) return;
+					if(flashMessages.empty) return;
 					Panel(
 						PanelPosition.bottomCenter, 
-										{
-							bkColor = clRed;
-							style.bkColor = clRed;
-							style.fontColor = mix(clWhite, clRed, blink^^2);
+						{
+							bkColor = clWhite;
 							style.bold = true;
-							flashErrorMessages.each!(
-								m => Row(
-									{
-										padding = "4 24";
-										flags.hAlign = HAlign.center;
-										const 	tIn = (now-m.when).value(.5f*second),
-											tOut = (m.when+flashErrorDuration-now).value(.25f*second);
-										
-										fh = DefaultFontHeight*2 	* (tIn<1 ? easeOutElastic(tIn.clamp(0, 1), 0, 1, 1) : 1)
-											* (tOut<1 ? easeOutQuad(tOut.clamp(0, 1), 0, 1, 1) : 1);
-										Text(m.msg);
-									}
-								)
+							foreach(m; flashMessages)
+							Row(
+								{
+									style.bkColor = m.color;
+									style.fontColor = blackOrWhiteFor(style.bkColor);
+									
+									if(m.type == FlashMessage.Type.error)
+									style.fontColor = mix(style.fontColor, style.bkColor, blink^^2);
+									
+									padding = "4 24";
+									flags.hAlign = HAlign.center;
+									const 	tIn = (now-m.when).value(.5f*second),
+										tOut = (m.when+flashMessageDuration-now).value(.25f*second);
+									
+									fh = DefaultFontHeight*2 	* (tIn<1 ? easeOutElastic(tIn.clamp(0, 1), 0, 1, 1) : 1)
+										* (tOut<1 ? easeOutQuad(tOut.clamp(0, 1), 0, 1, 1) : 1);
+									Text(m.msg);
+								}
 							);
 						}
 					);

@@ -654,7 +654,7 @@ version(/+$DIDE_REGION+/all)
 		{ return pos.x<=0; }
 		@property bool isAtLineEnd() const
 		{ return pos.x>=rowCharCount; }
-			
+		
 		int opCmp(in TextCursor b) const
 		{
 			//simple case: they are on the same column or both invalid
@@ -737,6 +737,16 @@ version(/+$DIDE_REGION+/all)
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
+			
+		void moveToLineStart()
+		{
+			moveRight(home);
+			if(pos.x) moveRight(home); //it steps over leading tabs too
+		}
+		
+		void moveToLineEnd()
+		{ moveRight(end); }
+		
 		void moveRight(int delta)
 		{
 			if(!delta) return;
@@ -808,7 +818,7 @@ version(/+$DIDE_REGION+/all)
 			}
 			else
 			{
-				moveDown (delta.y);
+				moveDown(delta.y);
 				moveRight(delta.x);
 			}
 		}
@@ -961,6 +971,8 @@ version(/+$DIDE_REGION+/all)
 		{ cursors[0] = c0; cursors[1] = c1; this.primary = primary; }
 		this(TextCursor c, bool primary)
 		{ cursors[0] = c; cursors[1] = c; this.primary = primary; }
+		
+		auto dup() { return TextSelection(cursors[0], cursors[1], primary); }
 		
 		ref caret()
 		{ return cursors[1]; }
@@ -2107,7 +2119,7 @@ class CodeRow: Row
 		override void draw(Drawing dr)
 		{
 			//draw ////////////////////////////////
-			if(/*lod.level>1*/ lod.zoomFactor*outerHeight<3 && im.actTargetSurface==0)
+			if(/*lod.level>1*/ lod.zoomFactor*outerHeight<4 && im.actTargetSurface==0)
 			{
 				 //note: LOD is only enabled on the world view, not on the UI
 				
@@ -2620,9 +2632,7 @@ class CodeRow: Row
 		}
 		
 		bool isStructuredCode() //todo: constness
-		{
-			return getStructureLevel >= StructureLevel.structured;
-		}
+		{ return getStructureLevel >= StructureLevel.structured; }
 		
 		SyntaxKind getSyntax(dchar ch)
 		{
@@ -5239,19 +5249,19 @@ version(/+$DIDE_REGION+/all)
 				}
 				
 				/*
-					 apply new colors.... Rather use comment colors.
-									
-									const bkc = RGB(0x606060), fc = clWhite;
-									
-									header.bkColor = bkc;
-									
-									foreach(r; header.rows){
-										foreach(c; r.subCells)
-											if(auto g = cast(Glyph)c){
-												g.bkColor = clRegionBk;
-												g.fontColor = clRegionFont;
-											}
-									}
+					apply new colors.... Rather use comment colors.
+						
+						const bkc = RGB(0x606060), fc = clWhite;
+						
+						header.bkColor = bkc;
+						
+						foreach(r; header.rows){
+							foreach(c; r.subCells)
+								if(auto g = cast(Glyph)c){
+									g.bkColor = clRegionBk;
+									g.fontColor = clRegionFont;
+								}
+						}
 				*/
 				
 				return;
@@ -5353,7 +5363,8 @@ version(/+$DIDE_REGION+/all)
 								if(canHaveHeader) {
 									put(keyword);
 									
-									static bool isHeaderOmittableForKeyword(string keyword) {
+									static bool isHeaderOmittableForKeyword(string keyword)
+									{
 										enum list = prepositionPatterns	.filter!(a => a.endsWith(" ("))
 											.map!(a => a[0..$-2])
 											.filter!(a => prepositionPatterns.canFind(a))
@@ -5374,12 +5385,12 @@ version(/+$DIDE_REGION+/all)
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
 									/+
-										todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
-																			Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
-																			Viszont legyen a tab is detektalva! Az 3 allapot.
-																			A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
-																			A newline eseten eleve ott a vastag elvalaszto sor.
-																			Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+										todo:	^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
+											Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
+											Viszont legyen a tab is detektalva! Az 3 allapot.
+											A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+											A newline eseten eleve ott a vastag elvalaszto sor.
+											Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
 									+/
 									
 									//todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
