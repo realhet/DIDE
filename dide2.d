@@ -450,10 +450,12 @@ version(/+$DIDE_REGION main+/all)
 										auto B(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
 										{ return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, /+KeyCombo(kc)+/); }
 										
-										if(B("F1", "insert"	)) test_insert;
-										if(B("F2", "StructureMap"	)) test_structureMap;
-										if(B("F3", "resyntax"	)) test_resyntax;
-										if(B("F4", "declaration"	)) test_declarationStatistics;
+										/*
+											if(B("F1", "autoRealign"	)) test_autoRealign;
+											if(B("F2", "StructureMap"	)) test_structureMap;
+											if(B("F3", "resyntax"	)) test_resyntax;
+											if(B("F4", "declaration"	)) test_declarationStatistics;
+										*/
 									}
 								}
 							}
@@ -1006,7 +1008,24 @@ version(/+$DIDE_REGION main+/all)
 				if(res.empty) res = modules;
 				return res;
 			}
-					
+			
+			/+
+				+Selects all the CodeColumns under the cursors. 
+							If there is none, selects all the modules' content CodeColumns.
+			+/
+			CodeColumn[] selectedOuterColumns()
+			{
+				CodeColumn[] cols;
+				
+				foreach(c; textSelectionsGet.map!"a.codeColumn")
+				if(!cols.canFind(c)) cols ~= c;
+				if(cols.empty)
+				foreach(c; selectedModules.map!"a.content")
+				cols ~= c;
+				
+				return cols;
+			}
+			
 			auto changedModules()
 			{ modules       .filter!"a.changed"; }
 			auto projectModules()
@@ -1203,16 +1222,14 @@ version(/+$DIDE_REGION main+/all)
 		{
 			auto st = locate(mouse);
 			
-			auto getLastCol(){ return cast(CodeColumn) st.map!"a.cell".backOrNull; }
+			auto getLastCol() { return cast(CodeColumn) st.map!"a.cell".backOrNull; }
 			
 			//try snap it from the edge
 			if(auto col = getLastCol)
 			{
 				const ofs = st.back.calcSnapOffsetFromPadding(epsilon);
 				if(ofs)
-				{
-					mouse += ofs;  st = locate(mouse);
-				}
+				{ mouse += ofs;  st = locate(mouse); }
 			}
 			
 			//try to avoid the gaps if it is a multiPage Column
@@ -1220,7 +1237,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				auto pages = col.getPageRowRanges;
 				if(pages.length>1)
-				{	
+				{
 					const p = st.back.localPos;
 					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted;
 					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1);
@@ -1244,13 +1261,13 @@ version(/+$DIDE_REGION main+/all)
 			{
 				auto pages = col.getPageRowRanges;
 				if(pages.length>1)
-				{	
+				{
 					const p = st.back.localPos;
 					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted;
 					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1);
 					//todo: too much copy paste. Must refactor these ifs.
 					
-					if(idx<pages.length/+ it needs only one page, not two+/)
+					if(idx<pages.length/+it needs only one page, not two+/)
 					{
 						const limit = pages[idx].back.outerBottom - epsilon;
 						
@@ -1262,8 +1279,8 @@ version(/+$DIDE_REGION main+/all)
 					}
 				}
 			}
-
-
+			
+			
 			return st;
 		}
 	}version(/+$DIDE_REGION+/all)
@@ -3347,6 +3364,10 @@ version(/+$DIDE_REGION main+/all)
 				}
 				@VERB("Ctrl+Tab") void insertNewPage()
 				{
+					/+
+						todo: it should automatically insert at the end of the selected rows.
+											But what if the selection spans across multiple rows...
+					+/
 					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\x0B"); //Vertical Tab -> MultiColumn
 				}
 				@VERB("Enter") void insertNewLine()
@@ -3452,51 +3473,180 @@ version(/+$DIDE_REGION main+/all)
 		version(/+$DIDE_REGION Test functions+/all)
 		{
 			//Test functions ///////////////////////////////////////
-			@VERB("F1") void test_insert()
+			
+			static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
 			{
-				auto ts = textSelectionsGet;
-				if(ts.length==1)
+				//only process structured or modular columns
+				if(!col.isStructuredCode) return;
+				
+				//recursively visit nested columns
+				foreach(row; col.rows)
+				foreach(cell; row.subCells)
+				if(auto node = cast (CodeNode) cell)
 				{
-					auto sel = ts.front;
-					if(sel.valid)
+					foreach(ncell; node.subCells)
+					if(auto ncol = cast(CodeColumn) ncell)
+					visitNestedCodeColumns(ncol, fun);
+					
+					//process joined prepositions
+					if(auto decl = cast(Declaration) node)
 					{
-						if(auto row = sel.codeColumn.getRow(sel.caret.pos.y))
-						{
-							row.insertSomething
-							(
-								sel.caret.pos.x, {
-									//row.append(new CodeComment(row, CommentType.slash, "Comment"));
-									
-									row.moduleOf.print;
-									(cast(const)row).moduleOf.print;
-									(cast(const)row).thisAndAllParents.each!print;
-									
-								}
-							);
-						}
+						foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+						foreach(ppcell; pp.subCells)
+						if(auto ppcol = cast(CodeColumn) ppcell)
+						visitNestedCodeColumns(ppcol, fun);
 					}
 				}
-			} @VERB("F2") void test_structureMap()
-			{
-				foreach(m; selectedModules)
-				{
-					if(m.isStructured)
-					{
-						processHighLevelPatterns_block(m.content);
-						m.structureLevel = StructureLevel.managed;
-					};
-					//m.content.needMeasure;
-					//m.content.measure;
-					//m.isStructured = true;
-					//m.reload;
-				}
 				
-				structureMap.debugTrigger = true;
-			} @VERB("F3") void test_resyntax()
+				fun(col); //do the job
+			}
+			
+			static void visitNestedCodeNodes(CodeColumn col, void delegate(CodeNode) fun)
+			{
+				//only process structured or modular columns
+				if(!col.isStructuredCode) return;
+				
+				//recursively visit nested columns
+				foreach(row; col.rows)
+				foreach(cell; row.subCells)
+				if(auto node = cast (CodeNode) cell)
+				{
+					fun(node);
+					foreach(ncell; node.subCells)
+					if(auto ncol = cast(CodeColumn) ncell)
+					visitNestedCodeNodes(ncol, fun);
+					
+					//process joined prepositions
+					if(auto decl = cast(Declaration) node)
+					foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+					{
+						fun(pp);
+						foreach(ppcell; pp.subCells)
+						if(auto ppcol = cast(CodeColumn) ppcell)
+						visitNestedCodeNodes(ppcol, fun);
+					}
+				}
+			}
+			
+			void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
+			{
+				foreach_reverse(col; selectedOuterColumns)
+				visitNestedCodeColumns(col, fun);
+			}
+			
+			void visitSelectedNestedCodeNodes(void delegate(CodeNode) fun)
+			{
+				foreach_reverse(col; selectedOuterColumns)
+				visitNestedCodeNodes(col, fun);
+			}
+			
+			static bool removeVerticalTabs(CodeColumn col)
+			{
+				bool anyVT;
+				foreach(row; col.rows)
+				if(row.chars.endsWith('\x0b'))
+				{
+					row.subCells = row.subCells[0 .. $-1];
+					row.refreshTabIdx;
+					row.needMeasure;
+					anyVT = true;
+				}
+				if(anyVT) col.measure;
+				return anyVT;
+			}
+			
+			static bool addVerticalTabs(CodeColumn col, float targetHeight, float targetAspect)
+			{
+				bool anyVT;
+				float y0 = 0;
+				
+				auto pageHeight = targetHeight;
+				//pageHeight.maximize(col.outerSize.area.sqrt / targetAspect);
+				const totalHeight = col.rows.map!(r => r.outerHeight).sum;
+				const numPages = (totalHeight / pageHeight).iceil.max(1);
+				if(numPages<=1) return false;
+				
+				pageHeight = totalHeight / numPages;
+				
+				int actPages;
+				foreach(row; col.rows)
+				if(row.outerBottom - y0 >= pageHeight)
+				{
+					static TextStyle tsVT;
+					static bool initialized;
+					if(initialized.chkSet) tsVT.applySyntax(skIdentifier1); //style for vertical tab
+					
+					y0 = row.outerBottom;
+					row.appendChar('\x0b', tsVT);
+					row.refreshTabIdx;
+					row.needMeasure;
+					anyVT = true;
+					
+					actPages++;
+					if(actPages > numPages-1) break;
+				}
+				if(anyVT) col.measure;
+				return anyVT;
+			}
+			
+			
+			
+			
+			@VERB("F1") void test_realignVerticalTabs()
+			{
+				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				preserveTextSelections(
+					{
+						visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); });
+						visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); });
+					}
+				);
+			}
+			
+			@VERB("Ctrl+F1") void test_removeVerticalTabs()
+			{
+				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				preserveTextSelections({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); });
+			}
+			
+			
+			
+			
+			@VERB("F2") void test_setInternalNewLine()
+			{
+				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				visitSelectedNestedCodeNodes(
+					(CodeNode node){
+						if(auto decl = cast(Declaration) node)
+						{
+							decl.internalNewLineCount = 1;
+							decl.needMeasure;
+						}
+					}
+				);
+			}
+			
+			@VERB("Ctrl+F2") void test_clearInternalNewLine()
+			{
+				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				visitSelectedNestedCodeNodes(
+					(node){
+						if(auto decl = cast(Declaration) node)
+						{
+							decl.internalNewLineCount = 0;
+							decl.needMeasure;
+						}
+					}
+				);
+			}
+			
+			 @VERB("F3") void test_resyntax()
 			{
 				//foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
 				
-			} @VERB("F4") void test_declarationStatistics()
+			}
+			
+			@VERB("F4") void test_declarationStatistics()
 			{
 				auto files = dirPerS(Path(`c:\d`), "*.d").files.map!"a.file".array;
 				//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];

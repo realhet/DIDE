@@ -1016,8 +1016,7 @@ version(/+$DIDE_REGION+/all)
 				&& end==b.end
 				&& caret==b.caret;
 		}
-	}version(/+$DIDE_REGION+/all)
-	{
+		
 		void move(ivec2 delta, bool isShift)
 		{
 			if(!delta) return;
@@ -1047,6 +1046,9 @@ version(/+$DIDE_REGION+/all)
 			caret.move(delta);
 			if(!isShift) cursors[0] = caret;
 		}
+	}version(/+$DIDE_REGION+/all)
+	{
+		
 		
 		string sourceText()
 		{
@@ -1065,7 +1067,7 @@ version(/+$DIDE_REGION+/all)
 						scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
 						
 						auto row = codeColumn.rows[crsr.pos.y];
-							
+						
 						if(crsr.pos.x<row.cellCount)
 						{
 							//highlighted chars
@@ -1090,6 +1092,42 @@ version(/+$DIDE_REGION+/all)
 			}
 			return res;
 		}
+		
+		T[] cells(T:Cell)()
+		{
+			//todo: refactor this to byCells: a bidirectional range
+			
+			//note: it returns all nonnull T objects on the root level.
+			T[] res;
+			if(valid && cursors[0] != cursors[1])
+			{
+				const 	st=codeColumn.pos2idx(start.pos),
+					en=codeColumn.pos2idx(end.pos); //note: st and en is validated
+				
+				auto crsr = TextCursor(codeColumn, codeColumn.idx2pos(st));
+				if(en>st) {
+					res.reserve(en-st);
+					//don't care about newlines and Unicode overhead... It's only fast for ASCII
+					
+					foreach(i; st..en) {
+						scope(exit) crsr.moveRight_unsafe; //todo: refactor all textselection these loops
+						//todo: refactor this in a functional way. sourceText() and cells() are has the same loop
+						auto row = codeColumn.rows[crsr.pos.y]; //opt: slow lookup of row on every step.
+						
+						if(crsr.pos.x<row.cellCount)
+						{
+							//highlighted chars
+							if(auto cell = cast(T) row.subCells[crsr.pos.x])
+							res ~= cell;
+							
+						} 
+					}
+				}
+			}
+			return res;
+		}
+		
+		alias nodes = cells!CodeNode;
 		
 		bool hitTest(vec2 p)
 		{
@@ -2581,6 +2619,11 @@ class CodeRow: Row
 			return StructureLevel.plain;
 		}
 		
+		bool isStructuredCode() //todo: constness
+		{
+			return getStructureLevel >= StructureLevel.structured;
+		}
+		
 		SyntaxKind getSyntax(dchar ch)
 		{
 			if(getStructureLevel==StructureLevel.plain) {
@@ -3091,14 +3134,14 @@ class CodeRow: Row
 				{
 					if(getStructureLevel >= StructureLevel.structured)
 					{
-						static bool isBreakRow(Row r)
+							static bool isBreakRow(Row r)
 						{
 							//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
 							if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/;
 							return false;
 						}
-					
-					cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth);
+						
+						cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth);
 					}
 				}
 			}
@@ -3439,8 +3482,8 @@ version(/+$DIDE_REGION+/all)
 					inner.appendMarkupLine(
 						this.id.text~"\n"~summaryText!(
 							tag("style fontColor=green"),
-													tag("style fontColor=red"),
-													tag("style fontColor=black")~"\u2026", false
+							tag("style fontColor=red"),
+							tag("style fontColor=black")~"\u2026", false
 						), ts
 					);
 				}
