@@ -101,6 +101,11 @@ version(/+$DIDE_REGION main+/all)
 		
 		//todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
 		
+		/+
+			todo: 	Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
+				Verify it still works in between adjacent preposition.
+		+/
+		//todo: Managed level: Multiline //comment at a statement is commenting out the ; symbol at the end.
 	}
 	
 	//globals ////////////////////////////////////////
@@ -3495,6 +3500,22 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Tab") void insertTab()
 				{ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); }
 				
+				@VERB("Enter") void insertNewLine()
+				{
+					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs);
+					//todo: Must fix the tabCount on the current line first, and after that it can duplicate.
+				}
+				
+				@VERB("Ctrl+Enter") void insertNewPage()
+				{
+					/+
+						todo: it should automatically insert at the end of the selected rows.
+						But what if the selection spans across multiple rows...
+					+/
+					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\v");
+					//Vertical Tab -> MultiColumn
+				}
+				
 				@VERB("Ctrl+]") void indent()
 				{
 					insertCursorAtStartOfEachLineSelected;
@@ -3513,21 +3534,15 @@ version(/+$DIDE_REGION main+/all)
 					{ flashWarning("Unable to outdent."); }
 				}
 				
-				@VERB("Ctrl+Enter") void insertNewPage()
+				@VERB("Alt+Up") void moveLineUp()
 				{
-					/+
-						todo: it should automatically insert at the end of the selected rows.
-						But what if the selection spans across multiple rows...
-					+/
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\v");
-					//Vertical Tab -> MultiColumn
+					//TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;
+					//copy_impl(s1); cut_impl2(s1, s2); textSelectionsSet = s2;
+					//todo: moveLineUp
 				}
 				
-				@VERB("Enter") void insertNewLine()
-				{
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs);
-					//todo: Must fix the tabCount on the current line first, and after that it can duplicate.
-				}
+				@VERB("Alt+Down") void moveLineDown()
+				{}
 				
 				//todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 				//todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
@@ -3981,15 +3996,14 @@ version(/+$DIDE_REGION main+/all)
 							if(
 								Btn(
 									symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-															enable(matchCnt>0), hint("Zoom screen on search results.")
+									enable(matchCnt>0), hint("Zoom screen on search results.")
 								)
 							)
 							{ zoomAt(view, searchResults); }
-									
 							if(
 								Btn(
 									"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-															enable(matchCnt>0), hint("Select search results.")
+									enable(matchCnt>0), hint("Select search results.")
 								)
 							)
 							{ selectSearchResults(searchResults); }
@@ -4003,7 +4017,6 @@ version(/+$DIDE_REGION main+/all)
 						}
 						else
 						{
-							
 							if(Btn(symbol("Zoom"), hint("Start searching.")))
 							searchBoxActivate; //todo: this is a @VERB. Button should get the extra info from that VERB somehow.
 						}
@@ -4300,7 +4313,7 @@ version(/+$DIDE_REGION main+/all)
 				flashMessages = flashMessages[$-maxLen..$];
 				flashMessages ~= FlashMessage(now, type, msg);
 				
-				with(FlashMessage.Type) 
+				with(FlashMessage.Type)
 				final switch(type)
 				{
 					case error:	winSnd("Windows Critical Stop");	break;
