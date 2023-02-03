@@ -106,6 +106,13 @@ version(/+$DIDE_REGION main+/all)
 				Verify it still works in between adjacent preposition.
 		+/
 		//todo: Managed level: Multiline //comment at a statement is commenting out the ; symbol at the end.
+		//todo: selection across miltiple pages (vertical tab) is clipped wrongly
+		
+		//todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
+		/+
+			todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
+				const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
+		+/
 	}
 	
 	//globals ////////////////////////////////////////
@@ -3492,6 +3499,7 @@ version(/+$DIDE_REGION main+/all)
 						bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
 						ha van non-readonly selecton is, akkor azt meg el is bassza. 
 					+/
+					//bug: delete should remove the leading tabs.
 				}
 				
 				@VERB("Ctrl+V Shift+Ins") void paste()
