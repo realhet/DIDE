@@ -4628,24 +4628,22 @@ version(/+$DIDE_REGION+/all)
 	}
 }version(/+$DIDE_REGION ErrorList+/all)
 {
-	//ErrorList ////////////////////////////////////////////
-	
 	auto createErrorListCodeColumn(Container parent)
 	{
 		auto code = new CodeColumn(parent);
 		code.padding = "1";
 		code.flags.dontStretchSubCells = true;
-			
+		
 		import dide2; //todo: should not import main module.
 		auto buildResult = global_getBuildResult;
 		auto markerLayerHideMask = global_getMarkerLayerHideMask;
-			
+		
 		foreach(file; buildResult.remainings.keys.sort)
 		{
 			auto pragmas = buildResult.remainings[file];
 			if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
 		}
-			
+		
 		with(im)
 		code.append(
 			{
@@ -4659,7 +4657,6 @@ version(/+$DIDE_REGION+/all)
 			}
 		);
 		
-			
 		return code;
 	}
 	
@@ -4667,7 +4664,6 @@ version(/+$DIDE_REGION+/all)
 	//bug: ErrorListModule is fucked up
 	deprecated class ErrorListModule : Module
 	{
-		//ErrorListModule ////////////////////////////////////////////////////////
 		this(Container parent, File file_)
 		{
 			super(parent, file_);

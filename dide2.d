@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-//@release
-///@debug
+///@release
+//@debug
 
 /+DIDE+/ 
 
@@ -718,17 +718,17 @@ version(/+$DIDE_REGION main+/all)
 		//! Module handling ///////////////////////////////////////
 		version(/+$DIDE_REGION+/all)
 		{
-			//A workspace is aa collection of opened modules
+			//A workspace is a collection of opened modules
 			
 			enum 	CodeLocationPrefix 	= "CodeLocation:",
 				MatchPrefix	= "Match:";
-					
+			
 			File file; //the file of the workspace
 			enum defaultExt = ".dide";
-					
+			
 			File[] openQueue;
 			Module[] modules;
-					
+			
 			@STORED File mainModuleFile;
 			@property
 			{
@@ -740,10 +740,10 @@ version(/+$DIDE_REGION main+/all)
 					mainModuleFile = m.file;
 				}
 			}
-					
+			
 			ContainerSelectionManager!Module moduleSelectionManager;
 			TextSelectionManager textSelectionManager;
-					
+			
 			protected TextSelection[] textSelections_internal;
 			bool mustValidateTextSelections;
 			@property
@@ -758,9 +758,9 @@ version(/+$DIDE_REGION main+/all)
 					invalidateTextSelections;
 				}
 			}
-					
+			
 			size_t textSelectionsHash;
-					
+			
 			bool searchBoxVisible, searchBoxActivate_request;
 			string searchText;
 			
@@ -772,12 +772,12 @@ version(/+$DIDE_REGION main+/all)
 				Container.SearchResult[] searchResults;
 				bool visible = true;
 			}
-					
+			
 			auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!MarkerLayer.array  )();
 			//note: compiler drops weird error. this also works:
 			//Writing Explicit type also works:
 			//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
-					
+			
 			@STORED vec2[size_t] lastModulePositions;
 			
 			
@@ -794,7 +794,7 @@ version(/+$DIDE_REGION main+/all)
 				DateTime when; 
 			}
 			ResyntaxEntry[] resyntaxQueue;
-					
+			
 			SyntaxHighlightWorker syntaxHighlightWorker;
 			
 			StructureMap structureMap;
@@ -995,10 +995,12 @@ version(/+$DIDE_REGION main+/all)
 			auto moduleWithPrimaryTextSelection()
 			{
 				auto res = textSelectionsGet.filter!"a.primary".map!moduleOf.frontOrNull;
-				if(!res) res = textSelectionsGet.map!moduleOf.frontOrNull; //if there is no Primary, pick the forst one
+				if(!res) res = textSelectionsGet.map!moduleOf.frontOrNull; //if there is no Primary, pick the front one
 				return res;
 			}
-					
+			
+			alias primaryModule = moduleWithPrimaryTextSelection;
+			
 			Module oneSelectedModule()
 			{
 				if(selectedModules.take(2).walkLength==1)
@@ -1153,7 +1155,7 @@ version(/+$DIDE_REGION main+/all)
 		void convertBuildMessagesToSearchResults()
 		{
 			auto br = frmMain.buildResult;
-				
+			
 			auto outFile = File(`virtual:\compile.err`);
 			auto output = br.dump;
 			outFile.write(output);
@@ -1176,7 +1178,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//todo: opt
 				Container.SearchResult[] res;
-					
+				
 				foreach(msgIdx, const msg; br.messages)
 				if(msg.type==type)
 				{
@@ -1196,13 +1198,13 @@ version(/+$DIDE_REGION main+/all)
 						{
 							//line not found in module
 							//LOG(msg);
+							//ERR("line not found in module", msg);
 						}
 					}
 					else
 					{
 						//module not loaded
 						//LOG(msg);
-							
 						//if(msg.location.file.exists) queueModule(msg.location.file);
 					}
 				}
@@ -1309,21 +1311,21 @@ version(/+$DIDE_REGION main+/all)
 			CodeLocation res;
 			a(
 				(Module m)
-							{
+				{
 					res.file = m.file;
 					a(
 						(CodeColumn col)
-										{
+							{
 							a(
 								(CodeRow row)
-													{
+									{
 									if(auto line = col.subCells.countUntil(row)+1)
 									{
 										//todo: parent.subcellindex/child.index
 										res.line = line.to!int;
 										a(
 											(Cell cell)
-																		{
+												{
 												if(auto column = row.subCells.countUntil(cell)+1)
 												{
 													//todo: parent.subcellindex/child.index
@@ -3423,11 +3425,6 @@ version(/+$DIDE_REGION main+/all)
 		{
 			version(/+$DIDE_REGION More text selection+/all)
 			{
-							
-							
-							
-							
-							
 				@VERB("Ctrl+Alt+Up") void insertCursorAbove()
 				{ insertCursor(-1); } @VERB("Ctrl+Alt+Down") void insertCursorBelow()
 				{ insertCursor(1); }
@@ -3443,11 +3440,12 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
 				{ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); }
 				
-				@VERB("Ctrl+A") void selectAllText()
+				@VERB("Ctrl+A") void extendSelectionToModuleContents()
 				{
 					textSelectionsSet = modulesWithTextSelection
 					.map!(m => m.content.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array;
 				}
+				
 				@VERB("Ctrl+Shift+A") void selectAllModules()
 				{ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }
 				@VERB("") void deselectAllModules()
