@@ -122,8 +122,7 @@ version(/+$DIDE_REGION main+/all)
 	
 	import didemodule;
 	
-	enum 	LogRequestPermissions	= false,
-		DisableSyntaxHighlightWorkerJob 	= true;
+	enum LogRequestPermissions	= false;
 	
 	enum visualizeMarginsAndPaddingUnderMouse = false; //todo: make this a debug option in a menu
 	
@@ -542,7 +541,6 @@ version(/+$DIDE_REGION main+/all)
 						}
 					}
 				);
-					
 				
 				
 				if(0)
@@ -555,7 +553,6 @@ version(/+$DIDE_REGION main+/all)
 						Column({ UI_ResyntaxQueue; });
 					}
 				);
-					
 				
 				
 				//error list
@@ -1341,24 +1338,6 @@ version(/+$DIDE_REGION main+/all)
 				}
 			);
 			return res;
-		}
-		
-		auto codeLocationFromStr(string s)
-		{
-			if(s.isWild(CodeLocationPrefix~"*")) s = wild[1];
-			
-			CodeLocation loc;
-			if(s.isWild(`?:\?*.d*(?*,?*)`))
-			try
-			{
-				//todo: refactor this into CodeLocation struct
-				string fn = wild[0]~`:\`~wild[1]~`.d`;
-				//string mixinPostfix = wild[2];
-				loc = CodeLocation(File(fn), wild[3].to!int, wild[4].to!int);
-			}
-			catch(Exception)
-			{ WARN("Invalid CodeLocation format: "~s.quoted); }
-			return loc;
 		}
 		
 		static CellLocation[] findLastCodeRow(CellLocation[] st)
@@ -2663,6 +2642,28 @@ version(/+$DIDE_REGION main+/all)
 				
 			}
 		}
+	}class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
+	{
+		//todo: make this work
+		
+		alias Result = ResultType!(unaryFun!transformFun);
+		
+		private int destroyLevel;
+		private Obj[] inputQueue;
+		private Result[] outputQueue;
+		
+		void put(Obj obj)
+		{
+			synchronized(this)
+				inputQueue = 	inputQueue.remove!(a => unaryFun!keyFun(a) == unaryFun!keyFun(obj)) 
+					~ obj;
+		}
+		
+		int update(bool delegate(Result) onResult)
+		{
+			return 0;
+		}
+		
 	}class SyntaxHighlightWorker
 	{
 		//SyntaxHighlightWorker ////////////////////////////////////////////
@@ -2670,27 +2671,21 @@ version(/+$DIDE_REGION main+/all)
 		{
 			DateTime changeId; //must be a globally unique id, also sorted by chronology
 			CodeColumn col; //only one object allowed with the same referenceId
-			string sourceText;
 			
-			static if(!DisableSyntaxHighlightWorkerJob)
-			SourceCode sourceCode; //result
-			
-			bool valid() const
-			{ return !changeId.isNull; }
-			bool opCast(b:bool)() const
-			{ return valid; }
+			bool valid;
+			bool opCast(b:bool)() const { return valid; }
 		}
-			
+		
 		private int destroyLevel;
 		private Job[] inputQueue, outputQueue;
-			
-		void addJob(DateTime changeId, CodeColumn col, string sourceText)
+		
+		void put(DateTime changeId, CodeColumn col)
 		{
 			synchronized(this)
 				inputQueue = 	inputQueue.remove!(j => j.col is col) 
-					~ Job(changeId, col, sourceText);
+					~ Job(changeId, col);
 		}
-			
+		
 		Job getResult()
 		{
 			Job res;
@@ -2699,22 +2694,24 @@ version(/+$DIDE_REGION main+/all)
 					res = outputQueue.fetchFront;
 			return res;
 		}
-			
+		
 		private Job _workerGetJob()
 		{
 			Job res;
 			synchronized(this)
-				if(inputQueue.length)
-					res = inputQueue.fetchBack;
+				if(inputQueue.length) {
+				res = inputQueue.fetchBack;
+				res.valid = true;
+			}
 			return res;
 		}
-			
+		
 		private void _workerCompleteJob(Job job)
 		{
 			synchronized(this)
 				outputQueue ~= job;
 		}
-			
+		
 		static private void worker(shared SyntaxHighlightWorker shw_)
 		{
 			auto shw = cast()shw_;
@@ -2722,14 +2719,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(auto job = shw._workerGetJob)
 				{
-					//todo: dead code.
-					//LOG("Working on Job: " ~ job.changeId.text ~ " " ~job.sourceText);
-					static if(!DisableSyntaxHighlightWorkerJob) {
-						job.sourceCode = new SourceCode(job.sourceText);
-						LOG("syntax job parsed");
-						//LOG(job.sourceCode.syntax.length, job.sourceCode.sourceText.length);
-						//LOG(job.sourceCode.syntax.take(20));
-					}
+					//actual work comes here
 					shw._workerCompleteJob(job);
 				}
 				else
@@ -2741,10 +2731,10 @@ version(/+$DIDE_REGION main+/all)
 			shw.destroyLevel = 2;
 			//LOG("Worker finished");
 		}
-			
+		
 		this()
 		{ spawn(&worker, cast(shared)this); }
-			
+		
 		~this()
 		{
 			destroyLevel = 1;
@@ -2807,67 +2797,36 @@ version(/+$DIDE_REGION main+/all)
 		{ col.resyntax; }
 		
 		void resyntaxLater(CodeColumn col, DateTime changedId)
-		{
-			syntaxHighlightWorker.addJob
-			(
-				changedId,
-				col, //TextCursor(col, ivec2(0)).toReference.text, //problem: should send the column object, not the text
-				"unused"
-				//col.shallowText.replace(compoundObjectChar, ' ') //opt: there should be a variant of shallowText that uses spaces instead of compoundChar
-				//col.sourceText
-				///*col.sourceText*/ "UNUSED"
-			);
-		}
+		{ syntaxHighlightWorker.put(changedId, col); }
 		
 		/// returns true if any work done or queued
 		bool updateResyntaxQueue()
 		{
 			if(auto job = syntaxHighlightWorker.getResult)
 			{
-				//auto selRef = TextSelectionReference(job.resourceId, &findModule);
-				/+
-					todo: This string -> Object mapping is not flexible.
-									Should work for Cursor and also for Column or Row or Node 
-				+/
-				
-				//if(selRef.valid)
+				auto col = job.col;
+				if(col.getStructureLevel >= StructureLevel.highlighted)
 				{
-					//auto sel = selRef.fromReference;
-					//if(sel.valid)
+					static DateTime lastOutdatedResyncTime;
+					if(
+						col.lastResyntaxTime==job.changeId || 
+						now-lastOutdatedResyncTime > .25*second
+					)
 					{
-						//auto col = sel.codeColumn;
-						auto col = job.col;
-						/*
-							auto mod = col.moduleOf;
-							enforce(mod && mod.content is col,
-								"syntaxHighlightWorker.getResult: "
-								~"only codeColumns that has a Module parent are supported");
-						*/
-						
-						if(col.getStructureLevel >= StructureLevel.highlighted)
-						{
-							static DateTime lastOutdatedResyncTime;
-							if(
-								col.lastResyntaxTime==job.changeId
-															|| now-lastOutdatedResyncTime > .25*second
-							)
-							{
-								//mod.resyntax_src(job.sourceCode);
-								resyntaxNow(col);
-								lastOutdatedResyncTime = now;
-							}
-						}
+						//mod.resyntax_src(job.sourceCode);
+						resyntaxNow(col);
+						lastOutdatedResyncTime = now;
 					}
 				}
 			}
-				
+			
 			if(resyntaxQueue.empty) return false;
-				
+			
 			//limit the frequency of slow sourceText() calls
 			static DateTime lastResyntaxLaterTime;
 			if(now-lastResyntaxLaterTime < .25*second) return false;
 			lastResyntaxLaterTime = now;
-				
+			
 			auto act = resyntaxQueue.fetchBack;
 			resyntaxLater(act.what, act.when);
 			return true;
@@ -2979,8 +2938,8 @@ version(/+$DIDE_REGION main+/all)
 			
 			void jumpTo(string id)
 			{
-				if(id.isWild(CodeLocationPrefix~"*"))
-				{ jumpTo(codeLocationFromStr(wild[0])); }
+				if(id.startsWith(CodeLocationPrefix))
+				{ jumpTo(id.withoutStarting(CodeLocationPrefix)); }
 				else if(id.isWild(MatchPrefix~"*"))
 				{ NOTIMPL; }
 			}
@@ -3994,11 +3953,11 @@ version(/+$DIDE_REGION main+/all)
 								else
 								{ searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join; }
 							}
-									
+							
 							//display the number of matches. Also save the location of that number on the screen.
 							const matchCnt = searchResults.length;
 							Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); });
-									
+							
 							if(
 								Btn(
 									symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
@@ -4013,7 +3972,7 @@ version(/+$DIDE_REGION main+/all)
 								)
 							)
 							{ selectSearchResults(searchResults); }
-									
+							
 							if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
 							{
 								searchBoxVisible = false;
@@ -4024,7 +3983,8 @@ version(/+$DIDE_REGION main+/all)
 						else
 						{
 							if(Btn(symbol("Zoom"), hint("Start searching.")))
-							searchBoxActivate; //todo: this is a @VERB. Button should get the extra info from that VERB somehow.
+							searchBoxActivate;
+							//todo: this is a @VERB. Button should get the extra info from that VERB somehow.
 						}
 					}
 				);

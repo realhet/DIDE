@@ -400,22 +400,18 @@ version(/+$DIDE_REGION+/all)
 		static void UI_CompilerOutput(File file, string text)
 		{ UI_OuterBlockFrame(RGB(0xD0D0D0), { UI_BuildMessageContents(CodeLocation(file), "Output:", { UI_ConsoleTextBlock(text); }); }); }
 		
-		void UI(in CodeLocation cl)
+		deprecated void UI(in CodeLocation cl)
 		{
-			 with(cl)
+			with(cl)
 			with(im)
 			UI_InnerBlockFrame(
 				clSilver, clBlack, {
 					auto s = cl.text;
-							
 					actContainer.id = "CodeLocation:"~s;
-							
 					FileIcon_small(file.ext);
-							
 					Text(s);
 				}
 			);
-			
 		}
 		
 		
@@ -2155,7 +2151,7 @@ class CodeRow: Row
 				//opt: these calculations operqations should be cached. Seems not that slow however
 				/+
 					todo: only display this when there is an editor cursor active in the codeColumn
-									(or in the module)
+					(or in the module)
 				+/
 				dr.translate(innerPos); dr.alpha = .4f;
 				scope(exit) { dr.pop; dr.alpha = 1; }
@@ -3956,7 +3952,7 @@ version(/+$DIDE_REGION+/all)
 	}
 }class CodeComment : CodeContainer
 {
-	 //CodeComment //////////////////////////////////////////
+	//CodeComment //////////////////////////////////////////
 	enum Type
 	{ slashComment, cComment, dComment, directive }
 	enum TypePrefix 	= ["//"	, "/*", "/+", "#"];
@@ -4126,28 +4122,49 @@ version(/+$DIDE_REGION+/all)
 	
 	override void rearrange()
 	{
-		if(isSpecialComment) {
-			auto scmt = extractSpecialComment;
-			if(scmt.wordAt(0)=="IMG")
+		if(isSpecialComment)
+		{
+			const 	scmt = extractSpecialComment,
+				keyword = scmt.wordAt(0);
+			switch(keyword)
 			{
-				with(nodeBuilder(syntax, 0))
+				case "IMG":
+					with(nodeBuilder(syntax, 0))
 				{
 					auto cmd = scmt.commandLineToMap;
 					auto f = File(cmd.get("1"));
 					
 					style.italic = false;
-					put('\U0001F5BC');
 					
 					//load it immediatelly
 					//todo: autorefresh code images
-					bitmaps(f, No.delayed);
+					auto bmp = bitmaps(f, No.delayed);
 					
-					auto img = new Img(f, darkColor);
-					put(img);
+					if(!bmp.valid)
+					{ put('\U0001F5BC'); }else {
+						auto img = new Img(f, darkColor);
+						put(img);
+					}
 					
 					rearrange_node;
 				}
-				return;
+					return;
+				case "LOC":
+					with(nodeBuilder(skIdentifier1, 2))
+				{
+					with(style) italic = false, bold = false;
+					auto 	locStr 	= scmt[keyword.length..$].stripLeft,
+						loc	= CodeLocation(locStr),
+						img	= new Img(File(`icon:\`~loc.file.ext), style.bkColor);
+					img.height = style.fontHeight;
+					put(img);
+					put(loc.shortText);
+					
+					rearrange_node;
+				}
+					return;
+				default:
+				//nothing. process it normally like a comment
 			}
 		}
 		
