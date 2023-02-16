@@ -398,7 +398,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		static void UI_CompilerOutput(File file, string text)
-		{ UI_OuterBlockFrame(RGB(0xD0D0D0), { UI_BuildMessageContents(CodeLocation(file), "Output:", { UI_ConsoleTextBlock(text); }); }); }
+		{ UI_OuterBlockFrame(RGB(0xD0D0D0), { UI_BuildMessageContents(CodeLocation(file.fullName), "Output:", { UI_ConsoleTextBlock(text); }); }); }
 		
 		deprecated void UI(in CodeLocation cl)
 		{
@@ -497,16 +497,17 @@ version(/+$DIDE_REGION+/all)
 		
 		void UI(in BuildMessage msg, in BuildMessage[] subMessages)
 		{
+			const color = buildMessageInfo[msg.type].syntax.syntaxBkColor;
 			with(msg)
 			with(im)
 			UI_OuterBlockFrame(
-				type.color,
+				color,
 				{
 					UI_BuildMessageContents(
 						location,
 						parentLocation ? "\u2026" : type.to!string.capitalize~":",
 						{
-							const clFont = avg(type.color, clWhite);
+							const clFont = avg(color, clWhite);
 							
 							UI_BuildMessageTextBlock(message, clFont);
 							
@@ -4023,7 +4024,10 @@ version(/+$DIDE_REGION+/all)
 	}
 	
 	string extractSpecialComment()
-	{ return isSpecialComment ? content.sourceText.withoutStarting(specialCommentMarker) : ""; }
+	{
+		return isSpecialComment ? content.sourceText.withoutStarting(specialCommentMarker) : "";
+		//opt: this  builds the whole string, but only extracts the first word.
+	}
 	
 	bool isSpecialComment(string keyword)
 	{ return extractSpecialComment.wordAt(0)==keyword; }
@@ -4126,6 +4130,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			const 	scmt = extractSpecialComment,
 				keyword = scmt.wordAt(0);
+			LOG(keyword, scmt);
 			switch(keyword)
 			{
 				case "IMG":
@@ -4158,9 +4163,27 @@ version(/+$DIDE_REGION+/all)
 						img	= new Img(File(`icon:\`~loc.file.ext), style.bkColor);
 					img.height = style.fontHeight;
 					put(img);
-					put(loc.shortText);
-					
+					put(loc.file.path.fullPath);
+					style.bold = true;put(loc.file.nameWithoutExt);style.bold = false;
+					put(loc.file.ext);
+					put(loc.mixinText ~ loc.lineColText);
 					rearrange_node;
+				}
+					return;
+				case "MSG":
+					{
+					with(nodeBuilder(skIdentifier1, 2))
+					{
+						bkColor = clBlue;
+						style.bkColor = clBlue;
+						style.fontColor = blackOrWhiteFor(style.bkColor);
+						with(style) italic = false, bold = false;
+						
+						//img = new Img(File(`icon:\`~loc.file.ext), style.bkColor);
+						//img.height = style.fontHeight;
+						put(content.sourceText);
+						rearrange_node;
+					}
 				}
 					return;
 				default:

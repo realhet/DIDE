@@ -717,8 +717,8 @@ version(/+$DIDE_REGION main+/all)
 		{
 			//A workspace is a collection of opened modules
 			
-			enum 	CodeLocationPrefix 	= "CodeLocation:",
-				MatchPrefix	= "Match:";
+			enum CodeLocationPrefix 	= "CodeLocation:",
+			MatchPrefix	= "Match:";
 			
 			File file; //the file of the workspace
 			enum defaultExt = ".dide";
@@ -797,7 +797,8 @@ version(/+$DIDE_REGION main+/all)
 			StructureMap structureMap;
 			
 			@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted;
-			@property StructureLevel getDesiredStructureLevel() { return desiredStructureLevel; }
+			@property StructureLevel getDesiredStructureLevel()
+			 { return desiredStructureLevel; }
 			
 			
 		}version(/+$DIDE_REGION+/all)
@@ -1470,7 +1471,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 			)
 				.merge /+merge it, because there can be duplicates+/;
-				
+			
 			if(res.length) res[0].primary = true; //todo: primary selection is inconsistent when multiselect
 			
 			return res;
@@ -1542,18 +1543,18 @@ version(/+$DIDE_REGION main+/all)
 		void cancelSelection_impl()
 		{
 			//cancelSelection_impl //////////////////////////////////////
-					auto ts = textSelectionsGet;
-					auto mp = moduleWithPrimaryTextSelection;
-					
-					void selectPrimaryModule()
+			auto ts = textSelectionsGet;
+			auto mp = moduleWithPrimaryTextSelection;
+			
+			void selectPrimaryModule()
 			{
 				textSelectionsSet = [];
 				foreach(m; modules) m.flags.selected = m is mp;
 				scrollInModule(mp);
 			}
-					
-					//multiTextSelect -> primaryTextSelect
-					if(ts.length>1)
+			
+			//multiTextSelect -> primaryTextSelect
+			if(ts.length>1)
 			{
 				if(auto pts = primaryTextSelection)
 				textSelectionsSet = [pts];
@@ -1561,23 +1562,23 @@ version(/+$DIDE_REGION main+/all)
 				selectPrimaryModule; //just for safety
 				return;
 			}
-					
-					if(ts.length>0)
+			
+			if(ts.length>0)
 			{
 				selectPrimaryModule;
 				return;
 			}
-					
-					//deselect everything, zoom all
-					textSelectionsSet = [];
-					deselectAllModules;
-					scrollInAllModules;
-					
-					//auto em = editedModules;
-					//if(em.length>1)
-					
-					//todo: primary
-					
+			
+			//deselect everything, zoom all
+			textSelectionsSet = [];
+			deselectAllModules;
+			scrollInAllModules;
+			
+			//auto em = editedModules;
+			//if(em.length>1)
+			
+			//todo: primary
+			
 			/*
 				   if(lod.moduleLevel){
 					   deselectAllModules;
@@ -1602,8 +1603,8 @@ version(/+$DIDE_REGION main+/all)
 							}
 						}
 			*/
-					
-				
+			
+			
 		}
 	}version(/+$DIDE_REGION Validate+/all)
 	{
@@ -2350,298 +2351,295 @@ version(/+$DIDE_REGION main+/all)
 		}
 	}struct TextSelectionManager
 	{
-		//TextSelectionManager /////////////////////////////////////////
-		version(/+$DIDE_REGION declarations+/all)
+		
+		struct SELECTIONS;
+		@SELECTIONS
 		{
-			struct SELECTIONS;
-			@SELECTIONS
-			{
-				//note: these cursors MUST BE validated!!!!!
-				TextCursor	cursorAtMouse, cursorToExtend;
-				TextSelection	selectionAtMouse;
-				TextSelection[] 	selectionsWhenMouseWasPressed;
-			}
-					
-			bool 	mouseScrolling,
-				wordSelecting,
-				cursorToExtend_primary;
-				
-			Nullable!vec2 	scrollInRequest;
-			
-			version(/+$DIDE_REGION validation of textSelections+/all)
-			{
-				bool mustValidateInternalSelections;
-				
-				
-				public void invalidateInternalSelections()
-				{ mustValidateInternalSelections = true; }
-				
-				void validateInternalSelections(Workspace workspace)
-				{
-					if(mustValidateInternalSelections.chkClear)
-					{
-						//validate all the cursors market with @SELECTIONS UDA
-						static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
-						mixin(format!"%s = workspace.validate(%s);"(f, f));
-						PING2;
-					}
-				}
-			}
-			
-			version(/+$DIDE_REGION preprocess mouse input+/all)
-			{
-				private
-				{
-					bool 	opSelectColumn,
-						opSelectColumnAdd,
-						opSelectAdd,
-						opSelectExtend;
-					
-					DateTime	lastMainMousePressTime;
-					ClickDetector 	cdMainMouseButton;
-					float	mouseTravelDistance = 0;
-					bool	doubleClick;
-					
-					void updateInputs(in Workspace.MouseMappings mouseMappings)
-					{
-						//detectMouseTravel
-						if(inputs[mouseMappings.main].down)
-						{
-							//todo: copy/paste
-							mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
-						}
-						else
-						{ mouseTravelDistance = 0; }
-						
-						cdMainMouseButton.update(inputs[mouseMappings.main].down);
-						doubleClick = cdMainMouseButton.doubleClicked;
-						
-						//check if a keycombo modifier with the main mouse button isactive
-						bool _kc(string sh) { return KeyCombo([sh, mouseMappings.main].join("+")).active; }
-						opSelectColumn	= _kc(mouseMappings.selectColumn	);
-						opSelectColumnAdd	= _kc(mouseMappings.selectColumnAdd	);
-						opSelectAdd	= _kc(mouseMappings.selectAdd	);
-						opSelectExtend	= _kc(mouseMappings.selectExtend	);
-						
-					}
-				}
-			}
-		}version(/+$DIDE_REGION+/all)
+			//note: these cursors MUST BE validated!!!!!
+			TextCursor	cursorAtMouse, cursorToExtend;
+			TextSelection	selectionAtMouse;
+			TextSelection[] 	selectionsWhenMouseWasPressed;
+		}
+		
+		bool 	mouseScrolling,
+			wordSelecting,
+			cursorToExtend_primary;
+		
+		Nullable!vec2 	scrollInRequest;
+		
+		version(/+$DIDE_REGION validation of textSelections+/all)
 		{
-			void update(
-				View2D 	view	, //input: mouse position,  output: zoom/scroll.
-				Workspace 	workspace	, //used to access and modify textSelection, create tectCursor at mouse.
-				in Workspace.MouseMappings 	mouseMappings	, //mouse buttons, shift modifier settings.
-			)
+			bool mustValidateInternalSelections;
+			
+			
+			public void invalidateInternalSelections()
+			{ mustValidateInternalSelections = true; }
+			
+			void validateInternalSelections(Workspace workspace)
 			{
-				//todo: make textSelection functional, not a ref
-				//opt: only call this when the workspace changed (remove module, cut, paste)
-				
-				validateInternalSelections(workspace);
-				cursorAtMouse = workspace.createCursorAt(view.mousePos);
-				
-				updateInputs(mouseMappings);
-				scrollInRequest.nullify;
-				if(doubleClick) wordSelecting = true;
-				
-				version(/+$DIDE_REGION+/all)
+				if(mustValidateInternalSelections.chkClear)
 				{
-					void initiateMouseOperations()
-					{
-						if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
-						if(inputs[mouseMappings.zoomInHold	].down) view.zoomAroundMouse(.125);
-						if(inputs[mouseMappings.zoomOutHold	].down) view.zoom/+AroundMouse+/(-.125);
-						
-						if(inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
-						
-						if(inputs[mouseMappings.main].pressed)
-						{
-							if(workspace.textSelectionsGet.hitTest(view.mousePos))
-							{
-								//todo: start dragging the selection contents and paste on mouse button release
-							}
-							else if(cursorAtMouse.valid)
-							{
-								//start selecting with mouse
-								selectionsWhenMouseWasPressed = workspace.textSelectionsGet.dup;
-								
-								if(workspace.textSelectionsGet.empty)
-								{
-									if(doubleClick)
-									{
-										selectionAtMouse = TextSelection(cursorAtMouse, false);
-										wordSelecting = false;
-									}else {
-										//single click goes to module selection
-									}
-								}
-								else
-								{
-									//extension cursor is the nearest selection.cursors[0]
-									if(!doubleClick)
-									{
-										auto selectionToExtend = 	selectionsWhenMouseWasPressed
-											.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
-											.minElement!(a => distance(a, cursorAtMouse))(TextSelection.init);
-										
-										cursorToExtend = selectionToExtend.cursors[0];
-										cursorToExtend_primary = selectionToExtend.primary;
-									}
-									
-									if(!cursorToExtend.valid)
-									{
-										cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
-										cursorToExtend_primary = false;
-									}
-									
-									selectionAtMouse = TextSelection(cursorAtMouse, false);
-								}
-							}
-						}
-					}
-					
-					void updateMouseScrolling() //(middle button panning)
-					{
-						if(mouseScrolling)
-						{
-							if(!inputs[mouseMappings.scroll])
-							mouseScrolling = false;
-							else if(const delta = inputs.mouseDelta)
-							view.scroll(delta);
-						}
-					}
-					
-					void restrictDraggedMousePos()
-					{
-						//restrict dragged mousePos to the bounds of the current codeColumn
-						if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main])
-						{
-							auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
-							bnd.high -= 1; //make sure it's inside
-							
-							const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
-								: restrictPos_editor(view.mousePos, bnd) /+text editor clamping for normal select+/;
-							
-							auto restrictedCursorAtMouse = workspace.createCursorAt(restrictedMousePos);
-							
-							if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn)
-							selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
-							
-							if(mouseTravelDistance>4)
-							scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
-							//todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
-							//todo: do this scrolling in the ModuleSelectionManager too.
-						}
-					}
-					
-					void handleReleasedSelectionButton()
-					{
-						//resets mouse selection when the button is released
-						if(selectionAtMouse.valid && !inputs[mouseMappings.main])
-						{
-							selectionAtMouse = TextSelection.init;
-							selectionsWhenMouseWasPressed = [];
-							wordSelecting = false;
-						}
-					}
-				}   version(/+$DIDE_REGION+/all)
-				{
-					void combineFinalSelection()
-					{
-						//combine previous selection with the current mouse selection
-						
-						if(!selectionAtMouse.valid) return; //nothing to do with an empty selection
-						
-						//todo: for additive operations, only the selections on the most recent
-						
-						auto applyWordSelect(TextSelection s) { return wordSelecting ? s.extendToWordsOrSpaces : s; }
-						auto applyWordSelectArr(TextSelection[] s) { return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
-						
-						TextSelection[] ts; //the new text selection
-						
-						if(opSelectColumn || opSelectColumnAdd)
-						{
-							auto getPrimaryCursor()
-							{
-								auto a = selectionsWhenMouseWasPressed.filter!"a.primary";
-								if(!a.empty) return a.front.cursors[0];
-								return cursorToExtend;
-							}
-							
-							//Column select
-							auto 	c0	= opSelectColumnAdd 	? selectionAtMouse.cursors[0] 
-										: getPrimaryCursor,  //bug: what if primary cursor is on another module
-								c1	= selectionAtMouse.cursors[1];
-								
-							const 	downward 	= c0.pos.y<c1.pos.y,
-								dir	= downward ? 1 : -1,
-								count	= abs(c0.pos.y-c1.pos.y)+1;
-							
-							auto 	a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
-								a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
-							
-							if(downward) a1 = a1.retro.array;else a0 = a0.retro.array;
-							
-							ts = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array;
-							assert(ts.isSorted);
-							
-							if(opSelectColumn)
-							{
-								//the first selection created is at the mosue, it must be the primary
-								(downward ? ts.front : ts.back).primary = true; 
-							}
-							
-							//if there are any nonZeroLength selections, remove all zeroLength carets
-							if(ts.any!"!a.isZeroLength")
-							ts = ts.remove!"a.isZeroLength";
-							
-							//if all are carets, remove those at line ends
-							if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
-							ts = ts.remove!"a.isAtLineEnd";
-							
-							ts = applyWordSelectArr(ts);
-							
-							if(
-								opSelectColumnAdd//Ctrl+Alt+Shift = add column selection
-							)
-							ts = merge(selectionsWhenMouseWasPressed ~ ts);
-													
-						}
-						else if(opSelectAdd || opSelectExtend)
-						{
-							auto actSelection = applyWordSelect(
-								opSelectAdd 	? selectionAtMouse
-									: TextSelection(cursorToExtend, selectionAtMouse.caret, cursorToExtend_primary)
-									//bug: what if primary cursor to extend is on another module
-							);
-							//remove touched existing selections first.
-							auto baseSelections = selectionsWhenMouseWasPressed.remove!(a => touches(a, actSelection));
-							ts = merge(baseSelections ~ actSelection);
-						}
-						else
-						{
-							auto s = applyWordSelect(selectionAtMouse);
-							ts = [s];
-						}
-						
-						//todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
-						//automatically mark primary for single selections
-						if(ts.length==1)
-						ts[0].primary = true;
-						
-						workspace.textSelectionsSet = ts;
-					}
+					//validate all the cursors market with @SELECTIONS UDA
+					static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
+					mixin(format!"%s = workspace.validate(%s);"(f, f));
+					PING2;
 				}
-				
-				//selection bussiness logic
-				if(!im.wantMouse && frmMain.isForeground && view.isMouseInside) initiateMouseOperations;
-				updateMouseScrolling;
-				restrictDraggedMousePos;
-				handleReleasedSelectionButton;
-				combineFinalSelection;
-				
 			}
 		}
+		
+		version(/+$DIDE_REGION preprocess mouse input+/all)
+		{
+			private
+			{
+				bool 	opSelectColumn,
+					opSelectColumnAdd,
+					opSelectAdd,
+					opSelectExtend;
+				
+				DateTime	lastMainMousePressTime;
+				ClickDetector 	cdMainMouseButton;
+				float	mouseTravelDistance = 0;
+				bool	doubleClick;
+				
+				void updateInputs(in Workspace.MouseMappings mouseMappings)
+				{
+					//detectMouseTravel
+					if(inputs[mouseMappings.main].down)
+					{
+						//todo: copy/paste
+						mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
+					}
+					else
+					{ mouseTravelDistance = 0; }
+					
+					cdMainMouseButton.update(inputs[mouseMappings.main].down);
+					doubleClick = cdMainMouseButton.doubleClicked;
+					
+					//check if a keycombo modifier with the main mouse button isactive
+					bool _kc(string sh) { return KeyCombo([sh, mouseMappings.main].join("+")).active; }
+					opSelectColumn	= _kc(mouseMappings.selectColumn	);
+					opSelectColumnAdd	= _kc(mouseMappings.selectColumnAdd	);
+					opSelectAdd	= _kc(mouseMappings.selectAdd	);
+					opSelectExtend	= _kc(mouseMappings.selectExtend	);
+					
+				}
+			}
+		}
+		
+		void update(
+			View2D 	view	, //input: mouse position,  output: zoom/scroll.
+			Workspace 	workspace	, //used to access and modify textSelection, create tectCursor at mouse.
+			in Workspace.MouseMappings 	mouseMappings	, //mouse buttons, shift modifier settings.
+		)
+		{
+			//todo: make textSelection functional, not a ref
+			//opt: only call this when the workspace changed (remove module, cut, paste)
+			
+			validateInternalSelections(workspace);
+			cursorAtMouse = workspace.createCursorAt(view.mousePos);
+			
+			updateInputs(mouseMappings);
+			scrollInRequest.nullify;
+			if(doubleClick) wordSelecting = true;
+			
+			void initiateMouseOperations()
+			{
+				if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed);
+				if(inputs[mouseMappings.zoomInHold	].down) view.zoomAroundMouse(.125);
+				if(inputs[mouseMappings.zoomOutHold	].down) view.zoom/+AroundMouse+/(-.125);
+				
+				if(inputs[mouseMappings.scroll].pressed) mouseScrolling = true;
+				
+				if(inputs[mouseMappings.main].pressed)
+				{
+					if(workspace.textSelectionsGet.hitTest(view.mousePos))
+					{
+						//todo: start dragging the selection contents and paste on mouse button release
+					}
+					else if(cursorAtMouse.valid)
+					{
+						//start selecting with mouse
+						selectionsWhenMouseWasPressed = workspace.textSelectionsGet.dup;
+						
+						if(workspace.textSelectionsGet.empty)
+						{
+							if(doubleClick)
+							{
+								selectionAtMouse = TextSelection(cursorAtMouse, false);
+								wordSelecting = false;
+							}else {
+								//single click goes to module selection
+							}
+						}
+						else
+						{
+							//extension cursor is the nearest selection.cursors[0]
+							if(!doubleClick)
+							{
+								auto selectionToExtend = 	selectionsWhenMouseWasPressed
+									.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
+									.minElement!(a => distance(a, cursorAtMouse))(TextSelection.init);
+								
+								cursorToExtend = selectionToExtend.cursors[0];
+								cursorToExtend_primary = selectionToExtend.primary;
+							}
+							
+							if(!cursorToExtend.valid)
+							{
+								cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
+								cursorToExtend_primary = false;
+							}
+							
+							selectionAtMouse = TextSelection(cursorAtMouse, false);
+						}
+					}
+				}
+			}
+			
+			void updateMouseScrolling() //(middle button panning)
+			{
+				if(mouseScrolling)
+				{
+					if(!inputs[mouseMappings.scroll])
+					mouseScrolling = false;
+					else if(const delta = inputs.mouseDelta)
+					view.scroll(delta);
+				}
+			}
+			
+			void restrictDraggedMousePos()
+			{
+				//restrict dragged mousePos to the bounds of the current codeColumn
+				if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main])
+				{
+					auto bnd = worldInnerBounds(selectionAtMouse.codeColumn);
+					bnd.high -= 1; //make sure it's inside
+					
+					const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
+						: restrictPos_editor(view.mousePos, bnd) /+text editor clamping for normal select+/;
+					
+					auto restrictedCursorAtMouse = workspace.createCursorAt(restrictedMousePos);
+					
+					if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn)
+					selectionAtMouse.cursors[1] = restrictedCursorAtMouse;
+					
+					if(mouseTravelDistance>4)
+					scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
+					//todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
+					//todo: do this scrolling in the ModuleSelectionManager too.
+				}
+			}
+			
+			void handleReleasedSelectionButton()
+			{
+				//resets mouse selection when the button is released
+				if(selectionAtMouse.valid && !inputs[mouseMappings.main])
+				{
+					selectionAtMouse = TextSelection.init;
+					selectionsWhenMouseWasPressed = [];
+					wordSelecting = false;
+				}
+			}
+			void combineFinalSelection()
+			{
+				//combine previous selection with the current mouse selection
+				
+				if(!selectionAtMouse.valid) return; //nothing to do with an empty selection
+				
+				//todo: for additive operations, only the selections on the most recent
+				
+				auto applyWordSelect(TextSelection s) { return wordSelecting ? s.extendToWordsOrSpaces : s; }
+				auto applyWordSelectArr(TextSelection[] s) { return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
+				
+				TextSelection[] ts; //the new text selection
+				
+				if(opSelectColumn || opSelectColumnAdd)
+				{
+					auto getPrimaryCursor()
+					{
+						auto a = selectionsWhenMouseWasPressed.filter!"a.primary";
+						if(!a.empty) return a.front.cursors[0];
+						return cursorToExtend;
+					}
+					
+					//Column select
+					auto 	c0	= opSelectColumnAdd 	? selectionAtMouse.cursors[0] 
+								: getPrimaryCursor,  //bug: what if primary cursor is on another module
+						c1	= selectionAtMouse.cursors[1];
+					
+					const 	downward 	= c0.pos.y<c1.pos.y,
+						dir	= downward ? 1 : -1,
+						count	= abs(c0.pos.y-c1.pos.y)+1;
+					
+					auto 	a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
+						a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array;
+					
+					if(downward) a1 = a1.retro.array;else a0 = a0.retro.array;
+					
+					ts = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array;
+					assert(ts.isSorted);
+					
+					if(opSelectColumn)
+					{
+						//the first selection created is at the mosue, it must be the primary
+						(downward ? ts.front : ts.back).primary = true; 
+					}
+					
+					//if there are any nonZeroLength selections, remove all zeroLength carets
+					if(ts.any!"!a.isZeroLength")
+					ts = ts.remove!"a.isZeroLength";
+					
+					//if all are carets, remove those at line ends
+					if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
+					ts = ts.remove!"a.isAtLineEnd";
+					
+					ts = applyWordSelectArr(ts);
+					
+					if(
+						opSelectColumnAdd//Ctrl+Alt+Shift = add column selection
+					)
+					ts = merge(selectionsWhenMouseWasPressed ~ ts);
+					
+				}
+				else if(opSelectAdd || opSelectExtend)
+				{
+					auto actSelection = applyWordSelect(
+						opSelectAdd 	? selectionAtMouse
+							: TextSelection(
+							cursorToExtend, 
+							selectionAtMouse.caret, 
+							cursorToExtend_primary
+						)
+							//bug: what if primary cursor to extend is on another module
+					);
+					//remove touched existing selections first.
+					auto baseSelections = selectionsWhenMouseWasPressed.remove!(a => touches(a, actSelection));
+					ts = merge(baseSelections ~ actSelection);
+				}
+				else
+				{
+					auto s = applyWordSelect(selectionAtMouse);
+					ts = [s];
+				}
+				
+				//todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
+				//automatically mark primary for single selections
+				if(ts.length==1)
+				ts[0].primary = true;
+				
+				workspace.textSelectionsSet = ts;
+			}
+			
+			
+			//selection bussiness logic
+			if(!im.wantMouse && frmMain.isForeground && view.isMouseInside) initiateMouseOperations;
+			updateMouseScrolling;
+			restrictDraggedMousePos;
+			handleReleasedSelectionButton;
+			combineFinalSelection;
+			
+		}
+		
 	}class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
 	{
 		//todo: make this work
@@ -2660,9 +2658,7 @@ version(/+$DIDE_REGION main+/all)
 		}
 		
 		int update(bool delegate(Result) onResult)
-		{
-			return 0;
-		}
+		{ return 0; }
 		
 	}class SyntaxHighlightWorker
 	{
@@ -2940,7 +2936,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(id.startsWith(CodeLocationPrefix))
 				{ jumpTo(id.withoutStarting(CodeLocationPrefix)); }
-				else if(id.isWild(MatchPrefix~"*"))
+				else if(id.startsWith(MatchPrefix))
 				{ NOTIMPL; }
 			}
 			
@@ -2998,7 +2994,7 @@ version(/+$DIDE_REGION main+/all)
 								pressed is not good because when I 
 														pan I don't see where the mouse is.
 							+/
-														&& nearestSearchResult.reference!=""
+							&& nearestSearchResult.reference!=""
 						)
 						{
 							jumpTo(nearestSearchResult.reference);
@@ -3017,23 +3013,28 @@ version(/+$DIDE_REGION main+/all)
 					
 					//From here every positions and sizes are correct -----------------------------------------
 					
+					
+					//Ctrl+Click handling
+					if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
+					{}
+					
 					moduleSelectionManager.update(
 						!im.wantMouse && mainWindow.canProcessUserInput
-												&& view.isMouseInside /+&& lod.moduleLevel+/,
-												view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; }
+						&& view.isMouseInside /+&& lod.moduleLevel+/,
+						view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; }
 					);
 					textSelectionManager.update(view, this, mouseMappings);
-								
+					
 					//detect textSelection change
 					const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf);
-								
+					
 					//if there are any cursors, module selection if forced to modules with textSelections
 					if(selectionChanged && textSelectionsGet.length)
 					{
 						foreach(m; modules) m.flags.selected = false;
 						foreach(m; modulesWithTextSelection) m.flags.selected = true;
 					}
-								
+					
 					//focus at selection
 					if(!jumpRequest.isNull)
 					{ with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin); }
@@ -3058,7 +3059,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 					scrollInBoundsRequest.nullify;
 					jumpRequest.nullify;
-								
+					
 					//animate cursors
 					version(AnimatedCursors)
 					{
@@ -3096,7 +3097,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 					/+
 						opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
-											all the layers with all the info, only move the affected layer items.
+						all the layers with all the info, only move the affected layer items.
 					+/
 					buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
 					if(buildStateChanged)
@@ -4003,10 +4004,11 @@ version(/+$DIDE_REGION main+/all)
 									
 							auto fade(RGB c) { return c.mix(clSilver, hidden); }
 									
-							style.bkColor = bkColor = fade(bmt.color);
-							const highContrastFontColor = blackOrWhiteFor(bkColor);
+							const bmi = buildMessageInfo[bmt];
+							style.bkColor = bkColor = fade(bmi.syntax.syntaxBkColor);
+							const highContrastFontColor = bmi.syntax.syntaxFontColor;
 							style.fontColor = fade(highContrastFontColor);
-							Text(bmt.caption);
+							Text(bmi.caption);
 									
 							if(const len = markerLayers[bmt].searchResults.length)
 							{
@@ -4037,7 +4039,7 @@ version(/+$DIDE_REGION main+/all)
 						Row(
 							format!"(%d LOC, %sB)"(
 								sm.map!(m => m.linesOfCode).sum,
-														shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
+								shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
 							)
 						);
 					}
@@ -4045,8 +4047,10 @@ version(/+$DIDE_REGION main+/all)
 					{
 						auto m = sm.front;
 						Row(
-							{ padding="0 8"; }, "Selected module: ", { CodeLocation(m.file).UI; },
-													{
+							{ padding="0 8"; }, 
+							"Selected module: ", 
+							{ CodeLocation(m.file.fullName).UI; },
+							{
 								if(sameText(m.file.fullName, mainModuleFile.fullName))
 								{ Btn("Main", enable(false)); }
 								else
@@ -4516,7 +4520,7 @@ version(/+$DIDE_REGION main+/all)
 				foreach(m; modules)
 				if(m.buildState!=notInProject)
 				{
-					dr.color = m.buildState.color;
+					dr.color = moduleBuildStateColors[m.buildState];
 					dr.lineWidth = -4;
 					//if(m.buildState==compiling) dr.drawRect(m.outerBounds);
 					dr.alpha = m.buildState==compiling ? mix(.15f, .55f, blink) : .15f;
@@ -4782,7 +4786,7 @@ version(/+$DIDE_REGION main+/all)
 				resetNearestSearchResult;
 				foreach_reverse(t; EnumMembers!BuildMessageType)
 				if(markerLayers[t].visible)
-				drawSearchResults(dr, markerLayers[t].searchResults, t.color);
+				drawSearchResults(dr, markerLayers[t].searchResults, buildMessageInfo[t].syntax.syntaxBkColor);
 				
 				if(nearestSearchResult_dist > frmMain.view.invScale*24)
 				nearestSearchResult = SearchResult.init;
