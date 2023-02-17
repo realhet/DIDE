@@ -2634,15 +2634,8 @@ class CodeRow: Row
 		SyntaxKind getSyntax(dchar ch)
 		{
 			if(getStructureLevel==StructureLevel.plain) {
-				if(auto cmt = cast(CodeComment) parent)
-				{
-					return cmt.isDirective ? skDirective : skComment; //todo: Not working. #define ispurple, just like skComment...
-				}
-				else if(auto str = cast(CodeString) parent)
-				{
-					if(str.type != CodeString.Type.tokenString)
-					return skString;
-				}
+				if(auto ccntr = cast(CodeContainer) parent)
+				return ccntr.syntax;
 				return skIdentifier1;
 			}
 			
@@ -3933,11 +3926,11 @@ version(/+$DIDE_REGION+/all)
 		with(nodeBuilder(syntax, prefix.among("[", "(", "{") ? 0 : 1))
 		{
 			content.bkColor = darkColor;
-					
+			
 			put(prefix); 	const i0 = subCells.length;
 			put(content);	const i2 = subCells.length;
 			put(postfix); //todo: //slashComment must ensure that after it there is a newLine
-					
+			
 			rearrange_node;
 			
 			//yAlign prefix to top and postfix to bottom
@@ -3967,7 +3960,32 @@ version(/+$DIDE_REGION+/all)
 	{ return type == Type.directive; }
 	
 	override SyntaxKind syntax() const
-	{ return isDirective ? skDirective : skComment; }
+	{
+		if(isDirective) return skDirective;
+		
+		//it can be dynamic based on the content
+		return [
+			skComment, 
+			skTodo, 
+			skOpt, 
+			skBug, 
+			skNote,
+			skError,
+			skWarning,
+			skDeprecation
+		][
+			content.rows.front.chars.map!toLower.startsWith(
+				"todo:", 
+				"opt:", 
+				"bug:", 
+				"note:",
+				"error:",
+				"warning:",
+				"deprecation:"
+			)
+		];
+	}
+	
 	override string prefix() const
 	{ return TypePrefix[type]; }
 	override string postfix() const
@@ -3997,7 +4015,8 @@ version(/+$DIDE_REGION+/all)
 				}
 				else
 				{ enforce(0, "Invalid push: "~scanner.front.src); }
-			}else if(scanner.front.op==ScanOp.pop)
+			}
+			else if(scanner.front.op==ScanOp.pop)
 			{
 				//closing token
 				scanner.popFront;
@@ -4015,6 +4034,10 @@ version(/+$DIDE_REGION+/all)
 		
 		content.convertSpacesToTabs(Yes.outdent);
 		needMeasure;
+		
+		//update the color of a nonstandard comment
+		if(!syntax.among(skComment))
+		content.fillSyntax(syntax);//todo: this is only needed for SlashComments. Why?
 	}
 	
 	bool isSpecialComment()
@@ -4035,13 +4058,24 @@ version(/+$DIDE_REGION+/all)
 	bool verify(bool markErrors = false)()
 	{
 		bool anyErrors;
+		
+		RGB errorBkColor, errorFontColor;
+		bool errorColorsValid;
+		
+		
 		void mark(Glyph g)
 		{
 			if(markErrors)
 			if(g) {
 				//todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
-				g.bkColor = clRed;
-				g.fontColor = clYellow;
+				if(errorColorsValid.chkSet)
+				{
+					errorBkColor = syntaxBkColor(skError);
+					errorFontColor = syntaxFontColor(skError);
+				}
+				
+				g.bkColor = errorBkColor;
+				g.fontColor = errorFontColor;
 			}
 			
 			anyErrors = true;
@@ -4052,14 +4086,14 @@ version(/+$DIDE_REGION+/all)
 		
 		void checkInvalid(dchar ch)
 		{
-			content.fillSyntax(skComment);
+			content.fillSyntax(syntax);
 			
 			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
 		}
 		
 		void checkInvalid2(dchar ch0, dchar ch1)
 		{
-			content.fillSyntax(skComment);
+			content.fillSyntax(syntax);
 			
 			bool lastCh0;
 			foreach(g; byGlyph)
@@ -4077,7 +4111,7 @@ version(/+$DIDE_REGION+/all)
 			{ checkInvalid(chOpen); }
 			else
 			{
-				content.fillSyntax(skComment);
+				content.fillSyntax(syntax);
 				
 				int cnt;
 				byGlyph.each!(
@@ -4217,7 +4251,10 @@ version(/+$DIDE_REGION+/all)
 	CharSize charSize;
 	
 	override SyntaxKind syntax() const
-	{ return skString; }
+	{
+		return skString;
+		//note: For tokenStrings this must be skString too. So all string's border be the same color.
+	}
 	override string prefix() const
 	{ return TypePrefix[type]; }
 	override string postfix() const
@@ -7074,4 +7111,96 @@ struct StylisticBugs
 		}
 		while(again && canRedo);
 	}
+}
+
+version(/+$DIDE_REGION Comments+/all)
+{
+	//Slah comment
+	/*C comment*/
+	/+D comment+/
+	/+
+		Another D comment 
+		/+Nested D comment+/
+		//Slash commments doesn't nest
+		/*Neither C comments*/
+	+/
+	
+	//todo: q{} token string is fucked up!!!!!
+	//todo: #define is fucked up too!!!!
+	
+	//Todo: todo comment
+	//Opt: opt comment
+	/+Bug: bug comment+/
+	/+Note: note comment+/
+	/*Error: error comment*/
+	/*Warning: warning comment*/
+	//Deprecation: deprecation comment
+	
+	
+	//Special DIDE comments
+	
+		//Region comment is only meaningful inside version() expression.
+		//no spaces allowed around "all" or "none" keywords.
+		version(/+$DIDE_REGION region+/all/+Extra coment/whitespace is illegal here.+/) {}
+		version(/+$DIDE_REGION region+/all) {}
+		
+		//Image	 $DIDE_IMG "font:\Times New Roman\48?Abc"
+		//Image	 $DIDE_IMG "font:\Arial\48?Abc✏"
+		/+$DIDE_IMG "font:\Times New Roman\48?Abc"+//+$DIDE_IMG "font:\Arial\48?Abc✏"+/
+		
+		//$DIDE_LOC filename(line,col)  Code location comment
+		//$DIDE_LOC filename.d(123,456)
+		/*$DIDE_LOC c:\path\filename.d(123)*/
+		/+$DIDE_LOC c:\path\filename.d()+/
+		/+$DIDE_LOC c:\path\filename.d+/
+		/+$DIDE_LOC filename.d-mixin-96(123,456)+/
+		
+		//$DIDE_MSG text  Compiler message comment
+		/+
+		$DIDE_MSG /+$DIDE_LOC c:\d\work.d(15,3)+/ Error blalba
+		bla
+	+/
+	
+	
+	//DDoc comments
+	
+		/// This is a one line documentation comment.
+		
+		/** So is this. */
+		
+		/++ And this. +/
+		
+		/*
+		*
+			   This is a brief documentation comment.
+	*/
+		
+		/*
+		*
+			 * The leading * on this line is not part of the documentation comment.
+	*/
+		
+		/*
+		********************************
+					 The extra *'s immediately following the /** are not
+					 part of the documentation comment.
+	*/
+		
+		/+
+		+
+			   This is a brief documentation comment.
+	+/
+		
+		/+
+		+
+			 + The leading + on this line is not part of the documentation comment.
+	+/
+		
+		/+
+		++++++++++++++++++++++++++++++++
+					 The extra +'s immediately following the / ++ are not
+					 part of the documentation comment.
+	+/
+		
+		/**************** Closing *'s are not part *****************/
 }
