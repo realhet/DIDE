@@ -2203,7 +2203,7 @@ class CodeRow: Row
 	}
 }static struct CodeColumnBuilder(bool rebuild)
 {
-	//CodeColumnBuilder /////////////////////////////////////////
+	
 	
 	version(/+$DIDE_REGION+/all)
 	{
@@ -2440,7 +2440,13 @@ class CodeRow: Row
 		void appendHighlightedOrStructured(bool structured=false, R)(R scanner)
 		if(isScannerRange!R)
 		{
-			auto syntaxStack = [syntax];
+			
+			struct SRec {
+				SyntaxKind syntax;
+				bool isTokenString;
+			}
+			auto syntaxStack = [SRec(syntax)];
+			
 			while(!scanner.empty)
 			{
 				auto sr = scanner.front;
@@ -2457,14 +2463,15 @@ class CodeRow: Row
 				
 				void handleHighlightedPush()
 				{
-					syntaxStack ~= syntax;
+					syntaxStack ~= SRec(syntax);
+					void doit(SyntaxKind s){ syntax = s; appendStr(sr.src); }
 					switch(sr.src)
 					{
-						case "//", "/*", "/+":	syntax = skComment; 	appendStr(sr.src); 		break;
-						case "{", "(", "[":	syntax = skSymbol;	appendStr(sr.src);	syntax = skWhitespace; 	break;
-						case `q{`:	syntax = skString;	appendStr(sr.src);	syntax = skWhitespace;	break;
-						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`: 	syntax = skString;	appendStr(sr.src);		break;
-						default:	syntax = skError;	appendStr(sr.src);		break;
+						case "//", "/*", "/+":	doit(skComment);		break;
+						case "{", "(", "[":	doit(skSymbol);	syntax = skWhitespace; 	break;
+						case `q{`:	doit(skString);	syntax = skWhitespace;syntaxStack.back.isTokenString = true;	break;
+						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`: 	doit(skString);		break;
+						default:	doit(skError);		break;
 						//todo: identifier quoted string `q"id`
 					}
 				}
@@ -2505,9 +2512,10 @@ class CodeRow: Row
 					else
 					{
 						if(!syntax.among(skComment, skString)) syntax = skSymbol;
+						if(syntaxStack.back.isTokenString) syntax = skString;
 						appendStr(sr.src);
 						
-						syntax = syntaxStack.back;
+						syntax = syntaxStack.back.syntax;
 						syntaxStack.length--;
 						//todo: error checking for compatible closing tags. Maybe it can be implemented in the scanner too.
 					}
@@ -2524,7 +2532,7 @@ class CodeRow: Row
 					{ appendHighlighted_internal(sr.src); }
 					break;
 					default:
-						syntax = skError; 
+						syntax = skError; //todo: don't insert error text as code
 						appendStr(sr.src); //todo: it should optionally raise an exception. Example: when a structural scan fails, it should revert to highlighted.
 				}
 				
@@ -3896,9 +3904,17 @@ version(/+$DIDE_REGION+/all)
 	//CodeContainer /////////////////////////////
 	CodeColumn content;
 	
+	//base properties
 	abstract SyntaxKind syntax() const;
 	abstract string prefix() const;
 	abstract string postfix() const;
+	
+	//optional overloaded properties for rare cases, defaults to base properties
+	/+SyntaxKind innerSyntax() const { return syntax; }+/
+	/+
+		string visualPrefix() const { return codePrefix; }
+			string visualPostfix() const { return codePostfix; }
+	+/
 	
 	this(Container parent)
 	{
@@ -3959,11 +3975,11 @@ version(/+$DIDE_REGION+/all)
 	@property bool isDirective() const
 	{ return type == Type.directive; }
 	
-	override SyntaxKind syntax() const
+	SyntaxKind detectCustomSyntax(R)(R r) const
 	{
 		if(isDirective) return skDirective;
 		
-		//it can be dynamic based on the content
+		//note: custom comment is one of these that start with a keyword and a ':'
 		return [
 			skComment, 
 			skTodo, 
@@ -3974,7 +3990,7 @@ version(/+$DIDE_REGION+/all)
 			skWarning,
 			skDeprecation
 		][
-			content.rows.front.chars.map!toLower.startsWith(
+			r.map!toLower.startsWith(
 				"todo:", 
 				"opt:", 
 				"bug:", 
@@ -3986,10 +4002,17 @@ version(/+$DIDE_REGION+/all)
 		];
 	}
 	
+	override SyntaxKind syntax() const
+	{
+		//it can be dynamic based on the content
+		return detectCustomSyntax(content.rows.front.chars);
+	}
+	
 	override string prefix() const
 	{ return TypePrefix[type]; }
 	override string postfix() const
-	{ return type==Type.directive ? (content.rowCount>1 ? "\\" : "") : TypePostfix[type]; }
+	{ return TypePostfix[type]; }
+	
 	
 	this(CodeRow parent)
 	{ super(parent); }
@@ -4001,6 +4024,8 @@ version(/+$DIDE_REGION+/all)
 		
 		//get content
 		auto rebuilder = CodeColumnBuilder!true(content);
+		auto sk = skWhitespace;
+		
 		while(!scanner.empty)
 		{
 			if(scanner.front.op==ScanOp.push)
@@ -4024,7 +4049,12 @@ version(/+$DIDE_REGION+/all)
 			}
 			else
 			{
-				rebuilder.syntax = scanner.front.op==ScanOp.content ? skComment : skError;
+				const isContent = scanner.front.op==ScanOp.content;
+				if(isContent && sk==skWhitespace)
+				sk = detectCustomSyntax(scanner.front.src);
+				
+				rebuilder.syntax = isContent ? sk : skError;
+				//todo: don't add error message as it would be the code text.
 				rebuilder.appendStr(scanner.front.src);
 				
 				//if(isDDoc) dumpDDoc(scanner.front.src); //todo: DDoc parser
@@ -4034,10 +4064,6 @@ version(/+$DIDE_REGION+/all)
 		
 		content.convertSpacesToTabs(Yes.outdent);
 		needMeasure;
-		
-		//update the color of a nonstandard comment
-		if(!syntax.among(skComment))
-		content.fillSyntax(syntax);//todo: this is only needed for SlashComments. Why?
 	}
 	
 	bool isSpecialComment()
@@ -4062,6 +4088,9 @@ version(/+$DIDE_REGION+/all)
 		RGB errorBkColor, errorFontColor;
 		bool errorColorsValid;
 		
+		//fill the whole context with default homogenous syntax
+		if(markErrors)
+		content.fillSyntax(syntax);
 		
 		void mark(Glyph g)
 		{
@@ -4085,16 +4114,10 @@ version(/+$DIDE_REGION+/all)
 		{ return content.rows.map!(r => r.glyphs).joiner(only(null)); }
 		
 		void checkInvalid(dchar ch)
-		{
-			content.fillSyntax(syntax);
-			
-			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
-		}
+		{ byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); }
 		
 		void checkInvalid2(dchar ch0, dchar ch1)
 		{
-			content.fillSyntax(syntax);
-			
 			bool lastCh0;
 			foreach(g; byGlyph)
 			{
@@ -4136,16 +4159,23 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
-		void markButFirstRow()
+		void checkOneLine()
 		{
-			auto a = content.rows.drop(1).map!(r => r.glyphs).joiner(only(null));
-			a.each!(g => mark(g));
+			if(content.rowCount>1)
+			{
+				anyErrors = true;
+				if(markErrors)
+				{
+					auto a = content.rows.drop(1).map!(r => r.glyphs).joiner;
+					a.each!(g => mark(g));
+				}
+			}
 		}
 		
 		with(Type)
 		final switch(type)
 		{
-			case slashComment: 	if(content.rowCount>1) { anyErrors = true; markButFirstRow; }	break;
+			case slashComment: 	checkOneLine;	break;
 			case cComment: 	checkInvalid2('*', '/');	break;
 			case dComment: 	checkInvalid2('+', '/'); checkInvalid2('/', '+'); 	break;
 			case directive: 	checkNesting('(', ')'); 	break;
@@ -4250,6 +4280,9 @@ version(/+$DIDE_REGION+/all)
 	Type type;
 	CharSize charSize;
 	
+	string sizePostfix() const
+	{ return charSize!=CharSize.default_ ? charSize.text : ""; }
+	
 	override SyntaxKind syntax() const
 	{
 		return skString;
@@ -4259,8 +4292,6 @@ version(/+$DIDE_REGION+/all)
 	{ return TypePrefix[type]; }
 	override string postfix() const
 	{ return TypePostfix[type]~sizePostfix; }
-	string sizePostfix() const
-	{ return charSize!=CharSize.default_ ? charSize.text : ""; }
 	
 	this(CodeRow parent) { super(parent); }
 	
@@ -4418,7 +4449,7 @@ version(/+$DIDE_REGION+/all)
 	}
 }class CodeBlock : CodeContainer
 {
-	//CodeBlock //////////////////////////////////////////
+	
 	enum Type 		 { block	, list	, index	 }
 	enum TypePrefix 	= 	["{"	, "("	, `[`	];
 	enum TypePostfix 	= 	["}"	, ")"	, `]`	];
@@ -4526,7 +4557,7 @@ version(/+$DIDE_REGION+/all)
 			
 			ModuleBuildState buildState;
 			bool isCompiling;
-					
+			
 			bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly;
 			
 			UndoManager undoManager;
@@ -7135,6 +7166,7 @@ version(/+$DIDE_REGION Comments+/all)
 	/*Error: error comment*/
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
+	
 	
 	
 	//Special DIDE comments

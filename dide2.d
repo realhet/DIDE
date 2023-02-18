@@ -798,7 +798,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted;
 			@property StructureLevel getDesiredStructureLevel()
-			 { return desiredStructureLevel; }
+			{ return desiredStructureLevel; }
 			
 			
 		}version(/+$DIDE_REGION+/all)
@@ -2147,27 +2147,27 @@ version(/+$DIDE_REGION main+/all)
 		{
 			//ContainerSelectionManager ///////////////////////////////////////////////
 			//this uses Containers. flags.selected, flags.oldSelected
-					
+			
 			bounds2 getBounds(T item)
 			{ return item.outerBounds; }
-					
+			
 			enum MouseOp
 			{ idle, moveStart, move, rectSelect }
 			MouseOp mouseOp;
-					
+			
 			enum SelectOp
 			{ none, add, sub, toggle, clearAdd }
 			SelectOp selectOp;
-					
+			
 			vec2 dragSource;
 			bounds2 dragBounds;
-					
+			
 			//these are calculated after update. No notifications, just keep calling update frequently
 			T hoveredItem;
-					
+			
 			private float mouseTravelDistance = 0;
 			private vec2 accumulatedMoveStartDelta, mouseLast;
-					
+			
 			///must be called after an items removed
 			void validateItemReferences(T[] items) {
 				if(
