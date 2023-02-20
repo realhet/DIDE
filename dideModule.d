@@ -18,6 +18,7 @@ version(/+$DIDE_REGION+/all)
 	+/
 	
 	//todo: Multiline #define is NOT allowed in D tokenStrings
+	//Todo: A // comment after a #directive should be possible
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
@@ -1608,7 +1609,7 @@ version(/+$DIDE_REGION+/all)
 				else
 				{ put(block); }
 				
-				const newLineRequired = !!prefix.among("//", "#"); //todo: multiline #
+				const newLineRequired = !!prefix.startsWith("//", "#"); //todo: multiline #
 				if(newLineRequired)
 				{
 					assert(postfix=="");
@@ -2464,7 +2465,7 @@ class CodeRow: Row
 				void handleHighlightedPush()
 				{
 					syntaxStack ~= SRec(syntax);
-					void doit(SyntaxKind s){ syntax = s; appendStr(sr.src); }
+					void doit(SyntaxKind s) { syntax = s; appendStr(sr.src); }
 					switch(sr.src)
 					{
 						case "//", "/*", "/+":	doit(skComment);		break;
@@ -3962,69 +3963,103 @@ version(/+$DIDE_REGION+/all)
 	}
 }class CodeComment : CodeContainer
 {
-	//CodeComment //////////////////////////////////////////
 	enum Type
 	{ slashComment, cComment, dComment, directive }
-	enum TypePrefix 	= ["//"	, "/*", "/+", "#"];
-	enum TypePostfix 	= [""	, "*/", "+/", "" ];
+	enum TypePrefix	= ["//", "/*", "/+", "#"],
+		TypePostfix 	= ["", "*/", "+/", "" ];
 	//node: directive is detected by the high level parser, not the structured scanner.
 	
 	Type type;
+	
+	/+
+		+ /+code:customPrefix+/ can be a known directive: "line", "define"
+			or a comment prefix: "Todo:", "Error:", "Opt:"
+	+/
+	string customPrefix;
+	SyntaxKind customSyntax; //it is detected only when rebuilding.
+	
 	bool isDDoc;
 	
 	@property bool isDirective() const
 	{ return type == Type.directive; }
 	
-	SyntaxKind detectCustomSyntax(R)(R r) const
+	static immutable
+		customDirectivePrefixes = [
+		"!", 	//Link: shebang https://dlang.org/spec/lex.html#source_text
+		"version", "extension", "line", 	//Link: GLSL directives
+		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
+		"include", "define", "ifdef", "ifndef", "endif", "if", "elif", "else" 	//Link: Arduino directives
+	],
+		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,	skNote,   skLink,   skError,   skWarning,   skDeprecation],
+		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:",	"Note:", "Link:", "Error:", "Warning:", "Deprecation:"]
+		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
+		;
+	
+	static private int detectCustomCommentIdx(R)(R r)
+	{ return r.startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; }
+	
+	static private int detectCustomDirectiveIdx(R)(R r)
 	{
-		if(isDirective) return skDirective;
+		const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1;
 		
-		//note: custom comment is one of these that start with a keyword and a ':'
-		return [
-			skComment, 
-			skTodo, 
-			skOpt, 
-			skBug, 
-			skNote,
-			skError,
-			skWarning,
-			skDeprecation
-		][
-			r.map!toLower.startsWith(
-				"todo:", 
-				"opt:", 
-				"bug:", 
-				"note:",
-				"error:",
-				"warning:",
-				"deprecation:"
-			)
-		];
+		//whole words only
+		if(idx>=0 && (r.empty || r.front.isDLangWhitespace)) return idx;
+		return -1;
+	}
+	
+	private void promoteCustomDirective()
+	{
+		//Note: this is called from #directive detection after manually creating a directive.
+		
+		if(type != Type.directive) return;
+		if(customPrefix != "") return;
+		
+		const idx = detectCustomDirectiveIdx(content.rows[0].chars);
+		if(idx>=0) {
+			customPrefix = customDirectivePrefixes[idx];
+			customSyntax = skDirective;
+		}
 	}
 	
 	override SyntaxKind syntax() const
 	{
-		//it can be dynamic based on the content
-		return detectCustomSyntax(content.rows.front.chars);
+		return customPrefix=="" 	? (type==Type.directive ? skDirective : skComment)
+			: customSyntax;;
 	}
 	
-	override string prefix() const
+	auto isCustom() const
+	{ return customPrefix != ""; }
+	
+	string commentPrefix() const
 	{ return TypePrefix[type]; }
+	
+	override string prefix() const
+	{
+		auto s = commentPrefix;
+		if(customPrefix != "")
+		s ~= customPrefix ~ ' '/+Stylistic space after a custom prefix+/;
+		
+		return s;
+	}
 	override string postfix() const
 	{ return TypePostfix[type]; }
 	
 	
 	this(CodeRow parent)
 	{ super(parent); }
-	
+	
 	void rebuild(R)(R scanner) if(isScannerRange!R)
 	{
 		type = parseBlockPrefix!(Type, TypePrefix)(scanner);
+		
+		customPrefix = "";
+		customSyntax = skWhitespace;
+		
 		isDDoc = !scanner.empty && scanner.front.op==ScanOp.content && scanner.front.src.startsWith(prefix.back);
 		
-		//get content
+		//build content
 		auto rebuilder = CodeColumnBuilder!true(content);
-		auto sk = skWhitespace;
+		bool customDetectionComplete;
 		
 		while(!scanner.empty)
 		{
@@ -4050,15 +4085,46 @@ version(/+$DIDE_REGION+/all)
 			else
 			{
 				const isContent = scanner.front.op==ScanOp.content;
-				if(isContent && sk==skWhitespace)
-				sk = detectCustomSyntax(scanner.front.src);
 				
-				rebuilder.syntax = isContent ? sk : skError;
-				//todo: don't add error message as it would be the code text.
+				//right at the beginning, detect the custom keyword
+				if(customDetectionComplete.chkSet && isContent)
+				{
+					auto s = scanner.front.src;
+					
+					if(type == Type.directive)
+					{
+						/+
+							note: this is unused because #directive detection is not in 
+							the implemented in the scanner, it's a later pass that creates 
+							the dirctive comment manually, and calls promoteCustomDirective()
+						+/
+						const idx = detectCustomDirectiveIdx(s);
+						if(idx >= 0)
+						{
+							customPrefix = customDirectivePrefixes[idx];
+							customSyntax = skDirective;
+						}
+					}
+					else
+					{
+						const idx = detectCustomCommentIdx(s);
+						if(idx >= 0)
+						{
+							customPrefix = customCommentPrefixes[idx];
+							customSyntax = customCommentSyntaxes[idx];
+						}
+					}
+					
+					rebuilder.syntax = syntax;
+				}
+				
+				if(!isContent) rebuilder.syntax = skError;
+				//Todo: don't add error message as it would be the code text.
+				
 				rebuilder.appendStr(scanner.front.src);
-				
-				//if(isDDoc) dumpDDoc(scanner.front.src); //todo: DDoc parser
 			}
+			
+			//advance
 			scanner.popFront;
 		}
 		
@@ -4069,13 +4135,13 @@ version(/+$DIDE_REGION+/all)
 	bool isSpecialComment()
 	{
 		return content.byShallowChar.startsWith(specialCommentMarker);
-		//opt: startsWith should get a real range, not a copy of the full string.
+		//Opt: startsWith should get a real range, not a copy of the full string.
 	}
 	
 	string extractSpecialComment()
 	{
 		return isSpecialComment ? content.sourceText.withoutStarting(specialCommentMarker) : "";
-		//opt: this  builds the whole string, but only extracts the first word.
+		//Opt: this  builds the whole string, but only extracts the first word.
 	}
 	
 	bool isSpecialComment(string keyword)
@@ -4090,13 +4156,17 @@ version(/+$DIDE_REGION+/all)
 		
 		//fill the whole context with default homogenous syntax
 		if(markErrors)
-		content.fillSyntax(syntax);
+		{
+			//Opt: this is only needed when the syntax or the error state has changed.
+			content.fillSyntax(syntax);
+		}
+		
 		
 		void mark(Glyph g)
 		{
 			if(markErrors)
 			if(g) {
-				//todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
+				//Todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
 				if(errorColorsValid.chkSet)
 				{
 					errorBkColor = syntaxBkColor(skError);
@@ -4127,7 +4197,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
-		//todo: redundant code
+		//Todo: redundant code
 		void checkNesting(dchar chOpen, dchar chClose)
 		{
 			if(chOpen==chClose)
@@ -4154,7 +4224,7 @@ version(/+$DIDE_REGION+/all)
 				)
 				{
 					anyErrors = true;
-					//todo: mark unclosed nesting
+					//Todo: mark unclosed nesting
 				}
 			}
 		}
@@ -4187,7 +4257,7 @@ version(/+$DIDE_REGION+/all)
 		
 		return !anyErrors;
 	}
-	
+	
 	override void rearrange()
 	{
 		if(isSpecialComment)
@@ -4206,7 +4276,7 @@ version(/+$DIDE_REGION+/all)
 					style.italic = false;
 					
 					//load it immediatelly
-					//todo: autorefresh code images
+					//Todo: autorefresh code images
 					auto bmp = bitmaps(f, No.delayed);
 					
 					if(!bmp.valid)
@@ -4255,15 +4325,46 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
+		enum enableCustomComments = true;
+		if(enableCustomComments && isCustom)
+		rearrangeCustom;
+		else
 		super.rearrange;
 		
 		verify!true;
 	}
 	
+	private void rearrangeCustom()
+	{
+		const syn = syntax;
+		with(nodeBuilder(syn, 0))
+		{
+			content.bkColor = darkColor;
+			
+			if(customPrefix != "")
+			{
+				put(' ' ~ customPrefix ~ ' ');
+				put(content);
+			}else {
+				put(prefix);
+				put(content);
+				put(postfix);
+			}
+			
+			rearrange_node;
+		}
+	}
+	
 	override void buildSourceText(ref SourceTextBuilder builder)
 	{
 		enforce(verify, "Invalid comment format");
-		super.buildSourceText(builder);
+		
+		//adjust the stylistic space between the prefix and the content.
+		auto p = prefix;
+		if(p.endsWith(' ') && content.firstChar==' ')
+		p = p[0..$-1];
+		
+		builder.put(p, content, postfix);
 	}
 }class CodeString : CodeContainer
 {
@@ -6035,13 +6136,14 @@ version(/+$DIDE_REGION+/all)
 				directive.content = new CodeColumn(directive, directiveCells);
 				directive.content.fillSyntax(skDirective); //todo: directive syntax highlight not working.
 				directive.line = directive.content.getLineOfFirstGlyphOrNode;
+				directive.promoteCustomDirective;
 				
 				appendCell(directive);
 				endingWhite.each!(c => appendCell(c));
 				
 				//ignore tokens inside the directive
 				dropOutpacedTokens;
-					
+				
 				//clean up the remaining NewLine and retry
 				if(transferWhitespaceAndComments)
 				goto again;
@@ -7156,39 +7258,65 @@ version(/+$DIDE_REGION Comments+/all)
 		/*Neither C comments*/
 	+/
 	
-	//todo: q{} token string is fucked up!!!!!
-	//todo: #define is fucked up too!!!!
+	//Todo: q{} token string is fucked up!!!!!
+	//Todo: #define is fucked up too!!!!
 	
 	//Todo: todo comment
 	//Opt: opt comment
 	/+Bug: bug comment+/
 	/+Note: note comment+/
+	//Link: link comment http://google.com
 	/*Error: error comment*/
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
 	
+	auto _testDirectives()
+	{
+		q{
+			#directive
+			#!shebang
+			#line 5
+			#define variable (1 + 2) * 3
+			;
+			
+		};
+		/+
+			surrounding stuff is necessary in order
+			to turn on tokenString's statement parser.
+		+/
+	}
 	
+	/+
+		$DIDE_CODE
+			#directive
+			#!shebang
+			#line 5
+			#define variable (1 + 2) * 3
+	+/
 	
 	//Special DIDE comments
 	
 		//Region comment is only meaningful inside version() expression.
 		//no spaces allowed around "all" or "none" keywords.
-		version(/+$DIDE_REGION region+/all/+Extra coment/whitespace is illegal here.+/) {}
-		version(/+$DIDE_REGION region+/all) {}
+			version(/+$DIDE_REGION region+/all/+Extra coment/whitespace is illegal here.+/) {}
+			version(/+$DIDE_REGION region+/all) {}
 		
-		//Image	 $DIDE_IMG "font:\Times New Roman\48?Abc"
-		//Image	 $DIDE_IMG "font:\Arial\48?Abc✏"
-		/+$DIDE_IMG "font:\Times New Roman\48?Abc"+//+$DIDE_IMG "font:\Arial\48?Abc✏"+/
+		//Image comment   $DIDE_IMG filename
+			//Image	 $DIDE_IMG "font:\Times New Roman\48?Abc"
+			//Image	 $DIDE_IMG "font:\Arial\48?Abc✏"
+			/+$DIDE_IMG "font:\Times New Roman\48?Abc"+//+$DIDE_IMG "font:\Arial\48?Abc✏"+/
 		
-		//$DIDE_LOC filename(line,col)  Code location comment
-		//$DIDE_LOC filename.d(123,456)
-		/*$DIDE_LOC c:\path\filename.d(123)*/
-		/+$DIDE_LOC c:\path\filename.d()+/
-		/+$DIDE_LOC c:\path\filename.d+/
-		/+$DIDE_LOC filename.d-mixin-96(123,456)+/
+		//Code Location comment:  $DIDE_LOC filename(line,col)
+			//$DIDE_LOC filename(line,col)  Code location comment
+			//$DIDE_LOC filename.d(123,456)
+			/*$DIDE_LOC c:\path\filename.d(123)*/
+			/+$DIDE_LOC c:\path\filename.d()+/
+			/+$DIDE_LOC c:\path\filename.d+/
+			/+$DIDE_LOC filename.d-mixin-96(123,456)+/
 		
-		//$DIDE_MSG text  Compiler message comment
-		/+
+		//Compiler messages   $DIDE_MSG
+			//$DIDE_MSG text  Compiler message comment
+			/+
 		$DIDE_MSG /+$DIDE_LOC c:\d\work.d(15,3)+/ Error blalba
 		bla
 	+/
