@@ -4063,6 +4063,8 @@ version(/+$DIDE_REGION+/all)
 		
 		while(!scanner.empty)
 		{
+			bool mustRemoveCustomPrefix;
+			
 			if(scanner.front.op==ScanOp.push)
 			{
 				//opening a new something
@@ -4085,12 +4087,11 @@ version(/+$DIDE_REGION+/all)
 			else
 			{
 				const isContent = scanner.front.op==ScanOp.content;
+				auto s = scanner.front.src;
 				
 				//right at the beginning, detect the custom keyword
 				if(customDetectionComplete.chkSet && isContent)
 				{
-					auto s = scanner.front.src;
-					
 					if(type == Type.directive)
 					{
 						/+
@@ -4115,13 +4116,20 @@ version(/+$DIDE_REGION+/all)
 						}
 					}
 					
+					//remove customPrefix from content
+					if(customPrefix != "")
+					{
+						assert(s.startsWith!"a.toLower==b.toLower"(customPrefix), "Custom prefix must be exact.");
+						s = s[customPrefix.length..$].withoutStarting(' ');
+					}
+					
 					rebuilder.syntax = syntax;
 				}
 				
 				if(!isContent) rebuilder.syntax = skError;
 				//Todo: don't add error message as it would be the code text.
 				
-				rebuilder.appendStr(scanner.front.src);
+				rebuilder.appendStr(s);
 			}
 			
 			//advance
@@ -4341,8 +4349,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			content.bkColor = darkColor;
 			
-			if(customPrefix != "")
-			{
+			if(customPrefix != "") {
 				put(' ' ~ customPrefix ~ ' ');
 				put(content);
 			}else {
@@ -4360,7 +4367,7 @@ version(/+$DIDE_REGION+/all)
 		enforce(verify, "Invalid comment format");
 		
 		//adjust the stylistic space between the prefix and the content.
-		auto p = prefix;
+		auto p = prefix; //this is the combined comment and custom prefix
 		if(p.endsWith(' ') && content.firstChar==' ')
 		p = p[0..$-1];
 		
