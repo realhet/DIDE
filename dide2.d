@@ -1848,6 +1848,8 @@ version(/+$DIDE_REGION main+/all)
 			
 			auto s = textSelections.sourceText; //this can throw if structured declarations has invalid contents
 			
+			//bug: Two adjacent slashComnments are not emit a newLine in between them
+			
 			bool valid = s.length>0;
 			if(valid) clipboard.asText = s;  //todo: BOM handling
 			return valid;

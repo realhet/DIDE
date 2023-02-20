@@ -177,7 +177,7 @@ version(/+$DIDE_REGION+/all)
 		WordCategory wordCategory(dchar ch)
 		{
 			import std.uni;
-			if(ch.isAlphaNum || ch=='_') return WordCategory.word;
+			if(ch.isDLangIdentifierCont) return WordCategory.word;
 			if(ch.among(' ', '\t', '\n', '\r')) return WordCategory.space;
 			return WordCategory.symbol;
 		}
@@ -937,7 +937,7 @@ version(/+$DIDE_REGION+/all)
 					const leftIdx = left ? row.subCellIndex(left) : -1;
 					if(leftIdx>=0)
 					{
-						res.pos.x = leftIdx + 1; //Note: +1 because cursor is to the right
+						res.pos.x = leftIdx + 1; //Note:+1 because cursor is to the right
 					}
 				}
 				
@@ -1007,7 +1007,7 @@ version(/+$DIDE_REGION+/all)
 		
 		int opCmp(const TextSelection b) const
 		{
-			//Todo: *** structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
+			//Todo:*** structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
 			return cmpChain(
 				cmp(
 					cast(size_t)(cast(void*)cursors[0].codeColumn),
@@ -2382,7 +2382,7 @@ class CodeRow: Row
 			
 			static char categorize(dchar ch)
 			{
-				if(isAlphaNum(ch) || ch.among('_', '#', '@')) return 'a';
+				if(isDLangIdentifierCont(ch) || ch.among('_', '#', '@')) return 'a';
 				if(ch.among(' ', '\t', '\x0b', '\x0c')) return ' ';
 				return '+';
 			}
@@ -2492,7 +2492,7 @@ class CodeRow: Row
 							}
 							switch(sr.src)
 							{
-								//Todo: //comment must ensure that after it, there will be a NewLine
+								//Todo://comment must ensure that after it, there will be a NewLine
 								case "//":	N!CodeComment; appendChar('\n'); 	continue; 
 								case "/*", "/+",:	N!CodeComment;	continue; 
 								case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`: 	N!CodeString;	continue;
@@ -3618,7 +3618,7 @@ version(/+$DIDE_REGION+/all)
 						actEvent.modifications[0].modifications[0].where,
 												actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[0]
 					); break;
-						//Todo: ^^^^^^ ugly and needs range checking
+						//Todo:^^^^^^ ugly and needs range checking
 				}
 				actEvent = actEvent.parent;
 			}
@@ -3648,7 +3648,7 @@ version(/+$DIDE_REGION+/all)
 						actEvent.modifications[0].modifications[0].where,
 												actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]
 					); break;
-						//Todo: ^^^^ ugly and needs range check
+						//Todo:^^^^ ugly and needs range check
 				}
 			}
 			while(again && canRedo);
@@ -3946,7 +3946,7 @@ version(/+$DIDE_REGION+/all)
 			
 			put(prefix); 	const i0 = subCells.length;
 			put(content);	const i2 = subCells.length;
-			put(postfix); //Todo: //slashComment must ensure that after it there is a newLine
+			put(postfix); //Todo://slashComment must ensure that after it there is a newLine
 			
 			rearrange_node;
 			
@@ -4002,12 +4002,12 @@ version(/+$DIDE_REGION+/all)
 		//whole words only
 		if(idx>=0) {
 			const p = customDirectivePrefixes[idx];
-			if(!p.back.isAlphaNum) return idx;
+			if(!p.back.isDLangIdentifierCont) return idx;
 			
 			if(r.empty) return idx;
 			
 			auto nextChar = r.drop(p.walkLength).take(1);
-			if(nextChar.empty || !nextChar.front.isAlphaNum) return idx;
+			if(nextChar.empty || !nextChar.front.isDLangIdentifierCont) return idx;
 		}
 		
 		return -1;
@@ -4025,7 +4025,7 @@ version(/+$DIDE_REGION+/all)
 			customPrefix = customDirectivePrefixes[idx];
 			customSyntax = skDirective;
 			
-			//bug: this operation ruins undo/redo
+			//Bug: this operation ruins undo/redo
 			auto row = content.rows[0];
 			
 			//remove prefix
@@ -4278,7 +4278,7 @@ version(/+$DIDE_REGION+/all)
 			case slashComment: 	checkOneLine;	break;
 			case cComment: 	checkInvalid2('*', '/');	break;
 			case dComment: 	checkInvalid2('+', '/'); checkInvalid2('/', '+'); 	break;
-			case directive: 	checkNesting('(', ')'); 	break;
+			case directive: 	checkNesting('(', ')'); checkOneLine; /+Todo: Multiline directives are not supported.+/	break;
 		}
 		
 		
@@ -4354,8 +4354,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
-		enum enableCustomComments = true;
-		if(enableCustomComments)
+		if(isCustom)
 		rearrangeCustom;
 		else
 		super.rearrange;
@@ -4372,6 +4371,9 @@ version(/+$DIDE_REGION+/all)
 			if(customPrefix != "") {
 				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' ');
 				put(content);
+				
+				if(isDirective && content.empty)
+				content.bkColor = mix(darkColor, brightColor, 0.75f);
 			}else {
 				put(prefix);
 				put(content);
@@ -4388,7 +4390,7 @@ version(/+$DIDE_REGION+/all)
 		
 		//adjust the stylistic space between the prefix and the content.
 		auto p = prefix; //this is the combined comment and custom prefix
-		if(p.endsWith(' ') && content.firstChar==' ')
+		if(p.endsWith(' ') && (content.empty || !content.firstChar.isDLangIdentifierCont))
 		p = p[0..$-1];
 		
 		builder.put(p, content, postfix);
@@ -4602,7 +4604,7 @@ version(/+$DIDE_REGION+/all)
 		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix)
 		{
 			//analize patterns
-			//Note: -> processHighLevel
+			//Note:-> processHighLevel
 			/*
 				if(scanner.front.src=="}"){
 								auto crsr = content.endCursor;
@@ -5032,7 +5034,7 @@ version(/+$DIDE_REGION+/all)
 				"while(", 	"do", 	"if(", 	"else", 
 				"version(", 	"debug(",		
 				"switch(",	"try", 	"catch(", 	"finally"
-				//Todo: 
+				//Todo:
 			].sort.array; //sorting is important: it is binary-searched
 			
 			static immutable prepositionLinkingRules =
@@ -5641,7 +5643,7 @@ version(/+$DIDE_REGION+/all)
 									else if(nextJoinedPreposition.hasJoinedTab) put('\t');
 									
 									//Note: It doesn't matter if the newline is bewore or	 after or on both sides
-									//Note: ...around an "else". As it is either joined horizontally or vertically.
+									//Note:...around an "else". As it is either joined horizontally or vertically.
 									
 									const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while";
 									
@@ -5691,7 +5693,9 @@ version(/+$DIDE_REGION+/all)
 		{
 			//_identifierValid = false;
 			
-			auto builder = nodeBuilder(skWhitespace, isStatement && keyword=="" ? 0 : 2, structuredColor(type).nullable); 
+			const isSimpleStatement = isStatement && keyword=="";
+			
+			auto builder = nodeBuilder(skWhitespace, isSimpleStatement ? 0 : 2, structuredColor(type).nullable); 
 			with(builder)
 			{
 				//set subColumn bkColors
@@ -5699,7 +5703,7 @@ version(/+$DIDE_REGION+/all)
 				
 				foreach(a; only(attributes, header))
 				if(a)
-				{ a.bkColor = a.empty ? mix(darkColor, brightColor, 0.75f) : darkColor; }
+				{ a.bkColor = a.empty ? mix(darkColor, brightColor, isSimpleStatement ? 0.25f : 0.75f) : darkColor; }
 				
 				if(isPreposition && isRegion)
 				header.bkColor = syntaxBkColor(skComment);
@@ -7272,7 +7276,7 @@ struct StylisticBugs
 					actEvent.modifications[0].modifications[0].where,
 					actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]
 				); break;
-					//Todo: ^^^^ ugly and needs range check
+					//Todo:^^^^ ugly and needs range check
 			}
 		}
 		while(again && canRedo);
@@ -7292,7 +7296,7 @@ version(/+$DIDE_REGION Comments+/all)
 	+/
 	
 	//Todo: q{} token string is fucked up!!!!!
-	//Todo: #define is fucked up too!!!!
+	//Todo:#define is fucked up too!!!!
 	
 	//Todo: todo comment
 	//Opt: opt comment
@@ -7307,7 +7311,7 @@ version(/+$DIDE_REGION Comments+/all)
 	{
 		q{
 			#directive
-			#!shebang
+			#! shebang
 			#line 5
 			#define variable (1 + 2) * 3
 			#endif
