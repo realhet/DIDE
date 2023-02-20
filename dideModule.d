@@ -3980,9 +3980,6 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isDDoc;
 	
-	@property bool isDirective() const
-	{ return type == Type.directive; }
-	
 	static immutable
 		customDirectivePrefixes = [
 		"!", 	//Link: shebang https://dlang.org/spec/lex.html#source_text
@@ -4003,7 +4000,16 @@ version(/+$DIDE_REGION+/all)
 		const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1;
 		
 		//whole words only
-		if(idx>=0 && (r.empty || r.front.isDLangWhitespace)) return idx;
+		if(idx>=0) {
+			const p = customDirectivePrefixes[idx];
+			if(!p.back.isAlphaNum) return idx;
+			
+			if(r.empty) return idx;
+			
+			auto nextChar = r.drop(p.walkLength).take(1);
+			if(nextChar.empty || !nextChar.front.isAlphaNum) return idx;
+		}
+		
 		return -1;
 	}
 	
@@ -4018,6 +4024,19 @@ version(/+$DIDE_REGION+/all)
 		if(idx>=0) {
 			customPrefix = customDirectivePrefixes[idx];
 			customSyntax = skDirective;
+			
+			//bug: this operation ruins undo/redo
+			auto row = content.rows[0];
+			
+			//remove prefix
+			row.subCells = row.subCells[customPrefix.walkLength..$];
+			
+			//remove space
+			if(row.chars.startsWith(' '))
+				row.subCells = row.subCells[1..$];
+			
+			row.refreshTabIdx;
+			row.needMeasure;
 		}
 	}
 	
@@ -4027,7 +4046,10 @@ version(/+$DIDE_REGION+/all)
 			: customSyntax;;
 	}
 	
-	auto isCustom() const
+	bool isDirective() const
+	{ return type == Type.directive; }
+	
+	bool isCustom() const
 	{ return customPrefix != ""; }
 	
 	string commentPrefix() const
@@ -4272,7 +4294,6 @@ version(/+$DIDE_REGION+/all)
 		{
 			const 	scmt = extractSpecialComment,
 				keyword = scmt.wordAt(0);
-			LOG(keyword, scmt);
 			switch(keyword)
 			{
 				case "IMG":
@@ -4344,13 +4365,12 @@ version(/+$DIDE_REGION+/all)
 	
 	private void rearrangeCustom()
 	{
-		const syn = syntax;
-		with(nodeBuilder(syn, 0))
+		with(nodeBuilder(syntax, isDirective ? 2 : 0))
 		{
 			content.bkColor = darkColor;
 			
 			if(customPrefix != "") {
-				put(' ' ~ customPrefix ~ ' ');
+				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' ');
 				put(content);
 			}else {
 				put(prefix);
@@ -5501,7 +5521,7 @@ version(/+$DIDE_REGION+/all)
 					{
 						/+
 							todo: the transition from simpleBlock to non-simple block is not clear.
-												A boolean flag is needed to let the user write into the header.
+							A boolean flag is needed to let the user write into the header.
 						+/
 						put("{", block, "}");
 					}
@@ -5597,7 +5617,7 @@ version(/+$DIDE_REGION+/all)
 								if(closingSemicolon)
 								{ put(';'); }else {
 									
-									if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent;}
+									if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent; }
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
 									/+
@@ -7290,6 +7310,7 @@ version(/+$DIDE_REGION Comments+/all)
 			#!shebang
 			#line 5
 			#define variable (1 + 2) * 3
+			#endif
 			;
 			
 		};
