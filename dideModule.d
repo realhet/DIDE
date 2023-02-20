@@ -4033,7 +4033,7 @@ version(/+$DIDE_REGION+/all)
 			
 			//remove space
 			if(row.chars.startsWith(' '))
-				row.subCells = row.subCells[1..$];
+			row.subCells = row.subCells[1..$];
 			
 			row.refreshTabIdx;
 			row.needMeasure;
@@ -4355,7 +4355,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		enum enableCustomComments = true;
-		if(enableCustomComments && isCustom)
+		if(enableCustomComments)
 		rearrangeCustom;
 		else
 		super.rearrange;
