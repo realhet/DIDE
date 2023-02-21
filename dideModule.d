@@ -3987,8 +3987,8 @@ version(/+$DIDE_REGION+/all)
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
 		"include", "define", "ifdef", "ifndef", "endif", "if", "elif", "else" 	//Link: Arduino directives
 	],
-		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,	skNote,   skLink,   skError,   skWarning,   skDeprecation],
-		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:",	"Note:", "Link:", "Error:", "Warning:", "Deprecation:"]
+		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,	skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation],
+		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:",	"Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:"]
 		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 		;
 	
@@ -4051,6 +4051,10 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isCustom() const
 	{ return customPrefix != ""; }
+	bool isLink() const
+	{ return customPrefix == "Link:"; }
+	bool isCode() const
+	{ return customPrefix == "Code:"; }
 	
 	string commentPrefix() const
 	{ return TypePrefix[type]; }
@@ -4121,6 +4125,8 @@ version(/+$DIDE_REGION+/all)
 							the implemented in the scanner, it's a later pass that creates 
 							the dirctive comment manually, and calls promoteCustomDirective()
 						+/
+						assert(0, "This should be implemented by the scanner. No other ways to call this.");
+						
 						const idx = detectCustomDirectiveIdx(s);
 						if(idx >= 0)
 						{
@@ -4188,7 +4194,11 @@ version(/+$DIDE_REGION+/all)
 		if(markErrors)
 		{
 			//Opt: this is only needed when the syntax or the error state has changed.
-			content.fillSyntax(syntax);
+			
+			if(isCode)
+				content.resyntax;
+			else
+				content.fillSyntax(syntax);
 		}
 		
 		
@@ -4369,7 +4379,15 @@ version(/+$DIDE_REGION+/all)
 			content.bkColor = darkColor;
 			
 			if(customPrefix != "") {
+				const origUnderline = style.underline;
+				//Remove underlined style
+				style.underline = false;
+				
+				if(!isCode)
 				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' ');
+				
+				style.underline = origUnderline;
+				
 				put(content);
 				
 				if(isDirective && content.empty)
@@ -7295,9 +7313,6 @@ version(/+$DIDE_REGION Comments+/all)
 		/*Neither C comments*/
 	+/
 	
-	//Todo: q{} token string is fucked up!!!!!
-	//Todo:#define is fucked up too!!!!
-	
 	//Todo: todo comment
 	//Opt: opt comment
 	/+Bug: bug comment+/
@@ -7306,6 +7321,7 @@ version(/+$DIDE_REGION Comments+/all)
 	/*Error: error comment*/
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
+	/+Code: if(1 + 1 == 2) print("xyz");+/
 	
 	auto _testDirectives()
 	{
