@@ -622,13 +622,18 @@ version(/+$DIDE_REGION+/all)
 	version(/+$DIDE_REGION+/all)
 	{
 		/+
-			Todo:
-									to be able to edit and preserve the textcursor indices, 
-														textcursor should target objects, not indices. [codeRow, cell] 
-														would be the minimum. codeRow.subCellIdx(cell) and codeRow.index 
-														should be cached.
+			Todo:												to be able to edit and preserve the textcursor indices, 
+																																textcursor should target objects, not indices. [codeRow, cell] 
+																																would be the minimum. codeRow.subCellIdx(cell) and codeRow.index 
+																																should be cached.
+																													
+																										
+																				
+																	
+														
 											
 								
+					
 		+/
 		
 		CodeColumn codeColumn;
@@ -663,11 +668,16 @@ version(/+$DIDE_REGION+/all)
 			return cmpChain(cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x));
 			
 			/+
-				Opt:
-												multiColumn selection sorting is extremely slow. 
-																			Maybe the hierarchical column order should be cached in an integer value.
+				Opt:																multiColumn selection sorting is extremely slow. 
+																																											Maybe the hierarchical column order should be cached in an integer value.
+																																							
+																																			
+																											
+																							
+																			
 															
 											
+							
 			+/
 			
 			/+
@@ -1727,13 +1737,18 @@ version(/+$DIDE_REGION+/all)
 	string reduceTextSelectionReferenceStringToStart(string src)
 	{
 		/+
-			Todo:
-									This nasty text fiddling workaround function could be avoided
-														if the start cursor was stored in the delete/insert operation's undo record, 
-														not the whole textSelection. The end cursor of the text selection could be 
-														invalid, thus rendering the whole textSelection invalid. But the start cursor is always valid.
+			Todo:												This nasty text fiddling workaround function could be avoided
+																																if the start cursor was stored in the delete/insert operation's undo record, 
+																																not the whole textSelection. The end cursor of the text selection could be 
+																																invalid, thus rendering the whole textSelection invalid. But the start cursor is always valid.
+																													
+																										
+																				
+																	
+														
 											
 								
+					
 		+/
 		
 		__gshared unittested = false; //Todo: unittest nicely
@@ -2169,11 +2184,16 @@ class CodeRow: Row
 				
 				//Opt: these calculations operqations should be cached. Seems not that slow however
 				/+
-					Todo:
-															only display this when there is an editor cursor active in the codeColumn
-																				(or in the module)
+					Todo:																				only display this when there is an editor cursor active in the codeColumn
+																																																		(or in the module)
+																																																	
+																																												
+																																		
+																													
+																								
 																			
 														
+									
 				+/
 				dr.translate(innerPos); dr.alpha = .4f;
 				scope(exit) { dr.pop; dr.alpha = 1; }
@@ -2203,11 +2223,16 @@ class CodeRow: Row
 					assert(g);
 					dr.point(g.outerBounds.center);
 					/+
-						Todo:
-																		don't highlight single spaces only if there is a tab or character 
-																													or end of line next to them.
+						Todo:																								don't highlight single spaces only if there is a tab or character 
+																																																																	or end of line next to them.
+																																																											
+																																																					
+																																									
+																																			
+																													
 																							
 																	
+											
 					+/
 				}
 			}
@@ -2777,12 +2802,17 @@ class CodeRow: Row
 				static bool canBeStatement(CodeRow row)
 				{
 					/+
-						Note:
-																		this fixes	the following	bug:
-																													const 	a=1,	->		const a=1,
-																														b=2;	b=2; 
+						Note:																								this fixes	the following	bug:
+																																																																	const 	a=1,	->		const a=1,
+																																																																		b=2;	b=2; 
+																																																											
+																																																					
+																																									
+																																			
+																													
 																							
 																	
+											
 					+/
 					
 					foreach_reverse(dchar ch; row.chars)
@@ -2805,11 +2835,16 @@ class CodeRow: Row
 					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
 					
 					/+
-						Todo:
-																		If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
-																																	<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+						Todo:																								If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
+																																																																					<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+																																																											
+																																																					
+																																									
+																																			
+																													
 																							
 																	
+											
 					+/
 					
 					if(numTabs)
@@ -2818,11 +2853,16 @@ class CodeRow: Row
 						r.subCells = r.subCells[numTabs..$];
 						r.refreshTabIdx;
 						/+
-							Note:
-																					no need to call needRefresh_elastic because all rows will be refreshed.
-																																		It's in convertSpacesToTabs which only kicks right after row creation.
+							Note:																												no need to call needRefresh_elastic because all rows will be refreshed.
+																																																																												It's in convertSpacesToTabs which only kicks right after row creation.
+																																																																					
+																																																														
+																																																
+																																									
+																																		
 																											
 																				
+													
 						+/
 					}
 				}
@@ -3162,12 +3202,17 @@ class CodeRow: Row
 				const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
 				innerSize = vec2(maxInnerWidth + totalGap.x, y);
 				/+
-					Todo:
-																this is not possible with the immediate UI because the autoWidth/autoHeigh 
-																					information is lost. And there is no functions to return the required content size.
-																					The container should have a current size, a minimal required size and separate autoWidth flags.
+					Todo:																					this is not possible with the immediate UI because the autoWidth/autoHeigh 
+																																																			information is lost. And there is no functions to return the required content size.
+																																																			The container should have a current size, a minimal required size and separate autoWidth flags.
+																																																	
+																																												
+																																		
+																													
+																								
 																			
 														
+									
 				+/
 					
 				if(!flags.dontStretchSubCells)
@@ -3249,12 +3294,17 @@ class CodeRow: Row
 			test_RowCount(" ", 1);
 			test_RowCount("\n", 2);
 			test_RowCount("\n ", 2, "\n "); /+
-				Todo:
-												a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
-																				 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
-																				De ezt majd kesobb. Most minden tab lesz.
+				Todo:																a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
+																																												 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
+																																												De ezt majd kesobb. Most minden tab lesz.
+																																							
+																																			
+																											
+																							
+																			
 															
 											
+							
 			+/
 			test_RowCount("\r\n", 2, "\n");
 			test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //Todo: a tabokat visszaalakitani space-ra
@@ -4173,12 +4223,17 @@ version(/+$DIDE_REGION+/all)
 					if(type == Type.directive)
 					{
 						/+
-							Note:
-																					this is unused because #directive detection is not in 
-																												the implemented in the scanner, it's a later pass that creates 
-																												the dirctive comment manually, and calls promoteCustomDirective()
+							Note:																												this is unused because #directive detection is not in 
+																																																																						the implemented in the scanner, it's a later pass that creates 
+																																																																						the dirctive comment manually, and calls promoteCustomDirective()
+																																																																					
+																																																														
+																																																
+																																									
+																																		
 																											
 																				
+													
 						+/
 						assert(0, "This should be implemented by the scanner. No other ways to call this.");
 						
@@ -4202,9 +4257,13 @@ version(/+$DIDE_REGION+/all)
 					//remove customPrefix from content
 					if(customPrefix != "")
 					{
-						s = skipNewLineAndTabs(s);
+						const sFull = s;
+						const fullLength = sFull.length;
+						s = skipNewLineAndTabs(s);!!!!!!! todo: ezt megcsinalni rendesen
+						const whiteLength = fullLength - s.length;
+						const sWhite = sFull[0 .. whiteLength];
 						assert(s.startsWith!"a.toLower==b.toLower"(customPrefix), "Custom prefix must be exact.");
-						s = s[customPrefix.length..$].withoutStarting(' ');
+						s = sWhite ~ s[customPrefix.length..$].withoutStarting(' ');
 					}
 					
 					rebuilder.syntax = syntax;
@@ -4470,7 +4529,7 @@ version(/+$DIDE_REGION+/all)
 			return p;
 		}
 		
-		if(isCustom && type!=Type.directive && content.rows.length>1)
+		if(isCustom && content.rows.length>1)
 		{
 			//this is required to properly indent multiline customComments
 			builder.put(commentPrefix, adjustStylisticSpace(customPrefix), content, postfix);
@@ -4479,7 +4538,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			auto p = adjustStylisticSpace(prefix);
 			//this is the combined comment and custom prefix
-					
+			
 			builder.put(p, content, postfix);
 		}
 	}
@@ -4824,11 +4883,16 @@ version(/+$DIDE_REGION+/all)
 					if(auto r = content.getRow(0))
 					{
 						/+
-							Todo:
-																					this detector is not so nice...
-																																		Need to develop more advanced source code parsing methods.
+							Todo:																												this detector is not so nice...
+																																																																												Need to develop more advanced source code parsing methods.
+																																																																					
+																																																														
+																																																
+																																									
+																																		
 																											
 																				
+													
 						+/
 						
 						//structured
@@ -4884,11 +4948,16 @@ version(/+$DIDE_REGION+/all)
 					{
 						content.rebuilder.appendHighlighted(sourceText);
 						/+
-							Todo:
-																					this is NOT raising an exception, only draws the error with 
-																																		red and and display a WARN. It should revert to plain...
+							Todo:																												this is NOT raising an exception, only draws the error with 
+																																																																												red and and display a WARN. It should revert to plain...
+																																																																					
+																																																														
+																																																
+																																									
+																																		
 																											
 																				
+													
 						+/
 						structureLevel = StructureLevel.highlighted;
 					}
@@ -5616,11 +5685,16 @@ version(/+$DIDE_REGION+/all)
 					if(isSimpleBlock)
 					{
 						/+
-							Todo:
-																					the transition from simpleBlock to non-simple block is not clear.
-																												A boolean flag is needed to let the user write into the header.
+							Todo:																												the transition from simpleBlock to non-simple block is not clear.
+																																																																						A boolean flag is needed to let the user write into the header.
+																																																																					
+																																																														
+																																																
+																																									
+																																		
 																											
 																				
+													
 						+/
 						put("{", block, "}");
 					}
@@ -5720,15 +5794,20 @@ version(/+$DIDE_REGION+/all)
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
 									/+
-										Todo:
-																															^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
-																																									Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
-																																									Viszont legyen a tab is detektalva! Az 3 allapot.
-																																									A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
-																																									A newline eseten eleve ott a vastag elvalaszto sor.
-																																									Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
-																																							
-																													
+										Todo:										^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
+																				Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
+																				Viszont legyen a tab is detektalva! Az 3 allapot.
+																				A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+																				A newline eseten eleve ott a vastag elvalaszto sor.
+																				Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+																				
+																				
+																				
+																				
+																				
+																				
+																				
+																			
 									+/
 									
 									//Todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
@@ -6306,11 +6385,16 @@ version(/+$DIDE_REGION+/all)
 		Result res;
 		
 		/+
-			Opt:
-									this is a slow search, it tries all the patterns one by one through the whole string.
-														Calling structuredCellToChar too many times.
+			Opt:												this is a slow search, it tries all the patterns one by one through the whole string.
+																																Calling structuredCellToChar too many times.
+																													
+																										
+																				
+																	
+														
 											
 								
+					
 		+/
 		foreach(pattern; patterns)
 		{
@@ -6562,11 +6646,16 @@ version(/+$DIDE_REGION+/all)
 										if(!res) res = d;
 										else return null; //multiple opportinities means: dangling
 										/*
-											Todo:
-																																	to handle dangling warnings, else dstPrepositions should be marked as dangling, 
-																																																							and ensure that no other propositions could join to them. 
+											Todo:																																												to handle dangling warnings, else dstPrepositions should be marked as dangling, 
+																																																																																																																									and ensure that no other propositions could join to them. 
+																																																																																																													
+																																																																																																		
+																																																																												
+																																																																	
+																																																						
 																																											
 																																
+																					
 										*/
 									}
 									
@@ -6871,11 +6960,16 @@ version(/+$DIDE_REGION+/all)
 	
 	auto detectCurlyBlock(CodeColumn col_) {
 		/+
-			Opt:
-									This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
-														That also should detect identifiers/keywords.
+			Opt:												This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
+																																That also should detect identifiers/keywords.
+																													
+																										
+																				
+																	
+														
 											
 								
+					
 		+/
 		auto p = col_.extractThisLevelDString.text;
 		p = p.replace("\n", " ");
@@ -7006,12 +7100,17 @@ else debug
 		}with(TestClass1)
 		{
 			/+
-				Todo:
-												the next comment is handled badly (lost):
-																				Ctrl+C puts it after the else
-																				After reload it disappears
+				Todo:																the next comment is handled badly (lost):
+																																												Ctrl+C puts it after the else
+																																												After reload it disappears
+																																							
+																																			
+																											
+																							
+																			
 															
 											
+							
 			+/
 			static if(0) label1:label2:writeln;
 			else
@@ -7222,12 +7321,17 @@ else
 	S[] s2 = b({ lambda4; });
 	struct T { S s; }
 	T[] t1 = [{ { 5 } }]; /+
-		Todo:
-						this is clear that the innermost block is not 
-										a statement/declaration block. 
-										It should use normal CodeBlock instead of Declaration. 
+		Todo:								this is clear that the innermost block is not 
+																						a statement/declaration block. 
+																						It should use normal CodeBlock instead of Declaration. 
+																			
+																	
+													
+											
+									
 							
 					
+			
 	+/
 	T[] t1 = [{ { 5,6 } }];
 	
@@ -7419,17 +7523,73 @@ version(/+$DIDE_REGION Comments+/all)
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
 	/+Code: if(1 + 1 == 2) print("xyz");+/
+	
 	/+
-		Code:
-						this is code /+
+		Code:this is code /+
 			nested comment,
 			and code:/+Code: 1+1+/
 		+/ ~ "45"
-						void main()
-						{
-							writeln("Hello World");
-						}
+		void main()
+		{
+			writeln("Hello World");
+		}
+	+/
+	/+
+		Code:this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+		void main()
+		{
+			writeln("Hello World");
+		}
+	+/
+	/+
+		Code:		this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+								void main()
+								{
+									writeln("Hello World");
+								}
 					
+			
+	+/
+	/+
+		this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+		void main()
+		{
+			writeln("Hello World");
+		}
+	+/
+	/+
+		this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+		void main()
+		{
+			writeln("Hello World");
+		}
+	+/
+	
+	/+
+		Code:		this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+										void main()
+										{
+											writeln("Hello World");
+										}
+									
+							
+					
+			
 	+/
 	
 	auto _testDirectives()
