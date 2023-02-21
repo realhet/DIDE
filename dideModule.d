@@ -622,10 +622,13 @@ version(/+$DIDE_REGION+/all)
 	version(/+$DIDE_REGION+/all)
 	{
 		/+
-			todo: to be able to edit and preserve the textcursor indices, 
-					textcursor should target objects, not indices. [codeRow, cell] 
-					would be the minimum. codeRow.subCellIdx(cell) and codeRow.index 
-					should be cached.
+			Todo:
+									to be able to edit and preserve the textcursor indices, 
+														textcursor should target objects, not indices. [codeRow, cell] 
+														would be the minimum. codeRow.subCellIdx(cell) and codeRow.index 
+														should be cached.
+											
+								
 		+/
 		
 		CodeColumn codeColumn;
@@ -660,8 +663,11 @@ version(/+$DIDE_REGION+/all)
 			return cmpChain(cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x));
 			
 			/+
-				opt: multiColumn selection sorting is extremely slow. 
-							Maybe the hierarchical column order should be cached in an integer value.
+				Opt:
+												multiColumn selection sorting is extremely slow. 
+																			Maybe the hierarchical column order should be cached in an integer value.
+															
+											
 			+/
 			
 			/+
@@ -1508,7 +1514,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
-		void put(CodeColumn col)
+		void put(CodeColumn col, string customPrefix="")
 		{
 			if(!col.rowCount) return; //Todo: there should be no CodeColumns without at least a single CodeRow inside. -> invatiant{}
 			//assert(col.rowCount>0, "Empty col: "~col.rowCount.text);
@@ -1524,6 +1530,7 @@ version(/+$DIDE_REGION+/all)
 				foreach(i, row; col.rows)
 				{
 					putNL;
+					if(i==0) put(customPrefix);
 					put(row);
 				}
 				
@@ -1589,35 +1596,42 @@ version(/+$DIDE_REGION+/all)
 		if(isInputRange!R && __traits(compiles, cast(Cell) cells.front))
 		{ foreach(c; cells) put(c); }
 		
-		void put(string prefix, CodeColumn block, string postfix, bool showFix=true)
+		
+		void put(string prefix, string customPrefix, CodeColumn block, string postfix)
+		{
+			const enableIndent_prev = enableIndent;
+			if(!prefix.empty && prefix.back.among('\'', '"', '`', '#')) enableIndent = false;
+			scope(exit) enableIndent = enableIndent_prev;
+			
+			put(prefix);
+			
+			if((prefix=="" && postfix.among(";", ":", "")))
+			{
+				//LOG("SB", block.sourceText);
+				putStatementBody(block);
+			}
+			else
+			{ put(block, customPrefix); }
+			
+			const newLineRequired = !!prefix.startsWith("//", "#"); //Todo: multiline #
+			if(newLineRequired)
+			{
+				assert(postfix=="");
+				needsNewLine = true;
+			}
+			else
+			{ put(postfix); }
+		}
+		
+		void put(string prefix, CodeColumn block, string postfix)
+		{ put(prefix, "", block, postfix); }
+		
+		void put(string prefix, CodeColumn block, string postfix, bool showFix)
 		{
 			if(!showFix)
 			{ put(block); }
 			else
-			{
-				const enableIndent_prev = enableIndent;
-				if(!prefix.empty && prefix.back.among('\'', '"', '`', '#')) enableIndent = false;
-				scope(exit) enableIndent = enableIndent_prev;
-				
-				put(prefix);
-				
-				if((prefix=="" && postfix.among(";", ":", "")))
-				{
-					//LOG("SB", block.sourceText);
-					putStatementBody(block);
-				}
-				else
-				{ put(block); }
-				
-				const newLineRequired = !!prefix.startsWith("//", "#"); //Todo: multiline #
-				if(newLineRequired)
-				{
-					assert(postfix=="");
-					needsNewLine = true;
-				}
-				else
-				{ put(postfix); }
-			}
+			{ put(prefix, block, postfix); }
 		}
 	}
 	struct CodeNodeBuilder
@@ -1713,10 +1727,13 @@ version(/+$DIDE_REGION+/all)
 	string reduceTextSelectionReferenceStringToStart(string src)
 	{
 		/+
-			todo: This nasty text fiddling workaround function could be avoided
-					if the start cursor was stored in the delete/insert operation's undo record, 
-					not the whole textSelection. The end cursor of the text selection could be 
-					invalid, thus rendering the whole textSelection invalid. But the start cursor is always valid.
+			Todo:
+									This nasty text fiddling workaround function could be avoided
+														if the start cursor was stored in the delete/insert operation's undo record, 
+														not the whole textSelection. The end cursor of the text selection could be 
+														invalid, thus rendering the whole textSelection invalid. But the start cursor is always valid.
+											
+								
 		+/
 		
 		__gshared unittested = false; //Todo: unittest nicely
@@ -2152,8 +2169,11 @@ class CodeRow: Row
 				
 				//Opt: these calculations operqations should be cached. Seems not that slow however
 				/+
-					todo: only display this when there is an editor cursor active in the codeColumn
-					(or in the module)
+					Todo:
+															only display this when there is an editor cursor active in the codeColumn
+																				(or in the module)
+																			
+														
 				+/
 				dr.translate(innerPos); dr.alpha = .4f;
 				scope(exit) { dr.pop; dr.alpha = 1; }
@@ -2183,8 +2203,11 @@ class CodeRow: Row
 					assert(g);
 					dr.point(g.outerBounds.center);
 					/+
-						todo: don't highlight single spaces only if there is a tab or character 
-											or end of line next to them.
+						Todo:
+																		don't highlight single spaces only if there is a tab or character 
+																													or end of line next to them.
+																							
+																	
 					+/
 				}
 			}
@@ -2754,9 +2777,12 @@ class CodeRow: Row
 				static bool canBeStatement(CodeRow row)
 				{
 					/+
-						note: this fixes	the following bug:
-											const 	a=1,   ->		const a=1,
-												b=2;	b=2; 
+						Note:
+																		this fixes	the following	bug:
+																													const 	a=1,	->		const a=1,
+																														b=2;	b=2; 
+																							
+																	
 					+/
 					
 					foreach_reverse(dchar ch; row.chars)
@@ -2779,8 +2805,11 @@ class CodeRow: Row
 					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement;
 					
 					/+
-						todo: If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
-															<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+						Todo:
+																		If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
+																																	<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+																							
+																	
 					+/
 					
 					if(numTabs)
@@ -2789,8 +2818,11 @@ class CodeRow: Row
 						r.subCells = r.subCells[numTabs..$];
 						r.refreshTabIdx;
 						/+
-							note: no need to call needRefresh_elastic because all rows will be refreshed.
-													It's in convertSpacesToTabs which only kicks right after row creation.
+							Note:
+																					no need to call needRefresh_elastic because all rows will be refreshed.
+																																		It's in convertSpacesToTabs which only kicks right after row creation.
+																											
+																				
 						+/
 					}
 				}
@@ -2937,7 +2969,7 @@ class CodeRow: Row
 			//Note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 			//Todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//Todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-			if(getStructureLevel>=StructureLevel.highlighted)
+			if(true /+getStructureLevel>=StructureLevel.highlighted+/)
 			{
 				try { resyntaxer.appendHighlighted(shallowText); }catch(Exception e) {
 					WARN(e.simpleMsg);
@@ -3130,9 +3162,12 @@ class CodeRow: Row
 				const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement;
 				innerSize = vec2(maxInnerWidth + totalGap.x, y);
 				/+
-					todo: 	this is not possible with the immediate UI because the autoWidth/autoHeigh 
-						information is lost. And there is no functions to return the required content size.
-						The container should have a current size, a minimal required size and separate autoWidth flags.
+					Todo:
+																this is not possible with the immediate UI because the autoWidth/autoHeigh 
+																					information is lost. And there is no functions to return the required content size.
+																					The container should have a current size, a minimal required size and separate autoWidth flags.
+																			
+														
 				+/
 					
 				if(!flags.dontStretchSubCells)
@@ -3214,9 +3249,12 @@ class CodeRow: Row
 			test_RowCount(" ", 1);
 			test_RowCount("\n", 2);
 			test_RowCount("\n ", 2, "\n "); /+
-				todo: a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
-								 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
-								De ezt majd kesobb. Most minden tab lesz.
+				Todo:
+												a tabokat visszaalakitani space-ra. Csak a leading comment/whitespace-re menjen,
+																				 az elastic tabokat meg egymas ala kell igazitani space-ekkel.
+																				De ezt majd kesobb. Most minden tab lesz.
+															
+											
 			+/
 			test_RowCount("\r\n", 2, "\n");
 			test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //Todo: a tabokat visszaalakitani space-ra
@@ -3972,7 +4010,7 @@ version(/+$DIDE_REGION+/all)
 	Type type;
 	
 	/+
-		+ /+code:customPrefix+/ can be a known directive: "line", "define"
+		+ /+Code: customPrefix+/ can be a known directive: "line", "define"
 			or a comment prefix: "Todo:", "Error:", "Opt:"
 	+/
 	string customPrefix;
@@ -3992,8 +4030,22 @@ version(/+$DIDE_REGION+/all)
 		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 		;
 	
+	static private auto skipNewLineAndTabs(R)(R r)
+	{
+		//Note: This is for detecting multiline custom comments.
+		
+		//skip a newline
+		if(r.startsWith('\n')) { r.popFront; }
+		else if(r.startsWith("\r\n")) { r.popFront; r.popFront; }
+		else return r;
+		
+		//skip tabs
+		while(r.startsWith('\t')) r.popFront;
+		return r;
+	}
+	
 	static private int detectCustomCommentIdx(R)(R r)
-	{ return r.startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; }
+	{ return skipNewLineAndTabs(r).startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; }
 	
 	static private int detectCustomDirectiveIdx(R)(R r)
 	{
@@ -4121,9 +4173,12 @@ version(/+$DIDE_REGION+/all)
 					if(type == Type.directive)
 					{
 						/+
-							note: this is unused because #directive detection is not in 
-							the implemented in the scanner, it's a later pass that creates 
-							the dirctive comment manually, and calls promoteCustomDirective()
+							Note:
+																					this is unused because #directive detection is not in 
+																												the implemented in the scanner, it's a later pass that creates 
+																												the dirctive comment manually, and calls promoteCustomDirective()
+																											
+																				
 						+/
 						assert(0, "This should be implemented by the scanner. No other ways to call this.");
 						
@@ -4147,6 +4202,7 @@ version(/+$DIDE_REGION+/all)
 					//remove customPrefix from content
 					if(customPrefix != "")
 					{
+						s = skipNewLineAndTabs(s);
 						assert(s.startsWith!"a.toLower==b.toLower"(customPrefix), "Custom prefix must be exact.");
 						s = s[customPrefix.length..$].withoutStarting(' ');
 					}
@@ -4196,9 +4252,9 @@ version(/+$DIDE_REGION+/all)
 			//Opt: this is only needed when the syntax or the error state has changed.
 			
 			if(isCode)
-				content.resyntax;
+			content.resyntax;
 			else
-				content.fillSyntax(syntax);
+			content.fillSyntax(syntax);
 		}
 		
 		
@@ -4406,12 +4462,26 @@ version(/+$DIDE_REGION+/all)
 	{
 		enforce(verify, "Invalid comment format");
 		
-		//adjust the stylistic space between the prefix and the content.
-		auto p = prefix; //this is the combined comment and custom prefix
-		if(p.endsWith(' ') && (content.empty || !content.firstChar.isDLangIdentifierCont))
-		p = p[0..$-1];
+		string adjustStylisticSpace(string p)
+		{
+			//adjust the stylistic space between the prefix and the content.
+			if(p.endsWith(' ') && (content.empty || !content.firstChar.isDLangIdentifierCont))
+			p.popBack;
+			return p;
+		}
 		
-		builder.put(p, content, postfix);
+		if(isCustom && type!=Type.directive && content.rows.length>1)
+		{
+			//this is required to properly indent multiline customComments
+			builder.put(commentPrefix, adjustStylisticSpace(customPrefix), content, postfix);
+		}
+		else
+		{
+			auto p = adjustStylisticSpace(prefix);
+			//this is the combined comment and custom prefix
+					
+			builder.put(p, content, postfix);
+		}
 	}
 }class CodeString : CodeContainer
 {
@@ -4754,8 +4824,11 @@ version(/+$DIDE_REGION+/all)
 					if(auto r = content.getRow(0))
 					{
 						/+
-							todo: this detector is not so nice...
-													Need to develop more advanced source code parsing methods.
+							Todo:
+																					this detector is not so nice...
+																																		Need to develop more advanced source code parsing methods.
+																											
+																				
 						+/
 						
 						//structured
@@ -4811,8 +4884,11 @@ version(/+$DIDE_REGION+/all)
 					{
 						content.rebuilder.appendHighlighted(sourceText);
 						/+
-							todo: this is NOT raising an exception, only draws the error with 
-													red and and display a WARN. It should revert to plain...
+							Todo:
+																					this is NOT raising an exception, only draws the error with 
+																																		red and and display a WARN. It should revert to plain...
+																											
+																				
 						+/
 						structureLevel = StructureLevel.highlighted;
 					}
@@ -5540,8 +5616,11 @@ version(/+$DIDE_REGION+/all)
 					if(isSimpleBlock)
 					{
 						/+
-							todo: the transition from simpleBlock to non-simple block is not clear.
-							A boolean flag is needed to let the user write into the header.
+							Todo:
+																					the transition from simpleBlock to non-simple block is not clear.
+																												A boolean flag is needed to let the user write into the header.
+																											
+																				
 						+/
 						put("{", block, "}");
 					}
@@ -5641,12 +5720,15 @@ version(/+$DIDE_REGION+/all)
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
 									/+
-										todo:	^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
-											Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
-											Viszont legyen a tab is detektalva! Az 3 allapot.
-											A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
-											A newline eseten eleve ott a vastag elvalaszto sor.
-											Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+										Todo:
+																															^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
+																																									Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment van detektalna (a comment az lehet, hogy nincs is!).
+																																									Viszont legyen a tab is detektalva! Az 3 allapot.
+																																									A tab eseten egy fel sornyi szunetet is be lehetne iktatni. A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+																																									A newline eseten eleve ott a vastag elvalaszto sor.
+																																									Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+																																							
+																													
 									+/
 									
 									//Todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
@@ -6224,8 +6306,11 @@ version(/+$DIDE_REGION+/all)
 		Result res;
 		
 		/+
-			opt: this is a slow search, it tries all the patterns one by one through the whole string.
-					Calling structuredCellToChar too many times.
+			Opt:
+									this is a slow search, it tries all the patterns one by one through the whole string.
+														Calling structuredCellToChar too many times.
+											
+								
 		+/
 		foreach(pattern; patterns)
 		{
@@ -6477,8 +6562,11 @@ version(/+$DIDE_REGION+/all)
 										if(!res) res = d;
 										else return null; //multiple opportinities means: dangling
 										/*
-											todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
-																						and ensure that no other propositions could join to them. 
+											Todo:
+																																	to handle dangling warnings, else dstPrepositions should be marked as dangling, 
+																																																							and ensure that no other propositions could join to them. 
+																																											
+																																
 										*/
 									}
 									
@@ -6783,8 +6871,11 @@ version(/+$DIDE_REGION+/all)
 	
 	auto detectCurlyBlock(CodeColumn col_) {
 		/+
-			opt: This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
-					That also should detect identifiers/keywords.
+			Opt:
+									This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
+														That also should detect identifiers/keywords.
+											
+								
 		+/
 		auto p = col_.extractThisLevelDString.text;
 		p = p.replace("\n", " ");
@@ -6915,9 +7006,12 @@ else debug
 		}with(TestClass1)
 		{
 			/+
-				todo: the next comment is handled badly (lost):
-								Ctrl+C puts it after the else
-								After reload it disappears
+				Todo:
+												the next comment is handled badly (lost):
+																				Ctrl+C puts it after the else
+																				After reload it disappears
+															
+											
 			+/
 			static if(0) label1:label2:writeln;
 			else
@@ -7128,9 +7222,12 @@ else
 	S[] s2 = b({ lambda4; });
 	struct T { S s; }
 	T[] t1 = [{ { 5 } }]; /+
-		todo: this is clear that the innermost block is not 
-				a statement/declaration block. 
-				It should use normal CodeBlock instead of Declaration. 
+		Todo:
+						this is clear that the innermost block is not 
+										a statement/declaration block. 
+										It should use normal CodeBlock instead of Declaration. 
+							
+					
 	+/
 	T[] t1 = [{ { 5,6 } }];
 	
@@ -7322,6 +7419,18 @@ version(/+$DIDE_REGION Comments+/all)
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
 	/+Code: if(1 + 1 == 2) print("xyz");+/
+	/+
+		Code:
+						this is code /+
+			nested comment,
+			and code:/+Code: 1+1+/
+		+/ ~ "45"
+						void main()
+						{
+							writeln("Hello World");
+						}
+					
+	+/
 	
 	auto _testDirectives()
 	{
