@@ -8,7 +8,7 @@
 /+DIDE+/ 
 
 /+
-	todo: this crashes the StructureScanner:
+	Todo: this crashes the StructureScanner:
 	
 				}
 				
@@ -33,86 +33,87 @@ version(/+$DIDE_REGION main+/all)
 	version(/+$DIDE_REGION Todo+/all)
 	{
 		
-		//note: debug is not needed to get proper exception information
+		//Note: debug is not needed to get proper exception information
 		
-		//todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
+		//Todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
 		
-		//todo: wholeWords search (eleje/vege kulon)
-		//todo: filter search results per file and per syntax (comment, string, code, etc)
+		//Todo: wholeWords search (eleje/vege kulon)
+		//Todo: filter search results per file and per syntax (comment, string, code, etc)
 		
-		//todo: Adam Ruppe search tool -> http://search.dpldocs.info/?q=sleep
+		//Todo: Adam Ruppe search tool -> http://search.dpldocs.info/?q=sleep
 		
-		//todo: het.math.cmp integration with std
+		//Todo: het.math.cmp integration with std
 		
-		//todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
+		//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
 		
-		//todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
-		//todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
+		//Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
+		//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
 		
-		//todo: Ctrl+ 1..9		 Copy to clipboard[n]       Esetleg Ctrl+C+1..9
-		//todo: Alt + 1..9		 Paste from clipboard[n]
-		//todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
+		//Todo: Ctrl+ 1..9		 Copy to clipboard[n]       Esetleg Ctrl+C+1..9
+		//Todo: Alt + 1..9		 Paste from clipboard[n]
+		//Todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
 		
-		//todo: unstructured syntax highlight optimization: save and reuse tokenizer internal state on each source code blocks. No need to process ALL the source when the position of the modification is known.
+		//Todo: unstructured syntax highlight optimization: save and reuse tokenizer internal state on each source code blocks. No need to process ALL the source when the position of the modification is known.
 		
-		//todo: unstructured view: fake local syntax highlight addig, amig a bacground syntax highlighter el nem keszul.
-		//todo: unstructured view: immediate syntax highlight for smalles modules.
+		//Todo: unstructured view: fake local syntax highlight addig, amig a bacground syntax highlighter el nem keszul.
+		//Todo: unstructured view: immediate syntax highlight for smalles modules.
 		
-		//todo: save/restore buildsystem cache on start/exit
-		//todo: nem letezo modul import forditasakor CRASH
+		//Todo: save/restore buildsystem cache on start/exit
+		//Todo: nem letezo modul import forditasakor CRASH
 		
-		//todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
-		//todo: DIDE syntax highlight vector .rgba postfixes
-		//todo: kinetic scroll
+		//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
+		//Todo: DIDE syntax highlight vector .rgba postfixes
+		//Todo: kinetic scroll
 		
-		//todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
+		//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
 		
-		//todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
+		//Todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
 		
-		//todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
-		//todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
-		//bug: F9 -> invalid character FEFF (utf8 BOM)
-		//todo: isUniAlpha support	(C99 identifier char set)
-		//todo: MB4 MB5 should only	zoom when mouse is over the screen, not when over other windows.
+		//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
+		//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
+		//Bug: F9 -> invalid character FEFF (utf8 BOM)
+		//Todo: isUniAlpha support	(C99 identifier char set)
+		//Todo: MB4 MB5 should only	zoom when mouse is over the screen, not when over other windows.
 		
-		//todo: markdown a commentekben.
+		//Todo: markdown a commentekben.
 		
 		/+
-			todo: Nagy blokkok mellett a magas zarojelek stretchelese: 
+			Todo: Nagy blokkok mellett a magas zarojelek stretchelese: 
 						a) A ()[] a kozepen van megtoldva.
 						b) A {} a felso es also harmadanal van megtoldva.
 						c) A () a felso es also negyede kozott ciklikusan ismetelgetve van
 						d) A {} a felso es also harmadanal meg is van toldva illetve a kozepe ciklikusan ismetelgetve van.
 		+/
 		
-		//todo: implement culling for Container. Can be tested using Workspace.
+		//Todo: implement culling for Container. Can be tested using Workspace.
 		
-		//todo: handle newline before and after else.
-		//todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
-		//todo: tab removal from the left side of multiline comments
+		//Todo: handle newline before and after else.
+		//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
+		//Todo: tab removal from the left side of multiline comments
 		
-		//todo: dbgsrv: Disable debugLogClient in DIDE2
-		//todo: dbgsrv: Use a trick (command line) to specify the client should have to connect somewhere
+		//Todo: dbgsrv: Disable debugLogClient in DIDE2
+		//Todo: dbgsrv: Use a trick (command line) to specify the client should have to connect somewhere
 		
-		//todo: search in std, core, etc
-		//todo: winapi help search
+		//Todo: search in std, core, etc
+		//Todo: winapi help search
 		
-		//todo: BOM handling in copy/paste operations
+		//Todo: BOM handling in copy/paste operations
 		
-		//todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
+		//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
 		
 		/+
-			todo: 	Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
-				Verify it still works in between adjacent preposition.
+			Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
+			Verify it still works in between adjacent preposition.
 		+/
-		//todo: Managed level: Multiline //comment at a statement is commenting out the ; symbol at the end.
-		//todo: selection across miltiple pages (vertical tab) is clipped wrongly
+		//Todo: Managed level: Multiline //comment at a statement is commenting out the ; symbol at the end.
+		//Todo: selection across miltiple pages (vertical tab) is clipped wrongly
 		
-		//todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
+		//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
 		/+
-			todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
+			Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
 				const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
 		+/
+		//todo: On bracket errors, it should mark the opening bracket too. In the scannet there should be a way to remember the opening brackets in a stack.
 	}
 	
 	//globals ////////////////////////////////////////
@@ -124,7 +125,7 @@ version(/+$DIDE_REGION main+/all)
 	
 	enum LogRequestPermissions	= false;
 	
-	enum visualizeMarginsAndPaddingUnderMouse = false; //todo: make this a debug option in a menu
+	enum visualizeMarginsAndPaddingUnderMouse = false; //Todo: make this a debug option in a menu
 	
 	alias blink = didemodule.blink;
 	
@@ -229,7 +230,7 @@ version(/+$DIDE_REGION main+/all)
 			bool cancelling()const
 			{ return buildSystemWorkerState.cancelling; }
 			bool running()const
-			{ return false; /+todo: debugServer+/ } 
+			{ return false; /+Todo: debugServer+/ } 
 			
 			void initBuildSystem()
 			{
@@ -240,7 +241,7 @@ version(/+$DIDE_REGION main+/all)
 			void updateBuildSystem()
 			{
 				buildResult.receiveBuildMessages;
-				//todo: it's only good for ONE workspace!!!
+				//Todo: it's only good for ONE workspace!!!
 			}
 			
 			void destroyBuildSystem()
@@ -277,7 +278,7 @@ version(/+$DIDE_REGION main+/all)
 				{ if(o.length) bs.compileArgs.addIfCan(o); }
 				
 				buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs));
-				//todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
+				//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
 			}
 					
 			void run()
@@ -298,8 +299,8 @@ version(/+$DIDE_REGION main+/all)
 				
 				dbgsrv.forcedStop;
 				
-				//todo: kill app
-				//todo: debugServer
+				//Todo: kill app
+				//Todo: debugServer
 			}
 					
 			override void onCreate()
@@ -308,7 +309,7 @@ version(/+$DIDE_REGION main+/all)
 				baseCaption = appFile.nameWithoutExt.uc;
 				isSpecialVersion = baseCaption != "DIDE2";
 				
-				{ auto a = this; a.fromJson(ini.read("settings", "")); } //todo: this.fromJson
+				{ auto a = this; a.fromJson(ini.read("settings", "")); } //Todo: this.fromJson
 				
 				initBuildSystem;
 				workspace = new Workspace;
@@ -403,8 +404,8 @@ version(/+$DIDE_REGION main+/all)
 					static uint id;
 					if(id.chkSet(clipboard.sequenceNumber))
 					File(`virtual:\clipboard.txt`).write(clipboard.asText);
-					//todo: sinchronize the clipboard both ways.
-					//todo: don't load too big files. And most importantly don't crash.
+					//Todo: sinchronize the clipboard both ways.
+					//Todo: don't load too big files. And most importantly don't crash.
 				}
 				
 				dbgsrv.onDebugLog = &onDebugLog;
@@ -425,7 +426,7 @@ version(/+$DIDE_REGION main+/all)
 					if(workspaceFile.exists) { workspace.loadWorkspace(workspaceFile); }
 				}
 				
-				invalidate; //todo: low power usage
+				invalidate; //Todo: low power usage
 				caption = format!"%s - [%s]%s %s"(
 					baseCaption,
 					workspace.mainModuleFile.fullName,
@@ -483,7 +484,7 @@ version(/+$DIDE_REGION main+/all)
 						margin = "0"; padding = "0";//border = "1 normal gray";
 						Row(
 							{
-								 //todo: Panel should be a Row, not a Column...
+								 //Todo: Panel should be a Row, not a Column...
 								Row({ workspace.UI_ModuleBtns; flex = 1; });
 							}
 						);
@@ -583,7 +584,7 @@ version(/+$DIDE_REGION main+/all)
 							{
 								/*theme = "tool";*/ style.fontHeight = 18;
 								
-								//todo: faszomat ebbe a szarba:
+								//Todo: faszomat ebbe a szarba:
 								flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
 								//flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
 								
@@ -680,7 +681,7 @@ version(/+$DIDE_REGION main+/all)
 					{
 						if(cancelling) return NO;
 						if(building) return APPSTARTING;
-						if(im.mouseOverUI || im.wantMouse) return ARROW; //todo: im.chooseMouseCursor
+						if(im.mouseOverUI || im.wantMouse) return ARROW; //Todo: im.chooseMouseCursor
 						with(workspace.moduleSelectionManager)
 						{
 							if(mouseOp == MouseOp.move) return SIZEALL;
@@ -690,7 +691,7 @@ version(/+$DIDE_REGION main+/all)
 						{
 							return IBEAM; 
 							/+
-								bug: ez az IBeam a form jobb oldalan eltunik pont annyi pixelnyire 
+								Bug: ez az IBeam a form jobb oldalan eltunik pont annyi pixelnyire 
 															az ablak jobb szeletol, mint ahany pixelre az ablak bal szele van 
 															a desktop bal szeletol merve.
 							+/
@@ -771,7 +772,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			
 			auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!MarkerLayer.array  )();
-			//note: compiler drops weird error. this also works:
+			//Note: compiler drops weird error. this also works:
 			//Writing Explicit type also works:
 			//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
 			
@@ -842,8 +843,8 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//return frmMain.building;
 				return false;
-				//note: it's making me angly if I can't modify while it's compiling.
-				//bug: deleting from a readonly module loses its selections.
+				//Note: it's making me angly if I can't modify while it's compiling.
+				//Bug: deleting from a readonly module loses its selections.
 			}
 					
 			override void rearrange()
@@ -855,7 +856,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@STORED @property
 			{
-				//note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
+				//Note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
 				size_t markerLayerHideMask() const
 				{
 					size_t res;
@@ -947,7 +948,7 @@ version(/+$DIDE_REGION main+/all)
 				if(sameText(m.file.fullName, file.fullName))
 				return m;
 				
-				//opt: hash table with fileName.lc...
+				//Opt: hash table with fileName.lc...
 				
 				return null;
 			}
@@ -955,7 +956,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			void closeModule(File file)
 			{
-				//todo: ask user to save if needed
+				//Todo: ask user to save if needed
 				if(!file) return;
 				const idx = modules.map!(m => m.file).countUntil(file);
 				if(idx<0) return;
@@ -1011,7 +1012,7 @@ version(/+$DIDE_REGION main+/all)
 				auto m = oneSelectedModule;
 				if(!m)
 				flashWarning("This operation requires a single selected module.");
-				//todo: put the operation's name in the message.
+				//Todo: put the operation's name in the message.
 				
 				return m;
 			}
@@ -1052,7 +1053,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			private void closeSelectedModules_impl()
 			{
-				//todo: ask user to save if needed
+				//Todo: ask user to save if needed
 				modules = unselectedModules;
 				updateSubCells;
 				invalidateTextSelections;
@@ -1060,7 +1061,7 @@ version(/+$DIDE_REGION main+/all)
 					
 			private void closeAllModules_impl()
 			{
-				//todo: ask user to save if needed
+				//Todo: ask user to save if needed
 				clear;
 				invalidateTextSelections;
 			}
@@ -1102,7 +1103,7 @@ version(/+$DIDE_REGION main+/all)
 			File[] allFilesFromModule(File file)
 			{
 				if(!file.exists) return [];
-				//todo: not just for //@exe of //@dll
+				//Todo: not just for //@exe of //@dll
 				BuildSettings settings = { verbose : false };
 				BuildSystem buildSystem;
 				return buildSystem.findDependencies(file, settings).map!(m => m.file).array;
@@ -1113,7 +1114,7 @@ version(/+$DIDE_REGION main+/all)
 					
 			void queueModule(File f)
 			{
-				//todo: this workaround is there to let the filedialog handle virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
+				//Todo: this workaround is there to let the filedialog handle virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
 				if(f.fullName.isWild(`*\?*:*`)) f.fullName = wild[1].split('\\').back~':'~wild[2];
 				openQueue ~= f;
 			}
@@ -1160,7 +1161,7 @@ version(/+$DIDE_REGION main+/all)
 			//LOG(output);
 			
 			T0;
-			//opt: in debug mode this is terribly slow.
+			//Opt: in debug mode this is terribly slow.
 			errorList = new ErrorListModule(null, File.init);
 			//LOG(siFormat("errorList create %s ms", DT));
 				
@@ -1174,7 +1175,7 @@ version(/+$DIDE_REGION main+/all)
 				
 			auto buildMessagesAsSearchResults(BuildMessageType type)
 			{
-				//todo: opt
+				//Todo: opt
 				Container.SearchResult[] res;
 				
 				foreach(msgIdx, const msg; br.messages)
@@ -1182,7 +1183,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(auto mod = findModule(msg.location.file.withoutDMixin))
 					{
-						//opt: bottleneck! linear search
+						//Opt: bottleneck! linear search
 						if((msg.location.line-1).inRange(mod.content.subCells))
 						{
 							Container.SearchResult sr;
@@ -1211,7 +1212,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 				
 			/+
-				opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
+				Opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
 								module change, module move.
 			+/
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
@@ -1219,7 +1220,7 @@ version(/+$DIDE_REGION main+/all)
 			markerLayers[t].searchResults = buildMessagesAsSearchResults(t);
 		}
 		
-		//todo: since all the code containers have parents, location() is not needed anymore
+		//Todo: since all the code containers have parents, location() is not needed anymore
 		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
 		{
@@ -1279,7 +1280,7 @@ version(/+$DIDE_REGION main+/all)
 					const p = st.back.localPos;
 					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted;
 					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1);
-					//todo: too much copy paste. Must refactor these ifs.
+					//Todo: too much copy paste. Must refactor these ifs.
 					
 					if(idx<pages.length/+it needs only one page, not two+/)
 					{
@@ -1304,7 +1305,7 @@ version(/+$DIDE_REGION main+/all)
 			auto a(T)(void delegate(T) f)
 			{ if(auto x = cast(T)st.get(0).cell) { st.popFront; f(x); } }
 				
-			//note: this works only at the first dept level
+			//Note: this works only at the first dept level
 				
 			CodeLocation res;
 			a(
@@ -1319,14 +1320,14 @@ version(/+$DIDE_REGION main+/all)
 									{
 									if(auto line = col.subCells.countUntil(row)+1)
 									{
-										//todo: parent.subcellindex/child.index
+										//Todo: parent.subcellindex/child.index
 										res.line = line.to!int;
 										a(
 											(Cell cell)
 												{
 												if(auto column = row.subCells.countUntil(cell)+1)
 												{
-													//todo: parent.subcellindex/child.index
+													//Todo: parent.subcellindex/child.index
 													res.column = column.to!int;
 												}
 											}
@@ -1344,7 +1345,7 @@ version(/+$DIDE_REGION main+/all)
 		static CellLocation[] findLastCodeRow(CellLocation[] st)
 		{
 			foreach_reverse(i; 0..st.length) {
-				//todo: functinal
+				//Todo: functinal
 				auto row = cast(CodeRow)st[i].cell;
 				if(row) return st[i..$];
 			}
@@ -1405,7 +1406,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			auto arr = textSelectionsGet;
 			foreach(ref ts; arr) ts.move(dir, select);
-			textSelectionsSet = merge(arr); //todo: maybe merge should reside in validateTextSelections
+			textSelectionsSet = merge(arr); //Todo: maybe merge should reside in validateTextSelections
 		}
 			
 		void scrollV(float dy)
@@ -1413,7 +1414,7 @@ version(/+$DIDE_REGION main+/all)
 		void scrollH(float dx)
 		{ frmMain.view.scrollH(dx); }
 		void zoom(float log)
-		{ frmMain.view.zoom(log); } //todo: Only zoom when window is foreground
+		{ frmMain.view.zoom(log); } //Todo: Only zoom when window is foreground
 			
 		float scrollSpeed()
 		{ return frmMain.deltaTime.value(second)*2000; }
@@ -1428,7 +1429,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			foreach(ref ts; next)
 			foreach(
-				ref tc; ts.cursors//note: It is important to move the cursors separately here.  Don't let TextSelection.move do cursor collapsing.
+				ref tc; ts.cursors//Note: It is important to move the cursors separately here.  Don't let TextSelection.move do cursor collapsing.
 			)
 			tc.move(ivec2(0, dir));
 			
@@ -1446,7 +1447,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		void preserveTextSelections(void delegate() fun)
 		{
-			//todo: preserve module selections too
+			//Todo: preserve module selections too
 			const savedTextSelections = textSelectionsGet.map!(a => a.toReference.text).array;
 			scope(exit) textSelectionsSet = savedTextSelections.map!(a => TextSelection(a, &findModule)).array;
 			if(fun) fun();
@@ -1466,13 +1467,13 @@ version(/+$DIDE_REGION main+/all)
 				(c){
 					//move the cursor to the end or home of the line
 					if(toTheEnd) c.moveToLineEnd;
-					else c.moveToLineStart; //todo: it's not functional yet
+					else c.moveToLineStart; //Todo: it's not functional yet
 					return TextSelection(c, c, false); //make a selection out of them
 				}
 			)
 				.merge /+merge it, because there can be duplicates+/;
 			
-			if(res.length) res[0].primary = true; //todo: primary selection is inconsistent when multiselect
+			if(res.length) res[0].primary = true; //Todo: primary selection is inconsistent when multiselect
 			
 			return res;
 		}
@@ -1508,7 +1509,7 @@ version(/+$DIDE_REGION main+/all)
 		void selectSearchResults(SearchResult[] arr)
 		{
 			//selectSearchResults ///////////////////////////
-			//todo: use this as a revalidator after the modules were changed under the search results.
+			//Todo: use this as a revalidator after the modules were changed under the search results.
 			//Maybe verify the search results while drawing. Cache the last change or something.
 			
 			TextSelection conv(SearchResult sr)
@@ -1518,7 +1519,7 @@ version(/+$DIDE_REGION main+/all)
 				if(auto col = row.parent)
 				{
 					auto 	rowIdx = row.index,
-						//todo: could find other cells as well.
+						//Todo: could find other cells as well.
 						//If the user edits the document for example.
 						st = row.subCellIndex(sr.cells.front),
 						en = row.subCellIndex(sr.cells.back);
@@ -1577,7 +1578,7 @@ version(/+$DIDE_REGION main+/all)
 			//auto em = editedModules;
 			//if(em.length>1)
 			
-			//todo: primary
+			//Todo: primary
 			
 			/*
 				   if(lod.moduleLevel){
@@ -1641,7 +1642,7 @@ version(/+$DIDE_REGION main+/all)
 			bool isExistingModule(Cell c)
 			{
 				if(c is cachedExistingModule) return true;
-				//opt: this is helping nothing compared to
+				//Opt: this is helping nothing compared to
 				
 				if(auto m = cast(Module)c)
 				if(modules.canFind(m))
@@ -1662,10 +1663,10 @@ version(/+$DIDE_REGION main+/all)
 				if(p[0] !is this) return false;	 //not this workspace
 				if(!isExistingModule(p[1])) return false;	 //module died
 				
-				//todo: check if selection is inside row boundaries.
+				//Todo: check if selection is inside row boundaries.
 				return true;
 			}
-			return arr.filter!(a => validate(a)).array; //todo: try to fix partially broken selections
+			return arr.filter!(a => validate(a)).array; //Todo: try to fix partially broken selections
 		}
 	}version(/+$DIDE_REGION Permissions+/all)
 	{
@@ -1682,7 +1683,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			bool requestModifyPermission(CodeColumn col)
 			{
-				//todo: constness
+				//Todo: constness
 				assert(col);
 				if(isReadOnly) return false;
 				auto m = moduleOf(col);
@@ -1723,7 +1724,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				auto res = requestModifyPermission(ts.codeColumn);
 				
-				//todo: there could be additional checks based on the input text
+				//Todo: there could be additional checks based on the input text
 				import het.structurescanner;
 				if(str.isValidDLang)
 				WARN("Invalid DLang source code inserted.\n"~str);
@@ -1818,20 +1819,20 @@ version(/+$DIDE_REGION main+/all)
 				m.reload(desiredStructureLevel, Yes.useExternalContents, what);
 				//selectAll
 				textSelectionsSet = [m.content.allSelection(true)];
-				//todo: refactor codeColumn.allTextSelection(bool primary or not)
+				//Todo: refactor codeColumn.allTextSelection(bool primary or not)
 			}
 			else
 			assert(0, "execute_reload: module lost: "~where.quoted);
-			//todo: somehow signal bact to the undo manager, if an undo operation is failed
+			//Todo: somehow signal bact to the undo manager, if an undo operation is failed
 		}
 		
 		void undoRedo_impl(string what)()
 		{
-			//todo: select the latest undo/redo operation if there are more than 
+			//Todo: select the latest undo/redo operation if there are more than 
 			//one modules selected. If no modules selected: select from all of them.
 			if(auto m = moduleWithPrimaryTextSelection)
 			{
-				//todo: undo should not remove textSelections on other modules.
+				//Todo: undo should not remove textSelections on other modules.
 				mixin(q{m.undoManager.#(&execute_#, &execute_reload);}.replace("#", what));
 				invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
@@ -1844,14 +1845,14 @@ version(/+$DIDE_REGION main+/all)
 		bool copy_impl(TextSelection[] textSelections)
 		{
 			//copy_impl ///////////////////////////////////////
-			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
+			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //Todo: merge check
 			
 			auto s = textSelections.sourceText; //this can throw if structured declarations has invalid contents
 			
-			//bug: Two adjacent slashComnments are not emit a newLine in between them
+			//Bug: Two adjacent slashComnments are not emit a newLine in between them
 			
 			bool valid = s.length>0;
-			if(valid) clipboard.asText = s;  //todo: BOM handling
+			if(valid) clipboard.asText = s;  //Todo: BOM handling
 			return valid;
 		}
 		
@@ -1861,11 +1862,11 @@ version(/+$DIDE_REGION main+/all)
 			//cut_impl ////////////////////////////////////////
 			undoGroupId++;
 			
-			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //todo: merge check
+			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //Todo: merge check
 			
 			auto savedSelections = textSelections.map!"a.toReference".array;
 			
-			if(returnSuccess !is null) *returnSuccess = true; //todo: terrible way to
+			if(returnSuccess !is null) *returnSuccess = true; //Todo: terrible way to
 			
 			void cutOne(TextSelection sel)
 			{
@@ -1877,7 +1878,7 @@ version(/+$DIDE_REGION main+/all)
 					
 					foreach_reverse(y; st.pos.y..en.pos.y+1)
 					{
-						 //todo: this loop is in the draw routine as well. Must refactor and reuse
+						 //Todo: this loop is in the draw routine as well. Must refactor and reuse
 						if(auto row = col.getRow(y))
 						{
 							const rowCellCount = row.cellCount;
@@ -1889,7 +1890,7 @@ version(/+$DIDE_REGION main+/all)
 							{
 								 //delete whole row
 								col.subCells = col.subCells.remove(y);
-								//opt: do this in a one run batch operation.
+								//Opt: do this in a one run batch operation.
 							}
 							else
 							{
@@ -1902,7 +1903,7 @@ version(/+$DIDE_REGION main+/all)
 									if(x>=0 && x<rowCellCount)
 									{
 										row.subCells = row.subCells.remove(x);
-										//opt: this is not so fast. It removes 1 by 1.
+										//Opt: this is not so fast. It removes 1 by 1.
 									}
 									else if(x==rowCellCount)
 									{
@@ -1911,7 +1912,7 @@ version(/+$DIDE_REGION main+/all)
 										{
 											foreach(ref ss; savedSelections)
 											{
-												//opt: must not go througn all selection.
+												//Opt: must not go througn all selection.
 												//It could binary search the start position to iterate.
 												ss.replaceLatestRow(nextRow, row);
 											}
@@ -1920,7 +1921,7 @@ version(/+$DIDE_REGION main+/all)
 											{
 												row.append(nextRow.subCells);
 												row.adoptSubCells;
-												//note: it seems logical, but not help in tracking.
+												//Note: it seems logical, but not help in tracking.
 												//Always mark a cut with changedRemoved: row.setChangedCreated;
 											}
 											
@@ -1958,7 +1959,7 @@ version(/+$DIDE_REGION main+/all)
 					else
 					{
 						if(returnSuccess !is null) {
-							//todo: maybe it would be better to handle readOnlyness with an exception...
+							//Todo: maybe it would be better to handle readOnlyness with an exception...
 							*returnSuccess = false;
 						}
 					}
@@ -1967,14 +1968,14 @@ version(/+$DIDE_REGION main+/all)
 			
 			static if(!dontMeasure)
 			measure; //It's needed to calculate TextCursor.desiredX
-			//opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
+			//Opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
 			
 			return savedSelections.map!"a.fromReference".filter!"a.valid".array;
 		}
 			
 		bool cut_impl2(bool dontMeasure=false)(TextSelection[] sel, ref TextSelection[] res)
 		{
-			//todo: constness for input
+			//Todo: constness for input
 			bool success;
 			auto tmp = cut_impl!dontMeasure(sel, &success);
 			if(success) res = tmp;
@@ -1993,14 +1994,14 @@ version(/+$DIDE_REGION main+/all)
 			if(textSelections.empty) return textSelections; //no target
 			
 			if(fromClipboard)
-			input = clipboard.asText;  //todo: BOM handling
+			input = clipboard.asText;  //Todo: BOM handling
 			
 			auto lines = input.splitLines;
 			if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 			
 			if(!cut_impl2!dontMeasure(textSelections, /+writes into this if successful -> +/textSelections))
 			{
-				//todo: this is terrible. Must refactor.
+				//Todo: this is terrible. Must refactor.
 				return textSelections;
 			}
 			
@@ -2009,7 +2010,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			TextSelectionReference[] savedSelections;
 			
-			//todo: insertText with fake local syntax highlighting. until the background syntax highlighter finishes.
+			//Todo: insertText with fake local syntax highlighting. until the background syntax highlighter finishes.
 			
 			///inserts text at cursor, moves the corsor to the end of the text
 			void insertSingleLine(ref TextSelection ts, string str)
@@ -2023,7 +2024,7 @@ version(/+$DIDE_REGION main+/all)
 					if(requestInsertPermission_prepare(ts, str))
 					{
 						const insertedCnt = row.insertText(ts.caret.pos.x, str); //INS
-						//todo: shift adjust selections that are on this row
+						//Todo: shift adjust selections that are on this row
 						
 						//adjust caret and save
 						ts.cursors[0].moveRight(insertedCnt);
@@ -2070,7 +2071,7 @@ version(/+$DIDE_REGION main+/all)
 						foreach(line; lines[1..$-1])
 						{
 							auto r = new CodeRow(ts.codeColumn, line);  //INS
-							//todo: this should be insertText
+							//Todo: this should be insertText
 							r.setChangedCreated;
 							midRows ~= r;
 						}
@@ -2095,7 +2096,7 @@ version(/+$DIDE_REGION main+/all)
 					
 					savedSelections ~= ts.toReference;
 					
-					//todo:update caret
+					//Todo: update caret
 				}
 				else
 				assert("Row out if range");
@@ -2139,7 +2140,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			static if(!dontMeasure)
 			measure; //It's needed to calculate TextCursor.desiredX
-			//opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
+			//Opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
 			
 			return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array;
 		}
@@ -2173,10 +2174,10 @@ version(/+$DIDE_REGION main+/all)
 			///must be called after an items removed
 			void validateItemReferences(T[] items) {
 				if(
-					!items.canFind(hoveredItem)//opt: slow linear search
+					!items.canFind(hoveredItem)//Opt: slow linear search
 				)
 				hoveredItem = null;
-				//todo: maybe use a hovered containerflag.
+				//Todo: maybe use a hovered containerflag.
 			}   private static void select(alias op)(T[] items, T selectItem=null)
 			{
 				foreach(a; items)
@@ -2328,7 +2329,7 @@ version(/+$DIDE_REGION main+/all)
 								
 								accumulatedMoveStartDelta = 0;
 								
-								//todo: jelezni kell valahogy az elmozdulast!!!
+								//Todo: jelezni kell valahogy az elmozdulast!!!
 								version(/+$DIDE_REGION+/none)
 								{
 									//this is a good example of a disabled DIDE region
@@ -2357,7 +2358,7 @@ version(/+$DIDE_REGION main+/all)
 		struct SELECTIONS;
 		@SELECTIONS
 		{
-			//note: these cursors MUST BE validated!!!!!
+			//Note: these cursors MUST BE validated!!!!!
 			TextCursor	cursorAtMouse, cursorToExtend;
 			TextSelection	selectionAtMouse;
 			TextSelection[] 	selectionsWhenMouseWasPressed;
@@ -2408,7 +2409,7 @@ version(/+$DIDE_REGION main+/all)
 					//detectMouseTravel
 					if(inputs[mouseMappings.main].down)
 					{
-						//todo: copy/paste
+						//Todo: copy/paste
 						mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta);
 					}
 					else
@@ -2434,8 +2435,8 @@ version(/+$DIDE_REGION main+/all)
 			in Workspace.MouseMappings 	mouseMappings	, //mouse buttons, shift modifier settings.
 		)
 		{
-			//todo: make textSelection functional, not a ref
-			//opt: only call this when the workspace changed (remove module, cut, paste)
+			//Todo: make textSelection functional, not a ref
+			//Opt: only call this when the workspace changed (remove module, cut, paste)
 			
 			validateInternalSelections(workspace);
 			cursorAtMouse = workspace.createCursorAt(view.mousePos);
@@ -2456,7 +2457,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(workspace.textSelectionsGet.hitTest(view.mousePos))
 					{
-						//todo: start dragging the selection contents and paste on mouse button release
+						//Todo: start dragging the selection contents and paste on mouse button release
 					}
 					else if(cursorAtMouse.valid)
 					{
@@ -2527,8 +2528,8 @@ version(/+$DIDE_REGION main+/all)
 					
 					if(mouseTravelDistance>4)
 					scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
-					//todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
-					//todo: do this scrolling in the ModuleSelectionManager too.
+					//Todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
+					//Todo: do this scrolling in the ModuleSelectionManager too.
 				}
 			}
 			
@@ -2548,7 +2549,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(!selectionAtMouse.valid) return; //nothing to do with an empty selection
 				
-				//todo: for additive operations, only the selections on the most recent
+				//Todo: for additive operations, only the selections on the most recent
 				
 				auto applyWordSelect(TextSelection s) { return wordSelecting ? s.extendToWordsOrSpaces : s; }
 				auto applyWordSelectArr(TextSelection[] s) { return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; }
@@ -2566,7 +2567,7 @@ version(/+$DIDE_REGION main+/all)
 					
 					//Column select
 					auto 	c0	= opSelectColumnAdd 	? selectionAtMouse.cursors[0] 
-								: getPrimaryCursor,  //bug: what if primary cursor is on another module
+								: getPrimaryCursor,  //Bug: what if primary cursor is on another module
 						c1	= selectionAtMouse.cursors[1];
 					
 					const 	downward 	= c0.pos.y<c1.pos.y,
@@ -2612,7 +2613,7 @@ version(/+$DIDE_REGION main+/all)
 							selectionAtMouse.caret, 
 							cursorToExtend_primary
 						)
-							//bug: what if primary cursor to extend is on another module
+							//Bug: what if primary cursor to extend is on another module
 					);
 					//remove touched existing selections first.
 					auto baseSelections = selectionsWhenMouseWasPressed.remove!(a => touches(a, actSelection));
@@ -2624,7 +2625,7 @@ version(/+$DIDE_REGION main+/all)
 					ts = [s];
 				}
 				
-				//todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
+				//Todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
 				//automatically mark primary for single selections
 				if(ts.length==1)
 				ts[0].primary = true;
@@ -2644,7 +2645,7 @@ version(/+$DIDE_REGION main+/all)
 		
 	}class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
 	{
-		//todo: make this work
+		//Todo: make this work
 		
 		alias Result = ResultType!(unaryFun!transformFun);
 		
@@ -2739,7 +2740,7 @@ version(/+$DIDE_REGION main+/all)
 			while(destroyLevel==1)
 			{
 				//LOG("Waiting for worker thread to finish");
-				sleep(10); //todo: it's slow... rewrite to message based
+				sleep(10); //Todo: it's slow... rewrite to message based
 			}
 		}
 	}version(/+$DIDE_REGION Resyntax+/all)
@@ -2835,14 +2836,14 @@ version(/+$DIDE_REGION main+/all)
 		version(/+$DIDE_REGION+/all)
 		{
 			
-			//todo: Ctrl+D word select and find
+			//Todo: Ctrl+D word select and find
 			
 			//Mouse ---------------------------------------------------
 			
 			struct MouseMappings
 			{
 				string 	main	= "LMB",
-					scroll	= "MMB", //todo: soft scroll/zoom, fast scroll
+					scroll	= "MMB", //Todo: soft scroll/zoom, fast scroll
 					menu	= "RMB",
 					zoom	= "MW",
 					zoomInHold	= "MB5",
@@ -2863,7 +2864,7 @@ version(/+$DIDE_REGION main+/all)
 					{ mainWindow.inputChars = []; }
 					else
 					{
-						//todo: single window only
+						//Todo: single window only
 						string unprocessed;
 						foreach(ch; mainWindow.inputChars.unTag.byDchar)
 						{
@@ -2914,10 +2915,10 @@ version(/+$DIDE_REGION main+/all)
 					//print("LOC:", loc);
 					if(auto mod = findModule(loc.file))
 					{
-						//todo: load the module automatically
+						//Todo: load the module automatically
 						if(auto ts = mod.content.cellSelection(loc.line, loc.column, true))
 						{
-							textSelectionsSet = [ts]; //todo: doubleClick = zoomclose
+							textSelectionsSet = [ts]; //Todo: doubleClick = zoomclose
 							with(frmMain.view) {
 								if(scale<0.3f) scale = 1;
 								jumpRequest = nullable(vec2(ts.caret.worldBounds.center));
@@ -2926,7 +2927,7 @@ version(/+$DIDE_REGION main+/all)
 						else
 						{
 							beep; WARN("selectCursor fail: "~loc.text);
-							//todo: at least select the line, or the module.
+							//Todo: at least select the line, or the module.
 						}
 					}
 					else
@@ -2969,7 +2970,7 @@ version(/+$DIDE_REGION main+/all)
 						{
 							//const p = frmMain.view.subScreenClientCenter;
 							const p = frmMain.screenToClient(winMousePos);
-							frmMain.view.zoomAround(vec2(p), a*zs); //todo: ivec2 is not implicitly converted to vec2
+							frmMain.view.zoomAround(vec2(p), a*zs); //Todo: ivec2 is not implicitly converted to vec2
 						}
 					}
 				}
@@ -2985,7 +2986,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					//textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
 					
-					//note:	all verbs can optonally validate textSelections by accessing them from validTextSelections
+					//Note: all verbs can optonally validate textSelections by accessing them from validTextSelections
 					//all verbs can call invalidateTextSelections if it does something that affects them
 					handleXBox;
 					handleKeyboard;
@@ -3000,7 +3001,7 @@ version(/+$DIDE_REGION main+/all)
 						)
 						{
 							jumpTo(nearestSearchResult.reference);
-							//todo: only do this when there was no lmouseTravelSinceLastPress
+							//Todo: only do this when there was no lmouseTravelSinceLastPress
 						}
 					}
 					{ autoReloader.enabled = true; autoReloader.update(modules); }
@@ -3056,7 +3057,7 @@ version(/+$DIDE_REGION main+/all)
 						{
 							//don't focus to changed selection when the main mouse button is held down
 							frmMain.view.scrollZoom(worldBounds(textSelectionsGet));
-							//todo: maybe it is problematic when the selection can't fit on the current screen
+							//Todo: maybe it is problematic when the selection can't fit on the current screen
 						}
 					}
 					scrollInBoundsRequest.nullify;
@@ -3075,7 +3076,7 @@ version(/+$DIDE_REGION main+/all)
 								foreach(ref cr; ts.cursors[])
 								with(cr)
 								{
-									targetPos = localPos.pos; //todo: animate height as well
+									targetPos = localPos.pos; //Todo: animate height as well
 									if(animatedPos.x.isnan)
 									animatedPos = targetPos;
 									else
@@ -3098,14 +3099,14 @@ version(/+$DIDE_REGION main+/all)
 						);
 					}
 					/+
-						opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
+						Opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
 						all the layers with all the info, only move the affected layer items.
 					+/
 					buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash);
 					if(buildStateChanged)
 					{
 						updateModuleBuildStates(buildResult);
-						convertBuildMessagesToSearchResults; //opt: limit this by change detection
+						convertBuildMessagesToSearchResults; //Opt: limit this by change detection
 					}
 					
 					updateLastKnownModulePositions;
@@ -3196,9 +3197,9 @@ version(/+$DIDE_REGION main+/all)
 			}
 			version(/+$DIDE_REGION hold slow NoSel+/all)
 			{
-				//todo: this is redundant and ugly
+				//Todo: this is redundant and ugly
 				/+
-					bug: When NumLockState=true && key==Num8: if the modifier is released
+					Bug: When NumLockState=true && key==Num8: if the modifier is released
 									after the key, KeyCombo will NEVER detect the release and is stuck!!!
 				+/
 				@HOLD("Shift+W Shift+Num8 Shift+Up") void holdScrollUp_slow2()
@@ -3334,14 +3335,14 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel); }
 				@VERB("Home") void cursorHome(bool sel=false)
-				//bug: wordRight: This is bugs inside a nested comment.
+				//Bug: wordRight: This is bugs inside a nested comment.
 				{ cursorOp(ivec2(TextCursor.home, 0), sel); }
 				@VERB("End") void cursorEnd(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.end, 0), sel); }
 				@VERB("Up") void cursorUp(bool sel=false)
 				{ cursorOp(ivec2(0,-1), sel); }
 				/+
-					todo: Dide2: cursorUp: textSelection. non zero length, 
+					Todo: Dide2: cursorUp: textSelection. non zero length, 
 									Left/Right is good, Up/Down is not good. It should emulate 
 									a Left/Right selection collapse first. and go Up/Down after.
 				+/
@@ -3393,7 +3394,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				@VERB("Shift+Alt+Left") void shrinkAstSelection()
 				{
-					//todo: shrink/extend Ast Selection
+					//Todo: shrink/extend Ast Selection
 				} @VERB("Shift+Alt+Right") void extendAstSelection()
 				{}
 				@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
@@ -3413,14 +3414,14 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("") void deselectAllModules()
 				{
 					modules.each!(m => m.flags.selected = false); 
-					//note: this clicking on emptyness does this too.
+					//Note: this clicking on emptyness does this too.
 				}
 				@VERB("Esc") void cancelSelection()
 				{
 					if(!im.wantKeys) cancelSelection_impl;
 					/+
-						bug: nested commenten belulrol Escape nyomkodas (kizoomolas) 
-											  -> access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+						Bug: nested	commenten belulrol Escape nyomkodas (kizoomolas) 
+												-> access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 					+/
 				}
 			}
@@ -3435,9 +3436,9 @@ version(/+$DIDE_REGION main+/all)
 				{
 					copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows);
 					/+
-						bug:	selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. 
-							Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. 
-							A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
+						Bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. 
+						Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. 
+						A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
 					+/
 				}
 				@VERB("Ctrl+X Shift+Del") void cut()
@@ -3449,17 +3450,17 @@ version(/+$DIDE_REGION main+/all)
 				{
 					TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft , s2;
 					cut_impl2(s1, s2); textSelectionsSet = s2; 
-					//todo: delete all leading tabs when the cursor is right after them
+					//Todo: delete all leading tabs when the cursor is right after them
 				}
 				@VERB("Del") void deleteFromRight()
 				{
 					TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2;
 					cut_impl2(s1, s2); textSelectionsSet = s2;
 					/+
-						bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
+						Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
 						ha van non-readonly selecton is, akkor azt meg el is bassza. 
 					+/
-					//bug: delete should remove the leading tabs.
+					//Bug: delete should remove the leading tabs.
 				}
 				
 				@VERB("Ctrl+V Shift+Ins") void paste()
@@ -3471,13 +3472,13 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Enter") void insertNewLine()
 				{
 					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs);
-					//todo: Must fix the tabCount on the current line first, and after that it can duplicate.
+					//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 				}
 				
 				@VERB("Ctrl+Enter") void insertNewPage()
 				{
 					/+
-						todo: it should automatically insert at the end of the selected rows.
+						Todo: it should automatically insert at the end of the selected rows.
 						But what if the selection spans across multiple rows...
 					+/
 					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\v");
@@ -3506,14 +3507,14 @@ version(/+$DIDE_REGION main+/all)
 				{
 					//TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;
 					//copy_impl(s1); cut_impl2(s1, s2); textSelectionsSet = s2;
-					//todo: moveLineUp
+					//Todo: moveLineUp
 				}
 				
 				@VERB("Alt+Down") void moveLineDown()
 				{}
 				
-				//todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
-				//todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+				//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+				//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 				
 				@VERB("Ctrl+Z") void undo()
 				{
@@ -3551,7 +3552,7 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Ctrl+W") void closeSelectedModules()
 				{
 					closeSelectedModules_impl;
-					//todo: this hsould work for selections and modules based on textSelections.empty
+					//Todo: this hsould work for selections and modules based on textSelections.empty
 				} 
 				@VERB("Ctrl+Shift+W") void closeAllModules()
 				{ closeAllModules_impl; }
@@ -3593,7 +3594,7 @@ version(/+$DIDE_REGION main+/all)
 					with(frmMain)
 					if(building || running)
 					{ cancelBuildAndResetApp; }
-					//todo: some keycombo to clear error markers
+					//Todo: some keycombo to clear error markers
 				} 
 				
 				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
@@ -3725,7 +3726,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@VERB("F1") void test_realignVerticalTabs()
 			{
-				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				preserveTextSelections(
 					{
 						visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); });
@@ -3736,7 +3737,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@VERB("Ctrl+F1") void test_removeVerticalTabs()
 			{
-				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				preserveTextSelections({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); });
 			}
 			
@@ -3745,7 +3746,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@VERB("F2") void test_setInternalNewLine()
 			{
-				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				visitSelectedNestedCodeNodes(
 					(CodeNode node){
 						if(auto decl = cast(Declaration) node)
@@ -3759,7 +3760,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			@VERB("Ctrl+F2") void test_clearInternalNewLine()
 			{
-				//todo: This fucks up Undo/Redo and ignored edit permissions.
+				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				visitSelectedNestedCodeNodes(
 					(node){
 						if(auto decl = cast(Declaration) node)
@@ -3792,7 +3793,7 @@ version(/+$DIDE_REGION main+/all)
 				print("DONE.");
 				
 				/+
-					todo: implement identifier qString  
+					Todo: implement identifier qString  
 										 File(`c:\D\ldc2\import\std\json.d`)
 										 File(`c:\D\ldc2\import\std\xml.d`)
 										 File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
@@ -3933,9 +3934,9 @@ version(/+$DIDE_REGION main+/all)
 								if(searchText.startsWith(':'))
 								{
 									//goto line
-									//todo: Ctrl+G not works inside Edit
-									//todo: hint text: Enter line number. Negative line number starts from the end of the module.
-									//todo: ez ugorhatna regionra is.
+									//Todo: Ctrl+G not works inside Edit
+									//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
+									//Todo: ez ugorhatna regionra is.
 									searchResults = [];
 									textSelectionsSet = [];
 									if(auto mod = expectOneSelectedModule)
@@ -3987,7 +3988,7 @@ version(/+$DIDE_REGION main+/all)
 						{
 							if(Btn(symbol("Zoom"), hint("Start searching.")))
 							searchBoxActivate;
-							//todo: this is a @VERB. Button should get the extra info from that VERB somehow.
+							//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
 						}
 					}
 				);
@@ -3999,7 +4000,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				with(im) {
 					//UI_BuildMessageTypeBtn ///////////////////////////
-					//todo: ennek nem itt a helye....
+					//Todo: ennek nem itt a helye....
 					auto hit = Btn(
 						{
 							const hidden = markerLayers[bmt].visible ? 0 : .75f;
@@ -4146,10 +4147,10 @@ version(/+$DIDE_REGION main+/all)
 											r => r.outerBounds.overlaps(visibleBounds)
 																				&& r.subCells.length
 										).array;
-										//opt: binary search
+										//Opt: binary search
 										
 										actContainer.append(cast(Cell[])visibleRows);
-										//note: append is important because it already has the spaceHolder Container.
+										//Note: append is important because it already has the spaceHolder Container.
 										
 										/+
 											print("-------------------------------");
@@ -4209,7 +4210,7 @@ version(/+$DIDE_REGION main+/all)
 									bool found = false;
 									void visitLocations(.Container act)
 									{
-										//todo: visitor pattern for cells/containers. 
+										//Todo: visitor pattern for cells/containers. 
 										//Similar to the allParents() thing.
 										if(!act) return;
 										
@@ -4279,7 +4280,7 @@ version(/+$DIDE_REGION main+/all)
 			void flashMessage(FlashMessage.Type type, string msg)
 			{
 				if(msg=="") return;
-				//todo: implement flashing error UI
+				//Todo: implement flashing error UI
 				enum maxLen = 10;
 				if(flashMessages.length>maxLen)
 				flashMessages = flashMessages[$-maxLen..$];
@@ -4349,7 +4350,7 @@ version(/+$DIDE_REGION main+/all)
 		//! draw routines ////////////////////////////////////////////////////
 		version(/+$DIDE_REGION+/all)
 		{
-			SearchResult nearestSearchResult;  //todo: MMB jumps to nearestSearchResult
+			SearchResult nearestSearchResult;  //Todo: MMB jumps to nearestSearchResult
 			float nearestSearchResult_dist;
 			RGB nearestSearchResult_color, _nearestSearchResult_ActColor;
 					
@@ -4364,7 +4365,7 @@ version(/+$DIDE_REGION main+/all)
 				if(dist<nearestSearchResult_dist)
 				{
 					nearestSearchResult_dist = dist;
-					nearestSearchResult = cast()sr; //todo: constness
+					nearestSearchResult = cast()sr; //Todo: constness
 					nearestSearchResult_color = _nearestSearchResult_ActColor;
 				}
 			}
@@ -4399,7 +4400,7 @@ version(/+$DIDE_REGION main+/all)
 					foreach(sr; searchResults)
 					if(auto b = sr.bounds)
 					{
-						//todo: constness
+						//Todo: constness
 						if(isVisible(b))
 						{
 							updateNearestSearchResult(distanceB(mp, b), sr);
@@ -4484,7 +4485,7 @@ version(/+$DIDE_REGION main+/all)
 					
 			protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 			{
-				//todo: detect changes and only collect info when changed.
+				//Todo: detect changes and only collect info when changed.
 				
 				const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array;
 				
@@ -4556,7 +4557,7 @@ version(/+$DIDE_REGION main+/all)
 					if(!sel.isZeroLength)
 					{
 						auto col = sel.codeColumn;
-						const 	colInnerPos	= worldInnerPos(col), //opt: group selections by codeColumn.
+						const 	colInnerPos	= worldInnerPos(col), //Opt: group selections by codeColumn.
 							colInnerBounds 	= bounds2(colInnerPos, colInnerPos+col.innerSize);
 						if(cullBounds.overlaps(colInnerBounds))
 						{
@@ -4566,12 +4567,12 @@ version(/+$DIDE_REGION main+/all)
 							
 							foreach(y; st.pos.y..en.pos.y+1)
 							{
-								//todo: this loop is in the copy routine as well. Must refactor and reuse
+								//Todo: this loop is in the copy routine as well. Must refactor and reuse
 								auto row = col.rows[y];
 								const rowCellCount = row.cellCount;
 								
 								//culling
-								if(row.outerBottom	< localCullBounds.top) continue;  //opt: trisect
+								if(row.outerBottom	< localCullBounds.top) continue;  //Opt: trisect
 								if(row.outerTop	> localCullBounds.bottom) break;
 								
 								const 	isFirstRow 	= y==st.pos.y,
@@ -4610,7 +4611,7 @@ version(/+$DIDE_REGION main+/all)
 										if(x<rowCellCount)
 										{
 											/+
-												todo: make the nice version: the font will be NOT blended to gray, 
+												Todo: make the nice version: the font will be NOT blended to gray, 
 																							but it hides the markerLayers completely. Should make a 
 																							text drawer that uses alpha on the background and leaves 
 																							the font color as is.
@@ -4665,8 +4666,8 @@ version(/+$DIDE_REGION main+/all)
 							dr.alpha = blink/2;
 							dr.lineWidth = -1-(blink)*3;
 							dr.color = clCaret;
-							//opt: culling
-							//opt: limit max munber of animated cursors
+							//Opt: culling
+							//Opt: limit max munber of animated cursors
 							foreach(s; textSelectionsGet)
 							{
 								CaretPos[3] cp;
@@ -4674,9 +4675,9 @@ version(/+$DIDE_REGION main+/all)
 								cp[1..3] = cp[0];
 								cp[2].pos += s.caret.animatedPos - s.caret.targetPos;
 								cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f);
-								//todo: animate caret height too
+								//Todo: animate caret height too
 								
-								auto dir = cp[1].pos-cp[2].pos; //todo: center them on height
+								auto dir = cp[1].pos-cp[2].pos; //Todo: center them on height
 								if(dir)
 								{
 									if(dir.normalize.x.abs<0.05f)
@@ -4798,7 +4799,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear;
 				
-				drawTextSelections(dr, frmMain.view); //bug: this will not work for multiple workspace views!!!
+				drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
 			}
 			
 			
