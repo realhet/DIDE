@@ -113,7 +113,9 @@ version(/+$DIDE_REGION main+/all)
 			Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
 				const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
 		+/
-		//todo: On bracket errors, it should mark the opening bracket too. In the scannet there should be a way to remember the opening brackets in a stack.
+		//Todo: On bracket errors, it should mark the opening bracket too. In the scannet there should be a way to remember the opening brackets in a stack.
+		
+		//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
 	}
 	
 	//globals ////////////////////////////////////////
@@ -1149,30 +1151,19 @@ version(/+$DIDE_REGION main+/all)
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
-			ErrorListModule errorList;
-			
+		Module errorList;
+		
 		void convertBuildMessagesToSearchResults()
 		{
 			auto br = frmMain.buildResult;
 			
 			auto outFile = File(`virtual:\compile.err`);
-			auto output = br.dump;
+			auto output = br.sourceText;
 			outFile.write(output);
-			//LOG(output);
 			
 			T0;
-			//Opt: in debug mode this is terribly slow.
-			errorList = new ErrorListModule(null, File.init);
-			//LOG(siFormat("errorList create %s ms", DT));
-				
-			/*
-				if(auto m = findModule(outFile)){
-								m.reload;
-							}else{
-								loadModule(outFile);
-							}
-			*/
-				
+			errorList = new Module(null, outFile);
+			
 			auto buildMessagesAsSearchResults(BuildMessageType type)
 			{
 				//Todo: opt
@@ -3436,8 +3427,8 @@ version(/+$DIDE_REGION main+/all)
 				{
 					copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows);
 					/+
-						Bug: selection.isZeroLength Ctrl+C then Ctrl+V   It breaks the line. 
-						Ez megjegyzi, hogy volt-e selection extension es ha igen, akkor sorokon dolgozik. 
+						Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
+						Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
 						A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
 					+/
 				}

@@ -2594,7 +2594,7 @@ class CodeRow: Row
 			foreach(r; col.rows)
 			if(
 				!r.flags._measured
-										/+these are the rows affected by a width-changing fontFlag resuntax.+/
+				/+these are the rows affected by a width-changing fontFlag resintax.+/
 			)
 			{
 				r.adjustCharWidths; //Todo: this should be replaced by monospace fontFlag.
@@ -4121,6 +4121,8 @@ version(/+$DIDE_REGION+/all)
 	{ return customPrefix == "Link:"; }
 	bool isCode() const
 	{ return customPrefix == "Code:"; }
+	bool isNote() const
+	{ return customPrefix == "Note:"; }
 	
 	string commentPrefix() const
 	{ return TypePrefix[type]; }
@@ -4278,12 +4280,15 @@ version(/+$DIDE_REGION+/all)
 			if(isCode)
 			{
 				content.resyntax;
-				
-				content.measure;
 				/+
 					Todo: this can change the width of the chars.
-									All width changing syntax operations should be 
-									handled properly in the resyntaxer.
+					All width changing syntax operations should be 
+					handled properly in the resyntaxer.
+				+/
+				content.needMeasure; /+
+					Note: 	This is just a workaround.
+					<- 	Calling measure() won't work, because it only works at that level and beyond.
+						needMeasure() is recursive through all parents
 				+/
 			}
 			else
@@ -4472,7 +4477,7 @@ version(/+$DIDE_REGION+/all)
 				//Remove underlined style
 				style.underline = false;
 				
-				if(!isCode)
+				if(!isCode && !isNote)
 				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' ');
 				
 				style.underline = origUnderline;
