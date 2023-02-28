@@ -4764,10 +4764,7 @@ version(/+$DIDE_REGION+/all)
 {
 	/// Module ///////////////////////////////////////////////
 	interface WorkspaceInterface
-	{
-		@property bool isReadOnly();
-		@property StructureLevel getDesiredStructureLevel();
-	}
+	{ @property bool isReadOnly(); }
 	
 	enum StructureLevel : ubyte
 	{ plain, highlighted, structured, managed }
@@ -4805,13 +4802,13 @@ version(/+$DIDE_REGION+/all)
 			override string postfix() const
 			{ return ""; }
 			
-			this(Container parent, File file_)
+			this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
 			{
 				super(parent);
 				bkColor = clModuleBorder;
 				fileLoaded = now;
 				file = file_.actualFile;
-				reload((cast(WorkspaceInterface) parent) ? (cast(WorkspaceInterface) parent).getDesiredStructureLevel : StructureLevel.plain);
+				reload(desiredStructureLevel);
 			}
 			
 			override @property string identifier()
@@ -5004,32 +5001,6 @@ version(/+$DIDE_REGION+/all)
 		return code;
 	}
 	
-	
-	//Bug: ErrorListModule is fucked up
-	deprecated class ErrorListModule : Module
-	{
-		this(Container parent, File file_)
-		{
-			super(parent, file_);
-			
-			reload(StructureLevel.plain);
-		}
-		
-		override bool isReadOnly()
-		{ return true; }
-		
-		override void reload(StructureLevel desiredLevel, Flag!"useExternalContents" useExternalContents = No.useExternalContents, string contents="")
-		{
-			clearSubCells;
-			fileModified = now;
-			sizeBytes = 0; //Todo: note this has no file.
-			resetModuleTypeFlags;
-			structureLevel = StructureLevel.plain; //reset to the most basic level
-			content = createErrorListCodeColumn(this); //Todo: remake this with a parser
-			appendCell(enforce(content));
-			needMeasure;
-		}
-	}
 }
 version(/+$DIDE_REGION+/all)
 {

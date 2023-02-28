@@ -800,9 +800,6 @@ version(/+$DIDE_REGION main+/all)
 			StructureMap structureMap;
 			
 			@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted;
-			@property StructureLevel getDesiredStructureLevel()
-			{ return desiredStructureLevel; }
-			
 			
 		}version(/+$DIDE_REGION+/all)
 		{
@@ -1084,7 +1081,7 @@ version(/+$DIDE_REGION main+/all)
 					return false; //no loading was issued
 				}
 						
-				auto m = new Module(this, file);
+				auto m = new Module(this, file, desiredStructureLevel);
 						
 				//m.flags.targetSurface = 0; not needed, workspace is on s0 already
 				m.measure;
@@ -1151,18 +1148,25 @@ version(/+$DIDE_REGION main+/all)
 		}
 	}version(/+$DIDE_REGION+/all)
 	{
-		Module errorList;
+		Module errorModule;
 		
 		void convertBuildMessagesToSearchResults()
 		{
 			auto br = frmMain.buildResult;
 			
-			auto outFile = File(`virtual:\compile.err`);
+			auto outFile = File(`virtual:\__compilerOutput.d`);
 			auto output = br.sourceText;
 			outFile.write(output);
 			
 			T0;
-			errorList = new Module(null, outFile);
+			errorModule = new Module(null, outFile, StructureLevel.managed);
+			
+			const tLoadErrorModule = DT;
+			
+			errorModule.measure;
+			//opt: This is fucking slow. Possible problem with the special comments or the icon getter or something.
+			
+			const tMeasureErrorModule = DT;
 			
 			auto buildMessagesAsSearchResults(BuildMessageType type)
 			{
@@ -1209,6 +1213,10 @@ version(/+$DIDE_REGION main+/all)
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
 			foreach(t; EnumMembers!BuildMessageType[1..$])
 			markerLayers[t].searchResults = buildMessagesAsSearchResults(t);
+			
+			const tBuildSearchResults = DT;
+			
+			LOG(tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults);
 		}
 		
 		//Todo: since all the code containers have parents, location() is not needed anymore
@@ -3777,7 +3785,7 @@ version(/+$DIDE_REGION main+/all)
 				foreach(i, f; files)
 				{
 					print(i, files.length, dDeclarationRecords.length, f);
-					auto m = scoped!Module(this, f);
+					auto m = scoped!Module(this, f, StructureLevel.structured);
 					if(m.isStructured) { m.content.processHighLevelPatterns_block; }else { print("Is not structured"); beep; }
 				}
 				dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`);
@@ -4123,8 +4131,8 @@ version(/+$DIDE_REGION main+/all)
 								vScrollState = ScrollState.auto_;
 								hScrollState = ScrollState.auto_;
 							}
-									
-							if(auto mod = errorList)
+							
+							if(auto mod = errorModule)
 							{
 								if(auto col = mod.content)
 								{
@@ -4136,7 +4144,7 @@ version(/+$DIDE_REGION main+/all)
 									{
 										CodeRow[] visibleRows = col.rows.filter!(
 											r => r.outerBounds.overlaps(visibleBounds)
-																				&& r.subCells.length
+											&& r.subCells.length
 										).array;
 										//Opt: binary search
 										
@@ -4174,7 +4182,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 					
 			auto findErrorListItemByLocation(string locStr)
-			{ if(auto mod = errorList) if(auto col = mod.content) {} }
+			{ if(auto mod = errorModule) if(auto col = mod.content) {} }
 					
 					
 			string lastNearestSearchResultReference;
@@ -4192,7 +4200,7 @@ version(/+$DIDE_REGION main+/all)
 						
 						if(nearestSearchResult.reference!="")
 						{
-							if(auto mod = errorList)
+							if(auto mod = errorModule)
 							if(auto col = mod.content)
 							{
 								const locationRef = nearestSearchResult.reference;
