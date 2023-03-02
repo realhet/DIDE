@@ -19,6 +19,7 @@ version(/+$DIDE_REGION+/all)
 	
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
 	//Todo: A // comment after a #directive should be possible
+	//Todo: Don't apply Italic fontFlag on emojis
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
@@ -1447,17 +1448,17 @@ version(/+$DIDE_REGION+/all)
 	
 	struct SourceTextBuilder
 	{
-		//SourceTextBuilder /////////////////////////
 		enum CODE = true, UI = !CODE;
 		
 		string result;
 		
 		bool enableIndent = true;
 		
-		int newLineCount, indentCount;
+		int lineCounter = 1;
+		int indentCount;
 		bool needsNewLine; //to support //comments and #directives
 		
-		bool updateLineNumbers;
+		bool updateLineIdx;
 		
 		bool actLineIsClear()
 		{
@@ -1474,7 +1475,7 @@ version(/+$DIDE_REGION+/all)
 			if(enableIndent)
 			result ~= "\t".replicate(max(0, indentCount + indentAdjust));
 			
-			newLineCount++;
+			lineCounter++;
 			needsNewLine = false;
 		}
 		
@@ -1497,7 +1498,10 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		void put(CodeRow row)
-		{ put(row.subCells); }
+		{
+			if(updateLineIdx) row.lineIdx = lineCounter;
+			put(row.subCells);
+		}
 		
 		void putStatementBody(CodeColumn col)
 		{
@@ -1564,25 +1568,38 @@ version(/+$DIDE_REGION+/all)
 				{ putMultiLine; }
 				else
 				{
+					assert(col.rows.length == 1);
 					auto row = col.rows.front;
 					
 					//Todo: Transform {x} => { x }   to look nice
 					const stylisticSpaces = result.endsWith('{') && !result.endsWith("q{") && row.chars.length>0;
 					
-					//if(stylisticSpaces) put(' ');
-					const prevNewLineCount = newLineCount;
-					const startPos = result.length;
+					version(/+$DIDE_REGION Save the state of the output stream+/all)
+					{
+						const savedLineCounter = lineCounter;
+						const savedLength = result.length;
+					}
+					
 					const firstLineIsClear = actLineIsClear;
 					
 					if(stylisticSpaces && !row.isCodeSpaces.front) put(' ');
 					put(customPrefix);
-					put(row);
+					put(row);/+
+						Opt: this should exit right at the first newline to do that putMultilineOperation.
+						But only when the if condition before the state restore operation is true.
+					+/
 					if(stylisticSpaces && !row.isCodeSpaces.back) put(' ');
 					
-					if(!firstLineIsClear && (needsNewLine || newLineCount>prevNewLineCount))
+					if(!firstLineIsClear && (needsNewLine || lineCounter > savedLineCounter))
 					{
-						//it's actually a multiline block. go back and repeat.
-						result.length = startPos;
+						//it's actually a multiline block. Rollback and repeat.
+						
+						//restore the output stream
+						version(/+$DIDE_REGION Restore the state of the output stream+/all)
+						{
+							result.length = savedLength;
+							lineCounter = savedLineCounter;
+						}
 						
 						putMultiLine;
 					}
@@ -1597,21 +1614,15 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(Cell cell)
 		{
-			void doUpdateLineNumber(T)(T a)
-			{
-				if(updateLineNumbers)
-				a.line = newLineCount+1;
-			}
-			
 			if(auto glyph = cast(Glyph) cell)
 			{
+				if(updateLineIdx) glyph.lineIdx = lineCounter;
 				put(glyph.ch);
-				doUpdateLineNumber(glyph);
 			}
 			else if(auto node = cast(CodeNode) cell)
 			{
+				if(updateLineIdx) node.lineIdx = lineCounter;
 				node.buildSourceText(this);
-				doUpdateLineNumber(node);
 			}
 			else
 			enforce(0, "Unsupported cell type: "~typeid(cell).name);
@@ -1662,7 +1673,6 @@ version(/+$DIDE_REGION+/all)
 	}
 	struct CodeNodeBuilder
 	{
-		//CodeNodeBuilder ///////////////////////////////
 		enum UI = true, CODE = !UI;
 		
 		CodeNode node;
@@ -1804,6 +1814,8 @@ class CodeRow: Row
 	version(/+$DIDE_REGION+/all)
 	{
 		CodeColumn parent;
+		
+		int lineIdx;
 		
 		static if(rearrangeFlash) DateTime rearrangeTime;
 		
@@ -2234,6 +2246,12 @@ class CodeRow: Row
 						or end of line next to them.
 					+/
 				}
+				
+				if(VisualizeCodeLineIndices) {
+					dr.color = clWhite;
+					dr.fontHeight = 1.25;
+					dr.textOut(vec2(0), format!"%sR"(lineIdx));
+				}
 			}
 			
 			//visualize changed/created/modified
@@ -2269,13 +2287,16 @@ class CodeRow: Row
 		{
 			static int staticLineCounter;
 			
-			void NL()
-			{ col.appendCell(actRow = new CodeRow(col, "", null)); }
+			void NL_internal()
+			{
+				col.appendCell(actRow = new CodeRow(col, "", null));
+				actRow.lineIdx = staticLineCounter;
+			}
 			
 			void initialize()
 			{
 				col.clearSubCells;
-				NL; //there must be 1 row always. Empty column is a single empty row.
+				NL_internal; //there must be 1 row always. Empty column is a single empty row.
 			}
 			
 			void appendChar(dchar ch)
@@ -2285,8 +2306,8 @@ class CodeRow: Row
 					case '\n', '\r', '\u2028', '\u2029':
 						if(skipNextN.chkClear && ch=='\n') break;
 						skipNextN = ch=='\r';
-						NL;
 						staticLineCounter++;
+						NL_internal;
 					break;
 					default: 
 						//update cached textStyle
@@ -2533,7 +2554,7 @@ class CodeRow: Row
 							auto N(T)()
 							{
 								auto c = new T(actRow);
-								static if(rebuild) c.line = staticLineCounter;
+								static if(rebuild) c.lineIdx = staticLineCounter; //Todo: staticLineCounter is 1 based, but newLineIdx is 0 based. This and the naming is crap.
 								c.rebuild(scanner);
 								appendNode(c);
 							}
@@ -2708,12 +2729,16 @@ class CodeRow: Row
 			//Todo: advanced version that checks the surroundings at the insert position.
 		}
 		
-		int getLineOfFirstGlyphOrNode()
+		deprecated int getLineIdxOfFirstGlyphOrNode_notRecursive()
 		{
-			auto c = rows.map!(r => r.subCells).joiner.frontOrNull;
-			if(auto g = cast(Glyph) c) return g.line;
-			if(auto n = cast(CodeNode) c) return n.line;
-			return 0;
+			return rows.front.lineIdx;
+			
+			/*
+				auto c = rows.map!(r => r.subCells).joiner.frontOrNull;
+				if(auto g = cast(Glyph) c) return g.lineIdx;
+				if(auto n = cast(CodeNode) c) return n.lineIdx;
+				return 0;
+			*/
 		}
 		
 		auto calcWhitespaceStats()
@@ -3796,159 +3821,181 @@ version(/+$DIDE_REGION+/all)
 	}
 }class CodeNode : Row
 {
-	//CodeNode //////////////////////////////////////////
-	version(/+$DIDE_REGION+/all)
+	Container parent;
+	
+	int lineIdx;
+	
+	auto subColumns()
+	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
+	
+	this(Container parent)
 	{
-		Container parent;
+		this.parent = parent;
+		id = this.identityStr;
 		
-		int line; //the starting source line
+		needMeasure; //enables on-demand measure
+		flags.wordWrap	= false;
+		flags.clipSubCells	= true;
+		flags.cullSubCells	= true;
+		flags.rowElasticTabs	= true;
+		flags.dontHideSpaces	= true;
 		
-		auto subColumns()
-		{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; }
-		
-		this(Container parent)
-		{
-			this.parent = parent;
-			id = this.identityStr;
-			
-			needMeasure; //enables on-demand measure
-			flags.wordWrap	= false;
-			flags.clipSubCells	= true;
-			flags.cullSubCells	= true;
-			flags.rowElasticTabs	= true;
-			flags.dontHideSpaces	= true;
-			
-			this.setRoundBorder(8);
-			margin = "0.5";
-			padding = "1 1.5";
-		}
-		
-		~this()
-		{ parent = null; }
-		
-		override inout(Container) getParent() inout
-		{ return parent; }
-		override void setParent(Container p)
-		{ parent = p; }
-		
-		abstract void buildSourceText(ref SourceTextBuilder builder);
-		
-		final string sourceText()
-		{
-			SourceTextBuilder builder;
-			if(cast(Module) this) builder.updateLineNumbers = true;
-			buildSourceText(builder);
-			return builder.result;
-		}
-		
-		@property string identifier()
-		{ return ""; }
-		@property string caption()
-		{ return ""; }
-		
-		CodeNode parentNode()
-		{
-			if(auto r = cast(CodeRow) parent)
-			if(auto c = cast(CodeColumn) r.parent)
-			if(auto n = cast(CodeNode) c.parent)
-			return n;
-			return null;
-		}
-		
-		CodeNode namedParentNode()
-		{
-			for(auto p = parentNode; p; p = p.parentNode)
-			{
-				auto id = p.identifier;
-				if(id!="") return p;
-			}
-			return null;
-		}
-		
-		string fullIdentifier()
-		{
-			/*
-				if(identifier=="") return "";
-				auto identifierPath = allParents!CodeNode.map!(a => a.identifier).filter!"a.length".array.retro;
-				return chain(identifierPath, only(identifier)).join('.');
-			*/
-			
-			auto i = identifier; if(i=="") return "";
-			
-			for(auto n = namedParentNode; n; n = n.namedParentNode)
-			i = n.identifier ~ '.' ~ i;
-			
-			return i;
-		}
-	}version(/+$DIDE_REGION+/all)
-	{
-		auto nodeBuilder(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
-		{
-			
-			CodeNodeBuilder res;
-			with(res) {
-				node 	= this;
-				style 	= tsSyntax(syntax);  if(!customColor.isNull) style.fontColor = customColor.get;
-				inverse 	= inverse_;
-				darkColor	= style.bkColor,
-				brightColor 	= style.fontColor,
-				halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1));
-				
-				style.bkColor = border.color = bkColor	= halfColor; 
-				style.fontColor	= inverse ? darkColor : brightColor;
-				style.bold 	= true;
-			}
-			
-			//initialize node
-			subCells = []; //This rebuilds and realigns the whole Row subCells.
-			flags.yAlign = YAlign.center;
-			
-			return res;
-		}
-		
-		override void rearrange()
-		{
-			innerSize = vec2(0);
-			flags.autoWidth = true;
-			flags.autoHeight = true;
-			
-			super.rearrange;
-			static if(rearrangeLOG) LOG("rearranging", this);
-		}
-		
-		override void draw(Drawing dr)
-		{
-			//collect structuremap data (It's preceding draw, to add the parent first)
-			if(StructureMap.collector)
-			StructureMap.collector.onCollect(dr, this);
-			
-			super.draw(dr);
-			
-			//visualize changed/created/modified
-			addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
-			
-			if(VisualizeCodeLineNumbers) {
-				dr.color = clWhite;
-				dr.fontHeight = 1.25;
-				dr.textOut(outerPos, format!"%s"(line));
-			}
-		}
-		
-		void fillSyntax(SyntaxKind sk)
-		{
-			static TextStyle ts; ts.applySyntax(sk);
-			subCells.map!(a => cast(Glyph) a).filter!"a".each!(
-				(g){
-					g.bkColor = ts.bkColor;
-					g.fontColor = ts.fontColor;
-					g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
-					g.syntax = cast(ubyte) sk;
-				}
-			);
-			bkColor = ts.bkColor;
-		}
-		
+		this.setRoundBorder(8);
+		margin = "0.5";
+		padding = "1 1.5";
 	}
+	
+	~this()
+	{ parent = null; }
+	
+	override inout(Container) getParent() inout
+	{ return parent; }
+	override void setParent(Container p)
+	{ parent = p; }
+	
+	abstract void buildSourceText(ref SourceTextBuilder builder);
+	
+	final string sourceText()
+	{
+		SourceTextBuilder builder;
+		if(cast(Module) this) builder.updateLineIdx = true;
+		buildSourceText(builder);
+		return builder.result;
+	}
+	
+	@property string identifier()
+	{ return ""; }
+	@property string caption()
+	{ return ""; }
+	
+	CodeNode parentNode()
+	{
+		if(auto r = cast(CodeRow) parent)
+		if(auto c = cast(CodeColumn) r.parent)
+		if(auto n = cast(CodeNode) c.parent)
+		return n;
+		return null;
+	}
+	
+	CodeNode namedParentNode()
+	{
+		for(auto p = parentNode; p; p = p.parentNode)
+		{
+			auto id = p.identifier;
+			if(id!="") return p;
+		}
+		return null;
+	}
+	
+	string fullIdentifier()
+	{
+		/*
+			if(identifier=="") return "";
+			auto identifierPath = allParents!CodeNode.map!(a => a.identifier).filter!"a.length".array.retro;
+			return chain(identifierPath, only(identifier)).join('.');
+		*/
+		
+		auto i = identifier; if(i=="") return "";
+		
+		for(auto n = namedParentNode; n; n = n.namedParentNode)
+		i = n.identifier ~ '.' ~ i;
+		
+		return i;
+	}
+	
+	auto nodeBuilder(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
+	{
+		
+		CodeNodeBuilder res;
+		with(res) {
+			node 	= this;
+			style 	= tsSyntax(syntax);  if(!customColor.isNull) style.fontColor = customColor.get;
+			inverse 	= inverse_;
+			darkColor	= style.bkColor,
+			brightColor 	= style.fontColor,
+			halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1));
+			
+			style.bkColor = border.color = bkColor	= halfColor; 
+			style.fontColor	= inverse ? darkColor : brightColor;
+			style.bold 	= true;
+		}
+		
+		//initialize node
+		subCells = []; //This rebuilds and realigns the whole Row subCells.
+		flags.yAlign = YAlign.center;
+		
+		return res;
+	}
+	
+	override void rearrange()
+	{
+		innerSize = vec2(0);
+		flags.autoWidth = true;
+		flags.autoHeight = true;
+		
+		super.rearrange;
+		static if(rearrangeLOG) LOG("rearranging", this);
+	}
+	
+	override void draw(Drawing dr)
+	{
+		//collect structuremap data (It's preceding draw, to add the parent first)
+		if(StructureMap.collector)
+		StructureMap.collector.onCollect(dr, this);
+		
+		super.draw(dr);
+		
+		//visualize changed/created/modified
+		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/);
+		
+		if(VisualizeCodeLineIndices) {
+			dr.color = clWhite;
+			dr.fontHeight = 1.25;
+			dr.textOut(outerPos, format!"%sN"(lineIdx));
+		}
+	}
+	
+	void fillSyntax(SyntaxKind sk)
+	{
+		static TextStyle ts; ts.applySyntax(sk);
+		subCells.map!(a => cast(Glyph) a).filter!"a".each!(
+			(g){
+				g.bkColor = ts.bkColor;
+				g.fontColor = ts.fontColor;
+				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
+				g.syntax = cast(ubyte) sk;
+			}
+		);
+		bkColor = ts.bkColor;
+	}
+	
+	int retrieveLineIdx_min(alias reverseFun=map!"a")()
+	{
+		//Bug: empty containers and empty rows han no lineIdx. This is a big problem. I can do line searches, by visiting the whole module.
+		
+		//check all nested codeColumns inside this node
+		foreach(col; reverseFun(subCells).map!(a => cast(CodeColumn) a).filter!"a")
+		{
+			//check all rows of the column
+			foreach(row; reverseFun(col.rows))
+			{
+				int res = 0;
+				foreach(cell; reverseFun(row.subCells))
+				{
+					if(auto g = cast(Glyph) cell) { res = g.lineIdx; break; }
+					else if(auto n = cast(CodeNode) cell) { res = n.retrieveLineIdx_min!reverseFun; /+Recursive+/ break; }
+					else assert(0, "calcLineIdx_max: Unhandled type: "~typeid(cell).name);
+				}
+				if(res) return res; 
+			}
+		}
+		
+		//unable to find. Defaults to lineIdx_min
+		return 0;
+	}
+	
+	int retrieveLineIdx_max()
+	{ return retrieveLineIdx_min!retro; }
 }class CodeContainer : CodeNode
 {
 	//CodeContainer /////////////////////////////
@@ -4967,40 +5014,6 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 	}
-}version(/+$DIDE_REGION ErrorList+/all)
-{
-	auto createErrorListCodeColumn(Container parent)
-	{
-		auto code = new CodeColumn(parent);
-		code.padding = "1";
-		code.flags.dontStretchSubCells = true;
-		
-		import dide2; //Todo: should not import main module.
-		auto buildResult = global_getBuildResult;
-		auto markerLayerHideMask = global_getMarkerLayerHideMask;
-		
-		foreach(file; buildResult.remainings.keys.sort)
-		{
-			auto pragmas = buildResult.remainings[file];
-			if(pragmas.length) code.append({ UI_CompilerOutput(file, pragmas.join('\n')); });
-		}
-		
-		with(im)
-		code.append(
-			{
-				foreach(loc; buildResult.messages.keys.sort)
-				{
-					auto msg = buildResult.messages[loc];
-					if(msg.parentLocation) continue;
-					if((1<<msg.type) & markerLayerHideMask) continue;
-					msg.UI(buildResult.subMessagesOf(msg.location));
-				}
-			}
-		);
-		
-		return code;
-	}
-	
 }
 version(/+$DIDE_REGION+/all)
 {
@@ -5387,15 +5400,14 @@ version(/+$DIDE_REGION+/all)
 			
 			this.keyword = keyword;
 			this.ending = ending;
-			this.block	= block; if(block) block.setParent(this);
-			this.attributes 	= new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
-			this.header 	= new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace));
+			this.block = block;if(block) block.setParent(this);
+			this.attributes = new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace);
+			this.header = new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace));
+			//Note: ⚠ detectInternalNewLine() is not a pure function. The order of the operations above is important!!!
 			
 			decodeSpecial;
 			
 			verify;
-			
-			
 			
 			//RECURSIVE!!!
 			
@@ -5418,41 +5430,91 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 			
-			calcLine;
+			refreshLineIdx;
 		}
 		
-		this(CodeBlock blk)
+		this(CodeBlock b)
 		{
 			//promote the block.
-			assert(blk);
-			assert(blk.parent);
-			assert(blk.type == CodeBlock.Type.block);
+			assert(b);
+			assert(b.parent);
+			assert(b.content);
+			assert(b.type == CodeBlock.Type.block);
 			
-			super(blk.parent);
+			super(b.parent);
 			
-			blk.content.setParent(this);
-			this.ending	= '}';
-			this.block	= blk.content; if(block) block.setParent(this);
-			this.attributes 	= new CodeColumn(this, []);
-			this.header 	= new CodeColumn(this, []);
+			attributes = new CodeColumn(this, []);
+			header = new CodeColumn(this, []);
+			block = b.content;block.setParent(this);
+			ending = '}';
 			
 			verify;
 			
-			calcLine;
+			refreshLineIdx;
 		}
 		
-		protected void calcLine()
+		protected void refreshLineIdx()
 		{
-			void doIt(CodeColumn col)
+			/+
+				Note: This function refreshes the line indices of this Node and all it's first level Rows.
+				It requires that the inner Nodes having their lineIndices already refreshed.
+				It is only used with CodeColumnBuilder, because SourceTextBuilder is normally regenerating all the lineIndices.
+				
+				To debug use VisualizeCodeLineIndices=1.
+				Row and Node induces should will overlap nicely with the Glyph indices,  so the first lineIndex in each row 
+				must show a proper, nonzero number and ovelrapped 'R' and 'N' letters.
+				Non clickable text inside Nodes will have 0 lineIdx.
+				
+				/+Todo: embedded bitmap advanced comment+/
+				/+
+					Todo: verify the result of this by comparing the produced Node, Row, Glyph lineIndices 
+					of CodeColumnBuilder and SourceTextBuilder(This is the reference because it is the simplest of the two)
+				+/
+			+/
+			
+			lineIdx = 0;
+			
+			static int findRowLineIdx_min(CodeRow row)
 			{
-				if(!col) return;
-				line = col.getLineOfFirstGlyphOrNode;
+				foreach(cell; row.subCells) {
+					if(auto a = cast(Glyph)cell) { if(a.lineIdx) return a.lineIdx; }
+					else if(auto a = cast(CodeNode)cell) { if(a.lineIdx) return a.lineIdx; }
+				}
+				return 0;
 			}
 			
-			line = 0;
-			doIt(attributes); if(line) return;
-			doIt(header); if(line) return;
-			doIt(block); if(line) return;
+			
+			void rebuildColumnLineIdx(CodeColumn col)
+			{
+				int predictedIdx = 0;
+				foreach_reverse(row; col.rows)
+				{
+					const actIdx = findRowLineIdx_min(row);
+					if(actIdx>0)
+					{
+						row.lineIdx = actIdx;
+						predictedIdx = actIdx;
+					}
+					else
+					{
+						predictedIdx --;
+						if(predictedIdx>0)
+						row.lineIdx = predictedIdx;
+						else
+						predictedIdx = 0;
+					}
+					//Note: The line indices of the last empty rows will be 0
+					//Note: This algo is not works with empty columns
+				}
+			}
+			
+			foreach_reverse(col; only(attributes, header, block))
+			if(col)
+			{
+				rebuildColumnLineIdx(col);
+				
+				if(auto a = col.rows.front.lineIdx) lineIdx = a;
+			}
 		}
 		
 	}version(/+$DIDE_REGION+/all)
@@ -6261,7 +6323,10 @@ version(/+$DIDE_REGION+/all)
 				directive.type = CodeComment.Type.directive;
 				directive.content = new CodeColumn(directive, directiveCells);
 				directive.content.fillSyntax(skDirective); //Todo: directive syntax highlight not working.
-				directive.line = directive.content.getLineOfFirstGlyphOrNode;
+				
+				directive.lineIdx = directive.content.rows.front.lineIdx;//getLineIdxOfFirstGlyphOrNode_notRecursive;
+				if(directive.lineIdx <= 0) WARN("Unable to find lineIdx for directive");
+				
 				directive.promoteCustomDirective;
 				
 				appendCell(directive);
@@ -6497,6 +6562,12 @@ version(/+$DIDE_REGION+/all)
 							auto row = receiver.block.rows.back;
 							row.appendCell(decl);
 							decl.setParent(row);
+							
+							/+
+								Note: The receiver has an empty block, therefore that rowIdx is 0.
+															Now that is has a nonEmpty block, the row's line indices could be refreshed.
+							+/
+							receiver.refreshLineIdx;
 						}
 						
 						if(decl.isPreposition)
@@ -7104,7 +7175,12 @@ else debug
 			{} //OK 10 11
 		}with(TestClass1)
 		{
-					
+			{ {} }
+			{ {} }
+			{ {} }
+			{ {} }
+			
+			
 			//fixed bug: extra new line at the end of this if. The unwanted extra newline is before the else.
 			if(0) {
 				if(0) {}
@@ -7494,4 +7570,19 @@ version(/+$DIDE_REGION Comments+/all)
 	+/
 		
 		/**************** Closing *'s are not part *****************/
+}  void anonymClassesMain()
+{
+	import std.stdio: write, writeln, writef, writefln;
+	#line 1
+	interface I
+	{ void foo(); }
+	
+	auto obj = new class I
+		{
+		void foo()
+		{ writeln("foo"); }
+	};
+	obj.foo();
+	
+	//Todo: it won't detect the 'class' because the '=' symbol.
 }

@@ -27,7 +27,6 @@
 			
 	
 +/
-
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -765,6 +764,7 @@ version(/+$DIDE_REGION main+/all)
 			string searchText;
 			
 			@STORED bool showErrorList;
+			Module errorModule;
 			
 			
 			struct MarkerLayer {
@@ -1147,9 +1147,75 @@ version(/+$DIDE_REGION main+/all)
 			
 		}
 	}version(/+$DIDE_REGION+/all)
+	{}version(/+$DIDE_REGION+/all)
 	{
-		Module errorModule;
-		
+		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc)
+		{
+			//Opt: unoptimal to return a dynamic array
+			
+			if(!loc) return [];
+			
+			if(auto mod = findModule(loc.file.withoutDMixin))
+			{
+				//Opt: bottleneck! linear search
+				//Todo: return the whole module if the line is unspecified, or unable to find
+				
+				if(!loc.lineIdx)
+				{
+					//Todo: mark the whole module
+					return [];
+				}
+				
+				bool cellIsOnLine(Cell cell)
+				{
+					if(auto g = cast(Glyph)cell)
+					return g.lineIdx && g.lineIdx == loc.lineIdx;
+					
+					return false;
+				}
+				
+				bool [Container] lineContainerMap;
+				
+				void visit(Container cntr)
+				{
+					if(cntr.subCells.any!cellIsOnLine)
+					lineContainerMap[cntr] = true;
+					
+					cntr.subContainers.each!(a => visit(a));
+				}
+				visit(mod);
+				
+				auto lineContainers = lineContainerMap.keys;
+				
+				if(lineContainers.empty)
+				{
+					//unable to find any container with cells of location.line.
+					return [];
+				}
+				
+				Container.SearchResult[] arr;
+				foreach(cntr; lineContainers)
+				{
+					Container.SearchResult res;
+					res.container = cntr;
+					res.absInnerPos = worldInnerPos(cntr);
+					res.reference = CodeLocationPrefix ~ loc.text;
+					
+					res.cells = cntr.subCells.filter!cellIsOnLine.array;
+					
+					arr ~= res;
+				}
+				return arr;
+			}
+			else
+			{
+				//module not loaded
+				//LOG(msg);
+				//if(msg.location.file.exists) queueModule(msg.location.file);
+				return [];
+			}
+		}
+		
 		void convertBuildMessagesToSearchResults()
 		{
 			auto br = frmMain.buildResult;
@@ -1164,46 +1230,20 @@ version(/+$DIDE_REGION main+/all)
 			const tLoadErrorModule = DT;
 			
 			errorModule.measure;
-			//opt: This is fucking slow. Possible problem with the special comments or the icon getter or something.
+			//Opt: This is fucking slow. Possible problem with the special comments or the icon getter or something.
 			
 			const tMeasureErrorModule = DT;
 			
 			auto buildMessagesAsSearchResults(BuildMessageType type)
 			{
 				//Todo: opt
-				Container.SearchResult[] res;
+				Container.SearchResult[] arr;
 				
 				foreach(msgIdx, const msg; br.messages)
 				if(msg.type==type)
-				{
-					if(auto mod = findModule(msg.location.file.withoutDMixin))
-					{
-						//Opt: bottleneck! linear search
-						if((msg.location.line-1).inRange(mod.content.subCells))
-						{
-							Container.SearchResult sr;
-							sr.container = cast(Container)mod.content.subCells[msg.location.line-1];
-							sr.absInnerPos = mod.innerPos + mod.content.innerPos + sr.container.innerPos;
-							sr.cells = sr.container.subCells;
-							sr.reference = CodeLocationPrefix~msg.location.text;
-							res ~= sr;
-						}
-						else
-						{
-							//line not found in module
-							//LOG(msg);
-							//ERR("line not found in module", msg);
-						}
-					}
-					else
-					{
-						//module not loaded
-						//LOG(msg);
-						//if(msg.location.file.exists) queueModule(msg.location.file);
-					}
-				}
-					
-				return res;
+				arr ~= codeLocationToSearchResults(msg.location);
+				
+				return arr;
 			}
 				
 			/+
@@ -1218,7 +1258,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			LOG(tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults);
 		}
-		
+		
 		//Todo: since all the code containers have parents, location() is not needed anymore
 		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
@@ -1297,8 +1337,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return st;
 		}
-	}version(/+$DIDE_REGION+/all)
-	{
+		
 		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
 		{
 			auto a(T)(void delegate(T) f)
@@ -1317,17 +1356,17 @@ version(/+$DIDE_REGION main+/all)
 							a(
 								(CodeRow row)
 									{
-									if(auto line = col.subCells.countUntil(row)+1)
+									if(auto lineIdx = col.subCells.countUntil(row)+1)
 									{
 										//Todo: parent.subcellindex/child.index
-										res.line = line.to!int;
+										res.lineIdx = lineIdx.to!int;
 										a(
 											(Cell cell)
 												{
-												if(auto column = row.subCells.countUntil(cell)+1)
+												if(auto columnIdx = row.subCells.countUntil(cell)+1)
 												{
 													//Todo: parent.subcellindex/child.index
-													res.column = column.to!int;
+													res.columnIdx = columnIdx.to!int;
 												}
 											}
 										);
@@ -1434,7 +1473,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			textSelectionsSet = merge(prev ~ next);
 		}
-		
+		
 		void scrollInModules(Module[] m)
 		{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; }
 		
@@ -2915,7 +2954,7 @@ version(/+$DIDE_REGION main+/all)
 					if(auto mod = findModule(loc.file))
 					{
 						//Todo: load the module automatically
-						if(auto ts = mod.content.cellSelection(loc.line, loc.column, true))
+						if(auto ts = mod.content.cellSelection(loc.lineIdx, loc.columnIdx, true))
 						{
 							textSelectionsSet = [ts]; //Todo: doubleClick = zoomclose
 							with(frmMain.view) {
