@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 /+DIDE+/ 
 
@@ -1147,8 +1147,72 @@ version(/+$DIDE_REGION main+/all)
 			
 		}
 	}version(/+$DIDE_REGION+/all)
-	{}version(/+$DIDE_REGION+/all)
 	{
+		
+		static struct LineIdxLocator
+		{
+			int lineIdx;
+			string reference;
+			
+			Container.SearchResult[] searchResults;
+			
+			void visitNode(CodeNode node)
+			{
+				foreach(col; node.subCells.map!(a => cast(CodeColumn) a).filter!"a")
+				visitColumn(col);
+			}
+			
+			void visitColumn(CodeColumn col)
+			{
+				auto rows = col.rows;
+				
+				//ignore trailing empty rows
+				while(rows.length && !rows.back.lineIdx)
+				rows.popBack;
+				
+				//ignore all rows higher than lineIdx
+				rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length];
+				
+				//process same lines
+				while(rows.length && rows.back.lineIdx==lineIdx)
+				{
+					visitRow(rows.back);
+					rows.popBack;
+				}
+				
+				//process one more row whick can contain lineIdx, but starts earlier
+				if(rows.length) visitRow(rows.back);
+				
+				//unpotimized version -> foreach(row; col.rows) visitRow(row);
+			}
+			
+			void visitRow(CodeRow row)
+			{
+				bool glyphIsOnLine(Cell cell)
+				{
+					if(auto g = cast(Glyph)cell)
+					return g.lineIdx && g.lineIdx == lineIdx;
+					
+					return false;
+				}
+				
+				Container.SearchResult res;
+				res.cells = row.subCells.filter!glyphIsOnLine.array; //Opt: binary search
+				if(res.cells.length)
+				{
+					res.container = row;
+					
+					res.absInnerPos = worldInnerPos(res.container);
+					res.reference = reference;
+					
+					searchResults ~= res; //Opt: appender
+				}
+				
+				foreach(node; row.subCells.map!(a => cast(CodeNode) a).filter!"a")
+				visitNode(node);
+			}
+		}
+		
 		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc)
 		{
 			//Opt: unoptimal to return a dynamic array
@@ -1166,46 +1230,9 @@ version(/+$DIDE_REGION main+/all)
 					return [];
 				}
 				
-				bool cellIsOnLine(Cell cell)
-				{
-					if(auto g = cast(Glyph)cell)
-					return g.lineIdx && g.lineIdx == loc.lineIdx;
-					
-					return false;
-				}
-				
-				bool [Container] lineContainerMap;
-				
-				void visit(Container cntr)
-				{
-					if(cntr.subCells.any!cellIsOnLine)
-					lineContainerMap[cntr] = true;
-					
-					cntr.subContainers.each!(a => visit(a));
-				}
-				visit(mod);
-				
-				auto lineContainers = lineContainerMap.keys;
-				
-				if(lineContainers.empty)
-				{
-					//unable to find any container with cells of location.line.
-					return [];
-				}
-				
-				Container.SearchResult[] arr;
-				foreach(cntr; lineContainers)
-				{
-					Container.SearchResult res;
-					res.container = cntr;
-					res.absInnerPos = worldInnerPos(cntr);
-					res.reference = CodeLocationPrefix ~ loc.text;
-					
-					res.cells = cntr.subCells.filter!cellIsOnLine.array;
-					
-					arr ~= res;
-				}
-				return arr;
+				auto locator = LineIdxLocator(loc.lineIdx, CodeLocationPrefix ~ loc.text);
+				locator.visitNode(mod);
+				return locator.searchResults;
 			}
 			else
 			{

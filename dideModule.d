@@ -2084,6 +2084,16 @@ class CodeRow: Row
 			
 			//Opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
 		}
+		
+		protected int findRowLineIdx_min()
+		{
+			foreach(cell; subCells) {
+				if(auto a = cast(Glyph)cell) { if(a.lineIdx) return a.lineIdx; }
+				else if(auto a = cast(CodeNode)cell) { if(a.lineIdx) return a.lineIdx; }
+			}
+			return 0;
+		}
+		
 	}version(/+$DIDE_REGION+/all)
 	{
 		protected
@@ -2727,6 +2737,30 @@ class CodeRow: Row
 			return skWhitespace;
 			
 			//Todo: advanced version that checks the surroundings at the insert position.
+		}
+		
+		protected void refreshLineIdx()
+		{
+			int predictedIdx = 0;
+			foreach_reverse(row; rows)
+			{
+				const actIdx = row.findRowLineIdx_min;
+				if(actIdx>0)
+				{
+					row.lineIdx = actIdx;
+					predictedIdx = actIdx;
+				}
+				else
+				{
+					predictedIdx --;
+					if(predictedIdx>0)
+					row.lineIdx = predictedIdx;
+					else
+					predictedIdx = 0;
+				}
+				//Note: The line indices of the last empty rows will be 0
+				//Note: This algo is not works with empty columns
+			}
 		}
 		
 		deprecated int getLineIdxOfFirstGlyphOrNode_notRecursive()
@@ -3969,33 +4003,35 @@ version(/+$DIDE_REGION+/all)
 		bkColor = ts.bkColor;
 	}
 	
-	int retrieveLineIdx_min(alias reverseFun=map!"a")()
-	{
-		//Bug: empty containers and empty rows han no lineIdx. This is a big problem. I can do line searches, by visiting the whole module.
-		
-		//check all nested codeColumns inside this node
-		foreach(col; reverseFun(subCells).map!(a => cast(CodeColumn) a).filter!"a")
-		{
-			//check all rows of the column
-			foreach(row; reverseFun(col.rows))
+	/+
+		int retrieveLineIdx_min(alias reverseFun=map!"a")()
 			{
-				int res = 0;
-				foreach(cell; reverseFun(row.subCells))
+				//Bug: empty containers and empty rows han no lineIdx. This is a big problem. I can do line searches, by visiting the whole module.
+				
+				//check all nested codeColumns inside this node
+				foreach(col; reverseFun(subCells).map!(a => cast(CodeColumn) a).filter!"a")
 				{
-					if(auto g = cast(Glyph) cell) { res = g.lineIdx; break; }
-					else if(auto n = cast(CodeNode) cell) { res = n.retrieveLineIdx_min!reverseFun; /+Recursive+/ break; }
-					else assert(0, "calcLineIdx_max: Unhandled type: "~typeid(cell).name);
+					//check all rows of the column
+					foreach(row; reverseFun(col.rows))
+					{
+						int res = 0;
+						foreach(cell; reverseFun(row.subCells))
+						{
+							if(auto g = cast(Glyph) cell) { res = g.lineIdx; break; }
+							else if(auto n = cast(CodeNode) cell) { res = n.retrieveLineIdx_min!reverseFun; /+Recursive+/ break; }
+							else assert(0, "calcLineIdx_max: Unhandled type: "~typeid(cell).name);
+						}
+						if(res) return res; 
+					}
 				}
-				if(res) return res; 
+				
+				//unable to find. Defaults to lineIdx_min
+				return 0;
 			}
-		}
-		
-		//unable to find. Defaults to lineIdx_min
-		return 0;
-	}
-	
-	int retrieveLineIdx_max()
-	{ return retrieveLineIdx_min!retro; }
+			
+			int retrieveLineIdx_max()
+			{ return retrieveLineIdx_min!retro; }
+	+/
 }class CodeContainer : CodeNode
 {
 	//CodeContainer /////////////////////////////
@@ -4912,7 +4948,11 @@ version(/+$DIDE_REGION+/all)
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
-			void reload(StructureLevel desiredStructureLevel, Flag!"useExternalContents" useExternalContents = No.useExternalContents, string externalContents="")
+			void reload(
+				StructureLevel desiredStructureLevel, 
+				Flag!"useExternalContents" useExternalContents = No.useExternalContents, //todo: use nullable
+				string externalContents=""
+			)
 			{
 				fileModified = file.modified;
 				sizeBytes = file.size;
@@ -4977,6 +5017,12 @@ version(/+$DIDE_REGION+/all)
 						try
 						{
 							processHighLevelPatterns_block(content);
+							content.refreshLineIdx;/+
+								Todo: Why is this needed?
+								And why only at the module level?
+								processHighLevelPatterns somehow zeroes out 
+								the structured row lineIndices of the module...
+							+/
 							structureLevel = StructureLevel.managed;
 						}
 						catch(Exception e)
@@ -5474,44 +5520,10 @@ version(/+$DIDE_REGION+/all)
 			
 			lineIdx = 0;
 			
-			static int findRowLineIdx_min(CodeRow row)
-			{
-				foreach(cell; row.subCells) {
-					if(auto a = cast(Glyph)cell) { if(a.lineIdx) return a.lineIdx; }
-					else if(auto a = cast(CodeNode)cell) { if(a.lineIdx) return a.lineIdx; }
-				}
-				return 0;
-			}
-			
-			
-			void rebuildColumnLineIdx(CodeColumn col)
-			{
-				int predictedIdx = 0;
-				foreach_reverse(row; col.rows)
-				{
-					const actIdx = findRowLineIdx_min(row);
-					if(actIdx>0)
-					{
-						row.lineIdx = actIdx;
-						predictedIdx = actIdx;
-					}
-					else
-					{
-						predictedIdx --;
-						if(predictedIdx>0)
-						row.lineIdx = predictedIdx;
-						else
-						predictedIdx = 0;
-					}
-					//Note: The line indices of the last empty rows will be 0
-					//Note: This algo is not works with empty columns
-				}
-			}
-			
 			foreach_reverse(col; only(attributes, header, block))
 			if(col)
 			{
-				rebuildColumnLineIdx(col);
+				col.refreshLineIdx;
 				
 				if(auto a = col.rows.front.lineIdx) lineIdx = a;
 			}
