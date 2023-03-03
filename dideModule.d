@@ -20,6 +20,7 @@ version(/+$DIDE_REGION+/all)
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
 	//Todo: A // comment after a #directive should be possible
 	//Todo: Don't apply Italic fontFlag on emojis
+	//todo: Code location arrows: Only display one arrows if there are miltiple parts of a line. The middle one could be the main arrow.
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
@@ -4950,7 +4951,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			void reload(
 				StructureLevel desiredStructureLevel, 
-				Flag!"useExternalContents" useExternalContents = No.useExternalContents, //todo: use nullable
+				Flag!"useExternalContents" useExternalContents = No.useExternalContents, //Todo: use nullable
 				string externalContents=""
 			)
 			{
