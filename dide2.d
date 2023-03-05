@@ -1245,14 +1245,18 @@ version(/+$DIDE_REGION main+/all)
 		
 		void convertBuildMessagesToSearchResults()
 		{
+			T0;
 			auto br = frmMain.buildResult;
 			
 			auto outFile = File(`virtual:\__compilerOutput.d`);
 			auto output = br.sourceText;
 			outFile.write(output);
 			
-			T0;
+			const tAccessBuildMessages = DT;
+			
 			errorModule = new Module(null, outFile, StructureLevel.managed);
+			
+			LOG(__traits(classInstanceSize, Module));
 			
 			const tLoadErrorModule = DT;
 			
@@ -1283,7 +1287,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			const tBuildSearchResults = DT;
 			
-			LOG(tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults);
+			LOG([tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults].map!(a => a.value(milli(second))).format!"%(%.0f %)");
 		}
 		
 		//Todo: since all the code containers have parents, location() is not needed anymore
@@ -4865,6 +4869,18 @@ version(/+$DIDE_REGION main+/all)
 				.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear;
 				
 				drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
+				
+				void drawProgressBalls()
+				{
+					//Todo: put this into the drawing module
+					dr.pointSize = 25;
+					dr.color = clBlue;
+					foreach(i; -10..10)
+					{
+						const t = (i + QPS.value(0.5 * second).fract) / 3;
+						dr.point((t+t^^5)*100, 0);
+					}
+				}
 			}
 			
 			
