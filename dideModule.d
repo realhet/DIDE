@@ -20,7 +20,6 @@ version(/+$DIDE_REGION+/all)
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
 	//Todo: A // comment after a #directive should be possible
 	//Todo: Don't apply Italic fontFlag on emojis
-	//todo: Code location arrows: Only display one arrows if there are miltiple parts of a line. The middle one could be the main arrow.
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
@@ -4512,6 +4511,9 @@ version(/+$DIDE_REGION+/all)
 					auto 	locStr 	= scmt[keyword.length..$].stripLeft,
 						loc	= CodeLocation(locStr),
 						img	= new Img(File(`icon:\`~loc.file.ext), style.bkColor);
+					
+					id = "CodeLocation:"~locStr;
+					
 					img.height = style.fontHeight;
 					put(img);
 					put(loc.file.path.fullPath);
@@ -4886,13 +4888,28 @@ version(/+$DIDE_REGION+/all)
 			override string postfix() const
 			{ return ""; }
 			
-			this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+			this(Container parent)
 			{
 				super(parent);
 				bkColor = clModuleBorder;
+			}
+			
+			this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+			{
+				this(parent);
+				
 				fileLoaded = now;
 				file = file_.actualFile;
 				reload(desiredStructureLevel);
+			}
+			
+			this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+			{
+				this(parent);
+				
+				fileLoaded = now;
+				file = File("faszomgeci");//Bug: When filename is empty, this fuck is crashing without any errors.
+				reload(desiredStructureLevel, nullable(contents));
 			}
 			
 			override @property string identifier()
@@ -4949,19 +4966,15 @@ version(/+$DIDE_REGION+/all)
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
-			void reload(
-				StructureLevel desiredStructureLevel, 
-				Flag!"useExternalContents" useExternalContents = No.useExternalContents, //Todo: use nullable
-				string externalContents=""
-			)
+			void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 			{
 				fileModified = file.modified;
 				sizeBytes = file.size;
 				resetModuleTypeFlags;
 				structureLevel = StructureLevel.plain; //reset to the most basic level
-						
+				
 				auto prevSourceText = sourceText;
-				string sourceText = useExternalContents	? externalContents
+				string sourceText = !externalContents.isNull 	? externalContents.get
 					: this.file.readText;
 				undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText));
 				

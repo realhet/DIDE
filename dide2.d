@@ -607,9 +607,9 @@ version(/+$DIDE_REGION main+/all)
 										if(lod.moduleLevel) workspace.UI_selectedModulesHint;
 										if(!lod.moduleLevel) workspace.UI_mouseLocationHint(view);
 										
-										Text("\n");
 										
-										Text(workspace.locate(view.mousePos).map!cellInfoText.join(' '));
+										enum showMousePosCellInfoHint = false;
+										if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos).map!cellInfoText.join(' '));
 									}
 								);
 								
@@ -1232,7 +1232,12 @@ version(/+$DIDE_REGION main+/all)
 				
 				auto locator = LineIdxLocator(loc.lineIdx, CodeLocationPrefix ~ loc.text);
 				locator.visitNode(mod);
-				return locator.searchResults;
+				
+				auto res = locator.searchResults;
+				
+				if(res.length>1) foreach(ref a; res[1..$]) a.showArrow = false;
+				
+				return res;
 			}
 			else
 			{
@@ -1243,27 +1248,75 @@ version(/+$DIDE_REGION main+/all)
 			}
 		}
 		
+		
+		CodeRow[string] messageUICache;
+		string[string] messageSourceTextByLocation;
 		void convertBuildMessagesToSearchResults()
 		{
 			T0;
 			auto br = frmMain.buildResult;
 			
-			auto outFile = File(`virtual:\__compilerOutput.d`);
-			auto output = br.sourceText;
+			const outFile = File(`virtual:\__compilerOutput.d`);
+			
+			auto unprocessedSourceTexts = br.unprocessedSourceTexts;
+			auto messageSourceTexts = br.messageSourceTexts;
+			auto allSourceTexts = unprocessedSourceTexts ~ messageSourceTexts;
+			auto output = allSourceTexts.join('\n');
 			outFile.write(output);
 			
-			const tAccessBuildMessages = DT;
+			const tAccessBuildMessages = DT;  //40 ms
 			
-			errorModule = new Module(null, outFile, StructureLevel.managed);
+			errorModule = new Module(null, "", StructureLevel.structured);
+			messageSourceTextByLocation.clear;
+			if(allSourceTexts.length)
+			{
+				//load all messages through a cache
+				float y = 0;
+				errorModule.content.subCells = [];
+				foreach(msg; allSourceTexts)
+				{
+					//hide messages of unselected markerLayers
+					bool messageIsVisible = true;
+					if(msg.isWild("/+?*:*"))
+					{
+						ignoreExceptions({
+							const bmt = wild[0].toLower.to!BuildMessageType;
+							messageIsVisible = markerLayers[bmt].visible;
+						});
+					}
+					
+					if(!messageIsVisible) continue;
+					
+					//extract all locations from the message.
+					foreach(s; msg.splitter("/+$"~"DIDE_LOC ").drop(1))
+					if(s.isWild("?*+/*"))
+					messageSourceTextByLocation[wild[0]] = msg;
+					
+					if(msg !in messageUICache)
+					{
+						auto tempModule = new Module(null, msg, StructureLevel.structured);
+						tempModule.measure;
+						messageUICache[msg] = tempModule.content.rows[0];
+					}
+					errorModule.content.subCells ~= messageUICache[msg];
+					with(errorModule.content.subCells.back)
+					{
+						setParent(errorModule.content);
+						outerPos = vec2(0, y);
+						y += outerHeight;
+					}
+					
+					//Todo: Why I need to spread this shit manually? Why errorModule.measure dont do this?
+					//Bug: this cache is never emptied, it keeps growing.
+				}
+			}
 			
-			LOG(__traits(classInstanceSize, Module));
-			
-			const tLoadErrorModule = DT;
+			const tLoadErrorModule = DT;//110 ms
 			
 			errorModule.measure;
-			//Opt: This is fucking slow. Possible problem with the special comments or the icon getter or something.
+			//Note: This calculates the height and width of the module. It fails to spread the rows vertically.
 			
-			const tMeasureErrorModule = DT;
+			const tMeasureErrorModule = DT;//0 ms (because of the messageUICache[])
 			
 			auto buildMessagesAsSearchResults(BuildMessageType type)
 			{
@@ -1276,18 +1329,21 @@ version(/+$DIDE_REGION main+/all)
 				
 				return arr;
 			}
-				
+			
 			/+
 				Opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
-								module change, module move.
+				module change, module move.
 			+/
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
 			foreach(t; EnumMembers!BuildMessageType[1..$])
 			markerLayers[t].searchResults = buildMessagesAsSearchResults(t);
 			
-			const tBuildSearchResults = DT;
+			const tBuildSearchResults = DT; //60 ms
 			
-			LOG([tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults].map!(a => a.value(milli(second))).format!"%(%.0f %)");
+			LOG(
+				[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
+				.map!(a => a.value(milli(second))).format!"%(%.0f %)"
+			);
 		}
 		
 		//Todo: since all the code containers have parents, location() is not needed anymore
@@ -1885,7 +1941,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			if(auto m=findModule(File(where)))
 			{
-				m.reload(desiredStructureLevel, Yes.useExternalContents, what);
+				m.reload(desiredStructureLevel, nullable(what));
 				//selectAll
 				textSelectionsSet = [m.content.allSelection(true)];
 				//Todo: refactor codeColumn.allTextSelection(bool primary or not)
@@ -2967,7 +3023,8 @@ version(/+$DIDE_REGION main+/all)
 			void updateCodeLocationJump()
 			{
 				//jump to locations. A fucking nasty hack.
-				if(inputs.LMB.pressed)
+				
+				if(inputs.MMB.released/+Todo: only when mouse hover is below threshold+/)
 				{
 					//T0; scope(exit) DT.LOG;
 					auto hs = hitTestManager.lastHitStack;
@@ -2980,34 +3037,33 @@ version(/+$DIDE_REGION main+/all)
 			
 			void jumpTo(in CodeLocation loc)
 			{
-				if(loc) {
-					//print("LOC:", loc);
-					if(auto mod = findModule(loc.file))
+				if(!loc) return;
+				
+				if(auto mod = findModule(loc.file))
+				{
+					//Todo: load the module automatically
+					
+					auto searchResults = codeLocationToSearchResults(loc);
+					if(searchResults.length)
 					{
-						//Todo: load the module automatically
-						if(auto ts = mod.content.cellSelection(loc.lineIdx, loc.columnIdx, true))
+						if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
 						{
-							textSelectionsSet = [ts]; //Todo: doubleClick = zoomclose
-							with(frmMain.view) {
-								if(scale<0.3f) scale = 1;
-								jumpRequest = nullable(vec2(ts.caret.worldBounds.center));
-							}
-						}
-						else
-						{
-							beep; WARN("selectCursor fail: "~loc.text);
-							//Todo: at least select the line, or the module.
+							with(frmMain.view) if(scale<0.3f) scale = 1;
+							jumpRequest = nullable(vec2(bnd.center));
+							return;
 						}
 					}
-					else
-					{ beep; WARN("Can't find module: "~loc.text); }
 				}
+				
+				flashWarning("Unable to jump to: "~loc.text);
 			}
 			
 			void jumpTo(string id)
 			{
+				if(id.empty) return;
+				
 				if(id.startsWith(CodeLocationPrefix))
-				{ jumpTo(id.withoutStarting(CodeLocationPrefix)); }
+				{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
 				else if(id.startsWith(MatchPrefix))
 				{ NOTIMPL; }
 			}
@@ -3059,21 +3115,27 @@ version(/+$DIDE_REGION main+/all)
 					//all verbs can call invalidateTextSelections if it does something that affects them
 					handleXBox;
 					handleKeyboard;
+					
 					{
 						updateCodeLocationJump;
+						
 						if(
 							KeyCombo("MMB").released/+
 								pressed is not good because when I 
-														pan I don't see where the mouse is.
+								pan I don't see where the mouse is.
 							+/
-							&& nearestSearchResult.reference!=""
 						)
 						{
-							jumpTo(nearestSearchResult.reference);
-							//Todo: only do this when there was no lmouseTravelSinceLastPress
+							if(nearestSearchResult.reference!="")
+							{
+								jumpTo(nearestSearchResult.reference);
+								//Todo: only do this when there was no lmouseTravelSinceLastPress
+							}
 						}
 					}
+					
 					{ autoReloader.enabled = true; autoReloader.update(modules); }
+					
 					updateOpenQueue(1);
 					updateResyntaxQueue;
 					
@@ -4263,49 +4325,66 @@ version(/+$DIDE_REGION main+/all)
 			void UI_mouseOverHint()
 			{
 				with(im) {
-					//UI_mouseOverHint ///////////////////////
 					if(lastNearestSearchResultReference.chkSet(nearestSearchResult.reference))
 					{
 						mouseOverHintCntr = null;
 						
 						if(nearestSearchResult.reference!="")
 						{
-							if(auto mod = errorModule)
-							if(auto col = mod.content)
-							{
-								const locationRef = nearestSearchResult.reference;
-								foreach(row; col.rows)
-								{
-									bool found = false;
-									void visitLocations(.Container act)
+							
+							//Todo: this is dead code. ErrorModule has changed a lot.
+							/+
+								if(auto mod = errorModule)
+									if(auto col = mod.content)
 									{
-										//Todo: visitor pattern for cells/containers. 
-										//Similar to the allParents() thing.
-										if(!act) return;
-										
-										if(auto row = cast(.Row)act)
-										{ if(row.id==locationRef) { found = true; } }
-										foreach(sc; act.subContainers)
-										visitLocations(sc); //recursive
-									}
-											
-									visitLocations(row);
-											
-									if(found)
-									{
-										Container(
+										const locationRef = nearestSearchResult.reference;
+										foreach(row; col.rows)
+										{
+											bool found = false;
+											void visitLocations(.Container act)
 											{
-												border = row.border;
-												padding = row.padding;
-												bkColor = row.bkColor;
-												outerSize = row.outerSize;
+												//Todo: visitor pattern for cells/containers. 
+												//Similar to the allParents() thing.
+												if(!act) return;
 												
-												actContainer.subCells = row.subCells;
+												if(auto row = cast(.Row)act)
+												{ if(row.id==locationRef) { found = true; } }
+												foreach(sc; act.subContainers)
+												visitLocations(sc); //recursive
 											}
-										);
-										mouseOverHintCntr = removeLastContainer;
-										break;
+											
+											visitLocations(row);
+											
+											if(found)
+											{
+												Container(
+													{
+														border = row.border;
+														padding = row.padding;
+														bkColor = row.bkColor;
+														outerSize = row.outerSize;
+														
+														actContainer.subCells = row.subCells;
+													}
+												);
+												mouseOverHintCntr = removeLastContainer;
+												break;
+											}
+										}
 									}
+							+/
+							
+							//Note: This is the new buildMessage hint
+							if(!mouseOverHintCntr)
+							if(nearestSearchResult.reference.isWild(CodeLocationPrefix~"*") && wild[0] in messageSourceTextByLocation)
+							{
+								auto msgSrc = messageSourceTextByLocation[wild[0]];
+								if(msgSrc in messageUICache) {
+									mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]);
+									//Todo: Highlight the CodeLocation comment which is nerest to the mouse
+									//Todo: show bezier arrows from the message hint's codelocations
+									//Todo: a way to lock the message hint to be able to interact with it using the mouse
+									//Todo: a way to scroll errorlist over the hovered item
 								}
 							}
 							
@@ -4484,12 +4563,15 @@ version(/+$DIDE_REGION main+/all)
 						}
 						else
 						{
-							lineWidth = -arrowThickness -extraThickness;
-							arrowStyle = ArrowStyle.arrow;
-							
-							const p = clamper.clampArrow(b.center);
-							line(p);
-							updateNearestSearchResult(distance(mp, p[1]), sr);
+							if(sr.showArrow)
+							{
+								lineWidth = -arrowThickness -extraThickness;
+								arrowStyle = ArrowStyle.arrow;
+								
+								const p = clamper.clampArrow(b.center);
+								line(p);
+								updateNearestSearchResult(distance(mp, p[1]), sr);
+							}
 						}
 					}
 					
