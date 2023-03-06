@@ -2,8 +2,8 @@
 //@import c:\d\libs\het\hldc
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
-///@release
-//@debug
+//@release
+///@debug
 
 /+DIDE+/ 
 
@@ -1251,6 +1251,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		CodeRow[string] messageUICache;
 		string[string] messageSourceTextByLocation;
+		
 		void convertBuildMessagesToSearchResults()
 		{
 			T0;
@@ -1279,10 +1280,12 @@ version(/+$DIDE_REGION main+/all)
 					bool messageIsVisible = true;
 					if(msg.isWild("/+?*:*"))
 					{
-						ignoreExceptions({
-							const bmt = wild[0].toLower.to!BuildMessageType;
-							messageIsVisible = markerLayers[bmt].visible;
-						});
+						ignoreExceptions(
+							{
+								const bmt = wild[0].toLower.to!BuildMessageType;
+								messageIsVisible = markerLayers[bmt].visible;
+							}
+						);
 					}
 					
 					if(!messageIsVisible) continue;
@@ -1427,43 +1430,71 @@ version(/+$DIDE_REGION main+/all)
 		
 		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
 		{
-			auto a(T)(void delegate(T) f)
-			{ if(auto x = cast(T)st.get(0).cell) { st.popFront; f(x); } }
-				
-			//Note: this works only at the first dept level
-				
 			CodeLocation res;
-			a(
-				(Module m)
-				{
-					res.file = m.file;
-					a(
-						(CodeColumn col)
-							{
-							a(
-								(CodeRow row)
-									{
-									if(auto lineIdx = col.subCells.countUntil(row)+1)
-									{
-										//Todo: parent.subcellindex/child.index
-										res.lineIdx = lineIdx.to!int;
-										a(
-											(Cell cell)
-												{
-												if(auto columnIdx = row.subCells.countUntil(cell)+1)
-												{
-													//Todo: parent.subcellindex/child.index
-													res.columnIdx = columnIdx.to!int;
+			if(0)
+			{
+				//Note: this works only at the first dept level
+				//Todo: deprecate this code
+				auto a(T)(void delegate(T) f)
+				{ if(auto x = cast(T)st.get(0).cell) { st.popFront; f(x); } }
+				a(
+					(Module m)
+					{
+						res.file = m.file;
+						a(
+							(CodeColumn col)
+								{
+								a(
+									(CodeRow row)
+										{
+										if(auto lineIdx = col.subCells.countUntil(row)+1)
+										{
+											//Todo: parent.subcellindex/child.index
+											res.lineIdx = lineIdx.to!int;
+											a(
+												(Cell cell)
+													{
+													if(auto columnIdx = row.subCells.countUntil(cell)+1)
+													{
+														//Todo: parent.subcellindex/child.index
+														res.columnIdx = columnIdx.to!int;
+													}
 												}
-											}
-										);
+											);
+										}
 									}
-								}
-							);
-						}
-					);
+								);
+							}
+						);
+					}
+				);
+			}
+			else
+			{
+				//Todo: it's only detects the lineIdx
+				while(st.length) {
+					void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; }
+					auto cell = st.back.cell;
+					
+					if(auto glyph = cast(Glyph)cell) setLineIdx(glyph.lineIdx);
+					else if(auto node = cast(CodeNode)cell) setLineIdx(node.lineIdx);
+					else if(auto row = cast(CodeRow)cell) {
+						setLineIdx(row.lineIdx);
+						/+
+							Todo: this should be row.findLineIdx_max,
+							because the mouse is at the end of the row
+						+/
+						
+						if(auto mod = moduleOf(row))
+						res.file = mod.file;
+						break;
+					}
+					//todo: Tabs would look better in this if chain.
+					
+					st.popBack;
 				}
-			);
+			}
+			
 			return res;
 		}
 		
@@ -2978,7 +3009,13 @@ version(/+$DIDE_REGION main+/all)
 					selectColumn	= "Shift+Alt",
 					selectColumnAdd 	= "Ctrl+Shift+Alt";
 			}
-					
+			
+			private bool MMBReleasedWithoutScrolling()
+			{
+				return inputs.MMB.released && frmMain.mouse.hoverMax.screen.manhattanLength<=2;
+				//Todo: Ctrl+left click should be better. I think it will not conflict with the textSelection, only with module selection.
+			}
+			
 			void handleKeyboard()
 			{
 				if(!im.wantKeys && frmMain.canProcessUserInput)
@@ -3024,7 +3061,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//jump to locations. A fucking nasty hack.
 				
-				if(inputs.MMB.released/+Todo: only when mouse hover is below threshold+/)
+				if(MMBReleasedWithoutScrolling)
 				{
 					//T0; scope(exit) DT.LOG;
 					auto hs = hitTestManager.lastHitStack;
@@ -3119,12 +3156,7 @@ version(/+$DIDE_REGION main+/all)
 					{
 						updateCodeLocationJump;
 						
-						if(
-							KeyCombo("MMB").released/+
-								pressed is not good because when I 
-								pan I don't see where the mouse is.
-							+/
-						)
+						if(MMBReleasedWithoutScrolling)
 						{
 							if(nearestSearchResult.reference!="")
 							{
@@ -3718,7 +3750,10 @@ version(/+$DIDE_REGION main+/all)
 				{
 					with(frmMain)
 					if(ready && !running)
-					{ saveChangedProjectModules; rebuild; }
+					{
+						messageUICache.clear; //Todo: This UI cache should be emptied automatically.
+						saveChangedProjectModules; rebuild;
+					}
 				}
 				@VERB("Ctrl+F2") void kill()
 				{
@@ -4206,7 +4241,6 @@ version(/+$DIDE_REGION main+/all)
 			void UI_mouseLocationHint(View2D view)
 			{
 				with(im) {
-					//UI_mouseLocationHint //////////////////////////
 					if(!view.isMouseInside) return;
 					auto st = locate_snapToRow(view.mousePos);
 					if(st.length)
