@@ -2257,6 +2257,57 @@ class CodeRow: Row
 					+/
 				}
 				
+				version(/+$DIDE_REGION Code ligatures+/all)
+				{
+					enum enableCodeLigatures = true;
+					if(enableCodeLigatures && parent.getSyntax('=')==skSymbol)
+					{
+						auto r = glyphs;
+						while(1)
+						{
+							auto idx = r.countUntil!(g => g && g.ch=='=');
+							if(idx<0) break;
+							//step forward on '='
+							if(idx>=0 && idx+1 < r.length && r[idx+1] && r[idx+1].ch=='=') idx++;
+							
+							if(idx>=1 && r[idx-1])
+							if(const symbolIdx = r[idx-1].ch.among('=', '!', '<', '>'))
+							{
+								auto bnd = bounds2(r[idx-1].outerPos, r[idx].outerBottomRight);
+								dr.color = r[idx].bkColor;
+								dr.alpha = 1;
+								dr.fillRect(bnd);
+								
+								if(symbolIdx>=3)
+								{
+									const w = bnd.width * .16f;
+									bnd.left += w; bnd.right -= w;
+								}
+								
+								static int[4] stIdx;
+								if(stIdx[0]==0)
+								{
+									auto ts = tsNormal;
+									foreach(i, ch; ['=', '\u2260', '\u2264', '\u2265'])
+									stIdx[i] = ch.fontTexture(ts);
+								}
+								
+								dr.color = r[idx].fontColor;
+								dr.drawFontGlyph(stIdx[symbolIdx-1], bnd, r[idx].bkColor, r[idx].fontFlags);
+								
+								/+
+									Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
+									A ligaturajuknak viszont ugyanolyan szelesnek kellene lennie. Ezt a ligatura feldolgozast az 
+									Elastic Tab feldolgozasba is bele kene belerakni.
+									A performace visszaeses itt nem nagy, mert csak a LOD szering lathato dolgokon megy vegig.
+								+/
+							}
+							
+							r = r[idx+1..$]; //advance loop
+						}
+					}
+				}
+				
 				if(VisualizeCodeLineIndices) {
 					dr.color = clWhite;
 					dr.fontHeight = 1.25;
