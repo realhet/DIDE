@@ -2263,47 +2263,60 @@ class CodeRow: Row
 					if(enableCodeLigatures && parent.getSyntax('=')==skSymbol)
 					{
 						auto r = glyphs;
+						
 						while(1)
 						{
-							auto idx = r.countUntil!(g => g && g.ch=='=');
-							if(idx<0) break;
-							//step forward on '='
-							if(idx>=0 && idx+1 < r.length && r[idx+1] && r[idx+1].ch=='=') idx++;
+							static struct Ligature {
+								string src;
+								dchar dst;
+								float shrink = 0;
+							}
+							static immutable Ligature[] ligatures = 
+							[
+								{ "==", '=' },
+								{ "!=", '\u2260' },
+								{ "<=", '\u2264', .16 },
+								{ ">=", '\u2265', .16 },
+								{ "=>", '\u21d2', .16 },
+								{ ">>=", '\0' },
+								{ "<<=", '\0' }
+							];
 							
-							if(idx>=1 && r[idx-1])
-							if(const symbolIdx = r[idx-1].ch.among('=', '!', '<', '>'))
+							auto f = find!((a, b) => a && a.ch==b)(r, aliasSeqOf!(ligatures[].map!"a.src".array));
+							auto ligatureIdx = (cast(int)f[1])-1;
+							if(ligatureIdx<0) break;
+							const ligature = &ligatures[ligatureIdx];
+							auto rSrc = f[0][0 .. ligature.src.length];
+							r = f[0][rSrc.length .. $]; //advance
+							if(rSrc[0].syntax != skSymbol) continue;
+							if(!ligature.dst) continue;
+							auto bnd = bounds2(rSrc[0].outerPos, rSrc[$-1].outerBottomRight);
+							
+							dr.color = rSrc[0].bkColor; dr.alpha = 1; dr.fillRect(bnd);
+							
+							if(ligature.shrink)
 							{
-								auto bnd = bounds2(r[idx-1].outerPos, r[idx].outerBottomRight);
-								dr.color = r[idx].bkColor;
-								dr.alpha = 1;
-								dr.fillRect(bnd);
-								
-								if(symbolIdx>=3)
-								{
-									const w = bnd.width * .16f;
-									bnd.left += w; bnd.right -= w;
-								}
-								
-								static int[4] stIdx;
-								if(stIdx[0]==0)
-								{
-									auto ts = tsNormal;
-									foreach(i, ch; ['=', '\u2260', '\u2264', '\u2265'])
-									stIdx[i] = ch.fontTexture(ts);
-								}
-								
-								dr.color = r[idx].fontColor;
-								dr.drawFontGlyph(stIdx[symbolIdx-1], bnd, r[idx].bkColor, r[idx].fontFlags);
-								
-								/+
-									Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
-									A ligaturajuknak viszont ugyanolyan szelesnek kellene lennie. Ezt a ligatura feldolgozast az 
-									Elastic Tab feldolgozasba is bele kene belerakni.
-									A performace visszaeses itt nem nagy, mert csak a LOD szering lathato dolgokon megy vegig.
-								+/
+								const w = bnd.width * ligature.shrink;
+								bnd.left += w; bnd.right -= w;
 							}
 							
-							r = r[idx+1..$]; //advance loop
+							static int[ligatures.length] stIdx;
+							if(stIdx[0]==0)
+							{
+								auto ts = tsNormal;
+								foreach(i, ch; ligatures.map!"a.dst".array)
+								stIdx[i] = ch.fontTexture(ts);
+							}
+							
+							dr.color = rSrc[0].fontColor;
+							dr.drawFontGlyph(stIdx[ligatureIdx], bnd, rSrc[0].bkColor, rSrc[0].fontFlags);
+							
+							/+
+								Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
+								A ligaturajuknak viszont ugyanolyan szelesnek kellene lennie. Ezt a ligatura feldolgozast az 
+								Elastic Tab feldolgozasba is bele kene belerakni.
+								A performace visszaeses itt nem nagy, mert csak a LOD szering lathato dolgokon megy vegig.
+							+/
 						}
 					}
 				}
@@ -3094,6 +3107,7 @@ class CodeRow: Row
 			//Note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 			//Todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//Todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
+			//bug: Symbol on the beginning of a line or right after a composite block has skIdentifier1 syntax instead of skSymbol
 			if(true /+getStructureLevel>=StructureLevel.highlighted+/)
 			{
 				try { resyntaxer.appendHighlighted(shallowText); }catch(Exception e) {
