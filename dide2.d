@@ -27,6 +27,12 @@
 			
 	
 +/
+
+//todo: Multiline todo's
+//todo: Ability to change comment type // /+ /*  and also todo: note: bug:
+//todo: Ability to change the whitespace after a proposition: space, tab, newline
+//todo: Handle exceptions.
+//todo: longpressing Ctrl+F2 kill ldc2 processes.
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
