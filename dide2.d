@@ -28,11 +28,12 @@
 	
 +/
 
-//todo: Multiline todo's
-//todo: Ability to change comment type // /+ /*  and also todo: note: bug:
-//todo: Ability to change the whitespace after a proposition: space, tab, newline
-//todo: Handle exceptions.
-//todo: longpressing Ctrl+F2 kill ldc2 processes.
+//Todo: Multiline todo's
+//Todo: Ability to change comment type // /+ /*  and also todo: note: bug:
+//Todo: Ability to change the whitespace after a proposition: space, tab, newline
+//Todo: Handle exceptions.
+//Todo: longpressing Ctrl+F2 kill ldc2 processes.
+//todo: Insert unicode chars from other apps.  https://www.amp-what.com/unicode/search/watch
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
