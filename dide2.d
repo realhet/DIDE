@@ -33,7 +33,9 @@
 //Todo: Ability to change the whitespace after a proposition: space, tab, newline
 //Todo: Handle exceptions.
 //Todo: longpressing Ctrl+F2 kill ldc2 processes.
-//todo: Insert unicode chars from other apps.  https://www.amp-what.com/unicode/search/watch
+//Todo: Insert unicode chars from other apps.  https://www.amp-what.com/unicode/search/watch
+//Todo: Easily Reduce Build Times by Profiling the D Compiler   profiling the LDC2 compiler.
+//Todo: WYSIWYG printf editor plan  (emailek kozott)
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -354,7 +356,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			void drawOverlay(Drawing dr)
 			{
-				//dr.mmGrid(view);
+				if(0) dr.mmGrid(view);
 				
 				dr.alpha = .5f;
 				dr.lineWidth = -1;

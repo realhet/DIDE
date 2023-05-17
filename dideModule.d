@@ -108,9 +108,10 @@ version(/+$DIDE_REGION+/all)
 				//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
 				//}
 			}
-					
-			/+pass 1+/  dr.color = clBlack;	foreach_reverse(const a; arr) drawPass!1(a);
+			
+			/+pass 1+/dr.color = clBlack;	foreach_reverse(const a; arr) drawPass!1(a);
 			/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a);
+			
 		}
 		
 	}
@@ -1830,6 +1831,9 @@ class CodeRow: Row
 		bool empty() const
 		{ return subCells.empty; }
 		
+		size_t length() const
+		{ return subCells.length; }
+		
 		Cell singleCellOrNull()
 		{ return subCells.length==1 ? subCells[0] : null; }
 		
@@ -1947,7 +1951,10 @@ class CodeRow: Row
 			subCells = cells;
 			refreshTabIdx;
 			needMeasure;
-			//Note: this is used from the high level parser. It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
+			/+
+				Note: this is used from the high level parser.
+				It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
+			+/
 		}
 		
 		final string sourceText()
@@ -2121,8 +2128,8 @@ class CodeRow: Row
 						//non-leading char width modifications
 						if(
 							g.syntax==5 && g.ch!='.'	//number except '.'
-													|| g.ch.among('+', '-', '_')	//symbols next to numbers
-													/*|| g.syntax==6/+string+/*/
+							|| g.ch.among('+', '-', '_')	//symbols next to numbers
+							/*|| g.syntax==6/+string+/*/
 						) g.outerWidth = NormalSpaceWidth;
 					}
 				}
@@ -2185,11 +2192,11 @@ class CodeRow: Row
 	{
 		override void draw(Drawing dr)
 		{
-			//draw ////////////////////////////////
-			if(/*lod.level>1*/ lod.zoomFactor*outerHeight<4 && im.actTargetSurface==0)
+			
+			enum enableCodeLigatures = true;
+			
+			void drawLowDetail()
 			{
-				 //Note: LOD is only enabled on the world view, not on the UI
-				
 				if(subCells.length)
 				{
 					const lwsCnt = leadingAnyWhitespaceCount; //Opt: this should be memoized
@@ -2211,42 +2218,26 @@ class CodeRow: Row
 					
 					//Todo: Draw bigger subNodes.
 				}
-				
 			}
-			else
+			
+			void visualizeTabs()
 			{
-				super.draw(dr);
-				
-				//visualize tabs ---------------------------------------
-				
-				//Opt: these calculations operqations should be cached. Seems not that slow however
-				/+
-					Todo: only display this when there is an editor cursor active in the codeColumn
-					(or in the module)
-				+/
-				dr.translate(innerPos); dr.alpha = .4f;
-				scope(exit) { dr.pop; dr.alpha = 1; }
-				dr.color = clGray;
-				
-				if(tabIdxInternal.length)
+				foreach(ti; tabIdxInternal)
 				{
-					dr.lineWidth = .5f;
-					foreach(ti; tabIdxInternal)
-					{
-						assert(ti.inRange(subCells));
-						auto g = cast(Glyph)subCells.get(ti);
-						assert(g, "tabIdxInternal fail");
-						if(g) {
-							dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
-							//const y = g.outerPos.y + g.outerHeight*.5f;
-							//dr.vLine(g.outerRight, y-2, y+2);
-							//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
-						}
+					assert(ti.inRange(subCells));
+					auto g = cast(Glyph)subCells.get(ti);
+					assert(g, "tabIdxInternal fail");
+					if(g) {
+						dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
+						//const y = g.outerPos.y + g.outerHeight*.5f;
+						//dr.vLine(g.outerRight, y-2, y+2);
+						//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
 					}
 				}
-				
-				//visualize spaces ------------------------------
-				dr.pointSize = 1;
+			}
+			
+			void visualizeSpaces()
+			{
 				foreach(g; glyphs.filter!(a => a && a.ch==' '))
 				{
 					assert(g);
@@ -2256,70 +2247,93 @@ class CodeRow: Row
 						or end of line next to them.
 					+/
 				}
-				
-				version(/+$DIDE_REGION Code ligatures+/all)
+			}
+			
+			void drawLigatures()
+			{
+				if(parent.getSyntax('=')==skSymbol)
 				{
-					enum enableCodeLigatures = true;
-					if(enableCodeLigatures && parent.getSyntax('=')==skSymbol)
+					auto r = glyphs;
+					
+					while(1)
 					{
-						auto r = glyphs;
-						
-						while(1)
-						{
-							static struct Ligature {
-								string src;
-								dchar dst;
-								float shrink = 0;
-							}
-							static immutable Ligature[] ligatures = 
-							[
-								{ "==", '=' },
-								{ "!=", '\u2260' },
-								{ "<=", '\u2264', .16 },
-								{ ">=", '\u2265', .16 },
-								{ "=>", '\u21d2', .16 },
-								{ ">>=", '\0' },
-								{ "<<=", '\0' }
-							];
-							
-							auto f = find!((a, b) => a && a.ch==b)(r, aliasSeqOf!(ligatures[].map!"a.src".array));
-							auto ligatureIdx = (cast(int)f[1])-1;
-							if(ligatureIdx<0) break;
-							const ligature = &ligatures[ligatureIdx];
-							auto rSrc = f[0][0 .. ligature.src.length];
-							r = f[0][rSrc.length .. $]; //advance
-							if(rSrc[0].syntax != skSymbol) continue;
-							if(!ligature.dst) continue;
-							auto bnd = bounds2(rSrc[0].outerPos, rSrc[$-1].outerBottomRight);
-							
-							dr.color = rSrc[0].bkColor; dr.alpha = 1; dr.fillRect(bnd);
-							
-							if(ligature.shrink)
-							{
-								const w = bnd.width * ligature.shrink;
-								bnd.left += w; bnd.right -= w;
-							}
-							
-							static int[ligatures.length] stIdx;
-							if(stIdx[0]==0)
-							{
-								auto ts = tsNormal;
-								foreach(i, ch; ligatures.map!"a.dst".array)
-								stIdx[i] = ch.fontTexture(ts);
-							}
-							
-							dr.color = rSrc[0].fontColor;
-							dr.drawFontGlyph(stIdx[ligatureIdx], bnd, rSrc[0].bkColor, rSrc[0].fontFlags);
-							
-							/+
-								Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
-								A ligaturajuknak viszont ugyanolyan szelesnek kellene lennie. Ezt a ligatura feldolgozast az 
-								Elastic Tab feldolgozasba is bele kene belerakni.
-								A performace visszaeses itt nem nagy, mert csak a LOD szering lathato dolgokon megy vegig.
-							+/
+						static struct Ligature {
+							string src;
+							dchar dst;
+							float shrink = 0;
 						}
+						static immutable Ligature[] ligatures = 
+						[
+							{ "==", '=' },
+							{ "!=", '\u2260' },
+							{ "<=", '\u2264', .16 },
+							{ ">=", '\u2265', .16 },
+							{ "=>", '\u21d2', .16 },
+							{ ">>=", '\0' },
+							{ "<<=", '\0' }
+						];
+						
+						auto f = find!((a, b) => a && a.ch==b)(r, aliasSeqOf!(ligatures[].map!"a.src".array));
+						auto ligatureIdx = (cast(int)f[1])-1;
+						if(ligatureIdx<0) break;
+						const ligature = &ligatures[ligatureIdx];
+						auto rSrc = f[0][0 .. ligature.src.length];
+						r = f[0][rSrc.length .. $]; //advance
+						if(rSrc[0].syntax != skSymbol) continue;
+						if(!ligature.dst) continue;
+						auto bnd = bounds2(rSrc[0].outerPos, rSrc[$-1].outerBottomRight);
+						
+						dr.color = rSrc[0].bkColor; dr.alpha = 1; dr.fillRect(bnd);
+						
+						if(ligature.shrink)
+						{
+							const w = bnd.width * ligature.shrink;
+							bnd.left += w; bnd.right -= w;
+						}
+						
+						static int[ligatures.length] stIdx;
+						if(stIdx[0]==0)
+						{
+							auto ts = tsNormal;
+							foreach(i, ch; ligatures.map!"a.dst".array)
+							stIdx[i] = ch.fontTexture(ts);
+						}
+						
+						dr.color = rSrc[0].fontColor;
+						dr.drawFontGlyph(stIdx[ligatureIdx], bnd, rSrc[0].bkColor, rSrc[0].fontFlags);
+						
+						/+
+							Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
+							A ligaturajuknak viszont ugyanolyan szelesnek kellene lennie. Ezt a ligatura feldolgozast az 
+							Elastic Tab feldolgozasba is bele kene belerakni.
+							A performace visszaeses itt nem nagy, mert csak a LOD szering lathato dolgokon megy vegig.
+						+/
 					}
 				}
+			}
+			
+			if(
+				lod.zoomFactor*outerHeight<4 
+				&& im.actTargetSurface==0 /+Note: LOD is only enabled on the world view, not on the UI+/
+			)
+			{ drawLowDetail; }
+			else
+			{
+				super.draw(dr);
+				
+				//Opt: these calculations operqations should be cached. Seems not that slow however
+				/+
+					Todo: only display this when there is an editor cursor active in the codeColumn
+					(or in the module)
+				+/
+				dr.translate(innerPos);scope(exit) { dr.pop; dr.alpha = 1; }
+				
+				dr.color = clGray; dr.alpha = .4f; dr.lineWidth = .5f; dr.pointSize = 1;
+				
+				visualizeTabs;
+				visualizeSpaces;
+				
+				if(enableCodeLigatures) drawLigatures;
 				
 				if(VisualizeCodeLineIndices) {
 					dr.color = clWhite;
@@ -2442,9 +2456,9 @@ class CodeRow: Row
 					default: 
 						/+
 						debug 
-												//const prevSyntax = syntax; 
-												if(ch=='a') syntax = skKeyword; 
-												scope(exit) if(ch=='a') syntax = prevSyntax;
+							//const prevSyntax = syntax; 
+							if(ch=='a') syntax = skKeyword; 
+							scope(exit) if(ch=='a') syntax = prevSyntax;
 					+/
 						
 						//update cached textStyle
@@ -3107,7 +3121,7 @@ class CodeRow: Row
 			//Note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 			//Todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//Todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-			//bug: Symbol on the beginning of a line or right after a composite block has skIdentifier1 syntax instead of skSymbol
+			//Bug: Symbol on the beginning of a line or right after a composite block has skIdentifier1 syntax instead of skSymbol
 			if(true /+getStructureLevel>=StructureLevel.highlighted+/)
 			{
 				try { resyntaxer.appendHighlighted(shallowText); }catch(Exception e) {
@@ -3154,7 +3168,7 @@ class CodeRow: Row
 		
 		auto getRow(int rowIdx)
 		{ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; }
-			
+		
 		int rowCharCount(int rowIdx) const
 		{
 			//Todo: it's ugly because of the constness. Make it nicer.
@@ -5869,7 +5883,8 @@ version(/+$DIDE_REGION+/all)
 										Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
 									+/
 									
-									//Todo: there should be a tab right after the if and before the (expression). I must make the rules of things that could go onto the surface of CodeNodes.
+									//Todo: there should be a tab right after the if and before the (expression).
+									//Todo: I must make the rules of things that could go onto the surface of CodeNodes.
 									
 									put("{", block, "}", explicitPrepositionBlock);
 								}
@@ -5888,11 +5903,11 @@ version(/+$DIDE_REGION+/all)
 									//Todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
 									/+
 										static if(CODE)
-																			{	//this puts too much tabs
-																				const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
-																				if(canIndent) indentCount++;
-																				scope(exit) if(canIndent) indentCount--;
-																			}
+										{	//this puts too much tabs
+											const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
+											if(canIndent) indentCount++;
+											scope(exit) if(canIndent) indentCount--;
+										}
 									+/
 									
 									emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
@@ -5921,7 +5936,7 @@ version(/+$DIDE_REGION+/all)
 					}
 					else
 					put(ending); 
-						
+					
 					putUi(' '); //this space makes the border thicker
 				}
 			}
@@ -6620,8 +6635,6 @@ version(/+$DIDE_REGION+/all)
 {
 	void processHighLevelPatterns_block(CodeColumn col_)
 	{
-		//processHighLevelPatterns ////////////////////////////////
-		
 		//from here, process statements and declarations
 		
 		//generate Token enum from sentence detection rules.
@@ -6824,7 +6837,8 @@ version(/+$DIDE_REGION+/all)
 					
 					version(/+$DIDE_REGION Handle DLang Function Contracts+/all)
 					{
-						if(sentence.length==1 && sentence.back.token == DeclToken.block) {
+						if(sentence.length==1 && sentence.back.token == DeclToken.block)
+						{
 							/+
 								//step back on whitespace and zero or one () param block
 								int stepBackOnParamsAndWhitespace(int i0)
@@ -6961,20 +6975,28 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 	}
-	void processHighLevelPatterns_enum(CodeColumn col_) {
+	void processHighLevelPatterns_enum(CodeColumn col_)
+	{
+		//Note: it's called from Declaration.this() for every highlevel enums
+		
 		if(!col_) return;
+		
 		NOTIMPL;
 		//print("enum block: "~col_.extractThisLevelDString.text);
 	}
 	
-	void processHighLevelPatterns_statement(CodeColumn col_) {
+	void processHighLevelPatterns_statement(CodeColumn col_)
+	{
+		//Note: it's called from Declaration.this() for every highlevel statement
+		
 		if(!col_) return;
 		
 		//print("statement: "~col_.extractThisLevelDString.text);
 		processHighLevelPatterns_goInside(col_);
 	}
 	
-	bool isHighLevelBlock(CodeColumn col) {
+	bool isHighLevelBlock(CodeColumn col)
+	{
 		bool found;
 		foreach(cell; col.rows.map!(r => r.subCells).joiner) {
 			if(cast(Declaration) cell) { found = true; continue; }
@@ -6988,7 +7010,9 @@ version(/+$DIDE_REGION+/all)
 	
 	void processHighLevelPatterns_goInside(CodeColumn col_)
 	{
-		//recursively look inside {} () [] q{} blocks
+		//Todo: bad naming.
+		
+		//Note: "goinside" means, don't threat this block as a statement block, just look recursively inside internal {} () [] q{} blocks.
 		foreach(ref cell; col_.rows.map!(r => r.subCells).joiner)
 		{
 			if(auto blk = cast(CodeBlock) cell)
@@ -6998,9 +7022,10 @@ version(/+$DIDE_REGION+/all)
 					case CodeBlock.Type.block:
 						blk.content.processHighLevelPatterns_optionalBlock;
 						if(blk.content.isHighLevelBlock) { cell = new Declaration(blk); }
-						break; 
+						break;
 					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside; break;
-					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; break; //Todo: function params augmentations: named params
+					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; processNiceExpression(cell); break; 
+					//Todo: function params augmentations: named params
 				}
 			}
 			else if(auto str = cast(CodeString) cell)
@@ -7014,7 +7039,8 @@ version(/+$DIDE_REGION+/all)
 	
 	enum CurlyBlockKind { empty, declarationsOrStatements, list }
 	
-	auto detectCurlyBlock(CodeColumn col_) {
+	auto detectCurlyBlock(CodeColumn col_)
+	{
 		/+
 			Opt: This is terrbily slow. Must do this with a CodeColumn.bidirectional range.
 			That also should detect identifiers/keywords.
@@ -7064,17 +7090,223 @@ version(/+$DIDE_REGION+/all)
 	
 	void processHighLevelPatterns_optionalBlock(CodeColumn col_)
 	{
+		//Note: This on either calls _block or _goInside
 		//if(p!="" && !p.endsWith(';'))
 		//print("optional Block:", p);
 		
-		if(detectCurlyBlock(col_)==CurlyBlockKind.declarationsOrStatements) {
+		if(detectCurlyBlock(col_)==CurlyBlockKind.declarationsOrStatements)
+		{
 			/+
 				auto p = col_.extractThisLevelDString.text.replace("\n", " ").strip;
 				print("attempting: ", p);
 			+/
 			processHighLevelPatterns_block(col_);
-		}else {
+		}
+		else
+		{
 			processHighLevelPatterns_goInside(col_); //keep continue to discover recursively
+		}
+	}
+	
+	
+	
+	void processNiceExpression(ref Cell outerCell)
+	{
+		/+
+			Note: This is called on each block of (possible) high level code
+			Do simple code transformations here.
+		+/
+		
+		static auto asListBlock(Cell cell)
+		{ if(auto blk = cast(CodeBlock) cell) if(blk.type==CodeBlock.Type.list) return blk; return null; }
+		
+		//Replace ((a)/(b))   ((a)^^(b))
+		if(auto blk = asListBlock(outerCell))
+		if(blk.content.rows.length==1)
+		if(auto row = blk.content.getRow(0))
+		if(row.length.inRange(3, 7) /+2 operands:  1..5 chars,   1 operands: max 4 chars  => max 5+/)
+		if(auto right = asListBlock(row.subCells.back))
+		if(auto left = asListBlock(row.subCells.front))
+		{
+			const op = row.chars[1..$-1].text; //Example: ()^^()
+			switch(op)
+			{
+				case "/", "^^", ".root":	outerCell = new NiceExpression(blk.parent, op, left.content, right.content);	break;
+				default:
+			}
+		}
+		else
+		{
+			const op = row.chars[0..$-1].text; //Example: sqrt()
+			switch(op)
+			{
+				case "sqrt":	outerCell = new NiceExpression(blk.parent, op, right.content);	break;
+				default:
+			}
+		}
+		
+		//((a)<=(b)&&(b)<(c))    -> a < b < c
+	}
+	
+	class NiceExpression : CodeNode
+	{
+		enum Type { divide, power, root, sqrt }
+		enum TypeOperator	= ["/", "^^", ".root", "sqrt"],
+		TypeOperandCount 	= [2, 2, 2, 1];
+		
+		Type type;
+		CodeColumn[2] operands;
+		
+		@property string operator() const
+		{ return TypeOperator[type]; }
+		@property int operandCount() const
+		{ return TypeOperandCount[type]; }
+		
+		this(Container parent, string op, CodeColumn col0, CodeColumn col1 = null)
+		{
+			super(parent);
+			
+			try type = TypeOperator.countUntil(op).to!Type;
+			catch(Exception) raise("Invalid NiceExpression operator: " ~ op.quoted);
+			
+			static foreach(i; 0..operands.length)
+			{
+				if(i<operandCount)
+				{
+					operands[i] = mixin("col" ~ i.text).enforce;
+					operands[i].setParent(this);
+				}
+			}
+		}
+		
+		override void buildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder) {
+				void op(int i)
+				{ put("(", operands[i], ")"); }
+				
+				put("(");
+				final switch(type)
+				{
+					case 	Type.divide,
+						Type.power,
+						Type.root: 	{
+						op(0);
+						put(operator);
+						op(1);
+					}break;
+					case 	Type.sqrt:	{ put(operator); op(0); } break;
+				}
+				put(")");
+			}
+		}
+		
+		override void draw(Drawing dr)
+		{
+			super.draw(dr);
+			
+			with(dr)
+			switch(type)
+			{
+				case Type.divide: {
+					color = syntaxFontColor(skSymbol); lineWidth = 2;
+					
+					hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth);
+				} break;
+				
+				case 	Type.sqrt, 
+					Type.root: {
+					color = syntaxFontColor(skSymbol); lineWidth = 2;
+					
+					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight));
+					moveRel(-8, -12); 
+					lineRel(1, 0); 
+					lineRel(2, 5);
+					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1));
+					lineRel(operands[0].outerWidth-2, 0);
+				} break;
+				default:
+			}
+			
+		}
+		
+		override void rearrange()
+		{
+			with(nodeBuilder(skSymbol, 0))
+			{
+				foreach(o; operands[].filter!"a")	o.bkColor = darkColor;
+				
+				final switch(type)
+				{
+					case Type.divide: {
+						put(operands[0]);putNL;put(operands[1]);
+						super.rearrange;
+						foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2;
+						
+						const h = 2;
+						operands[1].outerPos.y += 2;outerHeight += 2;
+					} break;
+					case 	Type.power,
+						Type.root: {
+						static immutable 	superScriptScale 	= 1.0f, 	superScriptFontHeight 	= round(DefaultFontHeight * superScriptScale),
+							superScriptShift	= 0.625f, 	superScriptOffset	= round(DefaultFontHeight * superScriptShift);
+						
+						bool found = true;
+						foreach(cell; operands[1].rows.map!(r => r.subCells).joiner)
+						{
+							if(auto glyph = cast(Glyph) cell)
+							if(glyph.outerSize.y != superScriptFontHeight)
+							{
+								glyph.outerSize.y = superScriptFontHeight;
+								glyph.outerSize.x *= superScriptScale;
+								found = true;
+							}
+						}
+						if(found) operands[1].rearrange;
+						//Todo: this superscript thing is so bad. It wasn't planned at all.
+						
+						const reverse = type==Type.root;
+						auto 	left = operands[reverse ? 1 : 0],
+							right = operands[reverse ? 0 : 1],
+							lower = operands[0],
+							upper = operands[1];
+						
+						put(left); put(right);
+						super.rearrange;
+						
+						lower.outerPos.y = innerHeight - lower.outerHeight;
+						upper.outerPos.y = 0;
+						
+						/+
+							Make sure that the superscript is higher than the lower part
+							check the upper and the lower edges too.
+							Both of them should indicate that one of the two operands is in superscript position.
+						+/
+						foreach(i; 0..2) {
+							auto getY(CodeColumn col)
+							{ return i ? col.outerTop : col.outerBottom; }
+							const diff = getY(lower) - getY(upper);
+							if(diff < superScriptOffset)
+							{
+								const extra = superScriptOffset - diff;
+								lower.outerPos.y += extra;
+								outerHeight += extra;
+							}
+						}
+					} break;
+					case Type.sqrt: {
+						put(operands[0]);
+						
+						super.rearrange;
+						
+						const adjust = vec2(
+							10/+width if the root symbol+/, 
+							2 /+Height of the horizontal root line+/
+						);;
+						operands[0].outerPos += adjust; outerSize += adjust;
+					} break;
+				}
+			}
 		}
 	}
 }
