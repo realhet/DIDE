@@ -7143,9 +7143,22 @@ version(/+$DIDE_REGION+/all)
 				case "sqrt":	outerCell = new NiceExpression(blk.parent, op, right.content);	break;
 				default:
 			}
-		}
+		}
 		
-		//((a)<=(b)&&(b)<(c))    -> a < b < c
+		version(none)
+		{
+			void showcase()
+			{
+				
+				((divident)/(divisor));	//divide: ((divident)/(divisor))
+				((base)^^(exponent));	//power: ((base)^^(exponent))
+				((radicand).root(index));	//root: ((radicand).root(index))
+				(sqrt(base));	//sqrt: (sqrt(base))
+				
+				((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5));
+				//((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5))
+			}
+		}
 	}
 	
 	class NiceExpression : CodeNode
