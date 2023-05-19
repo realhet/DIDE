@@ -7132,6 +7132,16 @@ version(/+$DIDE_REGION+/all)
 			switch(op)
 			{
 				case "/", "^^", ".root":	outerCell = new NiceExpression(blk.parent, op, left.content, right.content);	break;
+				case "?"~compoundObjectChar.text~":":	if(auto third = asListBlock(row.subCells[2]))
+				outerCell = new NiceExpression(blk.parent, "?:", left.content, right.content, third.content);	break;
+				case " ?"~compoundObjectChar.text~":":	if(auto third = asListBlock(row.subCells[3]))
+				outerCell = new NiceExpression(blk.parent, " ?:", left.content, right.content, third.content);	break;
+				case "?"~compoundObjectChar.text~" :":	if(auto third = asListBlock(row.subCells[2]))
+				outerCell = new NiceExpression(blk.parent, "? :", left.content, right.content, third.content);	break;
+				case " ?"~compoundObjectChar.text~" :":	if(auto third = asListBlock(row.subCells[3]))
+				outerCell = new NiceExpression(blk.parent, " ? :", left.content, right.content, third.content);	break;
+				//todo: this is ugly. should decode the newlines instead.
+				//todo: tenary chain
 				default:
 			}
 		}
@@ -7157,25 +7167,30 @@ version(/+$DIDE_REGION+/all)
 				
 				((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5));
 				//((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5))
+				
+				((condition)?(exprIfTrue):(exprIfFalse));	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
+				((condition) ?(exprIfTrue):(exprIfFalse));	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
+				((condition)?(exprIfTrue) :(exprIfFalse));	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
+				((condition) ?(exprIfTrue) :(exprIfFalse));	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
 			}
 		}
 	}
 	
 	class NiceExpression : CodeNode
 	{
-		enum Type { divide, power, root, sqrt }
-		enum TypeOperator	= ["/", "^^", ".root", "sqrt"],
-		TypeOperandCount 	= [2, 2, 2, 1];
+		enum Type { divide, power, root, sqrt, tenary0, tenary1, tenary2, tenary3 }
+		enum TypeOperator	= ["/", "^^", ".root", "sqrt", "?:", " ?:", "? :", " ? :"],
+		TypeOperandCount 	= [2, 2, 2, 1, 3, 3, 3, 3];
 		
 		Type type;
-		CodeColumn[2] operands;
+		CodeColumn[3] operands;
 		
 		@property string operator() const
 		{ return TypeOperator[type]; }
 		@property int operandCount() const
 		{ return TypeOperandCount[type]; }
 		
-		this(Container parent, string op, CodeColumn col0, CodeColumn col1 = null)
+		this(Container parent, string op, CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null)
 		{
 			super(parent);
 			
@@ -7207,8 +7222,12 @@ version(/+$DIDE_REGION+/all)
 						op(0);
 						put(operator);
 						op(1);
-					}break;
-					case 	Type.sqrt:	{ put(operator); op(0); } break;
+					} break;
+					case Type.sqrt:	{ put(operator);op(0); } break;
+					case Type.tenary0:	{ op(0);put('?');op(1);put(':');op(2); } break;
+					case Type.tenary1:	{ op(0);put(" ?");op(1);put(':');op(2); } break;
+					case Type.tenary2:	{ op(0);put('?');op(1);put(" :");op(2); } break;
+					case Type.tenary3:	{ op(0);put(" ?");op(1);put(" :");op(2); } break;
 				}
 				put(")");
 			}
@@ -7221,14 +7240,13 @@ version(/+$DIDE_REGION+/all)
 			with(dr)
 			switch(type)
 			{
-				case Type.divide: {
+				case Type.divide:	{
 					color = syntaxFontColor(skSymbol); lineWidth = 2;
 					
 					hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth);
 				} break;
-				
-				case 	Type.sqrt, 
-					Type.root: {
+				case 	Type.sqrt,
+					Type.root:	{
 					color = syntaxFontColor(skSymbol); lineWidth = 2;
 					
 					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight));
@@ -7238,6 +7256,7 @@ version(/+$DIDE_REGION+/all)
 					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1));
 					lineRel(operands[0].outerWidth-2, 0);
 				} break;
+				
 				default:
 			}
 			
@@ -7249,10 +7268,13 @@ version(/+$DIDE_REGION+/all)
 			{
 				foreach(o; operands[].filter!"a")	o.bkColor = darkColor;
 				
+				void op(int i)
+				{ put(operands[i]); }
+				
 				final switch(type)
 				{
-					case Type.divide: {
-						put(operands[0]);putNL;put(operands[1]);
+					case Type.divide:	{
+						op(0);putNL;op(1);
 						super.rearrange;
 						foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2;
 						
@@ -7260,23 +7282,11 @@ version(/+$DIDE_REGION+/all)
 						operands[1].outerPos.y += 2;outerHeight += 2;
 					} break;
 					case 	Type.power,
-						Type.root: {
-						static immutable 	superScriptScale 	= 1.0f, 	superScriptFontHeight 	= round(DefaultFontHeight * superScriptScale),
-							superScriptShift	= 0.625f, 	superScriptOffset	= round(DefaultFontHeight * superScriptShift);
+						Type.root:	{
+						static immutable 	superScriptShift	= 0.625f,
+							superScriptOffset	= round(DefaultFontHeight * superScriptShift);
 						
-						bool found = true;
-						foreach(cell; operands[1].rows.map!(r => r.subCells).joiner)
-						{
-							if(auto glyph = cast(Glyph) cell)
-							if(glyph.outerSize.y != superScriptFontHeight)
-							{
-								glyph.outerSize.y = superScriptFontHeight;
-								glyph.outerSize.x *= superScriptScale;
-								found = true;
-							}
-						}
-						if(found) operands[1].rearrange;
-						//Todo: this superscript thing is so bad. It wasn't planned at all.
+						//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
 						
 						const reverse = type==Type.root;
 						auto 	left = operands[reverse ? 1 : 0],
@@ -7307,8 +7317,8 @@ version(/+$DIDE_REGION+/all)
 							}
 						}
 					} break;
-					case Type.sqrt: {
-						put(operands[0]);
+					case Type.sqrt:	{
+						op(0);
 						
 						super.rearrange;
 						
@@ -7318,6 +7328,27 @@ version(/+$DIDE_REGION+/all)
 						);;
 						operands[0].outerPos += adjust; outerSize += adjust;
 					} break;
+					case Type.tenary0:	{
+						op(0);	put(" ? ");	op(1);	put(" : ");	op(2);
+						super.rearrange;
+					} break;
+					case Type.tenary1:	{
+						op(0); putNL;
+						put(" ? "); op(1); put(" : "); op(2);
+						super.rearrange;
+					} break;
+					case Type.tenary2:	{
+						op(0);	put("\t?\t");	op(1);putNL;
+							put("\t:\t");	op(2);
+						super.rearrange;
+					} break;
+					case Type.tenary3:	{
+						op(0);		putNL;
+						put(" ?\t");	op(1);	putNL;
+						put(" :\t");	op(2);
+						super.rearrange;
+					} break;
+					//Todo: tenary chain: (()?():()?():())
 				}
 			}
 		}
