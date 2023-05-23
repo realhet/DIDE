@@ -17,6 +17,7 @@ version(/+$DIDE_REGION+/all)
 				[ ] all the above works for a nested CodeNode
 	+/
 	
+	//Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
 	//Todo: A // comment after a #directive should be possible
 	//Todo: Don't apply Italic fontFlag on emojis
@@ -5710,6 +5711,7 @@ version(/+$DIDE_REGION+/all)
 			if(cmt.isSpecialComment("REGION"))
 			{
 				//Todo: extract "all" or "none" from version(). Handle enabled/disabled region.
+				//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
 				
 				isRegion = true;
 				regionDisabled = optionIdx==2;
@@ -7140,8 +7142,8 @@ version(/+$DIDE_REGION+/all)
 				outerCell = new NiceExpression(blk.parent, "? :", left.content, right.content, third.content);	break;
 				case " ?"~compoundObjectChar.text~" :":	if(auto third = asListBlock(row.subCells[3]))
 				outerCell = new NiceExpression(blk.parent, " ? :", left.content, right.content, third.content);	break;
-				//todo: this is ugly. should decode the newlines instead.
-				//todo: tenary chain
+				//Todo: this is ugly. should decode the newlines instead.
+				//Todo: tenary chain
 				default:
 			}
 		}
@@ -7168,10 +7170,10 @@ version(/+$DIDE_REGION+/all)
 				((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5));
 				//((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5))
 				
-				((condition)?(exprIfTrue):(exprIfFalse));	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
-				((condition) ?(exprIfTrue):(exprIfFalse));	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
-				((condition)?(exprIfTrue) :(exprIfFalse));	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
-				((condition) ?(exprIfTrue) :(exprIfFalse));	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
+				((condition)?(exprIfFalse):(exprIfTrue));	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
+				((condition) ?(exprIfFalse):(exprIfTrue));	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
+				((condition)?(exprIfFalse) :(exprIfTrue));	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
+				((condition) ?(exprIfFalse) :(exprIfTrue));	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
 			}
 		}
 	}
