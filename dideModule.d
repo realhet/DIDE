@@ -7027,7 +7027,9 @@ version(/+$DIDE_REGION+/all)
 						break;
 					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside; break;
 					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; processNiceExpression(cell); break; 
+					
 					//Todo: function params augmentations: named params
+					//bug: processNiceExpressions can't seem to look inside (parameters). Got to identify parameter lists somehow.
 				}
 			}
 			else if(auto str = cast(CodeString) cell)
@@ -7134,14 +7136,14 @@ version(/+$DIDE_REGION+/all)
 			switch(op)
 			{
 				case "/", "^^", ".root":	outerCell = new NiceExpression(blk.parent, op, left.content, right.content);	break;
-				case "?"~compoundObjectChar.text~":":	if(auto third = asListBlock(row.subCells[2]))
-				outerCell = new NiceExpression(blk.parent, "?:", left.content, right.content, third.content);	break;
-				case " ?"~compoundObjectChar.text~":":	if(auto third = asListBlock(row.subCells[3]))
-				outerCell = new NiceExpression(blk.parent, " ?:", left.content, right.content, third.content);	break;
-				case "?"~compoundObjectChar.text~" :":	if(auto third = asListBlock(row.subCells[2]))
-				outerCell = new NiceExpression(blk.parent, "? :", left.content, right.content, third.content);	break;
-				case " ?"~compoundObjectChar.text~" :":	if(auto third = asListBlock(row.subCells[3]))
-				outerCell = new NiceExpression(blk.parent, " ? :", left.content, right.content, third.content);	break;
+				case "?"~compoundObjectChar.text~":":	if(auto middle = asListBlock(row.subCells[2]))
+				outerCell = new NiceExpression(blk.parent, "?:", left.content, middle.content, right.content);	break;
+				case " ?"~compoundObjectChar.text~":":	if(auto middle = asListBlock(row.subCells[3]))
+				outerCell = new NiceExpression(blk.parent, " ?:", left.content, middle.content, right.content);	break;
+				case "?"~compoundObjectChar.text~" :":	if(auto middle = asListBlock(row.subCells[2]))
+				outerCell = new NiceExpression(blk.parent, "? :", left.content, middle.content, right.content);	break;
+				case " ?"~compoundObjectChar.text~" :":	if(auto middle = asListBlock(row.subCells[3]))
+				outerCell = new NiceExpression(blk.parent, " ? :", left.content, middle.content, right.content);	break;
 				//Todo: this is ugly. should decode the newlines instead.
 				//Todo: tenary chain
 				default:
@@ -7180,6 +7182,8 @@ version(/+$DIDE_REGION+/all)
 	
 	class NiceExpression : CodeNode
 	{
+		//Todo: Nicexpressions should work inside (parameter) block too!
+		
 		enum Type { divide, power, root, sqrt, tenary0, tenary1, tenary2, tenary3 }
 		enum TypeOperator	= ["/", "^^", ".root", "sqrt", "?:", " ?:", "? :", " ? :"],
 		TypeOperandCount 	= [2, 2, 2, 1, 3, 3, 3, 3];
@@ -7331,23 +7335,23 @@ version(/+$DIDE_REGION+/all)
 						operands[0].outerPos += adjust; outerSize += adjust;
 					} break;
 					case Type.tenary0:	{
-						op(0);	put(" ? ");	op(1);	put(" : ");	op(2);
+						put(' ');op(0);	put(" ? ");	op(1);	put(" : ");	op(2);put(' '); 
 						super.rearrange;
 					} break;
 					case Type.tenary1:	{
-						op(0); putNL;
-						put(" ? "); op(1); put(" : "); op(2);
+						put(' ');op(0);	put(' ');putNL;
+						put(" ? ");op(1);put(" : ");op(2);	put(' ');
 						super.rearrange;
 					} break;
 					case Type.tenary2:	{
-						op(0);	put("\t?\t");	op(1);putNL;
-							put("\t:\t");	op(2);
+						put(' '); op(0);	put("\t?\t");	op(1);put(' '); putNL;
+							put("\t:\t");	op(2);put(' '); 
 						super.rearrange;
 					} break;
 					case Type.tenary3:	{
-						op(0);		putNL;
-						put(" ?\t");	op(1);	putNL;
-						put(" :\t");	op(2);
+						put(' '); op(0);		put(' '); putNL;
+						put(" ?\t");	op(1);	put(' '); putNL;
+						put(" :\t");	op(2);	put(' '); 
 						super.rearrange;
 					} break;
 					//Todo: tenary chain: (()?():()?():())

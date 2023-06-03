@@ -446,7 +446,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				/+
 					view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down 
-									  && !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
+					&& !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
 				+/
 				view.updateSmartScroll;
 				setLod(view.scale_anim);
