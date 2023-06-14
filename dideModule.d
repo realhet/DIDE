@@ -2230,6 +2230,8 @@ class CodeRow: Row
 					assert(g, "tabIdxInternal fail");
 					if(g) {
 						dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
+						//todo: it is NOT in the horizontal center! (g.outerRight-2)
+						
 						//const y = g.outerPos.y + g.outerHeight*.5f;
 						//dr.vLine(g.outerRight, y-2, y+2);
 						//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
@@ -7029,7 +7031,7 @@ version(/+$DIDE_REGION+/all)
 					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; processNiceExpression(cell); break; 
 					
 					//Todo: function params augmentations: named params
-					//bug: processNiceExpressions can't seem to look inside (parameters). Got to identify parameter lists somehow.
+					//Bug: processNiceExpressions can't seem to look inside (parameters). Got to identify parameter lists somehow.
 				}
 			}
 			else if(auto str = cast(CodeString) cell)
