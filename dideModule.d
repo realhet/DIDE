@@ -19,8 +19,22 @@ version(/+$DIDE_REGION+/all)
 	
 	//Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
+	//Todo: Multiline #directeve with \ backslash is not supported at all.
 	//Todo: A // comment after a #directive should be possible
 	//Todo: Don't apply Italic fontFlag on emojis
+	//Todo: Empty () [] synbols should look like they are without inner and outer borders.
+	
+	/+
+		Todo: FocusEditor shortcuts:
+		
+		Alt+X	Show All Commands
+		Ctrl+P	Open File By Name
+		Ctrl+O	Navigate To File
+		Ctrl+Shift+O 	Navigate To File From Root
+		Ctrl+F	Search in Open File
+		Alt+F	Search in Open File(DropDown Mode)
+		Ctrl+Shift+F	Search in Workspace
+	+/
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
@@ -2230,7 +2244,7 @@ class CodeRow: Row
 					assert(g, "tabIdxInternal fail");
 					if(g) {
 						dr.vLine(g.outerRight-2, g.outerTop+2, g.outerBottom-2);
-						//todo: it is NOT in the horizontal center! (g.outerRight-2)
+						//Todo: it is NOT in the horizontal center! (g.outerRight-2)
 						
 						//const y = g.outerPos.y + g.outerHeight*.5f;
 						//dr.vLine(g.outerRight, y-2, y+2);
@@ -2254,6 +2268,7 @@ class CodeRow: Row
 			
 			void drawLigatures()
 			{
+				//todo: --- 3 dashes should be a straight line.   === too.   With | < > at the end too.  With + at the middle.
 				if(parent.getSyntax('=')==skSymbol)
 				{
 					auto r = glyphs;
@@ -5241,7 +5256,7 @@ version(/+$DIDE_REGION+/all)
 				["; = ? module import alias"	, ";"	],
 				["{ template unittest invariant"	, "{"	],
 				["enum struct union class interface"	, "; {"	],
-				[":"	, ":"	],
+				[":"	, ":"	], /+Todo: Ignore this rule when "::". To support  C++ std::namespace.+/
 			];
 			
 			static immutable prepositionPatterns =

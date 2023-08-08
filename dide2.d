@@ -36,6 +36,9 @@
 //Todo: Insert unicode chars from other apps.  https://www.amp-what.com/unicode/search/watch
 //Todo: Easily Reduce Build Times by Profiling the D Compiler   profiling the LDC2 compiler.
 //Todo: WYSIWYG printf editor plan  (emailek kozott)
+//Todo: automatic spaces around operators and ligatures.
+//Todo: automatic space after ;
+//Todo: toggle space/tab/newline after prepositions.
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -124,6 +127,10 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: On bracket errors, it should mark the opening bracket too. In the scannet there should be a way to remember the opening brackets in a stack.
 		
 		//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
+		
+		//Todo: Billentyuzetkiosztás beállíthatósága ()
+		//Todo: Vízszintes elválasztó vona (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
+		//Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
 	}
 	
 	//globals ////////////////////////////////////////
@@ -413,7 +420,7 @@ version(/+$DIDE_REGION main+/all)
 				version(/+$DIDE_REGION update a virtual file from clipboard+/all) {
 					static uint id;
 					if(id.chkSet(clipboard.sequenceNumber))
-					File(`virtual:\clipboard.txt`).write(clipboard.asText);
+					File(`virtual:\clipboard.txt`).write(clipboard.text);
 					//Todo: sinchronize the clipboard both ways.
 					//Todo: don't load too big files. And most importantly don't crash.
 				}
@@ -660,7 +667,7 @@ version(/+$DIDE_REGION main+/all)
 				);
 				
 				
-				workspace.UI_flashMessages;
+				im.UI_FlashMessages;
 				
 				im.root ~= workspace;
 				im.root ~= overlay;
@@ -1019,7 +1026,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				auto m = oneSelectedModule;
 				if(!m)
-				flashWarning("This operation requires a single selected module.");
+				im.flashWarning("This operation requires a single selected module.");
 				//Todo: put the operation's name in the message.
 				
 				return m;
@@ -1352,7 +1359,8 @@ version(/+$DIDE_REGION main+/all)
 			
 			const tBuildSearchResults = DT; //60 ms
 			
-			LOG(
+			//performance timing
+			if(0)LOG(
 				[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
 				.map!(a => a.value(milli(second))).format!"%(%.0f %)"
 			);
@@ -2017,7 +2025,7 @@ version(/+$DIDE_REGION main+/all)
 			//Bug: Two adjacent slashComnments are not emit a newLine in between them
 			
 			bool valid = s.length>0;
-			if(valid) clipboard.asText = s;  //Todo: BOM handling
+			if(valid) clipboard.text = s;  //Todo: BOM handling
 			return valid;
 		}
 		
@@ -2159,7 +2167,7 @@ version(/+$DIDE_REGION main+/all)
 			if(textSelections.empty) return textSelections; //no target
 			
 			if(fromClipboard)
-			input = clipboard.asText;  //Todo: BOM handling
+			input = clipboard.text;  //Todo: BOM handling
 			
 			auto lines = input.splitLines;
 			if(lines.empty) return textSelections; //nothing to do with an empty clipboard
@@ -3101,7 +3109,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 				}
 				
-				flashWarning("Unable to jump to: "~loc.text);
+				im.flashWarning("Unable to jump to: "~loc.text);
 			}
 			
 			void jumpTo(string id)
@@ -3179,8 +3187,6 @@ version(/+$DIDE_REGION main+/all)
 					
 					updateOpenQueue(1);
 					updateResyntaxQueue;
-					
-					updateFlashMessages;
 					
 					measure; //measures all containers if needed, updates ElasticTabstops
 					//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
@@ -3278,14 +3284,14 @@ version(/+$DIDE_REGION main+/all)
 					if(buildStateChanged)
 					{
 						updateModuleBuildStates(buildResult);
-						convertBuildMessagesToSearchResults; //Opt: limit this by change detection
+						convertBuildMessagesToSearchResults;
 					}
 					
 					updateLastKnownModulePositions;
 					
 				}
 				catch(Exception e)
-				{ flashError(e.simpleMsg); }
+				{ im.flashError(e.simpleMsg); }
 			}
 			
 		}
@@ -3418,7 +3424,7 @@ version(/+$DIDE_REGION main+/all)
 					origin	= frmMain.view.origin,
 					zoomFactor 	= frmMain.view.scale;
 				}
-				flashInfo(n.format!"Location %s stored.");
+				im.flashInfo(n.format!"Location %s stored.");
 			}
 			
 			void jumpToLocation(int n)
@@ -3426,7 +3432,7 @@ version(/+$DIDE_REGION main+/all)
 				enforceLocationIndex(n);
 				if(storedLocations[n] == Location.init)
 				{
-					flashWarning(n.format!"Location %s is uninitialized.");
+					im.flashWarning(n.format!"Location %s is uninitialized.");
 					return;
 				}
 				with(storedLocations[n])
@@ -3464,7 +3470,7 @@ version(/+$DIDE_REGION main+/all)
 				enforceMemSlotIndex(n);
 				auto s = textSelectionsGet.sourceText;
 				storedMemSlots[n] = s;
-				flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored"));
+				im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored"));
 			}
 			
 			void pasteMemSlot(int n)
@@ -3472,7 +3478,7 @@ version(/+$DIDE_REGION main+/all)
 				enforceMemSlotIndex(n);
 				if(storedMemSlots[n].empty)
 				{
-					flashWarning(n.format!"MemSlot %s is empty.");
+					im.flashWarning(n.format!"MemSlot %s is empty.");
 					return;
 				}
 				textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, storedMemSlots[n]);
@@ -3672,7 +3678,7 @@ version(/+$DIDE_REGION main+/all)
 						deleteToLeft;
 					}
 					else
-					{ flashWarning("Unable to outdent."); }
+					{ im.flashWarning("Unable to outdent."); }
 				}
 				
 				@VERB("Alt+Up") void moveLineUp()
@@ -4441,98 +4447,6 @@ version(/+$DIDE_REGION main+/all)
 					
 					if(mouseOverHintCntr)
 					actContainer.append(mouseOverHintCntr);
-				}
-			}
-			
-			//UI_FlashError //////////////////////////////////////
-			
-			///Brings up an error message on the center of the screen for a short duration
-			struct FlashMessage {
-				DateTime when;
-				enum Type { info, warning, error }
-				Type type;
-				string msg;
-				
-				RGB color()
-				{
-					with(Type)
-					final switch(type)
-					{
-						case info: 	return clWhite;
-						case warning: 	return clYellow;
-						case error:	return clRed;
-					}
-					
-				}
-			}
-			
-			FlashMessage[] flashMessages;
-			
-			void flashMessage(FlashMessage.Type type, string msg)
-			{
-				if(msg=="") return;
-				//Todo: implement flashing error UI
-				enum maxLen = 10;
-				if(flashMessages.length>maxLen)
-				flashMessages = flashMessages[$-maxLen..$];
-				flashMessages ~= FlashMessage(now, type, msg);
-				
-				with(FlashMessage.Type)
-				final switch(type)
-				{
-					case error:	winSnd("Windows Critical Stop");	break;
-					case warning:	winSnd("Windows Default");	break;
-					case info: 	winSnd("Windows Information Bar");	
-				}
-			}
-			
-			void flashInfo(string msg)
-			{ flashMessage(FlashMessage.Type.info, msg); }
-			
-			void flashWarning(string msg)
-			{ flashMessage(FlashMessage.Type.warning, msg); }
-			
-			void flashError(string msg)
-			{ flashMessage(FlashMessage.Type.error, msg); }
-			
-			enum flashMessageDuration = 4*second;
-			
-			void updateFlashMessages()
-			{
-				const t = now-flashMessageDuration;
-				flashMessages = flashMessages.remove!(a => a.when<t);
-			}
-			
-			void UI_flashMessages()
-			{
-				with(im) {
-					if(flashMessages.empty) return;
-					Panel(
-						PanelPosition.bottomCenter, 
-						{
-							bkColor = clWhite;
-							style.bold = true;
-							foreach(m; flashMessages)
-							Row(
-								{
-									style.bkColor = m.color;
-									style.fontColor = blackOrWhiteFor(style.bkColor);
-									
-									if(m.type == FlashMessage.Type.error)
-									style.fontColor = mix(style.fontColor, style.bkColor, blink^^2);
-									
-									padding = "4 24";
-									flags.hAlign = HAlign.center;
-									const 	tIn = (now-m.when).value(.5f*second),
-										tOut = (m.when+flashMessageDuration-now).value(.25f*second);
-									
-									fh = DefaultFontHeight*2 	* (tIn<1 ? easeOutElastic(tIn.clamp(0, 1), 0, 1, 1) : 1)
-										* (tOut<1 ? easeOutQuad(tOut.clamp(0, 1), 0, 1, 1) : 1);
-									Text(m.msg);
-								}
-							);
-						}
-					);
 				}
 			}
 		}	
