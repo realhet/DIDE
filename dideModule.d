@@ -2268,7 +2268,7 @@ class CodeRow: Row
 			
 			void drawLigatures()
 			{
-				//todo: --- 3 dashes should be a straight line.   === too.   With | < > at the end too.  With + at the middle.
+				//Todo: --- 3 dashes should be a straight line.   === too.   With | < > at the end too.  With + at the middle.
 				if(parent.getSyntax('=')==skSymbol)
 				{
 					auto r = glyphs;
@@ -3206,7 +3206,7 @@ class CodeRow: Row
 		{ return rows.map!(r => r.chars).joiner(only(lineSep)); }
 		
 		dchar firstChar()
-		{ return byShallowChar.frontOr('\0'); }
+		{ return byShallowChar.frontOr('\U00000000'); }
 		
 		T firstCell(T:Cell = Cell)()
 		{
@@ -5730,6 +5730,11 @@ version(/+$DIDE_REGION+/all)
 				//Todo: extract "all" or "none" from version(). Handle enabled/disabled region.
 				//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
 				
+				/+
+					Todo: There should be a { } region too with it's own scope.  Using first "//Title: comment".
+					The {//title: } region comment makes difficulties inside preposition blocks.
+				+/
+				
 				isRegion = true;
 				regionDisabled = optionIdx==2;
 				keyword = "__region";
@@ -5773,7 +5778,8 @@ version(/+$DIDE_REGION+/all)
 		
 		private final void emitDeclaration(R)(ref R outputRange)
 		{
-			with(outputRange) {
+			with(outputRange)
+			{
 				
 				void putIndent()
 				{ static if(UI) put("    "); } void putNLIndent()
@@ -5858,42 +5864,56 @@ version(/+$DIDE_REGION+/all)
 					{
 						void emitPreposition(Declaration decl, bool closingSemicolon = false)
 						{
-							with(decl) {
+							with(decl)
+							{
 								//Note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
 								
 								//Todo: put a space before 'else;   ->    if(1) { a; }else b;
 								
-								if(canHaveHeader) {
+								if(canHaveHeader)
+								{
 									putUi(' ');
 									put(keyword);
 									
 									static bool isHeaderOmittableForKeyword(string keyword)
 									{
-										enum list = prepositionPatterns	.filter!(a => a.endsWith(" ("))
+										enum list = 	prepositionPatterns.filter!(a => a.endsWith(" ("))
 											.map!(a => a[0..$-2])
 											.filter!(a => prepositionPatterns.canFind(a))
 											.array;
-										//Normally in DLang, these are the keywords havingoptionally omittable ()blocks: "debug", "else debug"
+										/+
+											Normally in DLang, these are the keywords having
+																					optionally omittable ()blocks: "debug", "else debug"
+										+/
 										return list.canFind(keyword);
 									}
-									const omitHeader = header.empty && isHeaderOmittableForKeyword(keyword); //debug has an optional () block
+									
+									const omitHeader = header.empty && isHeaderOmittableForKeyword(keyword);
+									//debug has an optional () block
 									
 									putUi(' ');
 									if(!omitHeader) put("(", header, ")", !UI); 
-								}else {
+								}
+								else
+								{
 									putUi(' ');
 									put(keyword);
 								}
 								
+								//Todo: detect if there is more than one statements inside. If so, it must write a { } block!
+								
 								if(closingSemicolon)
-								{ put(';'); }else {
+								{ put(';'); }
+								else
+								{
 									
 									if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent; }
 									else put(internalTabCount > hasJoinedTab ? '\t' : ' ');
 									
 									/+
-										Todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas ala vannak igazitva. 
-										Jelenleg az if expressionja es a blokkja kozotti senkifoldjen csak a space, newline es a comment 
+										Todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas 
+										ala vannak igazitva. Jelenleg az if expressionja es a blokkja kozotti 
+										senkifoldjen csak a space, newline es a comment 
 										van detektalna (a comment az lehet, hogy nincs is!).
 										Viszont legyen a tab is detektalva! Az 3 allapot.
 										A tab eseten egy fel sornyi szunetet is be lehetne iktatni. 
@@ -5923,7 +5943,9 @@ version(/+$DIDE_REGION+/all)
 									/+
 										static if(CODE)
 										{	//this puts too much tabs
-											const canIndent = !nextClosingSemicolon && (nextJoinedPreposition.internalNewLineCount > nextJoinedPrepositionhasJoinedNewLine);
+											const canIndent = !nextClosingSemicolon 
+												&& (nextJoinedPreposition.internalNewLineCount > 
+													nextJoinedPrepositionhasJoinedNewLine);
 											if(canIndent) indentCount++;
 											scope(exit) if(canIndent) indentCount--;
 										}

@@ -39,6 +39,7 @@
 //Todo: automatic spaces around operators and ligatures.
 //Todo: automatic space after ;
 //Todo: toggle space/tab/newline after prepositions.
+//Todo: Alt+F4 akkor is mukodik, ha nem a DIDE a focused, argh...
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -218,28 +219,28 @@ version(/+$DIDE_REGION main+/all)
 		mixin autoCreate;
 		version(/+$DIDE_REGION+/all)
 		{
-					
+			
 			
 			@STORED { bool mainMenuOpened; }
 			
 			Workspace workspace;
 			MainOverlayContainer overlay;
-					
+			
 			Tid buildSystemWorkerTid;
-					
+			
 			BuildResult buildResult; //collects buildMessages and output
-					
+			
 			Path workPath = Path(`z:\temp2`);
-					
+			
 			File workspaceFile;
 			bool initialized; //workspace has been loaded.
 			
 			string baseCaption;
 			bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
-					
+			
 			@VERB("Alt+F4") void closeApp()
 			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); }
-					
+			
 			bool building()const
 			{ return buildSystemWorkerState.building; }
 			bool ready()const
@@ -271,7 +272,7 @@ version(/+$DIDE_REGION main+/all)
 					while(building) { write('.'); sleep(100); }
 				}
 			}
-					
+			
 			void launchBuildSystem(string command)()
 			{
 				static assert(command.among("rebuild", "run"), "Invalid command `"~command~"`");
@@ -281,14 +282,14 @@ version(/+$DIDE_REGION main+/all)
 				if(!workPath.exists) workPath.make;
 				
 				BuildSettings bs = {
-					killExe	 : true,
-					rebuild	 : command=="rebuild",
-					verbose	 : false,
-					compileOnly : command=="rebuild",
-					workPath : this.workPath.fullPath,
-					collectTodos : false,
-					generateMap : true,
-					compileArgs : ["-wi"],  //"-v" <- not good: it also lists all imports
+					killExe	: true,
+					rebuild	: command=="rebuild",
+					verbose	: false,
+					compileOnly	: command=="rebuild",
+					workPath	: this.workPath.fullPath,
+					collectTodos	: false,
+					generateMap 	: true,
+					compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
 				};
 				
 				void addOpt(string o)
@@ -297,19 +298,19 @@ version(/+$DIDE_REGION main+/all)
 				buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs));
 				//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
 			}
-					
+			
 			void run()
 			{
 				dbgsrv.resetBeforeRun;
 				launchBuildSystem!"run";
 			}
-					
+			
 			void rebuild()
 			{
 				dbgsrv.resetBeforeRun;
 				launchBuildSystem!"rebuild";
 			}
-					
+			
 			void cancelBuildAndResetApp()
 			{
 				if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel);
@@ -319,7 +320,7 @@ version(/+$DIDE_REGION main+/all)
 				//Todo: kill app
 				//Todo: debugServer
 			}
-					
+			
 			override void onCreate()
 			{
 				//onCreate //////////////////////////////////
@@ -335,7 +336,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				
 			}
-					
+			
 			override void onDestroy()
 			{
 				ini.write("settings", this.toJson);
@@ -343,7 +344,7 @@ version(/+$DIDE_REGION main+/all)
 				workspace.destroy;
 				destroyBuildSystem;
 			}
-					
+			
 			void onDebugLog(string s)
 			{ LOG("DBGLOG:", s); }
 			void onDebugException(string s)
@@ -402,7 +403,7 @@ version(/+$DIDE_REGION main+/all)
 									} 
 				*/
 			}
-					
+			
 			override void afterPaint()
 			{
 				//afterPaint //////////////////////////////////
@@ -1360,10 +1361,12 @@ version(/+$DIDE_REGION main+/all)
 			const tBuildSearchResults = DT; //60 ms
 			
 			//performance timing
-			if(0)LOG(
+			if(0)
+			LOG(
 				[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
 				.map!(a => a.value(milli(second))).format!"%(%.0f %)"
 			);
+			
 		}
 		
 		//Todo: since all the code containers have parents, location() is not needed anymore
