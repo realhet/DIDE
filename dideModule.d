@@ -38,6 +38,8 @@ version(/+$DIDE_REGION+/all)
 	
 	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys;
 	
+	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
+	
 	//version identifiers: AnimatedCursors
 	enum MaxAnimatedCursors = 100;
 	
@@ -1604,6 +1606,7 @@ version(/+$DIDE_REGION+/all)
 						Opt: this should exit right at the first newline to do that putMultilineOperation.
 						But only when the if condition before the state restore operation is true.
 					+/
+					if(!autoSpaceAfterDeclarations /+Note: Because this would be a double spase+/)
 					if(stylisticSpaces && !row.isCodeSpaces.back) put(' ');
 					
 					if(!firstLineIsClear && (needsNewLine || lineCounter > savedLineCounter))
@@ -2278,15 +2281,15 @@ class CodeRow: Row
 						static struct Ligature {
 							string src;
 							dchar dst;
-							float shrink = 0;
+							float hScale = 1;
 						}
 						static immutable Ligature[] ligatures = 
 						[
 							{ "==", '=' },
 							{ "!=", '\u2260' },
-							{ "<=", '\u2264', .16 },
-							{ ">=", '\u2265', .16 },
-							{ "=>", '\u21d2', .16 },
+							{ "<=", '\u2264', .66 },
+							{ ">=", '\u2265', .66 },
+							{ "=>", '\u21d2', .66 },
 							{ ">>=", '\0' },
 							{ "<<=", '\0' }
 						];
@@ -2303,9 +2306,9 @@ class CodeRow: Row
 						
 						dr.color = rSrc[0].bkColor; dr.alpha = 1; dr.fillRect(bnd);
 						
-						if(ligature.shrink)
+						if(ligature.hScale<1)
 						{
-							const w = bnd.width * ligature.shrink;
+							const w = bnd.width * ((1-ligature.hScale)/(2));
 							bnd.left += w; bnd.right -= w;
 						}
 						
@@ -3827,7 +3830,7 @@ version(/+$DIDE_REGION+/all)
 				}
 				actEvent = actEvent.parent;
 			}
-			while(again && canUndo);
+			while(again && canUndo);     
 		}
 		
 		bool canRedo()
@@ -3856,7 +3859,7 @@ version(/+$DIDE_REGION+/all)
 						//Todo: ^^^^ ugly and needs range check
 				}
 			}
-			while(again && canRedo);
+			while(again && canRedo);     
 				
 		}
 			
@@ -4192,6 +4195,8 @@ version(/+$DIDE_REGION+/all)
 	}
 }class CodeComment : CodeContainer
 {
+	//Todo: bug when potting /+link:http://...+/ comments inside /++/  The newline after the // suxx.
+	
 	enum Type
 	{ slashComment, cComment, dComment, directive }
 	enum TypePrefix	= ["//", "/*", "/+", "#"],
@@ -5826,7 +5831,10 @@ version(/+$DIDE_REGION+/all)
 						else if(needSpace.chkClear) put(' ');
 						
 						put("{", block, "}");
+						
 						putUi(' ');
+						
+						/+if(autoSpaceAfterDeclarations) put(' '); else putUi(' ');+/
 					}
 				}
 				else if(isPreposition)
@@ -5868,7 +5876,8 @@ version(/+$DIDE_REGION+/all)
 							{
 								//Note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
 								
-								//Todo: put a space before 'else;   ->    if(1) { a; }else b;
+								//Todo: put a space before 'else;   ->    if(1) { a; }else b;  
+								//Todo: put a space after 'else'  if it is followed by an alphaNumeric char. -> that's compilation error
 								
 								if(canHaveHeader)
 								{
@@ -5903,7 +5912,7 @@ version(/+$DIDE_REGION+/all)
 								//Todo: detect if there is more than one statements inside. If so, it must write a { } block!
 								
 								if(closingSemicolon)
-								{ put(';'); }
+								{ put(';');if(autoSpaceAfterDeclarations) put(' '); }
 								else
 								{
 									
@@ -5978,7 +5987,8 @@ version(/+$DIDE_REGION+/all)
 					else
 					put(ending); 
 					
-					putUi(' '); //this space makes the border thicker
+					if(autoSpaceAfterDeclarations) put(' ');else putUi(' ');//this space makes the border thicker
+					
 				}
 			}
 		}
@@ -6063,6 +6073,14 @@ version(/+$DIDE_REGION+/all)
 		return c.castSwitch!(
 			(Glyph	g) 	=> isDLangWhitespace(g.ch)	,
 			(CodeComment 	_) 	=> true	,
+			(Cell	c)	=> false
+		);
+	}
+	
+	bool cellIsSpace(Cell c)
+	{
+		return c.castSwitch!(
+			(Glyph	g) 	=> g.ch==' '	,
 			(Cell	c)	=> false
 		);
 	}
@@ -6388,6 +6406,12 @@ version(/+$DIDE_REGION+/all)
 			return '\0';
 		}
 		
+		void skipOneOptionalSpace()
+		{
+			if(peekChar==' ')
+			processSrc!(Operation.skip, true)(srcIdx+1);
+		}
+		
 		int remainingCellsOnLine()
 		{
 			if(auto row = col.rows.get(srcPos.y))
@@ -6575,14 +6599,17 @@ version(/+$DIDE_REGION+/all)
 			totalComments ~= res.comments;
 			return res.lastCell; 
 		}
-			
-		auto skipWhite()
+		
+		void skipWhite()
 		{
 			auto res = cellRows.removeFront!(c => c.isWhitespaceOrComment)(int.max);
 			totalNewLineCount += res.newLineCount;
 			totalTabCount += res.tabCount;
 			totalComments ~= res.comments;
 		}
+		
+		void skipOneOptionalSpace()
+		{ cellRows.removeFront!(c => c.cellIsSpace)(1); }
 		
 		void appendCommentsAndNewLines()
 		{
@@ -7005,6 +7032,8 @@ version(/+$DIDE_REGION+/all)
 						joinPrepositions;
 						
 						//print(dDeclarationRecords.back);
+						
+						if(autoSpaceAfterDeclarations) skipOneOptionalSpace;
 					}
 					else
 					{
@@ -7167,14 +7196,14 @@ version(/+$DIDE_REGION+/all)
 		if(auto blk = asListBlock(outerCell))
 		if(blk.content.rows.length==1)
 		if(auto row = blk.content.getRow(0))
-		if(row.length.inRange(3, 7) /+2 operands:  1..5 chars,   1 operands: max 4 chars  => max 5+/)
+		if(row.length.inRange(3, 10) /+It's an optimization for the size range.  Must update and verify!!!+/)
 		if(auto right = asListBlock(row.subCells.back))
 		if(auto left = asListBlock(row.subCells.front))
 		{
 			const op = row.chars[1..$-1].text; //Example: ()^^()
 			switch(op)
 			{
-				case "/", "^^", ".root":	outerCell = new NiceExpression(blk.parent, op, left.content, right.content);	break;
+				case "/", "^^", ".root", ".dot", ".cross":	outerCell = new NiceExpression(blk.parent, op, left.content, right.content);	break;
 				case "?"~compoundObjectChar.text~":":	if(auto middle = asListBlock(row.subCells[2]))
 				outerCell = new NiceExpression(blk.parent, "?:", left.content, middle.content, right.content);	break;
 				case " ?"~compoundObjectChar.text~":":	if(auto middle = asListBlock(row.subCells[3]))
@@ -7185,6 +7214,22 @@ version(/+$DIDE_REGION+/all)
 				outerCell = new NiceExpression(blk.parent, " ? :", left.content, middle.content, right.content);	break;
 				//Todo: this is ugly. should decode the newlines instead.
 				//Todo: tenary chain
+				//Todo: (cast()())
+				
+				/+
+					Todo: There are more to tenary.
+					The condition could be 2 rows high when it contains a content a comment.
+					But the alignment should be more clever.
+					/+
+						Code: ((
+							sample.avgColor>192
+							//the error and mask is in the alpha.
+						)?(clRed) :(sample.avgColor.rgb))
+					+/
+				+/
+				//Todo: Double _ could be a subText. Example: dir__start
+				
+				
 				default:
 			}
 		}
@@ -7193,7 +7238,7 @@ version(/+$DIDE_REGION+/all)
 			const op = row.chars[0..$-1].text; //Example: sqrt()
 			switch(op)
 			{
-				case "sqrt":	outerCell = new NiceExpression(blk.parent, op, right.content);	break;
+				case "sqrt", "magnitude", "normalize":	outerCell = new NiceExpression(blk.parent, op, right.content);	break;
 				default:
 			}
 		}
@@ -7207,6 +7252,11 @@ version(/+$DIDE_REGION+/all)
 				((base)^^(exponent));	//power: ((base)^^(exponent))
 				((radicand).root(index));	//root: ((radicand).root(index))
 				(sqrt(base));	//sqrt: (sqrt(base))
+				
+				(magnitude(a));	//magnitude: (magnitude(a)) a: scalar or vector
+				(normalize(vector));	//normalize: (normalize(vector))
+				((a).dot(b));	//dot: ((a).dot(b))
+				((a).cross(b));	//cross: ((a).cross(b))
 				
 				((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5));
 				//((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5))
@@ -7223,9 +7273,9 @@ version(/+$DIDE_REGION+/all)
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, sqrt, tenary0, tenary1, tenary2, tenary3 }
-		enum TypeOperator	= ["/", "^^", ".root", "sqrt", "?:", " ?:", "? :", " ? :"],
-		TypeOperandCount 	= [2, 2, 2, 1, 3, 3, 3, 3];
+		enum Type { divide, power, root, dot, cross, sqrt, magnitude, normalize, tenary0, tenary1, tenary2, tenary3 }
+		enum TypeOperator	= ["/", "^^", ".root", ".dot", ".cross", "sqrt", "magnitude", "normalize", "?:", " ?:", "? :", " ? :"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 1, 1, 1, 3, 3, 3, 3];
 		
 		Type type;
 		CodeColumn[3] operands;
@@ -7263,12 +7313,16 @@ version(/+$DIDE_REGION+/all)
 				{
 					case 	Type.divide,
 						Type.power,
-						Type.root: 	{
+						Type.root,
+						Type.dot,
+						Type.cross: 	{
 						op(0);
 						put(operator);
 						op(1);
 					} break;
-					case Type.sqrt:	{ put(operator);op(0); } break;
+					case 	Type.sqrt,
+						Type.magnitude,
+						Type.normalize:	{ put(operator);op(0); } break;
 					case Type.tenary0:	{ op(0);put('?');op(1);put(':');op(2); } break;
 					case Type.tenary1:	{ op(0);put(" ?");op(1);put(':');op(2); } break;
 					case Type.tenary2:	{ op(0);put('?');op(1);put(" :");op(2); } break;
@@ -7362,7 +7416,9 @@ version(/+$DIDE_REGION+/all)
 							}
 						}
 					} break;
-					case Type.sqrt:	{
+					case 	Type.dot:	{ put(operands[0]);put('\u22C5'); put(operands[1]);super.rearrange; } break;
+					case 	Type.cross:	{ put(operands[0]);put('\u2A2F'); put(operands[1]);super.rearrange; } break;
+					case 	Type.sqrt:	{
 						op(0);
 						
 						super.rearrange;
@@ -7373,6 +7429,8 @@ version(/+$DIDE_REGION+/all)
 						);;
 						operands[0].outerPos += adjust; outerSize += adjust;
 					} break;
+					case 	Type.magnitude:	{ put("\u007C");op(0);put("\u007C");super.rearrange; } break;
+					case 	Type.normalize:	{ put("\u007C\u007C");op(0);put("\u007C\u007C");super.rearrange; } break;
 					case Type.tenary0:	{
 						put(' ');op(0);	put(" ? ");	op(1);	put(" : ");	op(2);put(' '); 
 						super.rearrange;
@@ -7454,8 +7512,8 @@ else debug
 			label1: foreach(i; 0..10) { writeln(i); break label1; }
 			static foreach_reverse(i; 0..10) { { writeln(i); continue; } }
 			while(0) {}
-			do sleep(1);while(0);
-			do { sleep(1); }while(0);
+			do sleep(1);while(0);     
+			do { sleep(1); }while(0);     
 			
 			switch(5) {
 				case 6: break;
@@ -7628,7 +7686,7 @@ else debug
 			
 			
 			//Todo: Extra empty statement at the end.  Must distinguish "while();" and "do ; while();}
-			do {}while(0);
+			do {}while(0);     
 			
 			
 			//Todo: do-uble bad parsing
@@ -7664,7 +7722,7 @@ else
 	
 	auto testfun = (){
 		//Todo: process lambda's  =>{ or (){ , but not ={
-		do sleep(1);while(0);
+		do sleep(1);while(0);     
 	};
 }version(none) {
 	//static initializer vs labmda
@@ -7706,23 +7764,23 @@ else
 	//test do/while
 	void xx()
 	{
-		do a;while(1);
+		do a;while(1);     
 		
-		do {}while(1);
+		do {}while(1);     
 		
 		do
-		{ xyz; }while(1);
+		{ xyz; }while(1);     
 		
 		do {}
-		while(1);
+		while(1);     
 		
 		do
 		{}
-		while(1);
+		while(1);     
 		
 		do
 		{}
-		while(1);
+		while(1);     
 		{}
 	}
 	
@@ -7856,7 +7914,7 @@ struct StylisticBugs
 					//Todo: ^^^^ ugly and needs range check
 			}
 		}
-		while(again && canRedo);
+		while(again && canRedo);     
 	}
 }
 
