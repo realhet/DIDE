@@ -5832,9 +5832,8 @@ version(/+$DIDE_REGION+/all)
 						
 						put("{", block, "}");
 						
-						putUi(' ');
-						
-						/+if(autoSpaceAfterDeclarations) put(' '); else putUi(' ');+/
+						//putUi(' ');
+						if(autoSpaceAfterDeclarations) put(' '); else putUi(' ');
 					}
 				}
 				else if(isPreposition)
