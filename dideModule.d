@@ -36,7 +36,7 @@ version(/+$DIDE_REGION+/all)
 		Ctrl+Shift+F	Search in Workspace
 	+/
 	
-	import het, het.ui, het.tokenizer, het.structurescanner ,buildsys; 
+	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
 	
@@ -1858,11 +1858,11 @@ class CodeRow: Row
 		auto glyphs()
 		{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 		
-		auto chars()
-		{ return glyphs.map!(a => a ? a.ch : compoundObjectChar); } 
+		auto chars(dchar objectChar=compoundObjectChar)()
+		{ return glyphs.map!(a => a ? a.ch : objectChar); } 
 		
-		string shallowText()
-		{ return chars.to!string; } 
+		string shallowText(dchar objectChar=compoundObjectChar)()
+		{ return chars!objectChar.to!string; } 
 		//Todo: combine this with extractThisLevelDString
 		
 		//Todo: mode isSpace inside elastic tab detection, it's way too specialized
@@ -2560,7 +2560,7 @@ class CodeRow: Row
 			static char categorize(dchar ch)
 			{
 				if(isDLangIdentifierCont(ch) || ch.among('_', '#', '@')) return 'a'; 
-				if(ch.among(' ', '\t', '\x0b', '\x0c')) return ' '; 
+				if(ch.among(' ', '\t', '\x0b', '\x0c', '\r', '\n')) return ' '; 
 				return '+'; 
 			} 
 			
@@ -2568,7 +2568,7 @@ class CodeRow: Row
 			{
 				switch(s[0])
 				{
-					case ' ', '\t', '\x0b', '\x0c': 	syntax = skWhitespace; 	break; 
+					case ' ', '\t', '\x0b', '\x0c', '\r', '\n': 	syntax = skWhitespace; 	break; 
 					case '0': ..case '9': 	syntax = skNumber; 	break; 
 					case '#': 	syntax = skDirective; 	break; 
 					//Todo: Support "#line n" directive for line numbering. Or ignore it... Just make karcshader.glsl work.
@@ -2876,7 +2876,6 @@ class CodeRow: Row
 		
 		auto calcWhitespaceStats()
 		{
-			import het.tokenizer : WhitespaceStats; 
 			WhitespaceStats whitespaceStats; 
 			foreach(r; rows)
 			{
@@ -3142,10 +3141,12 @@ class CodeRow: Row
 			//Note: IT IS ILLEGAL TO MODIFY the contents in this. Only change to font color and flags are valid.
 			//Todo: older todo: resyntax: Problem with the Column Width detection when the longest line is syntax highlighted using bold fonts.
 			//Todo: older todo: resyntax: Space and hex digit sizes are not adjusted after resyntax.
-			//Bug: Symbol on the beginning of a line or right after a composite block has skIdentifier1 syntax instead of skSymbol
 			if(true /+getStructureLevel>=StructureLevel.highlighted+/)
 			{
-				try { resyntaxer.appendHighlighted(shallowText); }catch(Exception e) {
+				try {
+					resyntaxer.appendHighlighted(shallowText!' '); 
+					//Note: using space instead of compositeObjectChar
+				}catch(Exception e) {
 					WARN(e.simpleMsg); 
 					//Todo: mark the error.
 				}
@@ -3252,11 +3253,8 @@ class CodeRow: Row
 		} 
 	}version(/+$DIDE_REGION+/all)
 	{
-		string shallowText()
-		{
-			return rows.map!(r => r.shallowText).join('\n'); 
-			//Note: it was joined bwith DefaultNewLine (\n\r), but can't remember why
-		} 
+		string shallowText(dchar objectChar=compoundObjectChar)()
+		{ return rows.map!(r => r.shallowText!objectChar).join('\n'); } 
 		
 		//index, location calculations
 		int maxIdx() const
@@ -4043,8 +4041,8 @@ version(/+$DIDE_REGION+/all)
 		CodeNodeBuilder res; 
 		with(res) {
 			node 	= this; 
-			style 	= tsSyntax(syntax);  if(!customColor.isNull) style.fontColor = customColor.get; 
-			inverse 	= inverse_; 
+			style 	= tsSyntax(syntax); 	if(!customColor.isNull) style.fontColor = customColor.get; 
+			inverse 	= inverse_; 	
 			darkColor	= style.bkColor,
 			brightColor 	= style.fontColor,
 			halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1)); 
@@ -5530,7 +5528,8 @@ version(/+$DIDE_REGION+/all)
 		bool isSimpleBlock() const
 		{ return isBlock && keyword=="" && header.empty && attributes.empty; } 
 		
-		void verify() {
+		void verify()
+		{
 			if(isBlock)
 			{
 				enforce(block, "Invalid null block."); 
@@ -5572,7 +5571,6 @@ version(/+$DIDE_REGION+/all)
 			verify; 
 			
 			//RECURSIVE!!!
-			
 			if(isBlock)
 			{
 				if(keyword=="enum")
@@ -7190,19 +7188,23 @@ version(/+$DIDE_REGION+/all)
 		
 		static auto asListBlock(Cell cell)
 		{ if(auto blk = cast(CodeBlock) cell) if(blk.type==CodeBlock.Type.list) return blk; return null; } 
+		static auto asTokenString(Cell cell)
+		{ if(auto str = cast(CodeString) cell) if(str.type==CodeString.Type.tokenString) return str; return null; } 
+		
+		//Todo: This large if chain is lame.  Should make a configurable pattern detector instead.
 		
 		//Replace ((a)/(b))   ((a)^^(b))
 		if(auto blk = asListBlock(outerCell))
 		if(blk.content.rows.length==1)
 		if(auto row = blk.content.getRow(0))
-		if(row.length.inRange(3, 10) /+It's an optimization for the size range.  Must update and verify!!!+/)
+		if(row.length.inRange(3, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
 		if(auto right = asListBlock(row.subCells.back))
 		if(auto left = asListBlock(row.subCells.front))
 		{
-			const op = row.chars[1..$-1].text; //Example: ()^^()
+			const op = row.chars[1..$-1].text; //Example: (^^(
 			switch(op)
 			{
-				case "/", "^^", ".root", ".dot", ".cross": 	outerCell = new NiceExpression(blk.parent, op, left.content, right.content); 	break; 
+				case "/", "^^", ".root", "*", ".dot", ".cross": 	outerCell = new NiceExpression(blk.parent, op, left.content, right.content); 	break; 
 				case "?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[2]))
 				outerCell = new NiceExpression(blk.parent, "?:", left.content, middle.content, right.content); 	break; 
 				case " ?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[3]))
@@ -7227,7 +7229,7 @@ version(/+$DIDE_REGION+/all)
 					+/
 				+/
 				//Todo: Double _ could be a subText. Example: dir__start
-				//todo: ((a)*(b))  -> a b   multiplication with no symbol at all.
+				//Todo: ((a)*(b))  -> a b   multiplication with no symbol at all.
 				
 				
 				default: 
@@ -7241,7 +7243,20 @@ version(/+$DIDE_REGION+/all)
 				case "sqrt", "magnitude", "normalize": 	outerCell = new NiceExpression(blk.parent, op, right.content); 	break; 
 				default: 
 			}
-		}
+		}
+		else if(auto right = asTokenString(row.subCells.back))
+		{
+			if(auto left = asListBlock(row.subCells.front))
+			{
+				const op = row.chars[1..$-1].text; //Example: (.genericArg!`
+				switch(op)
+				{
+					case ".genericArg!": outerCell = new NiceExpression(blk.parent, op, right.content, left.content); 	break; 
+					default: 
+				}
+			}
+		}
+		
 		
 		version(none)
 		{
@@ -7252,14 +7267,17 @@ version(/+$DIDE_REGION+/all)
 				((base)^^(exponent)); 	//power: ((base)^^(exponent))
 				((radicand).root(index)); 	//root: ((radicand).root(index))
 				(sqrt(base)); 	//sqrt: (sqrt(base))
-				
+				((2)*(x)); 	/+multiplication: ((a)*(b))+/ //Todo: more than 2 factors: ((a)*(b)*(c)*...)
 				(magnitude(a)); 	//magnitude: (magnitude(a)) a: scalar or vector
 				(normalize(vector)); 	//normalize: (normalize(vector))
 				((a).dot(b)); 	//dot: ((a).dot(b))
 				((a).cross(b)); 	//cross: ((a).cross(b))
 				
-				((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
-				//((-b - (sqrt(((b)^^(2)) - 4*a*c)))/(2*a)) + ((1)/(((x)^^(2)))) + ((125).root(5))
+				((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
+				//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
+				
+				Text(((clRed).genericArg!q{fontColor}), ((RGB(0xFF0040)).genericArg!q{bkColor}), "text"); 
+				//Text(((clRed).genericArg!q{fontColor}), ((RGB(0xFF0040)).genericArg!q{bkColor}), "text"); 
 				
 				((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
 				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
@@ -7273,9 +7291,9 @@ version(/+$DIDE_REGION+/all)
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, dot, cross, sqrt, magnitude, normalize, tenary0, tenary1, tenary2, tenary3} 
-		enum TypeOperator	= ["/", "^^", ".root", ".dot", ".cross", "sqrt", "magnitude", "normalize", "?:", " ?:", "? :", " ? :"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 1, 1, 1, 3, 3, 3, 3]; 
+		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, tenary0, tenary1, tenary2, tenary3, genericArg} 
+		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "?:", " ?:", "? :", " ? :", ".genericArg!"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 3, 3, 3, 3, 2]; 
 		
 		Type type; 
 		CodeColumn[3] operands; 
@@ -7308,12 +7326,19 @@ version(/+$DIDE_REGION+/all)
 				void op(int i)
 				{ put("(", operands[i], ")"); } 
 				
+				string op0AsIdentifier()
+				{
+					//Todo: some error checking would be better.
+					return operands[0].shallowText.filter!isDLangIdentifierCont.text; 
+				} 
+				
 				put("("); 
 				final switch(type)
 				{
 					case 	Type.divide,
 						Type.power,
 						Type.root,
+						Type.mul,
 						Type.dot,
 						Type.cross: 	{
 						op(0); 
@@ -7327,6 +7352,7 @@ version(/+$DIDE_REGION+/all)
 					case Type.tenary1: 	{ op(0); put(" ?"); op(1); put(':'); op(2); }break; 
 					case Type.tenary2: 	{ op(0); put('?'); op(1); put(" :"); op(2); }break; 
 					case Type.tenary3: 	{ op(0); put(" ?"); op(1); put(" :"); op(2); }break; 
+					case Type.genericArg: 	{ op(1); put(operator); put("q{"); put(op0AsIdentifier); put('}'); }break; 
 				}
 				put(")"); 
 			}
@@ -7340,13 +7366,13 @@ version(/+$DIDE_REGION+/all)
 			switch(type)
 			{
 				case Type.divide: 	{
-					color = syntaxFontColor(skSymbol); lineWidth = 2; 
+					color = syntaxFontColor(skSymbol); lineWidth = 1.25;  //Todo: lineWidth settings
 					
 					hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
 				}break; 
 				case 	Type.sqrt,
 					Type.root: 	{
-					color = syntaxFontColor(skSymbol); lineWidth = 2; 
+					color = syntaxFontColor(skSymbol); lineWidth = 1.25; 
 					
 					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
 					moveRel(-8, -12); 
@@ -7365,6 +7391,11 @@ version(/+$DIDE_REGION+/all)
 		{
 			with(nodeBuilder(skSymbol, 0))
 			{
+				//make it half as bright as the ()[] symbols
+				style.bkColor = bkColor = avg(halfColor, darkColor); 
+				style.bold = false; 
+				//Todo: bold/darkening settings
+				
 				foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
 				
 				void op(int i)
@@ -7418,6 +7449,7 @@ version(/+$DIDE_REGION+/all)
 					}break; 
 					case 	Type.dot: 	{ put(operands[0]); put('\u22C5'); put(operands[1]); super.rearrange; }break; 
 					case 	Type.cross: 	{ put(operands[0]); put('\u2A2F'); put(operands[1]); super.rearrange; }break; 
+					case 	Type.mul: 	{ put(operands[0]); put(operands[1]); super.rearrange; }break; 
 					case 	Type.sqrt: 	{
 						op(0); 
 						
@@ -7451,6 +7483,7 @@ version(/+$DIDE_REGION+/all)
 						put(" :\t"); 	op(2); 	put(' '); 
 						super.rearrange; 
 					}break; 
+					case Type.genericArg: 	{ put(operands[0]); put(':'); put(operands[1]); super.rearrange; }break; 
 					//Todo: tenary chain: (()?():()?():())
 				}
 			}
@@ -7764,23 +7797,23 @@ else
 	//test do/while
 	void xx()
 	{
-		do a; while(1);     
+		do a; while(1); 
 		
-		do {}while(1);     
+		do {}while(1); 
 		
 		do
-		{ xyz; }while(1);     
+		{ xyz; }while(1); 
 		
 		do {}
-		while(1);     
+		while(1); 
 		
 		do
 		{}
-		while(1);     
+		while(1); 
 		
 		do
 		{}
-		while(1);     
+		while(1); 
 		{}
 	} 
 	
@@ -8040,7 +8073,7 @@ version(/+$DIDE_REGION Comments+/all)
 	+/
 		
 		/**************** Closing *'s are not part *****************/
-} void anonymClassesMain()
+}void anonymClassesMain()
 {
 	import std.stdio: write, writeln, writef, writefln; 
 	#line 1

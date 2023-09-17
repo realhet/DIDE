@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors,noDebugClient
 
 //@release
-///@debug
+//@debug
 
 /+DIDE+/ 
 
@@ -135,7 +135,7 @@ version(/+$DIDE_REGION main+/all)
 	
 	//globals ////////////////////////////////////////
 	
-	import het, het.keywords, het.tokenizer, het.ui, het.dialogs; 
+	import het, het.parser, het.ui; 
 	import buildsys, core.thread, std.concurrency; 
 	
 	import didemodule; 
@@ -166,7 +166,7 @@ version(/+$DIDE_REGION main+/all)
 	} 
 	
 	//MainOverlay //////////////////////////////////////////////////////////
-	class MainOverlayContainer : het.uibase.Container {
+	class MainOverlayContainer : het.ui.Container {
 		this()
 		{ flags.targetSurface = 0; } 
 		override void onDraw(Drawing dr)
@@ -1900,7 +1900,7 @@ version(/+$DIDE_REGION main+/all)
 				auto res = requestModifyPermission(ts.codeColumn); 
 				
 				//Todo: there could be additional checks based on the input text
-				import het.structurescanner; 
+				
 				if(str.isValidDLang)
 				WARN("Invalid DLang source code inserted.\n"~str); 
 				
@@ -2026,8 +2026,8 @@ version(/+$DIDE_REGION main+/all)
 			
 			//Bug: Two adjacent slashComnments are not emit a newLine in between them
 			
-			bool valid = s.length>0; 
-			if(valid) clipboard.text = s;  //Todo: BOM handling
+			bool valid = s.length>0; 	
+			if(valid) clipboard.text = s; 	//Todo: BOM handling
 			return valid; 
 		} 
 		
