@@ -7240,7 +7240,7 @@ version(/+$DIDE_REGION+/all)
 			const op = row.chars[0..$-1].text; //Example: sqrt()
 			switch(op)
 			{
-				case "sqrt", "magnitude", "normalize": 	outerCell = new NiceExpression(blk.parent, op, right.content); 	break; 
+				case "sqrt", "magnitude", "normalize", "RGB", "RGBA": 	outerCell = new NiceExpression(blk.parent, op, right.content); 	break; 
 				default: 
 			}
 		}
@@ -7276,8 +7276,11 @@ version(/+$DIDE_REGION+/all)
 				((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
 				//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
 				
-				Text(((clRed).genericArg!q{fontColor}), ((RGB(0xFF0040)).genericArg!q{bkColor}), "text"); 
-				//Text(((clRed).genericArg!q{fontColor}), ((RGB(0xFF0040)).genericArg!q{bkColor}), "text"); 
+				RGB(128, 255, 0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
+				(RGB(128, 255, 0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+				
+				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
+				//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
 				
 				((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
 				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
@@ -7291,12 +7294,15 @@ version(/+$DIDE_REGION+/all)
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, tenary0, tenary1, tenary2, tenary3, genericArg} 
-		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "?:", " ?:", "? :", " ? :", ".genericArg!"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 3, 3, 3, 3, 2]; 
+		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg} 
+		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2]; 
 		
 		Type type; 
 		CodeColumn[3] operands; 
+		
+		SyntaxKind syntax()
+		{ return ((type.among(Type.RGB, Type.RGBA))?(skBasicType) :(skSymbol)); } 
 		
 		@property string operator() const
 		{ return TypeOperator[type]; } 
@@ -7347,7 +7353,9 @@ version(/+$DIDE_REGION+/all)
 					}break; 
 					case 	Type.sqrt,
 						Type.magnitude,
-						Type.normalize: 	{ put(operator); op(0); }break; 
+						Type.normalize, 
+						Type.RGB,
+						Type.RGBA: 	{ put(operator); op(0); }break; 
 					case Type.tenary0: 	{ op(0); put('?'); op(1); put(':'); op(2); }break; 
 					case Type.tenary1: 	{ op(0); put(" ?"); op(1); put(':'); op(2); }break; 
 					case Type.tenary2: 	{ op(0); put('?'); op(1); put(" :"); op(2); }break; 
@@ -7365,15 +7373,19 @@ version(/+$DIDE_REGION+/all)
 			with(dr)
 			switch(type)
 			{
+				void setupLine()
+				{
+					color = syntaxFontColor(skSymbol); 
+					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
+				} 
+				
 				case Type.divide: 	{
-					color = syntaxFontColor(skSymbol); lineWidth = 1.25;  //Todo: lineWidth settings
-					
+					setupLine; 
 					hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
 				}break; 
 				case 	Type.sqrt,
 					Type.root: 	{
-					color = syntaxFontColor(skSymbol); lineWidth = 1.25; 
-					
+					setupLine; 
 					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
 					moveRel(-8, -12); 
 					lineRel(1, 0); 
@@ -7389,12 +7401,12 @@ version(/+$DIDE_REGION+/all)
 		
 		override void rearrange()
 		{
-			with(nodeBuilder(skSymbol, 0))
+			with(nodeBuilder(syntax, 0))
 			{
 				//make it half as bright as the ()[] symbols
-				style.bkColor = bkColor = avg(halfColor, darkColor); 
-				style.bold = false; 
-				//Todo: bold/darkening settings
+				style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
+				//style.bold = syntax!=skSymbol; 
+				//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
 				
 				foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
 				
@@ -7463,6 +7475,37 @@ version(/+$DIDE_REGION+/all)
 					}break; 
 					case 	Type.magnitude: 	{ put("\u007C"); op(0); put("\u007C"); super.rearrange; }break; 
 					case 	Type.normalize: 	{ put("\u007C\u007C"); op(0); put("\u007C\u007C"); super.rearrange; }break; 
+					case 	Type.RGB,
+						Type.RGBA: 	{
+						put(operator); 
+						applySyntax(style, skSymbol); 
+						style.bkColor = bkColor; //preserve the bkColor
+						style.bold = true; //Todo: it's config.NodeStyleBold
+						put('('); op(0); put(')'); super.rearrange; 
+						
+						//decode the color
+						//todo: make a good rgba decoder here!
+						RGB decodeColor()
+						{
+						//Todo: copy this RGB decoder into Colors.d
+						const parts = operands[0].shallowText.split(',').map!strip.array;
+						if(parts.length==type.text.length)
+						{ return RGB(parts.map!(toInt!ubyte).take(3).array); }
+						if(parts.length==1)
+						{
+							return RGB(parts[0].toInt!uint); 
+							//Todo: support # formats
+						}
+						else raise("unknown format");
+						assert(0);
+						}
+						
+						ignoreExceptions({
+							const 	c = decodeColor, 
+							bw = blackOrWhiteFor(c); 
+						operands[0].rows.each!((r){ r.bkColor = c; r.glyphs.filter!"a".each!((g){ g.bkColor = c; g.fontColor = bw; }); }); 
+						});
+					}break; 
 					case Type.tenary0: 	{
 						put(' '); op(0); 	put(" ? "); 	op(1); 	put(" : "); 	op(2); put(' '); 
 						super.rearrange; 
