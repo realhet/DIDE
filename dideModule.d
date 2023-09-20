@@ -7262,26 +7262,38 @@ version(/+$DIDE_REGION+/all)
 		{
 			void showcase()
 			{
+				(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGB(r, g, b))
+				((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBA(r, g, b, a))
+				((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
 				
+				//Note: scalar operations
+				((2)*(x)); 	/+multiplication: ((a)*(b))+/ //Todo: more than 2 factors: ((a)*(b)*(c)*...)
 				((divident)/(divisor)); 	//divide: ((divident)/(divisor))
 				((base)^^(exponent)); 	//power: ((base)^^(exponent))
 				((radicand).root(index)); 	//root: ((radicand).root(index))
 				(sqrt(base)); 	//sqrt: (sqrt(base))
-				((2)*(x)); 	/+multiplication: ((a)*(b))+/ //Todo: more than 2 factors: ((a)*(b)*(c)*...)
+				((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
+				//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
+				
+				//Todo: relational operations
+				((a).inRange(b, c)); 	//((a).inRange(b, c))
+				((a)<(b)&&(b)<(c)); 	//((a)<(b)&&(b)<(c))
+				
+				//Note: vector algebra
 				(magnitude(a)); 	//magnitude: (magnitude(a)) a: scalar or vector
 				(normalize(vector)); 	//normalize: (normalize(vector))
 				((a).dot(b)); 	//dot: ((a).dot(b))
 				((a).cross(b)); 	//cross: ((a).cross(b))
 				
-				((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
-				//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
-				
+				//Note: color constants
 				RGB(128, 255, 0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
 				(RGB(128, 255, 0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
 				
+				//Note: named parameters
 				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
 				//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
 				
+				//Note: tenary operator
 				((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
 				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
 				((condition)?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
@@ -7484,27 +7496,29 @@ version(/+$DIDE_REGION+/all)
 						put('('); op(0); put(')'); super.rearrange; 
 						
 						//decode the color
-						//todo: make a good rgba decoder here!
+						//Todo: make a good rgba decoder here!
 						RGB decodeColor()
 						{
-						//Todo: copy this RGB decoder into Colors.d
-						const parts = operands[0].shallowText.split(',').map!strip.array;
-						if(parts.length==type.text.length)
-						{ return RGB(parts.map!(toInt!ubyte).take(3).array); }
-						if(parts.length==1)
-						{
-							return RGB(parts[0].toInt!uint); 
-							//Todo: support # formats
-						}
-						else raise("unknown format");
-						assert(0);
-						}
+							//Todo: copy this RGB decoder into Colors.d
+							const parts = operands[0].shallowText.split(',').map!strip.array; 
+							if(parts.length==type.text.length)
+							{ return RGB(parts.map!(toInt!ubyte).take(3).array); }
+							if(parts.length==1)
+							{
+								return RGB(parts[0].toInt!uint); 
+								//Todo: support # formats
+							}
+							else raise("unknown format"); 
+							assert(0); 
+						} 
 						
-						ignoreExceptions({
-							const 	c = decodeColor, 
-							bw = blackOrWhiteFor(c); 
-						operands[0].rows.each!((r){ r.bkColor = c; r.glyphs.filter!"a".each!((g){ g.bkColor = c; g.fontColor = bw; }); }); 
-						});
+						ignoreExceptions(
+							{
+									const 	c = decodeColor, 
+									bw = blackOrWhiteFor(c); 
+								operands[0].rows.each!((r){ r.bkColor = c; r.glyphs.filter!"a".each!((g){ g.bkColor = c; g.fontColor = bw; }); }); 
+							}
+						); 
 					}break; 
 					case Type.tenary0: 	{
 						put(' '); op(0); 	put(" ? "); 	op(1); 	put(" : "); 	op(2); put(' '); 
