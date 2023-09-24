@@ -36,6 +36,16 @@ version(/+$DIDE_REGION+/all)
 		Ctrl+Shift+F	Search in Workspace
 	+/
 	
+	//Todo: Vertical tab a commentbe is.
+	
+	/+
+		Todo: Ctrl+Alt+LMB multicursor bug
+		01,
+		02,
+		03
+		Can't put 3 cursors after the numbers, only 2.
+	+/
+	
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
@@ -1600,7 +1610,7 @@ version(/+$DIDE_REGION+/all)
 					
 					const firstLineIsClear = actLineIsClear; 
 					
-					if(stylisticSpaces && !row.isCodeSpaces.front) put(' '); 
+					if(stylisticSpaces && (cast(Declaration) row.subCells.front)) put(' '); 
 					put(customPrefix); 
 					put(row); /+
 						Opt: this should exit right at the first newline to do that putMultilineOperation.
@@ -2895,120 +2905,128 @@ class CodeRow: Row
 		void convertSpacesToTabs(Flag!"outdent" outdent)
 		{
 			//remove the 2 stylistic spaces at the front and back, in a single row block. { a; }
-			if(outdent)
-			if(rows.length==1)
+			if(outdent && rows.length==1)
 			with(rows.front)
 			if(isCodeSpaces.length >= 3)
-			if(isCodeSpaces[0] && !isCodeSpaces[1] && isCodeSpaces[$-1] && !isCodeSpaces[$-2]) {
+			if(
+				isCodeSpaces[0] && !isCodeSpaces[1] && 
+				isCodeSpaces[$-1] && !isCodeSpaces[$-2] &&
+				chars[$-2].among(';', ':', compoundObjectChar)
+				/+This tries to detect single line codes.+/
+			) {
 				subCells = subCells[1..$-1]; 
 				refreshTabIdx; 
+				//LOG("#############", chars); 
 			}
-				
 			
 			
 			//Todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
 			createElasticTabs; 
 			
-			spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize); 
-			//Opt: this can be slow. Maybe put it on a keyboard shortcut.
-			
-			rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab)); 
-			
-			//outdent
-			if(outdent)
+			if(rows.length>1)
 			{
 				
-				//Todo: refactor it into CodeRow
-				static bool isWhitespaceRow(CodeRow r)
-				{
-					return r.subCells.empty || r.subCells.all!(
-						(c){
-							if(auto g = cast(Glyph)c)
-							if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true; 
-							return false; 
-						}
-					); 
-					//return r.leadingCodeTabCount<r.cellCount; 
-				} 
+				spacesPerTab = calcWhitespaceStats.detectIndentSize(DefaultIndentSize); 
+				//Opt: this can be slow. Maybe put it on a keyboard shortcut.
 				
-				//remove first and last whitespace row
-				const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front); 	if(firstRowRemoved) subCells.popFront; 
-				const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back); 	if(lastRowRemoved) subCells.popBack; 
+				rows.each!(row => row.convertLeadingSpacesToTabs(spacesPerTab)); 
 				
-				//only rows that not only tabs are relevant
-				bool relevant(CodeRow r)
+				//outdent
+				if(outdent)
 				{
-					return r.subCells.any!(
-						(c){
-							//non-stringLiteral whitespace is irrelevant
-							if(auto g = cast(Glyph)c) {
-								if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false; 
+					
+					//Todo: refactor it into CodeRow
+					static bool isWhitespaceRow(CodeRow r)
+					{
+						return r.subCells.empty || r.subCells.all!(
+							(c){
+								if(auto g = cast(Glyph)c)
+								if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true; 
+								return false; 
+							}
+						); 
+						//return r.leadingCodeTabCount<r.cellCount; 
+					} 
+					
+					//remove first and last whitespace row
+					const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front); 	if(firstRowRemoved) subCells.popFront; 
+					const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back); 	if(lastRowRemoved) subCells.popBack; 
+					
+					//only rows that not only tabs are relevant
+					bool relevant(CodeRow r)
+					{
+						return r.subCells.any!(
+							(c){
+								//non-stringLiteral whitespace is irrelevant
+								if(auto g = cast(Glyph)c) {
+									if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false; 
+									return true; 
+								}
+								
+								enum commentsAreRelevant = true; 
+								if(!commentsAreRelevant && cast(CodeComment)c) return false; 
+								
+								//everything else is relevant
 								return true; 
 							}
-							
-							enum commentsAreRelevant = true; 
-							if(!commentsAreRelevant && cast(CodeComment)c) return false; 
-							
-							//everything else is relevant
-							return true; 
-						}
-					); 
-				} 
-				
-				static bool canBeStatement(CodeRow row)
-				{
-					/+
-						Note: this fixes the following bug:
-						const  a=1, -> const a=1,
-						b=2; b=2;
-					+/
+						); 
+					} 
 					
-					foreach_reverse(dchar ch; row.chars)
+					static bool canBeStatement(CodeRow row)
 					{
-						if(ch==';') return true; 
-						if(ch.isDLangWhitespace) continue; 
-						break; 
-					}
-					return false; 
-				} 
-				
-				static bool hasNonLeadingTab(CodeRow row)
-				{ return row.leadingCodeTabCount > row.codeTabCount; } 
-				
-				//find minimum amount of tabs
-				const canIgnoreFirstRow = !firstRowRemoved && (canBeStatement(rows.front) || rows.front.isWhitespaceOrComment || hasNonLeadingTab(rows.front)) && rows.drop(1).any!relevant; 
-				auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant; 
-				if(!relevantRows.empty)
-				{
-					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement; 
-					
-					/+
-						Todo: If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
-						<- these tabse are a good example. The numTabs values must be stored in an stack outside.
-					+/
-					
-					if(numTabs)
-					foreach(r; rows)
-					if(r.leadingCodeTabCount>=numTabs) {
-						r.subCells = r.subCells[numTabs..$]; 
-						r.refreshTabIdx; 
 						/+
-							Note: no need to call needRefresh_elastic because all rows will be refreshed.
-							It's in convertSpacesToTabs which only kicks right after row creation.
+							Note: this fixes the following bug:
+							const  a=1, -> const a=1,
+							b=2; b=2;
 						+/
-					}
-				}
-				else
-				{
-					//there are no relevant rows at all. : cleanup all the tabs
-					foreach(r; rows)
-					if(auto cnt = r.leadingCodeTabCount)
+						
+						foreach_reverse(dchar ch; row.chars)
+						{
+							if(ch==';') return true; 
+							if(ch.isDLangWhitespace) continue; 
+							break; 
+						}
+						return false; 
+					} 
+					
+					static bool hasNonLeadingTab(CodeRow row)
+					{ return row.leadingCodeTabCount > row.codeTabCount; } 
+					
+					//find minimum amount of tabs
+					const canIgnoreFirstRow = !firstRowRemoved && (canBeStatement(rows.front) || rows.front.isWhitespaceOrComment || hasNonLeadingTab(rows.front)) && rows.drop(1).any!relevant; 
+					auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant; 
+					if(!relevantRows.empty)
 					{
-						r.subCells = r.subCells[cnt..$]; 
-						r.refreshTabIdx; 
+						const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement; 
+						
+						/+
+							Todo: If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
+							<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+						+/
+						
+						if(numTabs)
+						foreach(r; rows)
+						if(r.leadingCodeTabCount>=numTabs) {
+							r.subCells = r.subCells[numTabs..$]; 
+							r.refreshTabIdx; 
+							/+
+								Note: no need to call needRefresh_elastic because all rows will be refreshed.
+								It's in convertSpacesToTabs which only kicks right after row creation.
+							+/
+						}
 					}
+					else
+					{
+						//there are no relevant rows at all. : cleanup all the tabs
+						foreach(r; rows)
+						if(auto cnt = r.leadingCodeTabCount)
+						{
+							r.subCells = r.subCells[cnt..$]; 
+							r.refreshTabIdx; 
+						}
+					}
+					
 				}
-				
 			}
 			
 			needMeasure; 
@@ -7286,8 +7304,8 @@ version(/+$DIDE_REGION+/all)
 				((a).cross(b)); 	//cross: ((a).cross(b))
 				
 				//Note: color constants
-				RGB(128, 255, 0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
-				(RGB(128, 255, 0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+				RGB( 68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
+				(RGB( 68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
 				
 				//Note: named parameters
 				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
@@ -7502,7 +7520,10 @@ version(/+$DIDE_REGION+/all)
 							//Todo: copy this RGB decoder into Colors.d
 							const parts = operands[0].shallowText.split(',').map!strip.array; 
 							if(parts.length==type.text.length)
-							{ return RGB(parts.map!(toInt!ubyte).take(3).array); }
+							{
+								return RGB(parts.map!(toInt!ubyte).take(3).array); 
+								//Todo: support float formats
+							}
 							if(parts.length==1)
 							{
 								return RGB(parts[0].toInt!uint); 
@@ -7512,11 +7533,27 @@ version(/+$DIDE_REGION+/all)
 							assert(0); 
 						} 
 						
-						ignoreExceptions(
+						ignoreExceptions
+						(
 							{
-									const 	c = decodeColor, 
+								const 	c = decodeColor, 
 									bw = blackOrWhiteFor(c); 
-								operands[0].rows.each!((r){ r.bkColor = c; r.glyphs.filter!"a".each!((g){ g.bkColor = c; g.fontColor = bw; }); }); 
+								//Todo: If decoding fails, the syntax highlight becomes broken
+								with(operands[0])
+								{
+									bkColor = border.color = c; 
+									rows.each!(
+										(r){
+											r.bkColor = c; 
+											r.glyphs.filter!"a".each!(
+												(g){
+													g.bkColor = c; 
+													g.fontColor = bw; 
+												}
+											); 
+										}
+									); 
+								}
 							}
 						); 
 					}break; 
