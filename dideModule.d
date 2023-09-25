@@ -7210,6 +7210,7 @@ version(/+$DIDE_REGION+/all)
 		{ if(auto str = cast(CodeString) cell) if(str.type==CodeString.Type.tokenString) return str; return null; } 
 		
 		//Todo: This large if chain is lame.  Should make a configurable pattern detector instead.
+		//todo: NiceExpressions not working inside   enum ;
 		
 		//Replace ((a)/(b))   ((a)^^(b))
 		if(auto blk = asListBlock(outerCell))
@@ -7674,7 +7675,7 @@ else debug
 			
 			//horizontal
 			
-			if(0) { /*comment05*/ block; }
+			if(0) {/*comment05*/ block; }
 			
 			if(0/*comment06*/) { block; }
 			
