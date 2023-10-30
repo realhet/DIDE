@@ -46,6 +46,16 @@ version(/+$DIDE_REGION+/all)
 		Can't put 3 cursors after the numbers, only 2.
 	+/
 	
+	/+
+		Todo: Make regions out of attribute blocks: /+
+			Code: private /+$DIDE_REGION Comment+/
+			{ }
+		+/
+	+/
+	//Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
+	//Todo: Calculate avgColor for all	things. -> CodeRow, CodeColumn(what	about	short rows), CodeNode(diffocult))
+	//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
+	
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
@@ -71,77 +81,246 @@ version(/+$DIDE_REGION+/all)
 	enum specialCommentMarker = "$DIDE_"; //used in /++/ comments to mark DIDE special comments
 	enum compoundObjectChar = '\uFFFC'; 
 	
-	version(/+$DIDE_REGION ChangeIndicator+/all)
+}version(/+$DIDE_REGION ChangeIndicator+/all)
+{
+	//ChangeIndicator /////////////////////////////////////
+	
+	struct ChangeIndicator
 	{
-		//ChangeIndicator /////////////////////////////////////
+		//Todo: this is quite similar to CaretPos
+		vec2 pos; 
+		float height; 
+		ubyte thickness; 
+		ubyte mask; 
 		
-		struct ChangeIndicator
+		vec2 top() const
+		{ return pos; } 
+		vec2 center() const
+		{ return pos + vec2(0, height/2); } 
+		vec2 bottom() const
+		{ return pos + vec2(0, height); } 
+		bounds2 bounds() const
+		{ return bounds2(top, bottom); } 
+	} 
+	
+	Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
+	
+	void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
+	{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
+	
+	void addGlobalChangeIndicator(Drawing dr, Container cntr)
+	{
+		with(cntr) {
+			if(const mask = changedMask)
+			{
+				enum ofs = vec2(-4, 0); 
+				if(cast(CodeRow)cntr)
+				addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
+				else if(cast(CodeColumn)cntr)
+				addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
+			}
+		}
+	} 
+	
+	void draw(Drawing dr, in ChangeIndicator[] arr)
+	{
+		enum palette = [clBlack, clLime, clRed, clYellow]; 
+		
+		//const clamper = RectClamper(im.getView, 5);
+		
+		void drawPass(int pass)(in ChangeIndicator ci)
 		{
-			//Todo: this is quite similar to CaretPos
-			vec2	pos; 
-			float	height; 
-			ubyte	thickness; 
-			ubyte 	mask; 
+			static if(pass==1) {
+				dr.lineWidth = -float(ci.thickness)-1.5f; 
+				//opted out: dr.color = clBlack;
+			}
+			static if(pass==2) {
+				dr.lineWidth = -float(ci.thickness); 
+				dr.color = palette[ci.mask]; 
+			}
 					
-			vec2	top	() const
-			{ return pos; } 
-			vec2	center	() const
-			{ return pos + vec2(0, height/2); } 
-			vec2	bottom	() const
-			{ return pos + vec2(0, height); } 
-			bounds2	bounds	() const
-			{ return bounds2(top, bottom); } 
+			//if(clamper.overlaps(ci.bounds)){
+				dr.vLine(ci.pos, ci.pos.y + ci.height); 
+			//}else{
+			//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
+			//}
 		} 
 		
-		Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
+		/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
+		/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
 		
-		void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
-		{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
+	} 
+	
+}version(/+$DIDE_REGION Probes+/all)
+{
+	//Probes /////////////////////////////////////
+	
+	version(none) { auto _testProbe() { return ((now).PR!()); } }
+	const _testProbeId = format!"%s:%s"(__FILE__.lc, __LINE__-1); 
+	
+	void _updateTestProbe()
+	{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
+	
+	void resetGlobalWatches()
+	{
+		foreach(ref w; globalWatches.byValue)
+		{ w.value = ""; }
+	} 
+	
+	struct Watch
+	{
+		string id; 
 		
-		void addGlobalChangeIndicator(Drawing dr, Container cntr)
+		string value; 
+		
+		vec2 relativePos; //vector from srcBounds.center to dstBounds.center
+		
+		private string _lastValue; 
+		private Container _container; 
+		
+		void update(string value)
 		{
-			with(cntr) {
-				if(const mask = changedMask)
+			this.value = value; 
+			
+			if(_lastValue.chkSet(value)) _container = null; 
+		} 
+		
+		void draw(Drawing dr, bounds2 srcBounds)
+		{
+			//this looks like a workspace with lots of modules on top of it.  
+			//A second layer over the real modules.
+			
+			if(!_container)
+			{
+				with(im)
 				{
-					enum ofs = vec2(-4, 0); 
-					if(cast(CodeRow)cntr)
-					addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
-					else if(cast(CodeColumn)cntr)
-					addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
+					Column(
+						{
+							outerPos = pos; 
+							flags.targetSurface = 0; 
+							padding = "2"; 
+							style.applySyntax(skConsole); bkColor = style.bkColor; 
+							border = Border(1, BorderStyle.normal, style.fontColor); 
+							Text(value); 
+						}
+					); 
+					_container = removeLastContainer; 
+					_container.measure; 
 				}
 			}
-		} 
-		
-		void draw(Drawing dr, in ChangeIndicator[] arr)
-		{
-			enum palette = [clBlack, clLime, clRed, clYellow]; 
 			
-			//const clamper = RectClamper(im.getView, 5);
-			
-			void drawPass(int pass)(in ChangeIndicator ci)
+			//Todo: no clipping yet
+			if(auto c = _container)
 			{
-				static if(pass==1) {
-					dr.lineWidth = -float(ci.thickness)-1.5f; 
-					//opted out: dr.color = clBlack;
+				enum shadowSize = 6, shadowAlpha=.33f; 
+				
+				/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
+				c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
+				
+				const dstBounds = c.outerBounds; 
+				
+				//shadow
+				if(shadowSize)
+				{
+					dr.alpha = shadowAlpha; 
+					dr.color = clBlack; 
+					dr.fillRect(c.outerBounds + shadowSize); 
+					dr.alpha = 1; 
 				}
-				static if(pass==2) {
-					dr.lineWidth = -float(ci.thickness); 
-					dr.color = palette[ci.mask]; 
-				}
+				
+				//line
+				{
+					dr.lineWidth = 1; 
+					
+					void doit(bool horiz, float x0, float y0, float x1, float y1)
+					{
+						void doit(bool shadow)
+						{
+							enum triangularThickness = 4; 
+							
+							const p0 = vec2(x0, y0); 
+							const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
+							
+							if(triangularThickness)
+							{
+								const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
+								dr.fillTriangle(p0, p1+sh, p1-sh); 
+								dr.fillTriangle(p0, p1-sh, p1+sh); 
+							}
+							else
+							dr.line(p0, p1); 
+						} 
 						
-				//if(clamper.overlaps(ci.bounds)){
-					dr.vLine(ci.pos, ci.pos.y + ci.height); 
-				//}else{
-				//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
-				//}
-			} 
-			
-			/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
-			/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
-			
+						if(shadowSize)
+						{
+							dr.color = clBlack; 
+							dr.alpha = shadowAlpha; 
+							doit(true); 
+							dr.alpha = 1; 
+						}
+						
+						dr.color = clWhite; 
+						doit(false); 
+					} 
+					
+					const d = (normalize(dstBounds.center - srcBounds.center)); 
+					if((magnitude(d.x))>(magnitude(d.y)))
+					{
+						if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
+						else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
+					}
+					else
+					{
+						if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
+						else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
+					}
+				}
+				
+				c.draw(dr); 
+			}
 		} 
-		
-	}
+	} 
+	
+	Watch[string] globalWatches; 
+	
+	struct Probe
+	{
+		string id; 
+		NiceExpression node; 
+		bounds2 bounds; //the bounds of the expression in world coods
+	} 
+	
+	Probe[string] globalVisibleProbes; 
+	
+	string calcProbeId(NiceExpression node)
+	{ return format!"%s:%s"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
+	
+	void addGlobalProbe(Drawing dr, NiceExpression node)
+	{
+		const id = calcProbeId(node); 
+		globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
+	} 
+	
+	void drawProbes(Drawing dr)
+	{
+		foreach(id, const probe; globalVisibleProbes)
+		{
+			print("Visible:", probe);
+			
+			dr.lineWidth = 4; 
+			dr.color = clWhite; 
+			dr.drawRect(probe.bounds); 
+			dr.lineWidth = 1.333; 
+			dr.color = clBlack; 
+			dr.drawRect(probe.bounds); 
+			
+			if(auto watch = id in globalWatches)
+			{
+				print("Found:", *watch);
+				watch.draw(dr, probe.bounds); 
+			}
+		}
+	} 
 	
 }version(/+$DIDE_REGION Utility+/all)
 {
@@ -157,9 +336,9 @@ version(/+$DIDE_REGION+/all)
 			{
 				float zoomFactor=1, pixelSize=1; 
 				int level; 
-							
-				bool codeLevel	   =	true; //level 0
-				bool moduleLevel		= false; //level 1/*code text visible*/, 2/*code text invisible*/
+				
+				bool codeLevel = true; //level 0
+				bool moduleLevel = false; //level 1/*code text visible*/, 2/*code text invisible*/
 			} 
 			
 			__gshared const LodStruct lod; 
@@ -170,9 +349,9 @@ version(/+$DIDE_REGION+/all)
 				{
 					zoomFactor = zoomFactor_; 
 					pixelSize = 1/zoomFactor; 
-					level = pixelSize>6 ? 2 :
-									pixelSize>2 ? 1 : 0; 
-								
+					level = 	pixelSize>6 ? 2 :
+						pixelSize>2 ? 1 : 0; 
+					
 					codeLevel = level==0; 
 					moduleLevel = level>0; 
 				}
@@ -2817,6 +2996,11 @@ class CodeRow: Row
 				if(str.type != CodeString.Type.tokenString)
 				return StructureLevel.plain; 
 			}
+			else if(auto niceExpr = cast(NiceExpression) parent)
+			{
+				if(this is niceExpr.operands[1] && niceExpr.type==NiceExpression.Type.probe)
+				return StructureLevel.plain; 
+			}
 			
 			//from here: module will tell
 			if(auto m = moduleOf(this))
@@ -2832,6 +3016,10 @@ class CodeRow: Row
 			if(getStructureLevel==StructureLevel.plain) {
 				if(auto ccntr = cast(CodeContainer) parent)
 				return ccntr.syntax; 
+				if(auto niceExpr = cast(NiceExpression) parent)
+				if(this is niceExpr.operands[1] && niceExpr.type==NiceExpression.Type.probe)
+				return skConsole; 
+				
 				return skIdentifier1; 
 			}
 			
@@ -5302,7 +5490,6 @@ version(/+$DIDE_REGION+/all)
 				"while(", 	"do", 	"if(", 	"else", 
 				"version(", 	"debug(",		
 				"switch(",	"try", 	"catch(", 	"finally"
-				//Todo:
 			].sort.array; //sorting is important: it is binary-searched
 			
 			static immutable prepositionLinkingRules =
@@ -5421,7 +5608,6 @@ version(/+$DIDE_REGION+/all)
 	}
 }class Declaration : CodeNode
 {
-	//Declaration /////////////////////////////
 	version(/+$DIDE_REGION+/all)
 	{
 		CodeColumn attributes; 
@@ -5748,7 +5934,6 @@ version(/+$DIDE_REGION+/all)
 			if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
 			if(cmt.isSpecialComment("REGION"))
 			{
-				//Todo: extract "all" or "none" from version(). Handle enabled/disabled region.
 				//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
 				
 				/+
@@ -5770,22 +5955,6 @@ version(/+$DIDE_REGION+/all)
 					if(!subCells.empty && chars[0]==' ') subCells.popFront; 
 					needMeasure; 
 				}
-				
-				/*
-					apply new colors.... Rather use comment colors.
-						
-						const bkc = RGB(0x606060), fc = clWhite;
-						
-						header.bkColor = bkc;
-						
-						foreach(r; header.rows){
-							foreach(c; r.subCells)
-								if(auto g = cast(Glyph)c){
-									g.bkColor = clRegionBk;
-									g.fontColor = clRegionFont;
-								}
-						}
-				*/
 				
 				return; 
 			}
@@ -6053,19 +6222,6 @@ version(/+$DIDE_REGION+/all)
 				dr.drawX(outerBounds); 
 				dr.alpha = 1; 
 			}
-			/*
-				if(lod.pixelSize>2){ //experimental node identifier display
-								auto id = identifier;
-								dr.fontHeight = lod.pixelSize*12;
-								if(outerHeight>=dr.fontHeight && id!=""){
-									
-									auto p = outerPos + vec2(max(0, outerWidth-dr.textWidth(id)), 0);
-									
-									dr.color = clBlack	; dr.fontBold = true	; dr.textOut(p, id);
-									dr.color = clWhite	; dr.fontBold = false	; dr.textOut(p, id);
-								}
-							}
-			*/
 		} 
 	}
 } version(/+$DIDE_REGION parsing helper fun+/all)
@@ -6075,11 +6231,12 @@ version(/+$DIDE_REGION+/all)
 	dchar structuredCellToChar(Cell c)
 	{
 		return c.castSwitch!(
-			(Glyph	g) 	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
-			(CodeComment 	_) 	=> ' '	,
-			(CodeString	_) 	=> '"'	,
-			(CodeBlock	b) 	=> b.prefix[0]	,
-			(Declaration	d)	=> compoundObjectChar
+			(Glyph g)	=> isDLangWhitespace(g.ch) ? ' ' : g.ch	,
+			(CodeComment _) 	=> ' '	,
+			(CodeString _)	=> '"'	,
+			(CodeBlock b)	=> b.prefix[0]	,
+			(Declaration d)	=> compoundObjectChar	,
+			(NiceExpression n)	=> compoundObjectChar
 		); 
 	} 
 	
@@ -7037,12 +7194,14 @@ version(/+$DIDE_REGION+/all)
 						foreach(decl; declarationChain) appendDeclaration(decl); 
 						
 						//collect statistics
-						/+
-							if(1) dDeclarationRecords ~= DDeclarationRecord(
-														only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
-														(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
-													);
-						+/
+						static if(1)
+						foreach(decl; declarationChain)
+						dDeclarationRecords ~= DDeclarationRecord(
+							only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
+							(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
+						); 
+							
+						
 						
 						joinPrepositions; 
 						
@@ -7210,7 +7369,7 @@ version(/+$DIDE_REGION+/all)
 		{ if(auto str = cast(CodeString) cell) if(str.type==CodeString.Type.tokenString) return str; return null; } 
 		
 		//Todo: This large if chain is lame.  Should make a configurable pattern detector instead.
-		//todo: NiceExpressions not working inside   enum ;
+		//Todo: NiceExpressions not working inside   enum ;
 		
 		//Replace ((a)/(b))   ((a)^^(b))
 		if(auto blk = asListBlock(outerCell))
@@ -7223,7 +7382,7 @@ version(/+$DIDE_REGION+/all)
 			const op = row.chars[1..$-1].text; //Example: (^^(
 			switch(op)
 			{
-				case "/", "^^", ".root", "*", ".dot", ".cross": 	outerCell = new NiceExpression(blk.parent, op, left.content, right.content); 	break; 
+				case "/", "^^", ".root", "*", ".dot", ".cross", ".PR!": 	outerCell = new NiceExpression(blk.parent, op, left.content, right.content); 	break; 
 				case "?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[2]))
 				outerCell = new NiceExpression(blk.parent, "?:", left.content, middle.content, right.content); 	break; 
 				case " ?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[3]))
@@ -7250,6 +7409,14 @@ version(/+$DIDE_REGION+/all)
 				//Todo: Double _ could be a subText. Example: dir__start
 				//Todo: ((a)*(b))  -> a b   multiplication with no symbol at all.
 				
+				/+
+					Todo: Should use Chinese/Japanese one character symbols instead of complicated (().abc()) format.
+					Maybe SYM() would be easier to detect. And there is no way I can type those manually.
+				+/
+				
+				//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
+				
+				//Todo: Symbol for foreach: ∀
 				
 				default: 
 			}
@@ -7305,8 +7472,8 @@ version(/+$DIDE_REGION+/all)
 				((a).cross(b)); 	//cross: ((a).cross(b))
 				
 				//Note: color constants
-				RGB( 68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
-				(RGB( 68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+				RGB(68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
+				(RGB(68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
 				
 				//Note: named parameters
 				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
@@ -7317,6 +7484,8 @@ version(/+$DIDE_REGION+/all)
 				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
 				((condition)?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
 				((condition) ?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
+					
+				((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
 			} 
 		}
 	} 
@@ -7325,15 +7494,22 @@ version(/+$DIDE_REGION+/all)
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg} 
-		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2]; 
+		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe} 
+		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2]; 
 		
 		Type type; 
 		CodeColumn[3] operands; 
 		
 		SyntaxKind syntax()
-		{ return ((type.among(Type.RGB, Type.RGBA))?(skBasicType) :(skSymbol)); } 
+		{
+			switch(type)
+			{
+				case Type.RGB, Type.RGBA: 	return skBasicType; 
+				case Type.probe: 	return skIdentifier1/+It is handled specially.+/; 
+				default: 	return skSymbol; 
+			}
+		} 
 		
 		@property string operator() const
 		{ return TypeOperator[type]; } 
@@ -7346,6 +7522,8 @@ version(/+$DIDE_REGION+/all)
 			
 			try type = TypeOperator.countUntil(op).to!Type; 
 			catch(Exception) raise("Invalid NiceExpression operator: " ~ op.quoted); 
+			
+			lineIdx = col0.getLineIdxOfFirstGlyphOrNode_notRecursive; 
 			
 			static foreach(i; 0..operands.length)
 			{
@@ -7392,6 +7570,11 @@ version(/+$DIDE_REGION+/all)
 					case Type.tenary2: 	{ op(0); put('?'); op(1); put(" :"); op(2); }break; 
 					case Type.tenary3: 	{ op(0); put(" ?"); op(1); put(" :"); op(2); }break; 
 					case Type.genericArg: 	{ op(1); put(operator); put("q{"); put(op0AsIdentifier); put('}'); }break; 
+					case Type.probe: 	{
+						op(0); 
+						put(operator); 
+						op(1); //Todo: encode options
+					}break; 
 				}
 				put(")"); 
 			}
@@ -7424,6 +7607,7 @@ version(/+$DIDE_REGION+/all)
 					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
 					lineRel(operands[0].outerWidth-2, 0); 
 				}break; 
+				case Type.probe: 	{ addGlobalProbe(dr, this); }break; 
 				
 				default: 
 			}
@@ -7579,6 +7763,17 @@ version(/+$DIDE_REGION+/all)
 						super.rearrange; 
 					}break; 
 					case Type.genericArg: 	{ put(operands[0]); put(':'); put(operands[1]); super.rearrange; }break; 
+					case 	Type.probe: 	{
+						style.bkColor = bkColor = operands[0].bkColor; 
+						style.fontColor = clWhite; 
+						style.bold = false; 
+						put(operands[0]); 
+						/+
+							put('▶'); 
+							put(operands[1]); 
+						+/
+						super.rearrange; 
+					}break; 
 					//Todo: tenary chain: (()?():()?():())
 				}
 			}
@@ -7675,7 +7870,7 @@ else debug
 			
 			//horizontal
 			
-			if(0) {/*comment05*/ block; }
+			if(0) { /*comment05*/ block; }
 			
 			if(0/*comment06*/) { block; }
 			
@@ -8067,6 +8262,7 @@ version(/+$DIDE_REGION Comments+/all)
 	/*Warning: warning comment*/
 	//Deprecation: deprecation comment
 	/+Code: if(1 + 1 == 2) print("xyz");+/
+	//Console: console comment
 	
 	/+
 		Code: this is code /+

@@ -1,5 +1,5 @@
 //@exe
-//@compile --d-version=stringId,AnimatedCursors,noDebugClient
+//@compile --d-version=stringId,AnimatedCursors
 
 //@release
 //@debug
@@ -289,6 +289,7 @@ version(/+$DIDE_REGION main+/all)
 					collectTodos	: false,
 					generateMap 	: true,
 					compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
+					dideDbgEnv	: dbgsrv.getDataFileName
 				}; 
 				
 				void addOpt(string o)
@@ -298,15 +299,21 @@ version(/+$DIDE_REGION main+/all)
 				//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
 			} 
 			
+			void resetDbg()
+			{
+				resetGlobalWatches; 
+				dbgsrv.resetBeforeRun; 
+			} 
+			
 			void run()
 			{
-				dbgsrv.resetBeforeRun; 
+				resetDbg; 
 				launchBuildSystem!"run"; 
 			} 
 			
 			void rebuild()
 			{
-				dbgsrv.resetBeforeRun; 
+				resetDbg; 
 				launchBuildSystem!"rebuild"; 
 			} 
 			
@@ -315,6 +322,7 @@ version(/+$DIDE_REGION main+/all)
 				if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
 				
 				dbgsrv.forcedStop; 
+				resetDbg; 
 				
 				//Todo: kill app
 				//Todo: debugServer
@@ -332,8 +340,6 @@ version(/+$DIDE_REGION main+/all)
 				workspace = new Workspace; 
 				workspaceFile = appFile.otherExt(Workspace.defaultExt); 
 				overlay = new MainOverlayContainer; 
-				
-				
 			} 
 			
 			override void onDestroy()
@@ -345,7 +351,19 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			void onDebugLog(string s)
-			{ LOG("DBGLOG:", s); } 
+			{
+				if(s.isWild("PR(*):*"))
+				{
+					const id = wild[0]; 
+					const value = (cast(string)(wild[1].fromBase64)).ifThrown("BASE64 Error"); 
+					globalWatches.require(id, Watch(id)).update(value); 
+					
+					print("Received:", globalWatches[id]); 
+				}
+				else
+				LOG("DBGLOG:", s); 
+			} 
+			
 			void onDebugException(string s)
 			{ LOG("DBGEXC:", s); } 
 			
@@ -368,7 +386,7 @@ version(/+$DIDE_REGION main+/all)
 				dr.alpha = .5f; 
 				dr.lineWidth = -1; 
 				if(visualizeMarginsAndPaddingUnderMouse)
-				foreach(cl; workspace.locate(view.mousePos))
+				foreach(cl; workspace.locate(view.mousePos.vec2))
 				{
 					auto rOuter 	= cl.globalOuterBounds; 
 					auto rMargin 	= rOuter; 	cl.cell.margin.apply(rMargin); 
@@ -429,6 +447,7 @@ version(/+$DIDE_REGION main+/all)
 				dbgsrv.onDebugException = &onDebugException; 
 				
 				dbgsrv.update; 
+				_updateTestProbe; 
 				
 				if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
 				{ im.focusNothing; }
@@ -466,28 +485,47 @@ version(/+$DIDE_REGION main+/all)
 				Panel(
 					PanelPosition.topLeft, 
 					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						Row(
+						if(!mainMenuOpened) {
+							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
+							if(Btn("\u2630")) mainMenuOpened = true; 
+						}else
+						{
+							Row({ if(Btn("\u2630")) mainMenuOpened = false; }); 
+							with(workspace)
 							{
-								if(Btn("\u2630")) mainMenuOpened.toggle; 
+								auto B(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
+								{ return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, /+KeyCombo(kc)+/); } 
 								
-								if(mainMenuOpened)
-								{
-									with(workspace)
+								Grp!Row(
+									"Vertical Tabs in CodeColumns (␋)", 
 									{
-										auto B(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
-										{ return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, /+KeyCombo(kc)+/); } 
-										
-										/*
-											if(B("F1", "autoRealign"	)) test_autoRealign;
-											if(B("F2", "StructureMap"	)) test_structureMap;
-											if(B("F3", "resyntax"	)) test_resyntax;
-											if(B("F4", "declaration"	)) test_declarationStatistics;
-										*/
+										if(B("", "Add")) test_realignVerticalTabs; 
+										if(B("", "Remove")) test_removeVerticalTabs; 
 									}
-								}
+								); 
+								
+								Grp!Row(
+									"Internal NewLines in Declarations (␊)",
+									{
+										if(B("", "Add")) test_setInternalNewLine; 
+										if(B("", "Remove")) test_clearInternalNewLine; 
+									}
+								); 
+								
+								Grp!Row(
+									"Statistics",
+									{ if(B("", "Declaration Statistics of all D codebase.")) test_declarationStatistics; }
+								); 
+								
+								
+								/*
+									if(B("F1", "autoRealign"	)) test_autoRealign;
+									if(B("F2", "StructureMap"	)) test_structureMap;
+									if(B("F3", "resyntax"	)) test_resyntax;
+									if(B("F4", "declaration"	)) test_declarationStatistics;
+								*/
 							}
-						); 
+						}
 					}
 				); 
 					
@@ -532,7 +570,7 @@ version(/+$DIDE_REGION main+/all)
 								NL; 
 								if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
 								
-								Text("\n", workspace.locate_snapToRow(view.mousePos).text); 
+								Text("\n", workspace.locate_snapToRow(view.mousePos.vec2).text); 
 							}
 						); 
 					}
@@ -625,7 +663,7 @@ version(/+$DIDE_REGION main+/all)
 										
 										
 										enum showMousePosCellInfoHint = false; 
-										if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos).map!cellInfoText.join(' ')); 
+										if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos.vec2).map!cellInfoText.join(' ')); 
 									}
 								); 
 								
@@ -900,10 +938,10 @@ version(/+$DIDE_REGION main+/all)
 						vec2 pos; 
 					} 
 					@STORED ModuleSettings[] moduleSettings; 
-							
+					
 					void toModuleSettings()
 					{ moduleSettings = modules.map!(m => ModuleSettings(m.file.fullName, m.outerPos)).array; } 
-							
+					
 					void fromModuleSettings()
 					{
 						clear; 
@@ -918,7 +956,7 @@ version(/+$DIDE_REGION main+/all)
 						
 						updateSubCells; 
 					} 
-							
+					
 					void updateSubCells()
 					{
 						invalidateTextSelections; 
@@ -2158,6 +2196,8 @@ version(/+$DIDE_REGION main+/all)
 		} 
 	}version(/+$DIDE_REGION Paste +/all)
 	{
+		//Todo: Make a version of copy/cut/paste that works with CodeColumns (multiple rows)
+		//Todo: For this CodeColumn deep copy must be implemented somehow.  //Maybe by exporting and rendering it again. Speed is not important
 		auto paste_impl(bool dontMeasure=false)(
 			TextSelection[] textSelections,
 			Flag!"fromClipboard" fromClipboard,
@@ -2390,7 +2430,7 @@ version(/+$DIDE_REGION main+/all)
 				void saveOldSelected()
 				{ foreach(a; items) a.flags.oldSelected = a.flags.selected; } 
 				
-				auto mouseAct = view.mousePos; 
+				auto mouseAct = view.mousePos.vec2; 
 				//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
 				
 				auto mouseDelta = mouseAct-mouseLast; 
@@ -2614,7 +2654,7 @@ version(/+$DIDE_REGION main+/all)
 			//Opt: only call this when the workspace changed (remove module, cut, paste)
 			
 			validateInternalSelections(workspace); 
-			cursorAtMouse = workspace.createCursorAt(view.mousePos); 
+			cursorAtMouse = workspace.createCursorAt(view.mousePos.vec2); 
 			
 			updateInputs(mouseMappings); 
 			scrollInRequest.nullify; 
@@ -2630,7 +2670,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(inputs[mouseMappings.main].pressed)
 				{
-					if(workspace.textSelectionsGet.hitTest(view.mousePos))
+					if(workspace.textSelectionsGet.hitTest(view.mousePos.vec2))
 					{
 						//Todo: start dragging the selection contents and paste on mouse button release
 					}
@@ -2693,8 +2733,8 @@ version(/+$DIDE_REGION main+/all)
 					auto bnd = worldInnerBounds(selectionAtMouse.codeColumn); 
 					bnd.high -= 1; //make sure it's inside
 					
-					const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos, bnd) //normal clamping for columnSelect
-						: restrictPos_editor(view.mousePos, bnd) /+text editor clamping for normal select+/; 
+					const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos.vec2, bnd) //normal clamping for columnSelect
+						: restrictPos_editor(view.mousePos.vec2, bnd) /+text editor clamping for normal select+/; 
 					
 					auto restrictedCursorAtMouse = workspace.createCursorAt(restrictedMousePos); 
 					
@@ -2702,7 +2742,7 @@ version(/+$DIDE_REGION main+/all)
 					selectionAtMouse.cursors[1] = restrictedCursorAtMouse; 
 					
 					if(mouseTravelDistance>4)
-					scrollInRequest = restrictPos_normal(view.mousePos, bnd); //always normal clipping for mouse focus point
+					scrollInRequest = restrictPos_normal(view.mousePos.vec2, bnd); //always normal clipping for mouse focus point
 					//Todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
 					//Todo: do this scrolling in the ModuleSelectionManager too.
 				}
@@ -3141,7 +3181,7 @@ version(/+$DIDE_REGION main+/all)
 					{
 						{
 							const p = frmMain.view.subScreenClientCenter; 
-							mouseLock(mix(winMousePos, frmMain.clientToScreen(p), .125f));                   
+							mouseLock(mix(desktopMousePos, frmMain.clientToScreen(p), .125f)); 
 							mouseUnlock; 
 						}
 					}
@@ -3150,7 +3190,7 @@ version(/+$DIDE_REGION main+/all)
 					{
 						{
 							//const p = frmMain.view.subScreenClientCenter;
-							const p = frmMain.screenToClient(winMousePos); 
+							const p = frmMain.screenToClient(desktopMousePos); 
 							frmMain.view.zoomAround(vec2(p), a*zs); //Todo: ivec2 is not implicitly converted to vec2
 						}
 					}
@@ -3423,7 +3463,7 @@ version(/+$DIDE_REGION main+/all)
 				enforceLocationIndex(n); 
 				with(storedLocations[n])
 				{
-					origin	= frmMain.view.origin,
+					origin	= frmMain.view.origin.vec2,
 					zoomFactor 	= frmMain.view.scale; 
 				}
 				im.flashInfo(n.format!"Location %s stored."); 
@@ -3439,7 +3479,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 				with(storedLocations[n])
 				{
-					frmMain.view.origin	= origin,
+					frmMain.view.origin	= origin.dvec2,
 					frmMain.view.scale 	= zoomFactor; 
 				}
 			} 
@@ -3511,7 +3551,10 @@ version(/+$DIDE_REGION main+/all)
 				@VERB("Right") void cursorRight(bool sel=false)
 				{ cursorOp(ivec2(1, 0), sel); } 
 				@VERB("Ctrl+Left") void cursorWordLeft(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel); } 
+				{
+					//Todo: Inside a node it should jump accross the node surface.
+					cursorOp(ivec2(TextCursor.wordLeft, 0), sel); 
+				} 
 				@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel); } 
 				@VERB("Home") void cursorHome(bool sel=false)
@@ -3907,7 +3950,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			
 			
-			@VERB("F1") void test_realignVerticalTabs()
+			@VERB void test_realignVerticalTabs()
 			{
 				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				preserveTextSelections(
@@ -3918,7 +3961,7 @@ version(/+$DIDE_REGION main+/all)
 				); 
 			} 
 			
-			@VERB("Ctrl+F1") void test_removeVerticalTabs()
+			@VERB void test_removeVerticalTabs()
 			{
 				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				preserveTextSelections({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
@@ -3927,7 +3970,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			
 			
-			@VERB("F2") void test_setInternalNewLine()
+			@VERB void test_setInternalNewLine()
 			{
 				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				visitSelectedNestedCodeNodes(
@@ -3941,7 +3984,7 @@ version(/+$DIDE_REGION main+/all)
 				); 
 			} 
 			
-			@VERB("Ctrl+F2") void test_clearInternalNewLine()
+			@VERB void test_clearInternalNewLine()
 			{
 				//Todo: This fucks up Undo/Redo and ignored edit permissions.
 				visitSelectedNestedCodeNodes(
@@ -3955,25 +3998,31 @@ version(/+$DIDE_REGION main+/all)
 				); 
 			} 
 			
-			 @VERB("F3") void test_resyntax()
+			 @VERB void test_resyntax()
 			{
 				//foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
 				
 			} 
 			
-			@VERB("F4") void test_declarationStatistics()
+			@VERB void test_declarationStatistics()
 			{
-				auto files = dirPerS(Path(`c:\d`), "*.d").files.map!"a.file".array; 
+				auto files = dirPerS(Path(`c:\d\libs`), "*.d").files.map!"a.file".array; 
 				//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
 				dDeclarationRecords.clear; 
 				foreach(i, f; files)
 				{
-					print(i, files.length, dDeclarationRecords.length, f); 
-					auto m = scoped!Module(this, f, StructureLevel.structured); 
-					if(m.isStructured) { m.content.processHighLevelPatterns_block; }else { print("Is not structured"); beep; }
+					try
+					{
+						print(i, files.length, dDeclarationRecords.length, f); 
+						auto m = scoped!Module(this, f, StructureLevel.structured); 
+						if(m.isStructured) { m.content.processHighLevelPatterns_block; }else { print("Is not structured"); beep; }
+					}
+					catch(Exception e)
+					{ WARN(e.simpleMsg); }
 				}
-				dDeclarationRecords.toJson.saveTo(`c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`); 
-				print("DONE."); 
+				const fnOut = `c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`; 
+				dDeclarationRecords.toJson.saveTo(fnOut); 
+				print("DONE. DeclarationStatistics written to:", fnOut); 
 				
 				/+
 					Todo: implement identifier qString  
@@ -4259,7 +4308,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				with(im) {
 					if(!view.isMouseInside) return; 
-					auto st = locate_snapToRow(view.mousePos); 
+					auto st = locate_snapToRow(view.mousePos.vec2); 
 					if(st.length)
 					{
 						Row(
@@ -4486,24 +4535,24 @@ version(/+$DIDE_REGION main+/all)
 						far = lod.level>1,
 						extra = lod.pixelSize* (2.5f*blink+.5f + extraThickness),
 						
-						clamper = RectClamper(im.getView, arrowThickness*2); 
+						clamper = RectClamperF(im.getView, arrowThickness*2); 
 					
 					bool isVisible(in bounds2 b)
 					{ return clamper.overlaps(b); } 
-							
+					
 					//always draw these
 					color = clSearchHighLight; 
 					_nearestSearchResult_ActColor = clSearchHighLight; 
-							
-					auto mp = frmMain.view.mousePos; 
-							
+					
+					auto mp = frmMain.view.mousePos.vec2; 
+					
 					static float distanceB(in vec2 p, in bounds2 b)
 					{
 						const 	dx = max(b.low.x - p.x, 0, p.x - b.high.x),
 							dy = max(b.low.y - p.y, 0, p.y - b.high.y); 
 						return sqrt(dx*dx + dy*dy); 
 					} 
-							
+					
 					foreach(sr; searchResults)
 					if(auto b = sr.bounds)
 					{
@@ -4825,7 +4874,7 @@ version(/+$DIDE_REGION main+/all)
 					
 					
 					{
-						const clamper = RectClamper(view, 7*blink+2); 
+						const clamper = RectClamperF(view, 7*blink+2); 
 						
 						auto getCaretWorldPos(TextSelection ts)
 						{
@@ -4908,6 +4957,7 @@ version(/+$DIDE_REGION main+/all)
 				{ drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f)); }
 				
 				.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
+				.drawProbes(dr); globalVisibleProbes.clear; 
 				
 				drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
 				

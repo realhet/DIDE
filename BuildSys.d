@@ -153,79 +153,65 @@ void test_predecodeLdcOutput()
 	
 	immutable inputText = 
 	q"{
-		
-				
-						
-								
-										
-												
-														
-																the first pragma
-																c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-																    body
-																    ^
-																c:\d\libs\quantities\internal\dimensions.d(136,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-																    body
-																    ^
-																c:\d\testMixinError.d(10,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-																  depr1; depr1;
-																  ^
-																c:\d\testMixinError.d(10,10): Deprecation: function `testMixinError.depr1` is deprecated - cause
-																  depr1; depr1;
-																         ^
-																c:\d\testMixinError.d(11,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-																  depr1;
-																  ^
-																c:\d\testMixinError.d(16,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-																  depr1;
-																  ^
-																this is just a pragma
-																c:\D\ldc2\bin\..\import\std\functional.d-mixin-124(124,1): Error: undefined identifier `b`
-																c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(627,19): Error: template instance `std.functional.unaryFun!("b+5", "a").unaryFun!int` error instantiating
-																        return fun(_input.front);
-																                  ^
-																c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(524,16):        instantiated from here: `MapResult!(unaryFun, Result)`
-																        return MapResult!(_fun, Range)(r);
-																               ^
-																c:\d\testMixinError.d(21,10):        instantiated from here: `map!(Result)`
-																  iota(5).map!"b+5".print;
-																         ^
-																c:\d\testMixinError.d-mixin-22(22,15): Error: found `b` when expecting `;` following statement
-																this is just a pragma
-																with multiple lines
-																c:\d\testMixinError.d(24,35): Error: template `std.algorithm.searching.countUntil` cannot deduce function from argument types `!((a, b) => c > d)(Result, int)`
-																  iota(5).countUntil!((a, b)=>c>d)(5);
-																                                  ^
-																c:\D\ldc2\bin\..\import\std\algorithm\searching.d(770,11):        Candidates are: `countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)`
-																  with `pred = __lambda1,
-																       R = Result,
-																       Rs = (int)`
-																  must satisfy the following constraint:
-																`       allSatisfy!(canTestStartsWith!(pred, R), Rs)`
-																ptrdiff_t countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)
-																          ^
-																c:\D\ldc2\bin\..\import\std\algorithm\searching.d(858,11):                        `countUntil(alias pred = "a == b", R, N)(R haystack, N needle)`
-																  with `pred = __lambda1,
-																       R = Result,
-																       N = int`
-																  must satisfy the following constraint:
-																`       is(typeof(binaryFun!pred(haystack.front, needle)) : bool)`
-																ptrdiff_t countUntil(alias pred = "a == b", R, N)(R haystack, N needle)
-																          ^
-																c:\D\ldc2\bin\..\import\std\algorithm\searching.d(917,11):                        `countUntil(alias pred, R)(R haystack)`
-																ptrdiff_t countUntil(alias pred, R)(R haystack)
-																          ^
-																also a pragma
-																fake markes here
-																       ^
-																end of file
-															
-													
-											
-									
-							
-					
-			
+		the first pragma
+		c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
+		    body
+		    ^
+		c:\d\libs\quantities\internal\dimensions.d(136,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
+		    body
+		    ^
+		c:\d\testMixinError.d(10,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+		  depr1; depr1;
+		  ^
+		c:\d\testMixinError.d(10,10): Deprecation: function `testMixinError.depr1` is deprecated - cause
+		  depr1; depr1;
+		         ^
+		c:\d\testMixinError.d(11,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+		  depr1;
+		  ^
+		c:\d\testMixinError.d(16,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+		  depr1;
+		  ^
+		this is just a pragma
+		c:\D\ldc2\bin\..\import\std\functional.d-mixin-124(124,1): Error: undefined identifier `b`
+		c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(627,19): Error: template instance `std.functional.unaryFun!("b+5", "a").unaryFun!int` error instantiating
+		        return fun(_input.front);
+		                  ^
+		c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(524,16):        instantiated from here: `MapResult!(unaryFun, Result)`
+		        return MapResult!(_fun, Range)(r);
+		               ^
+		c:\d\testMixinError.d(21,10):        instantiated from here: `map!(Result)`
+		  iota(5).map!"b+5".print;
+		         ^
+		c:\d\testMixinError.d-mixin-22(22,15): Error: found `b` when expecting `;` following statement
+		this is just a pragma
+		with multiple lines
+		c:\d\testMixinError.d(24,35): Error: template `std.algorithm.searching.countUntil` cannot deduce function from argument types `!((a, b) => c > d)(Result, int)`
+		  iota(5).countUntil!((a, b)=>c>d)(5);
+		                                  ^
+		c:\D\ldc2\bin\..\import\std\algorithm\searching.d(770,11):        Candidates are: `countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)`
+		  with `pred = __lambda1,
+		       R = Result,
+		       Rs = (int)`
+		  must satisfy the following constraint:
+		`       allSatisfy!(canTestStartsWith!(pred, R), Rs)`
+		ptrdiff_t countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)
+		          ^
+		c:\D\ldc2\bin\..\import\std\algorithm\searching.d(858,11):                        `countUntil(alias pred = "a == b", R, N)(R haystack, N needle)`
+		  with `pred = __lambda1,
+		       R = Result,
+		       N = int`
+		  must satisfy the following constraint:
+		`       is(typeof(binaryFun!pred(haystack.front, needle)) : bool)`
+		ptrdiff_t countUntil(alias pred = "a == b", R, N)(R haystack, N needle)
+		          ^
+		c:\D\ldc2\bin\..\import\std\algorithm\searching.d(917,11):                        `countUntil(alias pred, R)(R haystack)`
+		ptrdiff_t countUntil(alias pred, R)(R haystack)
+		          ^
+		also a pragma
+		fake markes here
+		       ^
+		end of file
 	}"; 
 	//Todo: This fucking tokenstring keeps growing on save/reload.
 	
@@ -621,6 +607,7 @@ struct BuildSettings
 	@("n|single      = Single step compilation."	   ) bool singleStepCompilation		; 
 	@("w|workPath    = Specify path for temp files. Default = Project's path."	   )	string workPath	; 
 	@("a|macroHelp   = Show info about the build-macros."	   ) bool macroHelp	; 
+	@("d|dideDbgEnv = DIDE can specify it's debug environment.") string dideDbgEnv; 
 	
 	/// This is needed because the main source header can override the string arrays
 	auto dup() const
@@ -715,7 +702,7 @@ private string calcHash(string data, string data2 = "")
 //BuildSys Source File Cache                                              //
 //////////////////////////////////////////////////////////////////////////////
 
-private struct BuildCache
+private struct SourceCache
 {
 	private: 
 		//first look inside this
@@ -842,7 +829,7 @@ class ModuleInfo
 	
 	int sourceLines, sourceBytes; //stats
 	
-	this(BuildCache.Content* content)
+	this(SourceCache.Content* content)
 	{
 		file = content.file; 
 		fileHash = content.hash; 
@@ -941,7 +928,7 @@ struct BuildSystem
 		string[] todos; 
 	
 		//cached data
-		BuildCache cache; 
+		SourceCache sourceCache; 
 		ubyte[][string] objCache, exeCache, mapCache, resCache; 
 		string[string] outputCache; 
 	
@@ -1208,7 +1195,7 @@ struct BuildSystem
 		
 		//add this module
 		double dateTime; 
-		auto act = cache.access(file); 
+		auto act = sourceCache.access(file); 
 		modules ~= new ModuleInfo(act); 
 		auto mAct = &modules[$-1]; 
 		
@@ -1229,7 +1216,6 @@ struct BuildSystem
 				hasCoreModule = true; 
 				break; 
 			}
-			
 		}
 		
 		//collect imports NEW
@@ -1404,22 +1390,22 @@ struct BuildSystem
 		
 		void compile(File[] srcFiles, File[] cachedFiles) //Compile ////////////////////////
 	{
-				if(srcFiles.empty)
+		if(srcFiles.empty)
 		return; 
 		
-				mixin(perf("compile")); 
+		mixin(perf("compile")); 
 		
-				auto args = makeCommonCompileArgs(); 
-				auto cmdLines = makeCompileCmdLines(srcFiles, args); 
+		auto args = makeCommonCompileArgs(); 
+		auto cmdLines = makeCompileCmdLines(srcFiles, args); 
 		
-				foreach(ref line; cmdLines)
+		foreach(ref line; cmdLines)
 		makeLdc2CompatibleArgs(line); 
 		
-				logln; logln(bold("COMPILE COMMANDS:")); 
-				foreach(line; cmdLines)
+		logln; logln(bold("COMPILE COMMANDS:")); 
+		foreach(line; cmdLines)
 		{ logln(joinCommandLine(line)); }
 		
-				logln; 
+		logln; 
 		
 		//Todo: it's a big mess.
 		compileCommands = cmdLines.map!joinCommandLine.array; //this is passed to the link() where the $build.bat file will be exported.
@@ -1431,18 +1417,18 @@ struct BuildSystem
 		
 		//////////////////////////////////////////////////////////////////////////////////////
 		
-				string[] sOutputs; 
-				int res; 
+		string[] sOutputs; 
+		int res; 
 		
-				log(bold("Compiling: ")); 
+		log(bold("Compiling: ")); 
 		
 		
-				string sOutput; //combined error log
+		string sOutput; //combined error log
 		
-				foreach(srcFile; cachedFiles)
+		foreach(srcFile; cachedFiles)
 		{
-			const objHash = findModule(srcFile).objHash,
-						output = outputCache[objHash]; 
+			const 	objHash 	= findModule(srcFile).objHash,
+				output	= outputCache[objHash]; 
 			
 			if(onCompileProgress)
 			onCompileProgress(srcFile, 0/+success+/, outputCache[objHash]); 
@@ -1450,8 +1436,9 @@ struct BuildSystem
 			sOutput ~= processDMDErrors(output, srcFile.path.fullPath); 
 		}
 		
-				bool cancelled; 
-				res = spawnProcessMulti2(
+		bool cancelled; 
+		res = spawnProcessMulti2
+		(
 			srcFiles, cmdLines, null, /*working dir=*/Path.init, /*log path=*/workPath, sOutputs, 
 			(idx, result, output){
 				
@@ -1489,24 +1476,24 @@ struct BuildSystem
 			}
 		); 
 		
-				enforce(!cancelled, "Compillation cancelled."); 
+		enforce(!cancelled, "Compillation cancelled."); 
 		
-				//Todo: refactor cancel/kill functionality.. onIdle should be able to kill too.
+		//Todo: refactor cancel/kill functionality.. onIdle should be able to kill too.
 		
-				logln; 
-				logln; 
+		logln; 
+		logln; 
 		
-				//process combined error log
-				foreach(i, ref o; sOutputs)
+		//process combined error log
+		foreach(i, ref o; sOutputs)
 		sOutput ~= processDMDErrors(o, srcFiles[i].path.fullPath); 
-				sOutput = mergeDMDErrors(sOutput); 
-				//add todos
-				if(settings.collectTodos)
+		sOutput = mergeDMDErrors(sOutput); 
+		//add todos
+		if(settings.collectTodos)
 		sOutput ~= todos.map!(s => s~"\r\n").join; 
 		
-				//check results
-				enforce(res==0, sOutput); 
-				if(!sOutput.empty)
+		//check results
+		enforce(res==0, sOutput); 
+		if(!sOutput.empty)
 		logln(sOutput); 
 	} 
 	
@@ -1581,9 +1568,9 @@ struct BuildSystem
 		if(modules.empty)
 		return; 
 		
-		string[] objFiles = modules.map!(m => objFileOf(m.file).fullName).array,
-						 libFiles,           //user32, kernel32 nem kell, megtalalja magatol
-						 linkOpts; //Todo: kideriteni, hogy ez miert kell a windowsos cuccokhoz
+		string[] 	objFiles = modules.map!(m => objFileOf(m.file).fullName).array,
+			libFiles,           //user32, kernel32 nem kell, megtalalja magatol
+			linkOpts; //Todo: kideriteni, hogy ez miert kell a windowsos cuccokhoz
 		
 		if(settings.generateMap)
 		addIfCan(linkOpts, "/MAP"/+Generate map file+/)/+Todo: If there is proper pdb support, no need for the map file.+/; 
@@ -1648,6 +1635,7 @@ struct BuildSystem
 		
 		if(printCommands) print(line); 
 		
+		//Todo: Move this to the beginning of the build process, so I can run this manually if anything fails.
 		File(targetFile.path, "$build.bat").write(chain(compileCommands, line.only).join("\r\n")); 
 		
 		//cleanup
@@ -1665,7 +1653,7 @@ struct BuildSystem
 	public: 
 		void reset_cache()
 	{
-		cache.reset; 
+		sourceCache.reset; 
 		objCache.clear; 
 		outputCache.clear; 
 		exeCache.clear; 
@@ -1734,6 +1722,8 @@ struct BuildSystem
 			//calculate dependency hashed of obj files to lookup in the objCache
 			modules.resolveModuleImportDependencies; 
 			const compilerSalt = joinCommandLine(settings.compileArgs); 
+			
+			LOG(settings.compileArgs); 
 			modules.calculateObjHashes(compilerSalt); //Note: Compiler specific hash generation.
 			
 			//ensure that no std or core files are going to be recompiled
@@ -1886,7 +1876,8 @@ struct BuildSystem
 				batFile.write(runCmd); 
 				foreach(idx, line; runCmd.split('\n'))
 				logln(idx ? " ".replicate(9):bold("RUNNING: "), line); 
-				spawnProcess(["cmd", "/c", "start", batFile.fullName], null, Config.detached, targetFile.path.fullPath); 
+				const env = settings.dideDbgEnv!="" ? ["DideDbgEnv" : settings.dideDbgEnv] : null;
+				spawnProcess(["cmd", "/c", "start", batFile.fullName], env, Config.detached, targetFile.path.fullPath); 
 			}
 		}
 	} 
