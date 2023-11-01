@@ -156,7 +156,7 @@ version(/+$DIDE_REGION+/all)
 	//Probes /////////////////////////////////////
 	
 	version(none) { auto _testProbe() { return ((now).PR!()); } }
-	const _testProbeId = format!"%s:%s"(__FILE__.lc, __LINE__-1); 
+	const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
 	
 	void _updateTestProbe()
 	{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
@@ -293,7 +293,7 @@ version(/+$DIDE_REGION+/all)
 	Probe[string] globalVisibleProbes; 
 	
 	string calcProbeId(NiceExpression node)
-	{ return format!"%s:%s"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
+	{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
 	
 	void addGlobalProbe(Drawing dr, NiceExpression node)
 	{
@@ -305,18 +305,23 @@ version(/+$DIDE_REGION+/all)
 	{
 		foreach(id, const probe; globalVisibleProbes)
 		{
-			print("Visible:", probe);
+			print("Visible:", probe); 
 			
-			dr.lineWidth = 4; 
+			/+dr.lineWidth = 4; 
 			dr.color = clWhite; 
 			dr.drawRect(probe.bounds); 
 			dr.lineWidth = 1.333; 
 			dr.color = clBlack; 
-			dr.drawRect(probe.bounds); 
+			dr.drawRect(probe.bounds); +/
+			
+			dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds);
+			dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal;
+			dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds);
+			dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal;
 			
 			if(auto watch = id in globalWatches)
 			{
-				print("Found:", *watch);
+				print("Found:", *watch); 
 				watch.draw(dr, probe.bounds); 
 			}
 		}
@@ -7870,7 +7875,7 @@ else debug
 			
 			//horizontal
 			
-			if(0) { /*comment05*/ block; }
+			if(0) {/*comment05*/ block; }
 			
 			if(0/*comment06*/) { block; }
 			

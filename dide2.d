@@ -1,10 +1,8 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+///@release
 //@debug
-
-/+DIDE+/ 
 
 /+
 	Todo: this crashes the StructureScanner:
@@ -352,10 +350,10 @@ version(/+$DIDE_REGION main+/all)
 			
 			void onDebugLog(string s)
 			{
-				if(s.isWild("PR(*):*"))
+				if(s.isWild("PR(?*(?*)):*"))
 				{
-					const id = wild[0]; 
-					const value = (cast(string)(wild[1].fromBase64)).ifThrown("BASE64 Error"); 
+					const id = wild[0]~'('~wild[1]~')'; 
+					const value = (cast(string)(wild[2].fromBase64)).ifThrown("BASE64 Error"); 
 					globalWatches.require(id, Watch(id)).update(value); 
 					
 					print("Received:", globalWatches[id]); 
@@ -509,6 +507,33 @@ version(/+$DIDE_REGION main+/all)
 									{
 										if(B("", "Add")) test_setInternalNewLine; 
 										if(B("", "Remove")) test_clearInternalNewLine; 
+									}
+								); 
+								
+								Grp!Column(
+									"Watches",
+									{
+										static float maxLocationWidth; 
+										foreach(ref w; globalWatches.byValue)
+										{
+											auto 	sc = DLangScanner("//$DIDE_LOC "~w.id),
+												loc = new CodeComment(null); 
+											loc.rebuild(sc); 
+											loc.measure; 
+											maxLocationWidth.maximize(loc.outerWidth); 
+											Row(
+												{
+													Row(
+														{
+															width = maxLocationWidth; 
+															actContainer.appendCell(loc); 
+														}
+													); 
+													Spacer; 
+													Row({ Text(w.value); }); 
+												}
+											); 
+										}
 									}
 								); 
 								
@@ -765,7 +790,6 @@ version(/+$DIDE_REGION main+/all)
 	
 }class Workspace : Container, WorkspaceInterface
 {
-	/// Workspace ///////////////////////////////////////////////
 	version(/+$DIDE_REGION Workspace+/all)
 	{
 		//! Module handling ///////////////////////////////////////
@@ -2614,10 +2638,10 @@ version(/+$DIDE_REGION main+/all)
 					opSelectAdd,
 					opSelectExtend; 
 				
-				DateTime	lastMainMousePressTime; 
-				ClickDetector 	cdMainMouseButton; 
-				float	mouseTravelDistance = 0; 
-				bool	doubleClick; 
+				DateTime lastMainMousePressTime; 
+				ClickDetector cdMainMouseButton; 
+				float mouseTravelDistance = 0; 
+				bool doubleClick; 
 				
 				void updateInputs(in Workspace.MouseMappings mouseMappings)
 				{
@@ -2635,10 +2659,10 @@ version(/+$DIDE_REGION main+/all)
 					
 					//check if a keycombo modifier with the main mouse button isactive
 					bool _kc(string sh) { return KeyCombo([sh, mouseMappings.main].join("+")).active; } 
-					opSelectColumn	= _kc(mouseMappings.selectColumn	); 
-					opSelectColumnAdd	= _kc(mouseMappings.selectColumnAdd	); 
-					opSelectAdd	= _kc(mouseMappings.selectAdd	); 
-					opSelectExtend	= _kc(mouseMappings.selectExtend	); 
+					opSelectColumn = _kc(mouseMappings.selectColumn	); 
+					opSelectColumnAdd = _kc(mouseMappings.selectColumnAdd	); 
+					opSelectAdd = _kc(mouseMappings.selectAdd	); 
+					opSelectExtend = _kc(mouseMappings.selectExtend	); 
 					
 				} 
 			} 
@@ -2663,8 +2687,8 @@ version(/+$DIDE_REGION main+/all)
 			void initiateMouseOperations()
 			{
 				if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed); 
-				if(inputs[mouseMappings.zoomInHold	].down) view.zoomAroundMouse(.125); 
-				if(inputs[mouseMappings.zoomOutHold	].down) view.zoom/+AroundMouse+/(-.125); 
+				if(inputs[mouseMappings.zoomInHold].down) view.zoomAroundMouse(.125); 
+				if(inputs[mouseMappings.zoomOutHold].down) view.zoom/+AroundMouse+/(-.125); 
 				
 				if(inputs[mouseMappings.scroll].pressed) mouseScrolling = true; 
 				
@@ -2720,7 +2744,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(!inputs[mouseMappings.scroll])
 					mouseScrolling = false; 
-					else if(const delta = inputs.mouseDelta)
+					else if(const delta = ((inputs.mouseDelta).PR!()))
 					view.scroll(delta); 
 				}
 			} 
