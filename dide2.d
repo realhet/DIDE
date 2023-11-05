@@ -542,7 +542,6 @@ version(/+$DIDE_REGION main+/all)
 									{ if(B("", "Declaration Statistics of all D codebase.")) test_declarationStatistics; }
 								); 
 								
-								
 								/*
 									if(B("F1", "autoRealign"	)) test_autoRealign;
 									if(B("F2", "StructureMap"	)) test_structureMap;
@@ -553,7 +552,45 @@ version(/+$DIDE_REGION main+/all)
 						}
 					}
 				); 
-					
+				
+				with(workspace)
+				if(!selectedStickers.empty)
+				with(im)
+				Panel(
+					PanelPosition.topCenter, 
+					{
+						Row(
+							{
+								foreach(
+									colorName; [
+										"Yellow", "White", "LightOrange", "Olive", 
+										"Green", "PastelBlue", "Aqua", "Blue", 
+										"Orange", "Pink", "Red", "Purple"
+									].map!"`Sticky` ~ a"
+								)
+								if(
+									Btn(
+										{
+											Row(
+												{
+													flags.clickable = false; 
+													style.bkColor = (colorName).toRGB; 
+													border = "1 normal black"; 
+													Text("    "); 
+												}
+											); 
+										}, genericId(colorName)
+									)
+								)
+								{
+									foreach(s; selectedStickers)
+									if(s.props.color.chkSet(colorName))
+									s.needMeasure; 
+								}
+							}
+						); 
+					}
+				); 
 				
 				
 				if(0)
@@ -1040,7 +1077,7 @@ version(/+$DIDE_REGION main+/all)
 				modules = modules.remove(idx); 
 				updateSubCells; 
 			} 
-					
+			
 			auto selectedModules()
 			{ return modules.filter!(m => m.flags.selected).array; } 
 			auto unselectedModules()
@@ -1083,7 +1120,7 @@ version(/+$DIDE_REGION main+/all)
 				return selectedModules.front; 
 				return null; 
 			} 
-					
+			
 			Module expectOneSelectedModule()
 			{
 				auto m = oneSelectedModule; 
@@ -1093,7 +1130,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				return m; 
 			} 
-					
+			
 			Module[] selectedModulesOrAll()
 			{
 				auto res = selectedModules.array; 
@@ -1103,7 +1140,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			/+
 				+Selects all the CodeColumns under the cursors. 
-							If there is none, selects all the modules' content CodeColumns.
+				If there is none, selects all the modules' content CodeColumns.
 			+/
 			CodeColumn[] selectedOuterColumns()
 			{
@@ -1118,8 +1155,11 @@ version(/+$DIDE_REGION main+/all)
 				return cols; 
 			} 
 			
+			auto selectedStickers()
+			{ return selectedModules.map!(m => cast(ScrumSticker) m); } 
+			
 			auto changedModules()
-			{ modules       .filter!"a.changed"; } 
+			{ modules.filter!"a.changed"; } 
 			auto projectModules()
 			{ return mainModule ? allFilesFromModule(mainModule.file).map!(f => findModule(f)).nonNulls.array : []; } 
 			auto changedProjectModules()
@@ -1135,20 +1175,26 @@ version(/+$DIDE_REGION main+/all)
 				updateSubCells; 
 				invalidateTextSelections; 
 			} 
-					
+			
 			private void closeAllModules_impl()
 			{
 				//Todo: ask user to save if needed
 				clear; 
 				invalidateTextSelections; 
 			} 
-					
+			
+			private void bringToFrontSelectedModules()
+			{
+				modules = unselectedModules ~ selectedModules; 
+				updateSubCells; 
+			} 
+			
 			bool loadModule(in File file)
 			{
 				const vec2 targetPos = lastModulePositions.get(file.actualFile.hashOf, vec2(calcBounds.right+24, 0)); 
 				return loadModule(file, targetPos); //default position
 			} 
-					
+			
 			bool loadModule(in File file, vec2 targetPos)
 			{
 				if(!file.exists) return false; 
@@ -1158,25 +1204,28 @@ version(/+$DIDE_REGION main+/all)
 					frmMain.view.smartScrollTo(m.outerBounds); 
 					return false; //no loading was issued
 				}
-						
-				auto m = new Module(this, file, desiredStructureLevel); 
-						
+				
+				Module m; 
+				if(file.extIs("scrum"))	m = new ScrumTable(this, file, desiredStructureLevel); 
+				else if(file.extIs("sticker"))	m = new ScrumSticker(this, file, desiredStructureLevel); 
+				else	m = new Module(this, file, desiredStructureLevel); 
+				
 				//m.flags.targetSurface = 0; not needed, workspace is on s0 already
 				m.measure; 
 				m.outerPos = targetPos; 
 				modules ~= m; 
 				updateSubCells; 
-						
+				
 				/+
 					justLoadedSomething |= true;
 					justLoadedBounds |= m.outerBounds; 
 				+/
-						
+				
 				frmMain.view.smartScrollTo(m.outerBounds); 
-						
+				
 				return true; 
 			} 
-					
+			
 			File[] allFilesFromModule(File file)
 			{
 				if(!file.exists) return []; 
@@ -1185,10 +1234,10 @@ version(/+$DIDE_REGION main+/all)
 				BuildSystem buildSystem; 
 				return buildSystem.findDependencies(file, settings).map!(m => m.file).array; 
 			} 
-					
+			
 			auto loadModuleRecursive(File file)
 			{ allFilesFromModule(file).each!(f => loadModule(f)); } 
-					
+			
 			void queueModule(File f)
 			{
 				//Todo: this workaround is there to let the filedialog handle virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
@@ -1197,7 +1246,7 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			void queueModuleRecursive(File f)
 			{ if(f.exists) openQueue ~= allFilesFromModule(f); } 
-					
+			
 			void updateOpenQueue(int maxWork)
 			{
 				while(openQueue.length)
@@ -1210,7 +1259,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 				}
 			} 
-					
+			
 			void updateModuleBuildStates(in BuildResult buildResult)
 			{
 				foreach(m; modules)
@@ -2394,7 +2443,7 @@ version(/+$DIDE_REGION main+/all)
 			{ return item.outerBounds; } 
 			
 			enum MouseOp
-			{ idle, moveStart, move, rectSelect} 
+			{ idle, beforeMove, move, rectSelect} 
 			MouseOp mouseOp; 
 			
 			enum SelectOp
@@ -2435,7 +2484,8 @@ version(/+$DIDE_REGION main+/all)
 			View2D 	view, 
 			T[] 	items, 
 			bool 	anyTextSelected, 
-			void delegate() 	onResetTextSelection
+			void delegate() 	onResetTextSelection,
+			void delegate() 	onMoveStarted
 		)
 		{
 			version(/+$DIDE_REGION+/all)
@@ -2464,7 +2514,8 @@ version(/+$DIDE_REGION main+/all)
 					LMB_pressed	= inputs.LMB.pressed,
 					LMB_released	= inputs.LMB.released,
 					Shift	= inputs.Shift.down,
-					Ctrl	= inputs.Ctrl.down; 
+					Ctrl	= inputs.Ctrl.down,
+					Alt	= inputs.Alt.down; 
 				
 				const 	modNone	 = !Shift 	&& !Ctrl,
 					modShift	 = Shift 	&& !Ctrl,
@@ -2498,7 +2549,16 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(LMB_pressed && mouseEnabled)
 					{
-						if(hoveredItem)
+						if(
+							hoveredItem && 
+							(
+								!hoveredItem.alwaysOnBottom || Alt
+								/+
+									do rectSelect on alwaysOnBottom modules 
+									except when Alt is pressed.
+								+/
+							)
+						)
 						{
 							if(!anyTextSelected)
 							{
@@ -2507,7 +2567,7 @@ version(/+$DIDE_REGION main+/all)
 									if(!hoveredItem.flags.selected)
 									selectOnly(hoveredItem); 
 									accumulatedMoveStartDelta = 0; 
-									mouseOp = MouseOp.moveStart; 
+									mouseOp = MouseOp.beforeMove; 
 								}
 								if(modShift || modCtrl || modShiftCtrl)
 								hoveredItem.flags.selected = !hoveredItem.flags.selected; 
@@ -2550,10 +2610,14 @@ version(/+$DIDE_REGION main+/all)
 					}
 					
 					version(/+$DIDE_REGION trigger selection dragging+/all) {
-						if(mouseOp == MouseOp.moveStart && mouseTravelDistance>4)
-						{ mouseOp = MouseOp.move; }
+						if(mouseOp == MouseOp.beforeMove && mouseTravelDistance>4)
+						{
+							mouseOp = MouseOp.move; 
+							if(onMoveStarted)
+							onMoveStarted(); 
+						}
 						
-						if(mouseOp == MouseOp.moveStart && mouseDelta)
+						if(mouseOp == MouseOp.beforeMove && mouseDelta)
 						accumulatedMoveStartDelta += mouseDelta; 
 					}
 					
@@ -3268,7 +3332,9 @@ version(/+$DIDE_REGION main+/all)
 					moduleSelectionManager.update(
 						!im.wantMouse && mainWindow.canProcessUserInput
 						&& view.isMouseInside /+&& lod.moduleLevel+/,
-						view, modules, textSelectionsGet.length>0, { textSelectionsSet = []; }
+						view, modules, textSelectionsGet.length>0, 
+						{ textSelectionsSet = []; },
+						{ bringToFrontSelectedModules; }
 					); 
 					textSelectionManager.update(view, this, mouseMappings); 
 					
@@ -4795,18 +4861,18 @@ version(/+$DIDE_REGION main+/all)
 										{
 											/+
 												Todo: make the nice version: the font will be NOT blended to gray, 
-																							but it hides the markerLayers completely. Should make a 
-																							text drawer that uses alpha on the background and leaves 
-																							the font color as is.
+												but it hides the markerLayers completely. Should make a 
+												text drawer that uses alpha on the background and leaves 
+												the font color as is.
 											+/
 											/+
 												if(auto g = row.glyphs[x]){
-																								const old = tuple(g.bkColor, g.fontColor);
-																								g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
-																								dr.alpha = 1;
-																								g.draw(dr);
-																								g.bkColor = old[0]; g.fontColor = old[1];
-																							}else
+													const old = tuple(g.bkColor, g.fontColor);
+													g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
+													dr.alpha = 1;
+													g.draw(dr);
+													g.bkColor = old[0]; g.fontColor = old[1];
+												}else
 											+/
 											{ fade(row.subCells[x].outerBounds); }
 										}
@@ -4832,8 +4898,14 @@ version(/+$DIDE_REGION main+/all)
 										dr.fillRect(bounds2(0, 0, row.subCells.back.outerRight, row.innerHeight)); 
 									}
 									else
-									{ dr.fillRect(bounds2(row.localCaretPos(x0).pos.x, 0, row.localCaretPos(x1).pos.x, row.innerHeight)); }
-																	
+									{
+										dr.fillRect(
+											bounds2(
+												row.localCaretPos(x0).pos.x, 0, 
+												row.localCaretPos(x1).pos.x, row.innerHeight
+											)
+										); 
+									}
 								}
 							}
 							
@@ -4967,7 +5039,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				drawMainModuleOutlines(dr); 
 				drawFolders(dr, clGray, clWhite); 
-				drawSelectionRect(dr, clWhite); 
+				drawSelectionRect(dr, clAccent); 
 				
 				resetNearestSearchResult; 
 				foreach_reverse(t; EnumMembers!BuildMessageType)

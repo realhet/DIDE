@@ -307,17 +307,19 @@ version(/+$DIDE_REGION+/all)
 		{
 			print("Visible:", probe); 
 			
-			/+dr.lineWidth = 4; 
-			dr.color = clWhite; 
-			dr.drawRect(probe.bounds); 
-			dr.lineWidth = 1.333; 
-			dr.color = clBlack; 
-			dr.drawRect(probe.bounds); +/
+			/+
+				dr.lineWidth = 4; 
+				dr.color = clWhite; 
+				dr.drawRect(probe.bounds); 
+				dr.lineWidth = 1.333; 
+				dr.color = clBlack; 
+				dr.drawRect(probe.bounds); 
+			+/
 			
-			dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds);
-			dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal;
-			dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds);
-			dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal;
+			dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
+			dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
+			dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
+			dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
 			
 			if(auto watch = id in globalWatches)
 			{
@@ -3379,6 +3381,12 @@ class CodeRow: Row
 			); 
 		} 
 		
+		void fillBkColor(RGB c)
+		{
+			bkColor = c; 
+			rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){ g.bkColor = c; }); 
+		} 
+		
 		override inout(Container) getParent() inout
 		{ return parent; } 
 		override void setParent(Container p)
@@ -4167,6 +4175,7 @@ version(/+$DIDE_REGION+/all)
 	Container parent; 
 	
 	int lineIdx; 
+	bool alwaysOnBottom; 
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
@@ -4364,6 +4373,12 @@ version(/+$DIDE_REGION+/all)
 		content = new CodeColumn(this); 
 	} 
 	
+	void fillBkColor(RGB8 c)
+	{
+		bkColor = c; 
+		if(content) content.fillBkColor(c); 
+	} 
+	
 	override void buildSourceText(ref SourceTextBuilder builder)
 	{ builder.put(prefix, content, postfix); } 
 	
@@ -4499,7 +4514,7 @@ version(/+$DIDE_REGION+/all)
 			row.needMeasure; 
 		}
 	} 
-	
+	
 	override SyntaxKind syntax() const
 	{
 		return customPrefix=="" 	? (type==Type.directive ? skDirective : skComment)
@@ -4783,7 +4798,9 @@ version(/+$DIDE_REGION+/all)
 		if(anyErrors && markErrors)
 		{ fillSyntax(skError); }
 		
-		return !anyErrors; 
+		return true; //Todo: This test is temporarily disable, so the Stickers can be edited.
+		
+		//return !anyErrors; 
 	} 
 	
 	override void rearrange()
@@ -5208,18 +5225,26 @@ version(/+$DIDE_REGION+/all)
 			this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
 			{
 				this(parent); 
-				
-				fileLoaded = now; 
-				file = file_.actualFile; 
-				reload(desiredStructureLevel); 
+				loadFile(file_, desiredStructureLevel); 
 			} 
 			
 			this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
 			{
 				this(parent); 
-				
+				loadContents(contents, desiredStructureLevel); 
+			} 
+			
+			void loadFile(File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+			{
 				fileLoaded = now; 
-				file = File("faszomgeci"); //Bug: When filename is empty, this fuck is crashing without any errors.
+				file = file_.actualFile; 
+				reload(desiredStructureLevel); 
+			} 
+			
+			void loadContents(string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+			{
+				fileLoaded = now; 
+				file = File("$nullFileName$"); //Bug: When filename is empty, this fuck is crashing without any errors. ($nullFileName$)
 				reload(desiredStructureLevel, nullable(contents)); 
 			} 
 			
@@ -5238,10 +5263,10 @@ version(/+$DIDE_REGION+/all)
 				//return inputs["ScrollLockState"].active;
 				return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly; 
 			} 
-					
+			
 			void resetModuleTypeFlags()
 			{ isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false; } 
-					
+			
 			void detectModuleTypeFlags()
 			{
 				
@@ -5274,6 +5299,7 @@ version(/+$DIDE_REGION+/all)
 				
 				isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); 
 				//Todo: periodically chenck if file is exists and other attributes in the IDE
+				//Note: This is just the file based input of the actual ReadOnly decision in isReadOnly().
 			} 
 		}version(/+$DIDE_REGION+/all)
 		{
@@ -5385,6 +5411,215 @@ version(/+$DIDE_REGION+/all)
 			} 
 		}
 	} 
+}version(/+$DIDE_REGION SCRUM+/all)
+{
+	class ScrumTable: Module
+	{
+		this(Container parent)
+		{
+			super(parent); bkColor = clWhite; 
+			alwaysOnBottom = true; 
+		} 
+		
+		this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{ this(parent); loadFile(file_, desiredStructureLevel); } 
+		
+		this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{ this(parent); loadContents(contents, desiredStructureLevel); } 
+		
+		override SyntaxKind syntax() const
+		{ return skWhitespace; } 
+		
+		override bool isReadOnly()
+		{ return true; } 
+		
+		
+		enum Stages {
+			iceBox, 
+			emergency, 
+			inProgress, 
+			testing, 
+			complete
+		} immutable StageCaptions = [
+			"ICE BOX",
+			"EMEGRENCY",
+			"IN PROGRESS",
+			"TESTING",
+			"COMPLETE"
+		]; 
+		
+		struct Props
+		{ int width=1920, height=1080; } 
+		
+		Props props; 
+		
+		CodeColumn hiddenColumn; 
+		
+		override void reload(
+			StructureLevel desiredStructureLevel, 
+			Nullable!string externalContents = Nullable!string.init
+		)
+		{
+			super.reload(StructureLevel.plain, externalContents); 
+			
+			/+Note: .scrum file format: -> ScrumTable.Props.toJson+/
+			
+			ignoreExceptions({ props.fromJson(sourceText); }); 
+			
+			bkColor = clWhite; 
+		} 
+		
+		override void rebuild(R)(R scanner) if(isScannerRange!R)
+		{
+			//completely igniore content
+			return; 
+		} 
+		
+		override void rearrange()
+		{
+			subCells = []; 
+			innerWidth = props.width; 
+			innerHeight = props.height; 
+		} 
+		
+		override void draw(Drawing dr)
+		{
+			super.draw(dr); 
+			
+			with(dr)
+			{
+				translate(outerPos); scope(exit) pop; 
+				
+				fontHeight = width/32; 
+				lineWidth = fontHeight/8; 
+				const stageWidth = outerWidth / StageCaptions.length; 
+				foreach(i, capt; StageCaptions)
+				{
+					color = i==1 ? clRed : clBlack; 
+					textOut(vec2(i*stageWidth, fontHeight/4), capt, stageWidth, HAlign.center); 
+					
+					color = clGray; 
+					if(i) dr.vLine(i*stageWidth, 0, outerHeight); 
+				}
+				hLine(0, fontHeight*1.5, outerWidth); 
+			}
+		} 
+		
+		
+	}  class ScrumSticker: Module
+	{
+		this(Container parent)
+		{ super(parent); bkColor = clWhite; } 
+		
+		this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{ this(parent); loadFile(file_, desiredStructureLevel); } 
+		
+		this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{ this(parent); 	loadContents(contents, desiredStructureLevel); } 
+		
+		override SyntaxKind syntax() const
+		{ return skWhitespace; } 
+		
+		override bool isReadOnly()
+		{ return false; } 
+		
+		override @property string identifier()
+		{ return ""; } 
+		
+		override @property string caption()
+		{ return ""; } 
+		
+		struct Props
+		{ string color="StickyYellow"; } 
+		
+		Props props; 
+		//Todo: Detect the changes in props and update the module.changed state.
+		
+		override void reload(
+			StructureLevel desiredStructureLevel, 
+			Nullable!string externalContents = Nullable!string.init
+		)
+		{ super.reload(StructureLevel.managed, externalContents); } 
+		
+		void extractStickerProps()
+		{
+			/+
+				Note: .sticker file format:
+				
+				Stickers are CodeComments: Note, Bug, Todo, etc.
+				
+				The second comment:  ScrumSticker.Props.toJson
+			+/
+			
+			if(auto col = cast(CodeColumn) this.subCells.get(0))
+			{
+				if(auto row = cast(CodeRow) col.subCells.get(1))
+				if(auto cmt = cast(CodeComment) row.subCells.get(0))
+				{
+					props.fromJson(cmt.content.sourceText); 
+					
+					//only keep the first row with the sticky note comment
+					col.subCells = col.subCells[0..1]; 
+				}
+			}
+		} 
+		
+		void unpackSticker()
+		{
+			if(auto col = cast(CodeColumn) this.subCells.get(0))
+			if(auto row = cast(CodeRow) col.subCells.get(0))
+			{
+				row.subCells = row.subCells[0..1]; //keep only the first row
+				if(auto cmt = cast(CodeComment) row.subCells.get(0))
+				{
+					row.subCells = row.subCells[0..1]; //keep only the first cell
+					
+					//remove the codecolumn around the comment.
+					
+					//remove borders
+					void removeBorder(Container a)
+					{
+						a.margin = Margin.init; 
+						a.border = Border.init; 
+						a.padding = Padding.init; 
+						a.outerSize = a.calcContentSize; 
+					} 
+					only(cmt, row, col, this).each!((a){ removeBorder(a); }); 
+					
+					ignoreExceptions
+					({ cmt.fillBkColor(props.color.toRGB(true)); }); 
+					
+					innerSize = cmt.outerSize; 
+				}
+			}
+		} 
+		
+		override void rearrange()
+		{
+			super.rearrange; 
+			
+			extractStickerProps; 
+			unpackSticker; 
+		} 
+		
+		override void buildSourceText(ref SourceTextBuilder builder)
+		{
+			super.buildSourceText(builder); 
+			builder.putNL; 
+			
+			builder.put("/+"); 
+			foreach(line; props.toJson.replace("/+", "/ +").replace("+/", "+ /").splitLines)
+			builder.put(line); 
+			builder.put("+/"); 
+		} 
+		
+		/+
+			override void draw()
+					{} 
+		+/
+		
+	} 
+	
 }
 version(/+$DIDE_REGION+/all)
 {
