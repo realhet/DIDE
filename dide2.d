@@ -775,6 +775,7 @@ version(/+$DIDE_REGION main+/all)
 				view.subScreenArea = im.clientArea / clientSize; 
 				
 				workspace.update(view, buildResult); 
+				workspace.UI_Popup; 
 				
 				//bottomRight hint
 				with(im)
@@ -933,7 +934,8 @@ version(/+$DIDE_REGION main+/all)
 					{ idx ++;  if(idx>=modules.length) idx = 0; }
 					
 					auto m = modules[idx]; 
-					if(!m.changed && m.fileModified < m.file.modified/+It takes 120us for a file+/)
+					if(typeid(m) is typeid(Module) /+Opt: It takes 120us for a file.  It is problematic with the stickers...+/)
+					if(!m.changed && m.fileModified < m.file.modified)
 					m.reload(m.structureLevel); 
 				} 
 			} 
@@ -1185,7 +1187,14 @@ version(/+$DIDE_REGION main+/all)
 			
 			private void bringToFrontSelectedModules()
 			{
-				modules = unselectedModules ~ selectedModules; 
+				//Not: Do not raise alwaysOnBottom modules to the top.
+				static isSel(Module m)
+				{ return m.flags.selected && !m.alwaysOnBottom; } 
+				
+				modules = chain(
+					modules.filter!(m=>!isSel(m)), 
+					modules.filter!isSel
+				).array; 
 				updateSubCells; 
 			} 
 			
@@ -3288,7 +3297,83 @@ version(/+$DIDE_REGION main+/all)
 			const mouseMappings = MouseMappings.init; 
 		}version(/+$DIDE_REGION+/all)
 		{
-			void update(View2D view, in BuildResult buildResult)
+			void UI_Popup()
+			{
+				version(/+$DIDE_REGION Popup menu+/all)
+				{
+					static Module popupModule; 
+					static vec2 popupGuiPos, popupWorldPos; 
+					bool justPopped; 
+					
+					if(inputs.RMB.pressed)
+					if(auto tbl = cast(ScrumTable) moduleSelectionManager.hoveredItem)
+					{
+						popupModule = tbl; 
+						popupGuiPos = frmMain.viewGUI.mousePos.vec2; 
+						popupWorldPos = frmMain.view.mousePos.vec2; 
+						justPopped = true; 
+					}
+					
+					if(popupModule)
+					{
+						with(im)
+						{
+							Column(
+								{
+									outerPos = popupGuiPos; 
+									border = "1 normal black"; padding = "4"; theme = "tool"; 
+									Row(
+										{
+											Text("ScrumTable Menu"); 
+											if(Btn(symbol("ChromeClose"))) popupModule = null; 
+										}
+									); 
+									Spacer; 
+									if(!modules.canFind(popupModule)) popupModule = null; 
+									if(popupModule)
+									{
+										if(Btn("New Sticker", genericId("New Sticker")).clicked)
+										{
+											scope(exit) popupModule = null; 
+											
+											const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
+											format	!`/+
+Note:
++/
+/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
+												(popupWorldPos.x, popupWorldPos.y)
+												.saveTo(f); 
+											
+											//Ez felesleges volt!!! -> A loadModule() direkt fogadja a poziciot.
+											version(/+$DIDE_REGION+/none)
+											{
+												const ms = ModuleSettings(f.fullName, popupWorldPos); 
+												const idx = moduleSettings.map!"a.fileName".countUntil(ms.fileName); 
+												if(idx>=0)	moduleSettings[idx] = ms; 
+												else	moduleSettings ~= ms; 
+											}
+											
+											loadModule(f, popupWorldPos); 
+											
+											textSelectionsSet([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]);
+											//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
+											
+										}
+									}
+								}
+							); 
+						}
+						
+						if(
+							inputs.Esc.pressed 
+							|| inputs.RMB.pressed && !justPopped 
+							|| inputs.LMB.released && false//Todo: MUST NOT!!! Btn can't catch it in the next frame. -> LAME
+							|| inputs.MMB.pressed || inputs.MB4.pressed || inputs.MB4.pressed
+						)
+						popupModule = null; 
+					}
+				}
+			} void update(View2D view, in BuildResult buildResult)
 			{
 				//update ////////////////////////////////////
 				try
@@ -3425,7 +3510,6 @@ version(/+$DIDE_REGION main+/all)
 				catch(Exception e)
 				{ im.flashError(e.simpleMsg); }
 			} 
-			
 		}
 	}
 	version(/+$DIDE_REGION Keyboard mapping+/all)

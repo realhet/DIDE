@@ -5409,6 +5409,26 @@ version(/+$DIDE_REGION+/all)
 				fileModified = file.modified; //Opt: slow
 				fileSaved = now; 
 			} 
+			
+			void UI_PopupMenu()
+			{
+				with(im)
+				{
+					Column(
+						{
+							Text(
+								"Experimental
+popup menu"
+							); 
+							if(Btn("New Sticker")) beep; 
+						}
+					); 
+					popupState.cell = removeLastContainer; 
+					popupState.parent = null; 
+					
+					popupState.cell.outerPos = mainWindow.screenToClient(inputs.mouseAct); 
+				}
+			} 
 		}
 	} 
 }version(/+$DIDE_REGION SCRUM+/all)
@@ -5530,10 +5550,13 @@ version(/+$DIDE_REGION+/all)
 		{ return ""; } 
 		
 		struct Props
-		{ string color="StickyYellow"; } 
+		{
+			string color="StickyYellow"; 
+			vec2 pos; 
+		} 
 		
 		Props props; 
-		//Todo: Detect the changes in props and update the module.changed state.
+		size_t props_hash; 
 		
 		override void reload(
 			StructureLevel desiredStructureLevel, 
@@ -5556,7 +5579,19 @@ version(/+$DIDE_REGION+/all)
 				if(auto row = cast(CodeRow) col.subCells.get(1))
 				if(auto cmt = cast(CodeComment) row.subCells.get(0))
 				{
-					props.fromJson(cmt.content.sourceText); 
+					ignoreExceptions(
+						{
+							props.pos = outerPos; 
+							props.fromJson(cmt.content.sourceText); 
+							outerPos = props.pos; 
+							/+
+								Note: This position will be overwritten by IDE.settings if it is exists there.
+								But it is used to export stickers.
+							+/
+							
+							props_hash = hashOf(props); 
+						}
+					); 
 					
 					//only keep the first row with the sticky note comment
 					col.subCells = col.subCells[0..1]; 
@@ -5608,9 +5643,31 @@ version(/+$DIDE_REGION+/all)
 			builder.putNL; 
 			
 			builder.put("/+"); 
+			props.pos = outerPos; 
 			foreach(line; props.toJson.replace("/+", "/ +").replace("+/", "+ /").splitLines)
 			builder.put(line); 
 			builder.put("+/"); 
+		} 
+		
+		override void save()
+		{
+			super.save; 
+			props_hash = hashOf(props); 
+		} 
+		
+		override void draw(Drawing dr)
+		{
+			with(dr)
+			{
+				color = clBlack; 
+				lineWidth = 2; 
+				drawRect(outerBounds.inflated(.5)); 
+			}
+			
+			super.draw(dr); 
+			
+			if(!content.changed && props_hash!=hashOf(props))
+			content.setChanged; 
 		} 
 		
 		/+
