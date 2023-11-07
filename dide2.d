@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
+//@release
 //@debug
 
 /+
@@ -1158,7 +1158,7 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			auto selectedStickers()
-			{ return selectedModules.map!(m => cast(ScrumSticker) m); } 
+			{ return selectedModules.map!(m => cast(ScrumSticker) m).filter!"a"; } 
 			
 			auto changedModules()
 			{ modules.filter!"a.changed"; } 
@@ -3355,7 +3355,7 @@ Note:
 											
 											loadModule(f, popupWorldPos); 
 											
-											textSelectionsSet([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]);
+											textSelectionsSet([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
 											//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
 											
 										}
