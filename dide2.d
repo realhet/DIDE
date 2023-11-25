@@ -2460,7 +2460,7 @@ version(/+$DIDE_REGION main+/all)
 			SelectOp selectOp; 
 			
 			vec2 dragSource; 
-			bounds2 dragBounds; 
+			bounds2 dragBounds;   //todo: rect selection: if start.x>end.x then touching_select, not contain_select
 			
 			//these are calculated after update. No notifications, just keep calling update frequently
 			T hoveredItem; 
@@ -2561,7 +2561,7 @@ version(/+$DIDE_REGION main+/all)
 						if(
 							hoveredItem && 
 							(
-								!hoveredItem.alwaysOnBottom || Alt
+								!hoveredItem.alwaysOnBottom || Alt || hoveredItem.flags.selected
 								/+
 									do rectSelect on alwaysOnBottom modules 
 									except when Alt is pressed.

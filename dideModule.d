@@ -4807,6 +4807,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		if(isSpecialComment)
 		{
+			//Todo: use CommandLine here too
 			const 	scmt = extractSpecialComment,
 				keyword = scmt.wordAt(0); 
 			switch(keyword)
@@ -4814,18 +4815,30 @@ version(/+$DIDE_REGION+/all)
 				case "IMG": 
 					with(nodeBuilder(syntax, 0))
 				{
-					auto cmd = scmt.commandLineToMap; 
-					auto f = File(cmd.get("1")); 
+					auto cmd = scmt.CommandLine; 
+					auto f = cmd.files.get(1);  //first file is command.
 					
 					style.italic = false; 
 					
-					//load it immediatelly
-					//Todo: autorefresh code images
+					const maxHeight = cmd.option("maxHeight", -1); 
+					
+					//Load it immediatelly.
 					auto bmp = bitmaps(f, No.delayed); 
 					
 					if(!bmp.valid)
 					{ put('\U0001F5BC'); }else {
+						padding = "4";
+						
 						auto img = new Img(f, darkColor); 
+						
+						img.flags.autoWidth = false;
+						img.flags.autoHeight = false;
+						img.outerSize = bmp.size.vec2;
+						
+						//restrict maxHeight
+						if(maxHeight>0 && img.outerHeight>maxHeight)
+						{ img.outerSize = vec2(((img.outerWidth*maxHeight)/(img.outerHeight)), maxHeight); }
+						
 						put(img); 
 					}
 					
