@@ -855,6 +855,9 @@ version(/+$DIDE_REGION+/all)
 		{
 			vec2 	targetPos	= vec2(float.nan),
 				animatedPos 	= vec2(float.nan); 
+			float 	targetHeight,
+				animatedHeight; 
+			//todo: should use CaretPos structs and interpolate them.
 		}
 		
 		@property bool valid() const
@@ -936,20 +939,29 @@ version(/+$DIDE_REGION+/all)
 			
 		void calcDesiredX_safe()
 		{
-			if(!codeColumn || pos.x<=0)
-			{ desiredX = 0; }
-			else
-			{
-				if(auto row = codeColumn.getRow(pos.y))
-				{
-					if(row.cellCount==0)
-					{ desiredX = 0; }
-					else
-					{ desiredX = row.subCells[pos.x-1].outerBounds.right; }
-				}
-				else
+			desiredX = 0; 
+			if(pos.x>0 && codeColumn)
+			if(auto row = codeColumn.getRow(pos.y))
+			if(auto cell = row.subCells.get(pos.x-1))
+			desiredX = cell.outerRight; 
+			
+			
+			/+
+				if(!codeColumn || pos.x<=0)
 				{ desiredX = 0; }
-			}
+				else
+				{
+					if(auto row = codeColumn.getRow(pos.y))
+					{
+						if(row.cellCount==0)
+						{ desiredX = 0; }
+						else
+						{ desiredX = row.subCells[pos.x-1/+Todo: it's still not safe+/].outerBounds.right; }
+					}
+					else
+					{ desiredX = 0; }
+				}
+			+/
 		} 
 	}version(/+$DIDE_REGION+/all)
 	{
@@ -1321,7 +1333,7 @@ version(/+$DIDE_REGION+/all)
 			return res; 
 		} 
 		
-		T[] cells(T:Cell)()
+		T[] cells(T:Cell = Cell)()
 		{
 			//Todo: refactor this to byCells: a bidirectional range
 			
@@ -3448,10 +3460,13 @@ class CodeRow: Row
 	auto getRow(int rowIdx)
 	{ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; } 
 	
+	auto firstRow()
+	{ return rows.frontOrNull; } 
 	auto lastRow()
-	{
-		return rows.backOrNull;
-	}
+	{ return rows.backOrNull; } 
+	
+	T firstCell(T=Cell)()
+	{ return firstRow ? cast(T) firstRow.subCells.frontOrNull : null; } 
 	
 	int rowCharCount(int rowIdx) const
 	{
@@ -3460,6 +3475,8 @@ class CodeRow: Row
 		return cast(int)((cast(CodeRow)subCells[rowIdx]).subCells.length); 
 		return 0; 
 	} 
+	
+	alias rowCellCount = rowCharCount; 
 	
 	final string sourceText()
 	{
@@ -4233,30 +4250,30 @@ version(/+$DIDE_REGION+/all)
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
-	auto subColumnsBackwards()
+	auto subColumns_backwards()
 	{ return subCells.retro.map!(a => cast(CodeColumn)a).filter!"a"; } 
 	
 	auto columnAfter(CodeColumn act)
 	{
-		const idx = subCells.countUntil(act);
+		const idx = subCells.countUntil(act); 
 		if(idx>=0 && idx+1<subCells.length)
-		return subCells[idx+1..$].map!(a => cast(CodeColumn)a).filter!"a".frontOrNull;
-		return null;
-	}
+		return subCells[idx+1..$].map!(a => cast(CodeColumn)a).filter!"a".frontOrNull; 
+		return null; 
+	} 
 	
 	auto columnBefore(CodeColumn act)
 	{
-		const idx = subCells.countUntil(act);
+		const idx = subCells.countUntil(act); 
 		if(idx>0)
-		return subCells[0..idx].retro.map!(a => cast(CodeColumn)a).filter!"a".frontOrNull;
-		return null;
-	}
+		return subCells[0..idx].retro.map!(a => cast(CodeColumn)a).filter!"a".frontOrNull; 
+		return null; 
+	} 
 	
-	auto firstColumn()
-	{ return subColumns.frontOrNull; }
+	auto firstSubColumn()
+	{ return subColumns.frontOrNull; } 
 	
-	auto lastColumn()
-	{ return subColumnsBackwards.frontOrNull; }
+	auto lastSubColumn()
+	{ return subColumns_backwards.frontOrNull; } 
 	
 	this(Container parent)
 	{

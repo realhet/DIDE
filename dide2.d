@@ -37,6 +37,7 @@
 //Todo: automatic space after ;
 //Todo: toggle space/tab/newline after prepositions.
 //Todo: Alt+F4 akkor is mukodik, ha nem a DIDE a focused, argh...
+//Todo: progress indicator on the windows taskbar
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -1682,6 +1683,9 @@ version(/+$DIDE_REGION main+/all)
 		{ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); } 
 		void cursorOp(ivec2 dir, bool select, bool stepInOut=false)
 		{
+			const stepOut = stepInOut; 
+			const stepIn = stepInOut; 
+			
 			auto arr = textSelections; 
 			foreach(ref ts; arr)
 			if(!stepInOut)
@@ -1690,42 +1694,50 @@ version(/+$DIDE_REGION main+/all)
 			{
 				const fwd = dir.x>0 || dir.y>0; 
 				
-				//step in
-				if(!select && ts.valid && ts.cursors[0]==ts.cursors[1])
-				if(auto row=ts.codeColumn.getRow(ts.cursors[0].pos.y))
+				auto prev = ts; 
+				
+				scope(exit)
 				{
-					if(fwd)
+					//Adjust the local positions when the codeColumn changes.
+					version(AnimatedCursors)
+					if(prev.valid && ts.valid && prev.codeColumn != ts.codeColumn)
 					{
-						if(auto node = cast(CodeNode)row.subCells.get(ts.cursors[0].pos.x))
+						const delta = prev.codeColumn.worldInnerPos - ts.codeColumn.worldInnerPos; 
+						
+						foreach(ref c; ts.cursors[])
 						{
-							if(auto subCol = node.subColumns.frontOrNull)
-							{
-								ts.cursors[] = subCol.homeCursor; 
-								continue; 
-							}
+							if(!c.animatedPos.x.isnan) c.animatedPos += delta; 
+							if(!c.targetPos.x.isnan) c.targetPos += delta; 
 						}
 					}
-					else
+				} 
+				
+				ts.move(dir, select); 
+				
+				//step into the first node that has any subColumns
+				if(stepIn && !select && prev!=ts && prev.valid && prev.isZeroLength)
+				{
+					auto nodes = TextSelection(prev.cursors[0], ts.cursors[0], prev.primary).cells!CodeNode; 
+					if(
+						auto nearestNode = fwd 	? nodes.frontOrNull
+							: nodes.backOrNull
+					)
+					if(
+						auto subCol = fwd 	? nearestNode.firstSubColumn 
+							: nearestNode.lastSubColumn
+					)
 					{
-						if(auto node = cast(CodeNode)row.subCells.get(ts.cursors[0].pos.x-1))
-						{
-							if(auto subCol = node.subColumnsBackwards.frontOrNull)
-							{
-								ts.cursors[] = subCol.endCursor; 
-								continue; 
-							}
-						}
+						//Todo: It will miss nodes that has no subColumns
+						ts.cursors[] = fwd ? subCol.homeCursor : subCol.endCursor; 
+						continue; 
 					}
 				}
 				
-				auto prev = ts; 
-				ts.move(dir, select); 
-				
-				//was unable to move inside the codeColumn
-				if(prev==ts)
+				//step out because the it reached the end (was unable to move)
+				if(ts.valid && prev==ts)
 				{
 					//step into the next codeColumn inside a codeNode
-					if(ts.valid)
+					if(stepIn && ts.valid && !select)
 					if(auto node = cast(CodeNode) ts.codeColumn.getParent)
 					if(
 						auto nextCol = fwd 	? node.columnAfter(ts.codeColumn)
@@ -1738,12 +1750,12 @@ version(/+$DIDE_REGION main+/all)
 					}
 					
 					//step out
-					auto ext = this.stepOut(ts); 
-					if(ext.valid && ext.codeColumn!=ts.codeColumn)
+					auto ext = extendOut(ts); 
+					if(ext.valid)
 					{
 						ts = ext; 
 						if(select)
-						{ if(!fwd) swap(ts.cursors[0], ts.cursors[1]); }
+						{/+if(!fwd) swap(ts.cursors[0], ts.cursors[1]); +/}
 						else
 						{
 							if(fwd)	ts.cursors[0] = ts.cursors[1]; 
@@ -1755,7 +1767,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			textSelections = merge(arr); //Todo: maybe merge should reside in validateTextSelections
 		} 
-		
+		
 		void scrollV(float dy)
 		{ frmMain.view.scrollV(dy); } 
 		void scrollH(float dx)
@@ -1927,44 +1939,14 @@ version(/+$DIDE_REGION main+/all)
 			textSelections = []; 
 			deselectAllModules; 
 			scrollInAllModules; 
-			
-			//auto em = editedModules;
-			//if(em.length>1)
-			
-			//Todo: primary
-			
-			/*
-				   if(lod.moduleLevel){
-					   deselectAllModules;
-						}
-				
-						if(lod.codeLevel){
-							auto ts =
-							if(textSelections.length>1){
-								textSelections.length = 1;
-								with(textSelections[0]){
-									scrollInBoundsRequest = worldBounds(textSelections);
-								}
-								//todo: scroll in
-							}else if(textSelections.length==1) with(textSelections[0]){
-								if(valid && !isZeroLength){
-									cursors[0] = cursors[1];
-									scrollInBoundsRequest = worldBounds(textSelections);
-								}else{
-									textSelections = [];
-									scrollInAllModules;
-								}
-							}
-						}
-			*/
-			
-			
 		} 
 		
 		auto extend(TextSelection sel)
 		{
 			if(sel.valid)
 			{
+				const fwd = sel.cursors[0]<=sel.cursors[1]; 
+				
 				auto home = sel.start; home.move(TextCursor.home.ivec2); 
 				auto end = sel.end; end.move(TextCursor.end.ivec2); 
 				
@@ -1985,25 +1967,56 @@ version(/+$DIDE_REGION main+/all)
 							y = parentCol.subCellIndex(parentRow); 
 						if(x>=0 && y>=0)
 						{
-							with(sel.cursors[0]) { codeColumn = parentCol; pos = ivec2(x  , y); }
-							with(sel.cursors[1]) { codeColumn = parentCol; pos = ivec2(x+1, y); }
+							void set(C)(ref C c, int x)
+							{
+								c.codeColumn = parentCol; 
+								c.pos = ivec2(x, y); 
+								c.calcDesiredX_unsafe; 
+							} 
+							set(sel.cursors[0], x); 
+							set(sel.cursors[1], x+1); 
 						}
 					}
 				}
+				
+				//preserve selection direction
+				if(fwd != (sel.cursors[0]<=sel.cursors[1]))
+				swap(sel.cursors[0], sel.cursors[1]); 
 			}
 			return sel; 
 		} 
 		
-		auto extend(TextSelection[] sels)
-		{ return sels.map!(ts=>extend(ts)).merge; } 
-		
-		auto stepOut(TextSelection ts)
+		protected auto _extendTwice(bool eq)(TextSelection ts)
 		{
 			auto ext = extend(ts); 
-			if(ext.valid && ext.codeColumn==ts.codeColumn)
+			if(ext.valid && (ext.codeColumn==ts.codeColumn)==eq)
 			ext = extend(ext); 
 			return ext; 
 		} 
+		
+		///steps out from the current codeColumn
+		auto extendOut(TextSelection ts)
+		{
+			if(!ts.valid || ts.codeColumn.allParents!CodeColumn.empty) return ts; 
+			return _extendTwice!true(ts); 
+		} 
+		
+		///extends selection to the an codeColumn
+		auto extendAll(TextSelection ts)
+		{
+			if(!ts.valid) return ts; 
+			return _extendTwice!false(ts); 
+		} 
+		
+		auto extend(TextSelection[] sels)
+		{ return sels.map!(ts=>extend(ts)).merge; } 
+		auto extendOut(TextSelection[] sels)
+		{ return sels.map!(ts=>extendOut(ts)).merge; } 
+		auto extendAll(TextSelection[] sels)
+		{ return sels.map!(ts=>extendAll(ts)).merge; } 
+		
+		
+		
 		
 		@VERB("Ctrl+Alt+Up") void insertCursorAbove()
 		{ insertCursor(-1); } @VERB("Ctrl+Alt+Down") void insertCursorBelow()
@@ -2018,11 +2031,10 @@ version(/+$DIDE_REGION main+/all)
 		bool verifyTextSelections(string s)
 		{ return s == exportTextSelections(validate(importTextSelections(s))); } 
 		
-		bool extendSelection_impl()
+		bool extendSelection_impl(Flag!"selectAll" selectAll=No.selectAll)
 		{
 			const s0 = exportTextSelections(textSelections); 
-			
-			textSelections = extend(textSelections); 
+			textSelections = selectAll ? extendAll(textSelections) : extend(textSelections); 
 			const s1 = exportTextSelections(textSelections); 
 			
 			if(s0!="" && s1!="" && s0!=s1)
@@ -2052,6 +2064,9 @@ version(/+$DIDE_REGION main+/all)
 			}
 			return false; 
 		} 
+		
+		bool selectAll_impl()
+		{ return extendSelection_impl(Yes.selectAll); } 
 	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
 	{
 		struct Location
@@ -3686,7 +3701,7 @@ Note:
 					{
 						if(textSelections.length<=MaxAnimatedCursors)
 						{
-							const 	animT	= calcAnimationT(application.deltaTime.value(second), .5, .25),
+							const 	animT	= calcAnimationT(application.deltaTime.value(second), .6, .25),
 								maxDist 	= 1.0f; 
 							
 							foreach(ref ts; textSelections)
@@ -3694,11 +3709,19 @@ Note:
 								foreach(ref cr; ts.cursors[])
 								with(cr)
 								{
-									targetPos = localPos.pos; //Todo: animate height as well
+									const lp = localPos; 
+									targetPos = lp.pos; 
+									targetHeight = lp.height; 
 									if(animatedPos.x.isnan)
-									animatedPos = targetPos; 
+									{
+										animatedPos = targetPos; 
+										animatedHeight = targetHeight; 
+									}
 									else
-									animatedPos.follow(targetPos, animT, maxDist); 
+									{
+										animatedPos.follow(targetPos, animT, maxDist); 
+										animatedHeight.follow(targetHeight, animT, maxDist); 
+									}
 								}
 							}
 						}
@@ -4004,10 +4027,16 @@ Note:
 				{ if(NOSEL) zoom (zoomSpeed/8); } 
 				@HOLD("Shift+Q Shift+PgDn") void holdZoomOut_slow2()
 				{ if(NOSEL) zoom (-zoomSpeed/8); } 
+				
 				@VERB("Home"	) void zoomAll2()
 				{ if(NOSEL) scrollInAllModules; } 
-				@VERB("Shift+Home"	) void zoomClose2()
-				{ if(NOSEL) frmMain.view.scale = 1; } 
+				@VERB("Alt+Home"	) void zoomClose2()
+				{
+					frmMain.view.scale = 1; 
+					
+					if(primaryCaret.valid)
+					frmMain.view.origin = primaryCaret.worldBounds.center.dvec2; 
+				} 
 			}
 		}
 		version(/+$DIDE_REGION+/all)
@@ -4018,26 +4047,21 @@ Note:
 				{ cursorOp(ivec2(-1, 0), sel); } 
 				@VERB("Right") void cursorRight(bool sel=false)
 				{ cursorOp(ivec2(1, 0), sel); } 
+				
 				@VERB("Ctrl+Left") void cursorWordLeft(bool sel=false)
-				{
-					//Todo: Inside a node it should jump accross the node surface.
-					cursorOp(ivec2(TextCursor.wordLeft, 0), sel); 
-				} 
+				{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
 				@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel); } 
+				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+				
 				@VERB("Home") void cursorHome(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.home, 0), sel); } 
 				@VERB("End") void cursorEnd(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.end, 0), sel); } 
 				@VERB("Up") void cursorUp(bool sel=false)
 				{ cursorOp(ivec2(0,-1), sel); } 
-				/+
-					Todo: Dide2: 	cursorUp: textSelection. non zero length, 
-						Left/Right is good, Up/Down is not good. It should emulate 
-						a Left/Right selection collapse first. and go Up/Down after.
-				+/
 				@VERB("Down") void cursorDown(bool sel=false)
 				{ cursorOp(ivec2(0, 1), sel); } 
+				
 				@VERB("PgUp") void cursorPageUp(bool sel=false)
 				{ cursorOp(ivec2(0,-pageSize	), sel); } 
 				@VERB("PgDn") void cursorPageDown(bool sel=false)
@@ -4052,18 +4076,22 @@ Note:
 				{ cursorLeft(true); } 
 				@VERB("Shift+Right") void cursorRightSelect()
 				{ cursorRight(true); } 
+				
 				@VERB("Shift+Ctrl+Left") void cursorWordLeftSelect()
 				{ cursorWordLeft(true); } 
 				@VERB("Shift+Ctrl+Right") void cursorWordRightSelect()
 				{ cursorWordRight	(true); } 
+				
 				@VERB("Shift+Home") void cursorHomeSelect()
-				{ cursorHome	(true); } 
+				{ cursorHome(true); } 
 				@VERB("Shift+End") void cursorEndSelect()
 				{ cursorEnd	(true); } 
 				@VERB("Shift+Up Shift+Ctrl+Up") void cursorUpSelect()
 				{ cursorUp	(true); } 
 				@VERB("Shift+Down Shift+Ctrl+Down") void cursorDownSelect()
 				{ cursorDown	(true); } 
+				
+				
 				@VERB("Shift+PgUp") void cursorPageUpSelect()
 				{ cursorPageUp	(true); } 
 				@VERB("Shift+PgDn") void cursorPageDownSelect()
@@ -4074,51 +4102,61 @@ Note:
 				{ cursorBottom	(true); } 
 			}version(/+$DIDE_REGION Cursor through blocks+/all)
 			{
-				@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
-				{ cursorOp(ivec2(-1, 0), sel, true); } 
-				@VERB("Alt+Right") void cursorRightOut(bool sel=false)
-				{ cursorOp(ivec2(1, 0), sel, true); } 
-				@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
-				@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+				static if(0)
+				{
+					@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
+					{ cursorOp(ivec2(-1, 0), sel, true); } 
+					@VERB("Alt+Right") void cursorRightOut(bool sel=false)
+					{ cursorOp(ivec2(1, 0), sel, true); } 
+				}
 				
 				static if(0)
 				{
-					/+
-						Note: extendSelection() already maps to Shift+Alt. 
-						Use the Word select version instead (Shift+Ctrl+Alt)
-					+/
+					@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
+					@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+				}
+				
+				static if(0)
+				{
 					@VERB("Shift+Alt+Left") void cursorLeftSelectOut()
 					{ cursorLeftOut(true); } 
 					@VERB("Shift+Alt+Right") void cursorRightSelectOut()
 					{ cursorRightOut(true); } 
 				}
 				
-				@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
-				{ cursorWordLeftOut(true); } 
-				@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
-				{ cursorWordRightOut(true); } 
+				static if(0)
+				{
+					@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
+					{ cursorWordLeftOut(true); } 
+					@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
+					{ cursorWordRightOut(true); } 
+				}
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
 			version(/+$DIDE_REGION More text selection+/all)
 			{
 				@VERB("Shift+Alt+Right") void extendSelection()
-				{ if(!extendSelection_impl) im.flashWarning("Unable to extend selection."); } 
+				{ if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }} 
 				
 				@VERB("Shift+Alt+Left") void shrinkSelection()
-				{ if(!shrinkSelection_impl) im.flashWarning("Unable to shrink selection."); } 
+				{ if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }} 
 				
 				@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
 				{ textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); } 
 				@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
 				{ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); } 
 				
-				@VERB("Ctrl+A") void extendSelectionToModuleContents()
+				@VERB("Ctrl+A") void selectAll()
 				{
-					textSelections = modulesWithTextSelection
-					.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
+					selectAll_impl; 
+					//textSelections = extendAll(textSelections); 
+					/+
+						textSelections = modulesWithTextSelection
+						.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
+					+/
 				} 
 				
 				@VERB("Ctrl+Shift+A") void selectAllModules()
@@ -4129,13 +4167,7 @@ Note:
 					//Note: left clicking on emptyness does this too.
 				} 
 				@VERB("Esc") void cancelSelection()
-				{
-					if(!im.wantKeys) cancelSelection_impl; 
-					/+
-						Bug: nested	commenten belulrol Escape nyomkodas (kizoomolas) 
-						-> access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
-					+/
-				} 
+				{ if(!im.wantKeys) cancelSelection_impl; } 
 			}version(/+$DIDE_REGION Text editing      +/all)
 			{
 				@VERB("Ctrl+C Ctrl+Ins") void copy()
@@ -4318,9 +4350,9 @@ Note:
 				mixin
 				(
 					q{
-						@VERB("Shift+Alt+#") void storeLocation#()
+						@VERB("Ctrl+Alt+Num#") void storeLocation#()
 						{ storeLocation(#); } 
-						@VERB("Alt+#"     ) void jumpToLocation#()
+						@VERB("Ctrl+Num#"     ) void jumpToLocation#()
 						{ jumpToLocation(#); } 
 					}
 					.replace("#", i)
@@ -4331,9 +4363,9 @@ Note:
 				mixin
 				(
 					q{
-						@VERB("Shift+Ctrl+Num#") void copyMemSlot#()
+						@VERB("Ctrl+Alt+#") void copyMemSlot#()
 						{ copyMemSlot(#); 	} 
-						@VERB("Ctrl+Num#"	) void pasteMemSlot#()
+						@VERB("Ctrl+#"	) void pasteMemSlot#()
 						{ pasteMemSlot(#); } 
 					}
 					.replace("#", i)
@@ -4375,6 +4407,48 @@ Note:
 				
 				@VERB void declarationStatistics()
 				{ declarationStatistics_impl; } 
+			}version(/+$DIDE_REGION Rich editing+/all)
+			{
+				@VERB("Shift+Ctrl+'") newCString()
+				{
+					static struct Item
+					{
+						TextSelection sel; 
+						string source; 
+						Module module_; 
+						string error; 
+						
+						CodeNode node()
+						{
+							if(module_) if(auto col=module_.content) return col.firstCell!CodeNode; 
+							return null; 
+						} 
+						bool valid()
+						{ return error=="" && node; } 
+					} 
+					Item createItem(TextSelection sel, string source)
+					{
+						Item res; 
+						res.source = source; 
+						try
+						res.module_ = new Module(null, source, StructureLevel.managed); 
+						catch(Exception e)
+						res.error = e.simpleMsg; 
+						return res; 
+					} 
+					
+					auto 	sels = textSelections,
+						items = sels.map!(sel=>createItem(sel, sel.sourceText.quoted)).array; 
+					
+					foreach_reverse(item; items)
+					{
+						print; 
+						item.source.print; 
+						item.module_.sourceText.print; 
+						item.error.print; 
+						print; 
+					}
+				} 
 			}
 		}
 	}version(/+$DIDE_REGION UI   +/all)
@@ -5065,6 +5139,9 @@ Note:
 							auto 	st	= sel.start,
 								en 	= sel.end; 
 							
+							const 	pages = col.getPageRowRanges,
+								singlePage = pages.length==1; 
+							
 							foreach(y; st.pos.y..en.pos.y+1)
 							{
 								//Todo: this loop is in the copy routine as well. Must refactor and reuse
@@ -5072,8 +5149,14 @@ Note:
 								const rowCellCount = row.cellCount; 
 								
 								//culling
-								if(row.outerBottom	< localCullBounds.top) continue;  //Opt: trisect
-								if(row.outerTop	> localCullBounds.bottom) break; 
+								if(row.outerBottom < localCullBounds.top) continue;  //Opt: trisect
+								if(singlePage)
+								{ if(row.outerTop > localCullBounds.bottom) break; }
+								else
+								{
+									if(row.outerTop > localCullBounds.bottom) continue; //next page can follow
+									if(row.outerLeft > localCullBounds.right) break; 
+								}
 								
 								const 	isFirstRow 	= y==st.pos.y,
 									isLastRow	= y==en.pos.y; 
@@ -5180,10 +5263,10 @@ Note:
 								cp[0] = s.caret.worldPos; 
 								cp[1..3] = cp[0]; 
 								cp[2].pos += s.caret.animatedPos - s.caret.targetPos; 
+								cp[2].height = s.caret.animatedHeight; 
 								cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f); 
-								//Todo: animate caret height too
 								
-								auto dir = cp[1].pos-cp[2].pos; //Todo: center them on height
+								auto dir = cp[1].pos-cp[2].pos; 
 								if(dir)
 								{
 									if(dir.normalize.x.abs<0.05f)
