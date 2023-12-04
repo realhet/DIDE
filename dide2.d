@@ -26,12 +26,12 @@
 +/
 
 //Todo: Multiline todo's
-//Todo: Ability to change comment type // /+ /*  and also todo: note: bug:
-//Todo: Ability to change the whitespace after a proposition: space, tab, newline
+//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
+//Todo: Ability to change the whitespace after a	proposition: space, tab, newline
 //Todo: Handle exceptions.
 //Todo: longpressing Ctrl+F2 kill ldc2 processes.
-//Todo: Insert unicode chars from other apps.  https://www.amp-what.com/unicode/search/watch
-//Todo: Easily Reduce Build Times by Profiling the D Compiler   profiling the LDC2 compiler.
+//Todo: Insert unicode chars from other apps.	https://www.amp-what.com/unicode/search/watch
+//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.
 //Todo: WYSIWYG printf editor plan  (emailek kozott)
 //Todo: automatic spaces around operators and ligatures.
 //Todo: automatic space after ;
@@ -208,6 +208,9 @@ version(/+$DIDE_REGION main+/all)
 	
 	auto cellInfoText(T)(T a)
 	{ return a.cellInfo.text; } 
+	
+	auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
+	{ with(im) return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); } 
 	
 	//! FrmMain ///////////////////////////////////////////////
 	
@@ -491,24 +494,7 @@ version(/+$DIDE_REGION main+/all)
 							Row({ if(Btn("\u2630")) mainMenuOpened = false; }); 
 							with(workspace)
 							{
-								auto B(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
-								{ return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, /+KeyCombo(kc)+/); } 
-								
-								Grp!Row(
-									"Vertical Tabs in CodeColumns (␋)", 
-									{
-										if(B("", "Add")) test_realignVerticalTabs; 
-										if(B("", "Remove")) test_removeVerticalTabs; 
-									}
-								); 
-								
-								Grp!Row(
-									"Internal NewLines in Declarations (␊)",
-									{
-										if(B("", "Add")) test_setInternalNewLine; 
-										if(B("", "Remove")) test_clearInternalNewLine; 
-									}
-								); 
+								UI_refactor; 
 								
 								Grp!Column(
 									"Watches",
@@ -535,11 +521,6 @@ version(/+$DIDE_REGION main+/all)
 											); 
 										}
 									}
-								); 
-								
-								Grp!Row(
-									"Statistics",
-									{ if(B("", "Declaration Statistics of all D codebase.")) test_declarationStatistics; }
 								); 
 								
 								/*
@@ -805,7 +786,7 @@ version(/+$DIDE_REGION main+/all)
 							if(mouseOp == MouseOp.move) return SIZEALL; 
 							if(mouseOp == MouseOp.rectSelect) return CROSS; 
 						}
-						if(workspace.textSelectionsGet.any)
+						if(workspace.textSelections.any)
 						{
 							return IBEAM; 
 							/+
@@ -863,11 +844,11 @@ version(/+$DIDE_REGION main+/all)
 			bool mustValidateTextSelections; 
 			@property
 			{
-				auto textSelectionsGet()
+				auto textSelections()
 				{
 					validateTextSelectionsIfNeeded; 
 					return textSelections_internal; 
-				} void textSelectionsSet()(TextSelection[] ts)
+				} void textSelections()(TextSelection[] ts)
 				{
 					textSelections_internal = ts; 
 					invalidateTextSelections; 
@@ -875,6 +856,8 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			size_t textSelectionsHash; 
+			
+			string[] extendSelectionStack; 
 			
 			bool searchBoxVisible, searchBoxActivate_request; 
 			string searchText; 
@@ -1036,7 +1019,7 @@ version(/+$DIDE_REGION main+/all)
 			void clear()
 			{
 				modules = []; 
-				textSelectionsSet = []; 
+				textSelections = []; 
 				updateSubCells; 
 			} 
 			
@@ -1087,17 +1070,17 @@ version(/+$DIDE_REGION main+/all)
 			auto hoveredModule()
 			{ return moduleSelectionManager.hoveredItem; } 
 			auto modulesWithTextSelection()
-			{ return textSelectionsGet.map!(s => s.moduleOf).nonNulls.uniq; } 
-					
+			{ return textSelections.map!(s => s.moduleOf).nonNulls.uniq; } 
+			
 			auto primaryTextSelection()
 			{
 				{
-					auto a = textSelectionsGet.filter!"a.primary"; 
+					auto a = textSelections.filter!"a.primary"; 
 					if(!a.empty) return a.front; 
 				}
 				
 				{
-					auto a = textSelectionsGet;         //choose the first if none is marked with the primary flag.
+					auto a = textSelections;         //choose the first if none is marked with the primary flag.
 					if(!a.empty) return a.front; 
 				}
 				
@@ -1109,8 +1092,8 @@ version(/+$DIDE_REGION main+/all)
 					
 			auto moduleWithPrimaryTextSelection()
 			{
-				auto res = textSelectionsGet.filter!"a.primary".map!moduleOf.frontOrNull; 
-				if(!res) res = textSelectionsGet.map!moduleOf.frontOrNull; //if there is no Primary, pick the front one
+				auto res = textSelections.filter!"a.primary".map!moduleOf.frontOrNull; 
+				if(!res) res = textSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the front one
 				return res; 
 			} 
 			
@@ -1148,7 +1131,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				CodeColumn[] cols; 
 				
-				foreach(c; textSelectionsGet.map!"a.codeColumn")
+				foreach(c; textSelections.map!"a.codeColumn")
 				if(!cols.canFind(c)) cols ~= c; 
 				if(cols.empty)
 				foreach(c; selectedModules.map!"a.content")
@@ -1159,7 +1142,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			auto selectedStickers()
 			{ return selectedModules.map!(m => cast(ScrumSticker) m).filter!"a"; } 
-			
+			
 			auto changedModules()
 			{ modules.filter!"a.changed"; } 
 			auto projectModules()
@@ -1582,17 +1565,17 @@ version(/+$DIDE_REGION main+/all)
 						res.file = m.file; 
 						a(
 							(CodeColumn col)
-								{
+							{
 								a(
 									(CodeRow row)
-										{
+									{
 										if(auto lineIdx = col.subCells.countUntil(row)+1)
 										{
 											//Todo: parent.subcellindex/child.index
 											res.lineIdx = lineIdx.to!int; 
 											a(
 												(Cell cell)
-													{
+												{
 													if(auto columnIdx = row.subCells.countUntil(cell)+1)
 													{
 														//Todo: parent.subcellindex/child.index
@@ -1697,13 +1680,82 @@ version(/+$DIDE_REGION main+/all)
 		{ return DefaultFontHeight; } 
 		int pageSize()
 		{ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); } 
-		void cursorOp(ivec2 dir, bool select)
+		void cursorOp(ivec2 dir, bool select, bool stepInOut=false)
 		{
-			auto arr = textSelectionsGet; 
-			foreach(ref ts; arr) ts.move(dir, select); 
-			textSelectionsSet = merge(arr); //Todo: maybe merge should reside in validateTextSelections
-		} 
+			auto arr = textSelections; 
+			foreach(ref ts; arr)
+			if(!stepInOut)
+			{ ts.move(dir, select); }
+			else
+			{
+				const fwd = dir.x>0 || dir.y>0; 
+				
+				//step in
+				if(!select && ts.valid && ts.cursors[0]==ts.cursors[1])
+				if(auto row=ts.codeColumn.getRow(ts.cursors[0].pos.y))
+				{
+					if(fwd)
+					{
+						if(auto node = cast(CodeNode)row.subCells.get(ts.cursors[0].pos.x))
+						{
+							if(auto subCol = node.subColumns.frontOrNull)
+							{
+								ts.cursors[] = subCol.homeCursor; 
+								continue; 
+							}
+						}
+					}
+					else
+					{
+						if(auto node = cast(CodeNode)row.subCells.get(ts.cursors[0].pos.x-1))
+						{
+							if(auto subCol = node.subColumnsBackwards.frontOrNull)
+							{
+								ts.cursors[] = subCol.endCursor; 
+								continue; 
+							}
+						}
+					}
+				}
+				
+				auto prev = ts; 
+				ts.move(dir, select); 
+				
+				//was unable to move inside the codeColumn
+				if(prev==ts)
+				{
+					//step into the next codeColumn inside a codeNode
+					if(ts.valid)
+					if(auto node = cast(CodeNode) ts.codeColumn.getParent)
+					if(
+						auto nextCol = fwd 	? node.columnAfter(ts.codeColumn)
+							: node.columnBefore(ts.codeColumn)
+					)
+					{
+						if(fwd)	ts.cursors[] = nextCol.homeCursor; 
+						else	ts.cursors[] = nextCol.endCursor; 
+						continue; 
+					}
+					
+					//step out
+					auto ext = this.stepOut(ts); 
+					if(ext.valid && ext.codeColumn!=ts.codeColumn)
+					{
+						ts = ext; 
+						if(select)
+						{ if(!fwd) swap(ts.cursors[0], ts.cursors[1]); }
+						else
+						{
+							if(fwd)	ts.cursors[0] = ts.cursors[1]; 
+							else	ts.cursors[1] = ts.cursors[0]; 
+						}
+					}
+				}
+			}
 			
+			textSelections = merge(arr); //Todo: maybe merge should reside in validateTextSelections
+		} 
+		
 		void scrollV(float dy)
 		{ frmMain.view.scrollV(dy); } 
 		void scrollH(float dx)
@@ -1719,36 +1771,43 @@ version(/+$DIDE_REGION main+/all)
 			
 		void insertCursor(int dir)
 		{
-			auto prev = textSelectionsGet,
-					 next = prev.dup; 
+			auto 	prev = textSelections,
+				next = prev.dup; 
 			
 			foreach(ref ts; next)
 			foreach(
-				ref tc; ts.cursors//Note: It is important to move the cursors separately here.  Don't let TextSelection.move do cursor collapsing.
+				ref tc; ts.cursors
+				/+
+					Note: It is important to move the cursors separately here.
+					Don't let TextSelection.move do cursor collapsing.
+				+/
 			)
 			tc.move(ivec2(0, dir)); 
 			
-			textSelectionsSet = merge(prev ~ next); 
+			textSelections = merge(prev ~ next); 
 		} 
-		
+		
 		void scrollInModules(Module[] m)
 		{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
 		
 		void scrollInAllModules()
-		{ scrollInModules(modules);                             } 
+		{ scrollInModules(modules); } 
 		
 		void scrollInModule(Module m)
-		{ if(m) scrollInModules([m]);                             } 
+		{ if(m) scrollInModules([m]); } 
 		
+		
+	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
+	{
 		void preserveTextSelections(void delegate() fun)
 		{
 			//Todo: preserve module selections too
-			const savedTextSelections = textSelectionsGet.map!(a => a.toReference.text).array; 
-			scope(exit) textSelectionsSet = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; 
+			const savedTextSelections = textSelections.map!(a => a.toReference.text).array; 
+			scope(exit) textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; 
 			if(fun) fun(); 
 		} 
 		
-		auto insertCursorAt___OfEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
+		auto insertCursorAtEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
 		{
 			auto res = 	textSelections
 				.filter!"a.valid"  //just to make sure
@@ -1774,10 +1833,10 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		auto insertCursorAtStartOfEachLineSelected_impl(R)(R textSelections)
-		{ return insertCursorAt___OfEachLineSelected_impl(textSelections, No.toTheEnd); } 
+		{ return insertCursorAtEachLineSelected_impl(textSelections, No.toTheEnd); } 
 		
 		auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
-		{ return insertCursorAt___OfEachLineSelected_impl(textSelections, Yes.toTheEnd); } 
+		{ return insertCursorAtEachLineSelected_impl(textSelections, Yes.toTheEnd); } 
 		
 		auto selectCharAtEachSelection(R)(R textSelections, dchar ch)
 		{
@@ -1799,8 +1858,7 @@ version(/+$DIDE_REGION main+/all)
 				.filter!"a.valid"
 				.merge; 
 		} 
-	}version(/+$DIDE_REGION+/all)
-	{
+		
 		void selectSearchResults(SearchResult[] arr)
 		{
 			//selectSearchResults ///////////////////////////
@@ -1833,18 +1891,18 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			//T0; scope(exit) DT.LOG;
-			textSelectionsSet = merge(arr.map!(a => conv(a)).filter!"a.valid".array); 
+			textSelections = merge(arr.map!(a => conv(a)).filter!"a.valid".array); 
 		} 
-		
+		
 		void cancelSelection_impl()
 		{
 			//cancelSelection_impl //////////////////////////////////////
-			auto ts = textSelectionsGet; 
+			auto ts = textSelections; 
 			auto mp = moduleWithPrimaryTextSelection; 
 			
 			void selectPrimaryModule()
 			{
-				textSelectionsSet = []; 
+				textSelections = []; 
 				foreach(m; modules) m.flags.selected = m is mp; 
 				scrollInModule(mp); 
 			} 
@@ -1853,7 +1911,7 @@ version(/+$DIDE_REGION main+/all)
 			if(ts.length>1)
 			{
 				if(auto pts = primaryTextSelection)
-				textSelectionsSet = [pts]; 
+				textSelections = [pts]; 
 				else
 				selectPrimaryModule; //just for safety
 				return; 
@@ -1866,7 +1924,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			
 			//deselect everything, zoom all
-			textSelectionsSet = []; 
+			textSelections = []; 
 			deselectAllModules; 
 			scrollInAllModules; 
 			
@@ -1882,8 +1940,8 @@ version(/+$DIDE_REGION main+/all)
 				
 						if(lod.codeLevel){
 							auto ts =
-							if(textSelectionsGet.length>1){
-								textSelectionsSet.length = 1;
+							if(textSelections.length>1){
+								textSelections.length = 1;
 								with(textSelections[0]){
 									scrollInBoundsRequest = worldBounds(textSelections);
 								}
@@ -1902,12 +1960,176 @@ version(/+$DIDE_REGION main+/all)
 			
 			
 		} 
+		
+		auto extend(TextSelection sel)
+		{
+			if(sel.valid)
+			{
+				auto home = sel.start; home.move(TextCursor.home.ivec2); 
+				auto end = sel.end; end.move(TextCursor.end.ivec2); 
+				
+				if(home!=sel.start || end!=sel.end)
+				{
+					sel.cursors[0] = home; 
+					sel.cursors[1] = end; 
+				}
+				else
+				{
+					auto parents = sel.codeColumn.allParents.take(3).array; 
+					if(parents.length==3)
+					if(auto parentNode = cast(CodeNode) parents[0])
+					if(auto parentRow = cast(CodeRow) parents[1])
+					if(auto parentCol = cast(CodeColumn) parents[2])
+					{
+						const 	x = parentRow.subCellIndex(parentNode),
+							y = parentCol.subCellIndex(parentRow); 
+						if(x>=0 && y>=0)
+						{
+							with(sel.cursors[0]) { codeColumn = parentCol; pos = ivec2(x  , y); }
+							with(sel.cursors[1]) { codeColumn = parentCol; pos = ivec2(x+1, y); }
+						}
+					}
+				}
+			}
+			return sel; 
+		} 
+		
+		auto extend(TextSelection[] sels)
+		{ return sels.map!(ts=>extend(ts)).merge; } 
+		
+		auto stepOut(TextSelection ts)
+		{
+			auto ext = extend(ts); 
+			if(ext.valid && ext.codeColumn==ts.codeColumn)
+			ext = extend(ext); 
+			return ext; 
+		} 
+		
+		@VERB("Ctrl+Alt+Up") void insertCursorAbove()
+		{ insertCursor(-1); } @VERB("Ctrl+Alt+Down") void insertCursorBelow()
+		{ insertCursor(1); } 
+		
+		string exportTextSelections(TextSelection[] ts)
+		{ return ts.map!(a=>a.toReference.text).join(';'); } 
+		
+		TextSelection[] importTextSelections(string s)
+		{ return s.splitter(';').map!(s=>s.TextSelectionReference(&findModule).fromReference).array; } 
+		
+		bool verifyTextSelections(string s)
+		{ return s == exportTextSelections(validate(importTextSelections(s))); } 
+		
+		bool extendSelection_impl()
+		{
+			const s0 = exportTextSelections(textSelections); 
+			
+			textSelections = extend(textSelections); 
+			const s1 = exportTextSelections(textSelections); 
+			
+			if(s0!="" && s1!="" && s0!=s1)
+			{
+				if(extendSelectionStack.length && extendSelectionStack.back==s0)
+				extendSelectionStack ~= s1; 
+				else
+				extendSelectionStack = [s0, s1]; 
+				return true; 
+			}
+			else
+			return false; 
+		} 
+		
+		bool shrinkSelection_impl()
+		{
+			if(extendSelectionStack.length>=2)
+			{
+				const 	act = extendSelectionStack[$-1],
+					prev = extendSelectionStack[$-2]; 
+				if(act==exportTextSelections(textSelections) && verifyTextSelections(prev))
+				{
+					textSelections = importTextSelections(prev); 
+					extendSelectionStack = extendSelectionStack[0..$-1]; 
+					return true; //success
+				}
+			}
+			return false; 
+		} 
+	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+	{
+		struct Location
+		{
+			vec2 origin = vec2(0); 
+			float zoomFactor = 1; 
+		} 
+		
+		@STORED Location[10] storedLocations; 
+		
+		void enforceLocationIndex(int n)
+		{
+			enforce(
+				n.inRange(storedLocations),
+				n.format!"Location index out of range: %s"
+			); 
+		} 
+		
+		void storeLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			with(storedLocations[n])
+			{
+				origin	= frmMain.view.origin.vec2,
+				zoomFactor 	= frmMain.view.scale; 
+			}
+			im.flashInfo(n.format!"Location %s stored."); 
+		} 
+		
+		void jumpToLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			if(storedLocations[n] == Location.init)
+			{
+				im.flashWarning(n.format!"Location %s is uninitialized."); 
+				return; 
+			}
+			with(storedLocations[n])
+			{
+				frmMain.view.origin	= origin.dvec2,
+				frmMain.view.scale 	= zoomFactor; 
+			}
+		} 
+		
+		@STORED string[10] storedMemSlots; 
+		
+		void enforceMemSlotIndex(int n)
+		{
+			enforce(
+				n.inRange(storedMemSlots),
+				n.format!"MemSlot index out of range: %s"
+			); 
+		} 
+		
+		void copyMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			auto s = textSelections.sourceText; 
+			storedMemSlots[n] = s; 
+			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
+		} 
+		
+		void pasteMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			if(storedMemSlots[n].empty)
+			{
+				im.flashWarning(n.format!"MemSlot %s is empty."); 
+				return; 
+			}
+			textSelections = paste_impl(textSelections, No.fromClipboard, storedMemSlots[n]); 
+		} 
+		
 	}version(/+$DIDE_REGION Validate+/all)
 	{
 		//Validation //////////////////////////////////
 		void invalidateTextSelections()
 		{
-			PING0; 
 			mustValidateTextSelections = true; 
 			textSelectionManager.invalidateInternalSelections; 
 		} 
@@ -1915,10 +2137,7 @@ version(/+$DIDE_REGION main+/all)
 		void validateTextSelectionsIfNeeded()
 		{
 			if(mustValidateTextSelections.chkClear)
-			{
-				PING1; 
-				textSelections_internal = validate(textSelections_internal); 
-			}
+			{ textSelections_internal = validate(textSelections_internal); }
 		} 
 		
 		auto validate(TextCursor c)
@@ -1998,7 +2217,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					static if(LogRequestPermissions)
 					print(EgaColor.ltRed("DEL"), ts.toReference.text, s.quoted); 
-						
+					
 					auto m = moduleOf(ts).enforce; 
 					m.undoManager.justRemoved(undoGroupId, ts.toReference.text, s); 
 				}
@@ -2093,7 +2312,7 @@ version(/+$DIDE_REGION main+/all)
 				paste_impl!true([ts], No.fromClipboard, rec.what); 
 				
 				if(decodeTs(isCut))
-				textSelectionsSet = [ts]; 
+				textSelections = [ts]; 
 			}
 		} 
 		
@@ -2113,7 +2332,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				m.reload(desiredStructureLevel, nullable(what)); 
 				//selectAll
-				textSelectionsSet = [m.content.allSelection(true)]; 
+				textSelections = [m.content.allSelection(true)]; 
 				//Todo: refactor codeColumn.allTextSelection(bool primary or not)
 			}
 			else
@@ -2460,7 +2679,7 @@ version(/+$DIDE_REGION main+/all)
 			SelectOp selectOp; 
 			
 			vec2 dragSource; 
-			bounds2 dragBounds;   //todo: rect selection: if start.x>end.x then touching_select, not contain_select
+			bounds2 dragBounds;   //Todo: rect selection: if start.x>end.x then touching_select, not contain_select
 			
 			//these are calculated after update. No notifications, just keep calling update frequently
 			T hoveredItem; 
@@ -2767,16 +2986,16 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(inputs[mouseMappings.main].pressed)
 				{
-					if(workspace.textSelectionsGet.hitTest(view.mousePos.vec2))
+					if(workspace.textSelections.hitTest(view.mousePos.vec2))
 					{
 						//Todo: start dragging the selection contents and paste on mouse button release
 					}
 					else if(cursorAtMouse.valid)
 					{
 						//start selecting with mouse
-						selectionsWhenMouseWasPressed = workspace.textSelectionsGet.dup; 
+						selectionsWhenMouseWasPressed = workspace.textSelections.dup; 
 						
-						if(workspace.textSelectionsGet.empty)
+						if(workspace.textSelections.empty)
 						{
 							if(doubleClick)
 							{
@@ -2942,7 +3161,7 @@ version(/+$DIDE_REGION main+/all)
 				if(ts.length==1)
 				ts[0].primary = true; 
 				
-				workspace.textSelectionsSet = ts; 
+				workspace.textSelections = ts; 
 			} 
 			
 			
@@ -2955,196 +3174,200 @@ version(/+$DIDE_REGION main+/all)
 			
 		} 
 		
-	} class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
-	{
-		//Todo: make this work
-		
-		alias Result = ResultType!(unaryFun!transformFun); 
-		
-		private int destroyLevel; 
-		private Obj[] inputQueue; 
-		private Result[] outputQueue; 
-		
-		void put(Obj obj)
-		{
-			synchronized(this)
-				inputQueue = 	inputQueue.remove!(a => unaryFun!keyFun(a) == unaryFun!keyFun(obj)) 
-					~ obj; 
-		} 
-		
-		int update(bool delegate(Result) onResult)
-		{ return 0; } 
-		
-	} class SyntaxHighlightWorker
-	{
-		//SyntaxHighlightWorker ////////////////////////////////////////////
-		static struct Job
-		{
-			DateTime changeId; //must be a globally unique id, also sorted by chronology
-			CodeColumn col; //only one object allowed with the same referenceId
-			
-			bool valid; 
-			bool opCast(b:bool)() const { return valid; } 
-		} 
-		
-		private int destroyLevel; 
-		private Job[] inputQueue, outputQueue; 
-		
-		void put(DateTime changeId, CodeColumn col)
-		{
-			synchronized(this)
-				inputQueue = 	inputQueue.remove!(j => j.col is col) 
-					~ Job(changeId, col); 
-		} 
-		
-		Job getResult()
-		{
-			Job res; 
-			synchronized(this)
-				if(outputQueue.length)
-					res = outputQueue.fetchFront; 
-			return res; 
-		} 
-		
-		private Job _workerGetJob()
-		{
-			Job res; 
-			synchronized(this)
-				if(inputQueue.length) {
-				res = inputQueue.fetchBack; 
-				res.valid = true; 
-			} 
-			return res; 
-		} 
-		
-		private void _workerCompleteJob(Job job)
-		{
-			synchronized(this)
-				outputQueue ~= job; 
-		} 
-		
-		static private void worker(shared SyntaxHighlightWorker shw_)
-		{
-			auto shw = cast()shw_; 
-			while(shw.destroyLevel==0)
-			{
-				if(auto job = shw._workerGetJob)
-				{
-					//actual work comes here
-					shw._workerCompleteJob(job); 
-				}
-				else
-				{
-					//LOG("Worker Idling");
-					sleep(10); 
-				}
-			}
-			shw.destroyLevel = 2; 
-			//LOG("Worker finished");
-		} 
-		
-		this()
-		{ spawn(&worker, cast(shared)this); } 
-		
-		~this()
-		{
-			destroyLevel = 1; 
-			while(destroyLevel==1)
-			{
-				//LOG("Waiting for worker thread to finish");
-				sleep(10); //Todo: it's slow... rewrite to message based
-			}
-		} 
 	} version(/+$DIDE_REGION Resyntax+/all)
 	{
-		//Resyntax queue ////////////////////////////////////////////////////////
-		
-		void needResyntax(Cell cell)
+		class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
 		{
-			//LOG(cell.text);
+			//Todo: make this work
 			
-			static DateTime uniqueTime; 
-			if(auto col = cell.thisAndAllParents!CodeColumn.frontOrNull)
+			alias Result = ResultType!(unaryFun!transformFun); 
+			
+			private int destroyLevel; 
+			private Obj[] inputQueue; 
+			private Result[] outputQueue; 
+			
+			void put(Obj obj)
 			{
-				uniqueTime.actualize; 
-				
-				//fast update last item if possible
-				if(resyntaxQueue.map!"a.what".backOrNull is col)
-				{
-					resyntaxQueue.back.when = uniqueTime; 
-					col.lastResyntaxTime = uniqueTime; 
-					return; 
-				}
-				
-				//remove if alreay exists
-				resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
-				
-				resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
-				col.lastResyntaxTime = uniqueTime; 
-				
-			}
-			else
-			assert(0, "Unhandled type"); 
+				synchronized(this)
+					inputQueue = 	inputQueue.remove!(a => unaryFun!keyFun(a) == unaryFun!keyFun(obj)) 
+						~ obj; 
+			} 
+			
+			int update(bool delegate(Result) onResult)
+			{ return 0; } 
+			
 		} 
-		
-		void UI_ResyntaxQueue()
+		class SyntaxHighlightWorker
 		{
-			with(im) {
-				foreach(e; resyntaxQueue)
-				Row(
+			//SyntaxHighlightWorker ////////////////////////////////////////////
+			static struct Job
+			{
+				DateTime changeId; //must be a globally unique id, also sorted by chronology
+				CodeColumn col; //only one object allowed with the same referenceId
+				
+				bool valid; 
+				bool opCast(b:bool)() const { return valid; } 
+			} 
+			
+			private int destroyLevel; 
+			private Job[] inputQueue, outputQueue; 
+			
+			void put(DateTime changeId, CodeColumn col)
+			{
+				synchronized(this)
+					inputQueue = 	inputQueue.remove!(j => j.col is col) 
+						~ Job(changeId, col); 
+			} 
+			
+			Job getResult()
+			{
+				Job res; 
+				synchronized(this)
+					if(outputQueue.length)
+						res = outputQueue.fetchFront; 
+				return res; 
+			} 
+			
+			private Job _workerGetJob()
+			{
+				Job res; 
+				synchronized(this)
+					if(inputQueue.length) {
+					res = inputQueue.fetchBack; 
+					res.valid = true; 
+				} 
+				return res; 
+			} 
+			
+			private void _workerCompleteJob(Job job)
+			{
+				synchronized(this)
+					outputQueue ~= job; 
+			} 
+			
+			static private void worker(shared SyntaxHighlightWorker shw_)
+			{
+				auto shw = cast()shw_; 
+				while(shw.destroyLevel==0)
+				{
+					if(auto job = shw._workerGetJob)
 					{
-						Row(e.when.text, { width = fh*9; }); 
-						if(auto col = cast(CodeColumn)e.what)
+						//actual work comes here
+						shw._workerCompleteJob(job); 
+					}
+					else
+					{
+						//LOG("Worker Idling");
+						sleep(10); 
+					}
+				}
+				shw.destroyLevel = 2; 
+				//LOG("Worker finished");
+			} 
+			
+			this()
+			{ spawn(&worker, cast(shared)this); } 
+			
+			~this()
+			{
+				destroyLevel = 1; 
+				while(destroyLevel==1)
+				{
+					//LOG("Waiting for worker thread to finish");
+					sleep(10); //Todo: it's slow... rewrite to message based
+				}
+			} 
+		} version(/+$DIDE_REGION Resyntax+/all)
+		{
+			//Resyntax queue ////////////////////////////////////////////////////////
+			
+			void needResyntax(Cell cell)
+			{
+				//LOG(cell.text);
+				
+				static DateTime uniqueTime; 
+				if(auto col = cell.thisAndAllParents!CodeColumn.frontOrNull)
+				{
+					uniqueTime.actualize; 
+					
+					//fast update last item if possible
+					if(resyntaxQueue.map!"a.what".backOrNull is col)
+					{
+						resyntaxQueue.back.when = uniqueTime; 
+						col.lastResyntaxTime = uniqueTime; 
+						return; 
+					}
+					
+					//remove if alreay exists
+					resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
+					
+					resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
+					col.lastResyntaxTime = uniqueTime; 
+					
+				}
+				else
+				assert(0, "Unhandled type"); 
+			} 
+			
+			void UI_ResyntaxQueue()
+			{
+				with(im) {
+					foreach(e; resyntaxQueue)
+					Row(
 						{
-							auto tc = TextCursor(col, ivec2(0, 0)); 
-							Row(tc.toReference.text); 
+							Row(e.when.text, { width = fh*9; }); 
+							if(auto col = cast(CodeColumn)e.what)
+							{
+								auto tc = TextCursor(col, ivec2(0, 0)); 
+								Row(tc.toReference.text); 
+							}
+						}
+					); 
+				}
+			} 
+			
+			void resyntaxNow(CodeColumn col)
+			{ col.resyntax; } 
+			
+			void resyntaxLater(CodeColumn col, DateTime changedId)
+			{ syntaxHighlightWorker.put(changedId, col); } 
+			
+			/// returns true if any work done or queued
+			bool updateResyntaxQueue()
+			{
+				if(auto job = syntaxHighlightWorker.getResult)
+				{
+					auto col = job.col; 
+					if(col.getStructureLevel >= StructureLevel.highlighted)
+					{
+						static DateTime lastOutdatedResyncTime; 
+						if(
+							col.lastResyntaxTime==job.changeId || 
+							now-lastOutdatedResyncTime > .25*second
+						)
+						{
+							//mod.resyntax_src(job.sourceCode);
+							resyntaxNow(col); 
+							lastOutdatedResyncTime = now; 
 						}
 					}
-				); 
-			}
-		} 
-		
-		void resyntaxNow(CodeColumn col)
-		{ col.resyntax; } 
-		
-		void resyntaxLater(CodeColumn col, DateTime changedId)
-		{ syntaxHighlightWorker.put(changedId, col); } 
-		
-		/// returns true if any work done or queued
-		bool updateResyntaxQueue()
-		{
-			if(auto job = syntaxHighlightWorker.getResult)
-			{
-				auto col = job.col; 
-				if(col.getStructureLevel >= StructureLevel.highlighted)
-				{
-					static DateTime lastOutdatedResyncTime; 
-					if(
-						col.lastResyntaxTime==job.changeId || 
-						now-lastOutdatedResyncTime > .25*second
-					)
-					{
-						//mod.resyntax_src(job.sourceCode);
-						resyntaxNow(col); 
-						lastOutdatedResyncTime = now; 
-					}
 				}
-			}
-			
-			if(resyntaxQueue.empty) return false; 
-			
-			//limit the frequency of slow sourceText() calls
-			static DateTime lastResyntaxLaterTime; 
-			if(now-lastResyntaxLaterTime < .25*second) return false; 
-			lastResyntaxLaterTime = now; 
-			
-			auto act = resyntaxQueue.fetchBack; 
-			resyntaxLater(act.what, act.when); 
-			return true; 
-		} 
+				
+				if(resyntaxQueue.empty) return false; 
+				
+				//limit the frequency of slow sourceText() calls
+				static DateTime lastResyntaxLaterTime; 
+				if(now-lastResyntaxLaterTime < .25*second) return false; 
+				lastResyntaxLaterTime = now; 
+				
+				auto act = resyntaxQueue.fetchBack; 
+				resyntaxLater(act.what, act.when); 
+				return true; 
+			} 
+		}
 	}version(/+$DIDE_REGION Update+/all)
 	{
-		//! Update ///////////////////////////////////////
+		
 		version(/+$DIDE_REGION+/all)
 		{
 			
@@ -3178,7 +3401,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					callVerbs(this); 
 					
-					if(textSelectionsGet.empty)
+					if(textSelections.empty)
 					{ mainWindow.inputChars = []; }
 					else
 					{
@@ -3200,7 +3423,7 @@ version(/+$DIDE_REGION main+/all)
 																			from keyboard or clipboard! Maybe it's a bug.
 									+/
 									auto s = ch.to!string; 
-									textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, s); 
+									textSelections = paste_impl(textSelections, No.fromClipboard, s); 
 								}
 								catch(Exception)
 								{ unprocessed ~= ch; }
@@ -3355,7 +3578,7 @@ Note:
 											
 											loadModule(f, popupWorldPos); 
 											
-											textSelectionsSet([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
+											textSelections([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
 											//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
 											
 										}
@@ -3417,17 +3640,17 @@ Note:
 					moduleSelectionManager.update(
 						!im.wantMouse && mainWindow.canProcessUserInput
 						&& view.isMouseInside /+&& lod.moduleLevel+/,
-						view, modules, textSelectionsGet.length>0, 
-						{ textSelectionsSet = []; },
+						view, modules, textSelections.length>0, 
+						{ textSelections = []; },
 						{ bringToFrontSelectedModules; }
 					); 
 					textSelectionManager.update(view, this, mouseMappings); 
 					
 					//detect textSelection change
-					const selectionChanged = textSelectionsHash.chkSet(textSelectionsGet.hashOf); 
+					const textSelectionChanged = textSelectionsHash.chkSet(textSelections.hashOf); 
 					
 					//if there are any cursors, module selection if forced to modules with textSelections
-					if(selectionChanged && textSelectionsGet.length)
+					if(textSelectionChanged && textSelections.length)
 					{
 						foreach(m; modules) m.flags.selected = false; 
 						foreach(m; modulesWithTextSelection) m.flags.selected = true; 
@@ -3446,12 +3669,12 @@ Note:
 						const p = textSelectionManager.scrollInRequest.get; 
 						frmMain.view.scrollZoom(bounds2(p, p)); 
 					}
-					else if(selectionChanged)
+					else if(textSelectionChanged)
 					{
 						if(!inputs[mouseMappings.main].down)
 						{
 							//don't focus to changed selection when the main mouse button is held down
-							frmMain.view.scrollZoom(worldBounds(textSelectionsGet)); 
+							frmMain.view.scrollZoom(worldBounds(textSelections)); 
 							//Todo: maybe it is problematic when the selection can't fit on the current screen
 						}
 					}
@@ -3461,12 +3684,12 @@ Note:
 					//animate cursors
 					version(AnimatedCursors)
 					{
-						if(textSelectionsGet.length<=MaxAnimatedCursors)
+						if(textSelections.length<=MaxAnimatedCursors)
 						{
 							const 	animT	= calcAnimationT(application.deltaTime.value(second), .5, .25),
 								maxDist 	= 1.0f; 
 							
-							foreach(ref ts; textSelectionsGet)
+							foreach(ref ts; textSelections)
 							{
 								foreach(ref cr; ts.cursors[])
 								with(cr)
@@ -3512,214 +3735,285 @@ Note:
 			} 
 		}
 	}
+	version(/+$DIDE_REGION Refactor+/all)
+	{
+		static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
+		{
+			//only process structured or modular columns
+			if(!col.isStructuredCode) return; 
+			
+			//recursively visit nested columns
+			foreach(node; col.byNode)
+			{
+				foreach(ncell; node.subCells)
+				if(auto ncol = cast(CodeColumn) ncell)
+				visitNestedCodeColumns(ncol, fun); 
+				
+				//process joined prepositions
+				if(auto decl = cast(Declaration) node)
+				{
+					foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+					foreach(ppcell; pp.subCells)
+					if(auto ppcol = cast(CodeColumn) ppcell)
+					visitNestedCodeColumns(ppcol, fun); 
+				}
+			}
+			
+			fun(col); //do the job
+		} 
+		
+		static void visitNestedCodeNodes(CodeColumn col, void delegate(CodeNode) fun)
+		{
+			//only process structured or modular columns
+			if(!col.isStructuredCode) return; 
+			
+			//recursively visit nested columns
+			foreach(node; col.byNode)
+			{
+				fun(node); 
+				foreach(ncell; node.subCells)
+				if(auto ncol = cast(CodeColumn) ncell)
+				visitNestedCodeNodes(ncol, fun); 
+				
+				//process joined prepositions
+				if(auto decl = cast(Declaration) node)
+				foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+				{
+					fun(pp); 
+					foreach(ppcell; pp.subCells)
+					if(auto ppcol = cast(CodeColumn) ppcell)
+					visitNestedCodeNodes(ppcol, fun); 
+				}
+			}
+		} 
+		
+		void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
+		{
+			foreach_reverse(col; selectedOuterColumns)
+			visitNestedCodeColumns(col, fun); 
+		} 
+		
+		void visitSelectedNestedCodeNodes(void delegate(CodeNode) fun)
+		{
+			foreach_reverse(col; selectedOuterColumns)
+			visitNestedCodeNodes(col, fun); 
+		} 
+		
+		void visitSelectedNestedDeclarations(void delegate(Declaration) fun)
+		{ visitSelectedNestedCodeNodes((node){ if(auto decl = cast(Declaration) node) fun(decl); }); } 
+		
+		static bool removeVerticalTabs(CodeColumn col)
+		{
+			bool anyVT; 
+			foreach(row; col.rows)
+			if(row.chars.endsWith('\x0b'))
+			{
+				row.subCells = row.subCells[0 .. $-1]; 
+				row.refreshTabIdx; 
+				row.needMeasure; 
+				anyVT = true; 
+			}
+			if(anyVT) col.measure; 
+			return anyVT; 
+		} 
+		
+		static bool addVerticalTabs(CodeColumn col, float targetHeight, float targetAspect)
+		{
+			bool anyVT; 
+			float y0 = 0; 
+			
+			auto pageHeight = targetHeight; 
+			//pageHeight.maximize(col.outerSize.area.sqrt / targetAspect);
+			const totalHeight = col.rows.map!(r => r.outerHeight).sum; 
+			const numPages = (totalHeight / pageHeight).iceil.max(1); 
+			if(numPages<=1) return false; 
+			
+			pageHeight = totalHeight / numPages; 
+			
+			int actPages; 
+			foreach(row; col.rows)
+			if(row.outerBottom - y0 >= pageHeight)
+			{
+				static TextStyle tsVT; 
+				static bool initialized; 
+				if(initialized.chkSet) tsVT.applySyntax(skIdentifier1); //style for vertical tab
+				
+				y0 = row.outerBottom; 
+				row.appendChar('\x0b', tsVT); 
+				row.refreshTabIdx; 
+				row.needMeasure; 
+				anyVT = true; 
+				
+				actPages++; 
+				if(actPages > numPages-1) break; 
+			}
+			if(anyVT) col.measure; 
+			return anyVT; 
+		} 
+		
+		void declarationStatistics_impl()
+		{
+			auto files = dirPerS(Path(`c:\d\libs`), "*.d").files.map!"a.file".array; 
+			//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
+			dDeclarationRecords.clear; 
+			foreach(i, f; files)
+			{
+				try
+				{
+					print(i, files.length, dDeclarationRecords.length, f); 
+					auto m = scoped!Module(this, f, StructureLevel.structured); 
+					if(m.isStructured) { m.content.processHighLevelPatterns_block; }else { print("Is not structured"); beep; }
+				}
+				catch(Exception e)
+				{ WARN(e.simpleMsg); }
+			}
+			const fnOut = `c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`; 
+			dDeclarationRecords.toJson.saveTo(fnOut); 
+			print("DONE. DeclarationStatistics written to:", fnOut); 
+			
+			/+
+				Todo: implement identifier qString  
+									 File(`c:\D\ldc2\import\std\json.d`)
+									 File(`c:\D\ldc2\import\std\xml.d`)
+									 File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
+								bad tokenString, not my bad...
+									 File(`c:\D\ldc-master\dmd\iasmgcc.d`)
+									 File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token 
+			+/
+		} 
+		
+		void UI_refactor()
+		{
+			with(im)
+			{
+				Grp!Row(
+					"Vertical Tabs in CodeColumns (␋)", 
+					{
+						if(KeyBtn("", "Add")) realignVerticalTabs; 
+						if(KeyBtn("", "Remove")) removeVerticalTabs; 
+					}
+				); 
+				
+				Grp!Row(
+					"Internal NewLines in Declarations (␊)",
+					{
+						if(KeyBtn("", "Add")) addInternalNewLines; 
+						if(KeyBtn("", "Remove")) removeInternalNewLines; 
+					}
+				); 
+				
+				Grp!Row(
+					"Statistics",
+					{ if(KeyBtn("", "Declaration Statistics of all D codebase.")) declarationStatistics; }
+				); 
+				
+			}
+		} 
+	}
 	version(/+$DIDE_REGION Keyboard mapping+/all)
 	{
 		//! Keyboard mapping ///////////////////////////////////////
 		version(/+$DIDE_REGION Scroll and zoom view   +/all)
 		{
-			
-			
-			
+			@property SEL()
+			{ return !textSelections.empty; } @property NOSEL()
+			{ return !SEL; } 
 			version(/+$DIDE_REGION press      +/all)
 			{
 				
 				
 				
-				@VERB("Ctrl+Up") 	void scrollLineUp()
+				@VERB("Ctrl+Up") void scrollLineUp()
 				{ scrollV(DefaultFontHeight); } 
-				@VERB("Ctrl+Down") 	void scrollLineDown()
+				@VERB("Ctrl+Down") void scrollLineDown()
 				{ scrollV(-DefaultFontHeight); } 
-				@VERB("Alt+PgUp") 	void scrollPageUp()
+				@VERB("Alt+PgUp") void scrollPageUp()
 				{ scrollV(frmMain.clientHeight*.9); } 
-				@VERB("Alt+PgDn") 	void scrollPageDown()
+				@VERB("Alt+PgDn") void scrollPageDown()
 				{ scrollV(-frmMain.clientHeight*.9); } 
-				@VERB("Ctrl+=") 	void zoomIn()
+				@VERB("Ctrl+=") void zoomIn()
 				{ zoom (.5); } 
-				@VERB("Ctrl+-") 	void zoomOut()
+				@VERB("Ctrl+-") void zoomOut()
 				{ zoom (-.5); } 
-			}version(/+$DIDE_REGION hold      +/all)
+			}static if(1)
+			version(/+$DIDE_REGION hold      +/all)
 			{
-				
-				
-				
-				@HOLD("Ctrl+Num8") void holdScrollUp()
+				@HOLD("Ctrl+Alt+Num8") void holdScrollUp()
 				{ scrollV(scrollSpeed); } 
-				@HOLD("Ctrl+Num2") void holdScrollDown()
+				@HOLD("Ctrl+Alt+Num2") void holdScrollDown()
 				{ scrollV(-scrollSpeed); } 
-				@HOLD("Ctrl+Num4") void holdScrollLeft()
+				@HOLD("Ctrl+Alt+Num4") void holdScrollLeft()
 				{ scrollH(scrollSpeed); } 
-				@HOLD("Ctrl+Num6") void holdScrollRight()
+				@HOLD("Ctrl+Alt+Num6") void holdScrollRight()
 				{ scrollH(-scrollSpeed); } 
-				@HOLD("Ctrl+Num+") void holdZoomIn()
+				@HOLD("Ctrl+Alt+Num+") void holdZoomIn()
 				{ zoom (zoomSpeed); } 
-				@HOLD("Ctrl+Num-") void holdZoomOut()
+				@HOLD("Ctrl+Alt+Num-") void holdZoomOut()
 				{ zoom (-zoomSpeed); } 
-			}
+			}static if(0)
 			version(/+$DIDE_REGION hold slow  +/all)
 			{
-				
-				
+				/+
+					Note: no keys for this. 
+					Ctrl+Alt+Num is used for normal speed scrolling.
+				+/
 				
 				@HOLD("Alt+Ctrl+Num8") void holdScrollUp_slow()
-				{ scrollV(scrollSpeed/8); } 
+				{ scrollV(scrollSpeed); } 
 				@HOLD("Alt+Ctrl+Num2") void holdScrollDown_slow()
-				{ scrollV(-scrollSpeed/8); } 
+				{ scrollV(-scrollSpeed); } 
 				@HOLD("Alt+Ctrl+Num4") void holdScrollLeft_slow()
-				{ scrollH(scrollSpeed/8); } 
+				{ scrollH(scrollSpeed); } 
 				@HOLD("Alt+Ctrl+Num6") void holdScrollRight_slow()
-				{ scrollH(-scrollSpeed/8); } 
+				{ scrollH(-scrollSpeed); } 
 				@HOLD("Alt+Ctrl+Num+") void holdZoomIn_slow()
-				{ zoom (zoomSpeed/8); } 
+				{ zoom (zoomSpeed); } 
 				@HOLD("Alt+Ctrl+Num-") void holdZoomOut_slow()
-				{ zoom (-zoomSpeed/8); } 
-			}version(/+$DIDE_REGION hold NoSel   +/all)
+				{ zoom (-zoomSpeed); } 
+			}	version(/+$DIDE_REGION hold NoSel   +/all)
 			{
-				//Navigation when there is	no textSelection
+				//Navigation when there is no textSelection
 				
 				@HOLD("W Num8 Up") void holdScrollUp2()
-				{ if(textSelectionsGet.empty) scrollV(scrollSpeed); } 
+				{ if(NOSEL) scrollV(scrollSpeed); } 
 				@HOLD("S Num2 Down") void holdScrollDown2()
-				{ if(textSelectionsGet.empty) scrollV(-scrollSpeed); } 
+				{ if(NOSEL) scrollV(-scrollSpeed); } 
 				@HOLD("A Num4 Left") void holdScrollLeft2()
-				{ if(textSelectionsGet.empty) scrollH(scrollSpeed); } 
+				{ if(NOSEL) scrollH(scrollSpeed); } 
 				@HOLD("D Num6 Right") void holdScrollRight2()
-				{ if(textSelectionsGet.empty) scrollH(-scrollSpeed); } 
+				{ if(NOSEL) scrollH(-scrollSpeed); } 
 				@HOLD("E Num+ PgUp") void holdZoomIn2()
-				{ if(textSelectionsGet.empty) zoom (zoomSpeed); } 
+				{ if(NOSEL) zoom (zoomSpeed); } 
 				@HOLD("Q Num- PgDn") void holdZoomOut2()
-				{ if(textSelectionsGet.empty) zoom (-zoomSpeed); } 
-			}
-			version(/+$DIDE_REGION hold slow NoSel+/all)
+				{ if(NOSEL) zoom (-zoomSpeed); } 
+			}version(/+$DIDE_REGION hold slow NoSel+/all)
 			{
-				//Todo: this is redundant and ugly
 				/+
 					Bug: When NumLockState=true && key==Num8: if the modifier is released
-									after the key, KeyCombo will NEVER detect the release and is stuck!!!
+					after the key, KeyCombo will NEVER detect the release and is stuck!!!
 				+/
-				@HOLD("Shift+W Shift+Num8 Shift+Up") void holdScrollUp_slow2()
-				{ if(textSelectionsGet.empty) scrollV(scrollSpeed/8); } 
-				@HOLD("Shift+S Shift+Num2 Shift+Down") void holdScrollDown_slow2()
-				{ if(textSelectionsGet.empty) scrollV(-scrollSpeed/8); } 
-				@HOLD("Shift+A Shift+Num4 Shift+Left") void holdScrollLeft_slow2()
-				{ if(textSelectionsGet.empty) scrollH(scrollSpeed/8); } 
-				@HOLD("Shift+D Shift+Num6 Shift+Right") void holdScrollRight_slow2()
-				{ if(textSelectionsGet.empty) scrollH(-scrollSpeed/8); } 
-				@HOLD("Shift+E Shift+Num+ Shift+PgUp") void holdZoomIn_slow2()
-				{ if(textSelectionsGet.empty) zoom (zoomSpeed/8); } 
-				@HOLD("Shift+Q Shift+Num- Shift+PgDn") void holdZoomOut_slow2()
-				{ if(textSelectionsGet.empty) zoom (-zoomSpeed/8); } 
+				@HOLD("Shift+W Shift+Up") void holdScrollUp_slow2()
+				{ if(NOSEL) scrollV(scrollSpeed/8); } 
+				@HOLD("Shift+S Shift+Down") void holdScrollDown_slow2()
+				{ if(NOSEL) scrollV(-scrollSpeed/8); } 
+				@HOLD("Shift+A Shift+Left") void holdScrollLeft_slow2()
+				{ if(NOSEL) scrollH(scrollSpeed/8); } 
+				@HOLD("Shift+D Shift+Right") void holdScrollRight_slow2()
+				{ if(NOSEL) scrollH(-scrollSpeed/8); } 
+				@HOLD("Shift+E Shift+PgUp") void holdZoomIn_slow2()
+				{ if(NOSEL) zoom (zoomSpeed/8); } 
+				@HOLD("Shift+Q Shift+PgDn") void holdZoomOut_slow2()
+				{ if(NOSEL) zoom (-zoomSpeed/8); } 
+				@VERB("Home"	) void zoomAll2()
+				{ if(NOSEL) scrollInAllModules; } 
+				@VERB("Shift+Home"	) void zoomClose2()
+				{ if(NOSEL) frmMain.view.scale = 1; } 
 			}
-			@VERB("Home"	) void zoomAll2()
-			{ if(textSelectionsGet.empty) frmMain.view.zoom(worldInnerBounds(this), 12); } 
-			@VERB("Shift+Home"	) void zoomClose2()
-			{ if(textSelectionsGet.empty) frmMain.view.scale = 1; } 
-			
-		}version(/+$DIDE_REGION Locations, memory slots+/all)
-		{
-			struct Location
-			{
-				vec2 origin = vec2(0); 
-				float zoomFactor = 1; 
-			} 
-			
-			@STORED Location[10] storedLocations; 
-			
-			void enforceLocationIndex(int n)
-			{
-				enforce(
-					n.inRange(storedLocations),
-					n.format!"Location index out of range: %s"
-				); 
-			} 
-			
-			void storeLocation(int n)
-			{
-				enforceLocationIndex(n); 
-				with(storedLocations[n])
-				{
-					origin	= frmMain.view.origin.vec2,
-					zoomFactor 	= frmMain.view.scale; 
-				}
-				im.flashInfo(n.format!"Location %s stored."); 
-			} 
-			
-			void jumpToLocation(int n)
-			{
-				enforceLocationIndex(n); 
-				if(storedLocations[n] == Location.init)
-				{
-					im.flashWarning(n.format!"Location %s is uninitialized."); 
-					return; 
-				}
-				with(storedLocations[n])
-				{
-					frmMain.view.origin	= origin.dvec2,
-					frmMain.view.scale 	= zoomFactor; 
-				}
-			} 
-			
-			static foreach(i; iota(storedLocations.length).map!text)
-			mixin
-			(
-				q{
-					@VERB("Shift+Alt+#") void storeLocation#()
-					{ storeLocation(#); } 
-					@VERB("Alt+#"     ) void jumpToLocation#()
-					{ jumpToLocation(#); } 
-				}
-				.replace("#", i)
-			); 
-			
-			
-			@STORED string[10] storedMemSlots; 
-			
-			void enforceMemSlotIndex(int n)
-			{
-				enforce(
-					n.inRange(storedMemSlots),
-					n.format!"MemSlot index out of range: %s"
-				); 
-			} 
-			
-			void copyMemSlot(int n)
-			{
-				enforceMemSlotIndex(n); 
-				auto s = textSelectionsGet.sourceText; 
-				storedMemSlots[n] = s; 
-				im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
-			} 
-			
-			void pasteMemSlot(int n)
-			{
-				enforceMemSlotIndex(n); 
-				if(storedMemSlots[n].empty)
-				{
-					im.flashWarning(n.format!"MemSlot %s is empty."); 
-					return; 
-				}
-				textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, storedMemSlots[n]); 
-			} 
-			
-			static foreach(i; iota(storedMemSlots.length).map!text)
-			mixin
-			(
-				q{
-					@VERB("Shift+Ctrl+#") void copyMemSlot#()
-					{ copyMemSlot(#); 	} 
-					@VERB("Ctrl+#"	) void pasteMemSlot#()
-					{ pasteMemSlot(#); } 
-				}
-				.replace("#", i)
-			); 
-			
-			
-		}version(/+$DIDE_REGION+/all)
+		}
+		version(/+$DIDE_REGION+/all)
 		{
 			version(/+$DIDE_REGION Cursor movement+/all)
 			{
-				
-				
-				
 				@VERB("Left") void cursorLeft(bool sel=false)
 				{ cursorOp(ivec2(-1, 0), sel); } 
 				@VERB("Right") void cursorRight(bool sel=false)
@@ -3732,16 +4026,15 @@ Note:
 				@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel); } 
 				@VERB("Home") void cursorHome(bool sel=false)
-				//Bug: wordRight: This is bugs inside a nested comment.
 				{ cursorOp(ivec2(TextCursor.home, 0), sel); } 
 				@VERB("End") void cursorEnd(bool sel=false)
 				{ cursorOp(ivec2(TextCursor.end, 0), sel); } 
 				@VERB("Up") void cursorUp(bool sel=false)
 				{ cursorOp(ivec2(0,-1), sel); } 
 				/+
-					Todo: Dide2: cursorUp: textSelection. non zero length, 
-									Left/Right is good, Up/Down is not good. It should emulate 
-									a Left/Right selection collapse first. and go Up/Down after.
+					Todo: Dide2: 	cursorUp: textSelection. non zero length, 
+						Left/Right is good, Up/Down is not good. It should emulate 
+						a Left/Right selection collapse first. and go Up/Down after.
 				+/
 				@VERB("Down") void cursorDown(bool sel=false)
 				{ cursorOp(ivec2(0, 1), sel); } 
@@ -3750,11 +4043,10 @@ Note:
 				@VERB("PgDn") void cursorPageDown(bool sel=false)
 				{ cursorOp(ivec2(0, pageSize	), sel); } 
 				@VERB("Ctrl+Home") void cursorTop(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.home		), sel); } 
+				{ cursorOp(ivec2(TextCursor.home), sel); } 
 				@VERB("Ctrl+End") void cursorBottom(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.end		), sel); } 
-			}
-			version(/+$DIDE_REGION Cursor selection+/all)
+				{ cursorOp(ivec2(TextCursor.end), sel); } 
+			}version(/+$DIDE_REGION Cursor selection+/all)
 			{
 				@VERB("Shift+Left") void cursorLeftSelect()
 				{ cursorLeft(true); } 
@@ -3780,58 +4072,75 @@ Note:
 				{ cursorTop	(true); } 
 				@VERB("Shift+Ctrl+End") void cursorBottomSelect()
 				{ cursorBottom	(true); } 
+			}version(/+$DIDE_REGION Cursor through blocks+/all)
+			{
+				@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
+				{ cursorOp(ivec2(-1, 0), sel, true); } 
+				@VERB("Alt+Right") void cursorRightOut(bool sel=false)
+				{ cursorOp(ivec2(1, 0), sel, true); } 
+				@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
+				{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
+				@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
+				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+				
+				static if(0)
+				{
+					/+
+						Note: extendSelection() already maps to Shift+Alt. 
+						Use the Word select version instead (Shift+Ctrl+Alt)
+					+/
+					@VERB("Shift+Alt+Left") void cursorLeftSelectOut()
+					{ cursorLeftOut(true); } 
+					@VERB("Shift+Alt+Right") void cursorRightSelectOut()
+					{ cursorRightOut(true); } 
+				}
+				
+				@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
+				{ cursorWordLeftOut(true); } 
+				@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
+				{ cursorWordRightOut(true); } 
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
 			version(/+$DIDE_REGION More text selection+/all)
 			{
-				@VERB("Ctrl+Alt+Up") void insertCursorAbove()
-				{ insertCursor(-1); } @VERB("Ctrl+Alt+Down") void insertCursorBelow()
-				{ insertCursor(1); } 
+				@VERB("Shift+Alt+Right") void extendSelection()
+				{ if(!extendSelection_impl) im.flashWarning("Unable to extend selection."); } 
 				
-				@VERB("Shift+Alt+Left") void shrinkAstSelection()
-				{
-					//Todo: shrink/extend Ast Selection
-				} @VERB("Shift+Alt+Right") void extendAstSelection()
-				{} 
+				@VERB("Shift+Alt+Left") void shrinkSelection()
+				{ if(!shrinkSelection_impl) im.flashWarning("Unable to shrink selection."); } 
+				
 				@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
-				{ textSelectionsSet = insertCursorAtStartOfEachLineSelected_impl(textSelectionsGet); } 
-				
+				{ textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); } 
 				@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
-				{ textSelectionsSet = insertCursorAtEndOfEachLineSelected_impl(textSelectionsGet); } 
+				{ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); } 
 				
 				@VERB("Ctrl+A") void extendSelectionToModuleContents()
 				{
-					textSelectionsSet = modulesWithTextSelection
-					.map!(m => m.content.allSelection(textSelectionsGet.any!(s => s.primary && s.moduleOf is m))).array; 
+					textSelections = modulesWithTextSelection
+					.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
 				} 
 				
 				@VERB("Ctrl+Shift+A") void selectAllModules()
-				{ textSelectionsSet = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; } 
+				{ textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; } 
 				@VERB("") void deselectAllModules()
 				{
 					modules.each!(m => m.flags.selected = false); 
-					//Note: this clicking on emptyness does this too.
+					//Note: left clicking on emptyness does this too.
 				} 
 				@VERB("Esc") void cancelSelection()
 				{
 					if(!im.wantKeys) cancelSelection_impl; 
 					/+
 						Bug: nested	commenten belulrol Escape nyomkodas (kizoomolas) 
-												-> access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
+						-> access viola: ..., Column.drawSubCells_cull, CodeRow.draw(here!)
 					+/
 				} 
-			}
-			version(/+$DIDE_REGION Text editing      +/all)
+			}version(/+$DIDE_REGION Text editing      +/all)
 			{
-				
-				
-				
-				
-				
 				@VERB("Ctrl+C Ctrl+Ins") void copy()
 				{
-					copy_impl(textSelectionsGet.zeroLengthSelectionsToFullRows); 
+					copy_impl(textSelections.zeroLengthSelectionsToFullRows); 
 					/+
 						Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
 						Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
@@ -3840,19 +4149,19 @@ Note:
 				} 
 				@VERB("Ctrl+X Shift+Del") void cut()
 				{
-					TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2; 
-					copy_impl(s1); cut_impl2(s1, s2); textSelectionsSet = s2; 
+					TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2; 
+					copy_impl(s1); cut_impl2(s1, s2); textSelections = s2; 
 				} 
 				@VERB("Backspace") void deleteToLeft()
 				{
-					TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneLeft , s2; 
-					cut_impl2(s1, s2); textSelectionsSet = s2; 
+					TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
+					cut_impl2(s1, s2); textSelections = s2; 
 					//Todo: delete all leading tabs when the cursor is right after them
 				} 
 				@VERB("Del") void deleteFromRight()
 				{
-					TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToOneRight, s2; 
-					cut_impl2(s1, s2); textSelectionsSet = s2; 
+					TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
+					cut_impl2(s1, s2); textSelections = s2; 
 					/+
 						Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
 						ha van non-readonly selecton is, akkor azt meg el is bassza. 
@@ -3861,14 +4170,14 @@ Note:
 				} 
 				
 				@VERB("Ctrl+V Shift+Ins") void paste()
-				{ textSelectionsSet = paste_impl(textSelectionsGet, Yes.fromClipboard, ""	); } 
+				{ textSelections = paste_impl(textSelections, Yes.fromClipboard, ""	); } 
 				
 				@VERB("Tab") void insertTab()
-				{ textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\t"); } 
+				{ textSelections = paste_impl(textSelections, No.fromClipboard, "\t"); } 
 				
 				@VERB("Enter") void insertNewLine()
 				{
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\n", Yes.duplicateTabs); 
+					textSelections = paste_impl(textSelections, No.fromClipboard, "\n", Yes.duplicateTabs); 
 					//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 				} 
 				
@@ -3878,22 +4187,22 @@ Note:
 						Todo: it should automatically insert at the end of the selected rows.
 						But what if the selection spans across multiple rows...
 					+/
-					textSelectionsSet = paste_impl(textSelectionsGet, No.fromClipboard, "\v"); 
+					textSelections = paste_impl(textSelections, No.fromClipboard, "\v"); 
 					//Vertical Tab -> MultiColumn
 				} 
-				
+				
 				@VERB("Ctrl+]") void indent()
 				{
 					insertCursorAtStartOfEachLineSelected; 
-					paste_impl(textSelectionsGet, No.fromClipboard, "\t"); 
+					paste_impl(textSelections, No.fromClipboard, "\t"); 
 				} 
 				@VERB("Ctrl+[") void outdent()
 				{
 					insertCursorAtStartOfEachLineSelected; 
-					auto ts = selectCharAtEachSelection(textSelectionsGet, '\t'); 
+					auto ts = selectCharAtEachSelection(textSelections, '\t'); 
 					if(!ts.empty)
 					{
-						textSelectionsSet = ts; 
+						textSelections = ts; 
 						deleteToLeft; 
 					}
 					else
@@ -3902,8 +4211,8 @@ Note:
 				
 				@VERB("Alt+Up") void moveLineUp()
 				{
-					//TextSelection[] s1 = textSelectionsGet.zeroLengthSelectionsToFullRows, s2;
-					//copy_impl(s1); cut_impl2(s1, s2); textSelectionsSet = s2;
+					//TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2;
+					//copy_impl(s1); cut_impl2(s1, s2); textSelections = s2;
 					//Todo: moveLineUp
 				} 
 				
@@ -3923,9 +4232,10 @@ Note:
 					undoRedo_impl!"redo"; 
 				} 
 			}
-		}version(/+$DIDE_REGION+/all)
+		}
+		version(/+$DIDE_REGION+/all)
 		{
-			version(/+$DIDE_REGION File operations  +/all)
+			version(/+$DIDE_REGION Operations  +/all)
 			{
 				@VERB("Ctrl+O") void openModule()
 				{ fileDialog.openMulti.each!(f => queueModule(f)); } 
@@ -3962,7 +4272,7 @@ Note:
 				{ NOTIMPL; } 
 				@VERB("Shift+F3") void gotoPrevFind()
 				{ NOTIMPL; } 
-				
+				
 				@VERB("Ctrl+G") void gotoLine()
 				{
 					if(auto m = expectOneSelectedModule)
@@ -4000,215 +4310,72 @@ Note:
 				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
 				//@VERB("F10") void stepOver() { NOTIMPL; }
 				//@VERB("F11") void stepInto() { NOTIMPL; }
+			}version(/+$DIDE_REGION Stored slots+/all)
+			{
+				
+				
+				static foreach(i; iota(storedLocations.length).map!text)
+				mixin
+				(
+					q{
+						@VERB("Shift+Alt+#") void storeLocation#()
+						{ storeLocation(#); } 
+						@VERB("Alt+#"     ) void jumpToLocation#()
+						{ jumpToLocation(#); } 
+					}
+					.replace("#", i)
+				); 
+				
+				
+				static foreach(i; iota(storedMemSlots.length).map!text)
+				mixin
+				(
+					q{
+						@VERB("Shift+Ctrl+Num#") void copyMemSlot#()
+						{ copyMemSlot(#); 	} 
+						@VERB("Ctrl+Num#"	) void pasteMemSlot#()
+						{ pasteMemSlot(#); } 
+					}
+					.replace("#", i)
+				); 
+				
+				
+			}version(/+$DIDE_REGION Refactor+/all)
+			{
+				@VERB void realignVerticalTabs()
+				{
+					//Todo: This fucks up Undo/Redo and ignored edit permissions.
+					preserveTextSelections
+					(
+						{
+							visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
+							visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
+						}
+					); 
+				} 
+				
+				@VERB void removeVerticalTabs()
+				{
+					//Todo: This fucks up Undo/Redo and ignored edit permissions.
+					preserveTextSelections
+					({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
+				} 
+				
+				@VERB void addInternalNewLines()
+				{
+					//Todo: This fucks up Undo/Redo and ignored edit permissions.
+					visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 1; decl.needMeasure; }); 
+				} 
+				
+				@VERB void removeInternalNewLines()
+				{
+					//Todo: This fucks up Undo/Redo and ignored edit permissions.
+					visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 0; decl.needMeasure; }); 
+				} 
+				
+				@VERB void declarationStatistics()
+				{ declarationStatistics_impl; } 
 			}
-		}
-		version(/+$DIDE_REGION Test functions+/all)
-		{
-			//Test functions ///////////////////////////////////////
-			
-			static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
-			{
-				//only process structured or modular columns
-				if(!col.isStructuredCode) return; 
-				
-				//recursively visit nested columns
-				foreach(row; col.rows)
-				foreach(cell; row.subCells)
-				if(auto node = cast (CodeNode) cell)
-				{
-					foreach(ncell; node.subCells)
-					if(auto ncol = cast(CodeColumn) ncell)
-					visitNestedCodeColumns(ncol, fun); 
-					
-					//process joined prepositions
-					if(auto decl = cast(Declaration) node)
-					{
-						foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
-						foreach(ppcell; pp.subCells)
-						if(auto ppcol = cast(CodeColumn) ppcell)
-						visitNestedCodeColumns(ppcol, fun); 
-					}
-				}
-				
-				fun(col); //do the job
-			} 
-			
-			static void visitNestedCodeNodes(CodeColumn col, void delegate(CodeNode) fun)
-			{
-				//only process structured or modular columns
-				if(!col.isStructuredCode) return; 
-				
-				//recursively visit nested columns
-				foreach(row; col.rows)
-				foreach(cell; row.subCells)
-				if(auto node = cast (CodeNode) cell)
-				{
-					fun(node); 
-					foreach(ncell; node.subCells)
-					if(auto ncol = cast(CodeColumn) ncell)
-					visitNestedCodeNodes(ncol, fun); 
-					
-					//process joined prepositions
-					if(auto decl = cast(Declaration) node)
-					foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
-					{
-						fun(pp); 
-						foreach(ppcell; pp.subCells)
-						if(auto ppcol = cast(CodeColumn) ppcell)
-						visitNestedCodeNodes(ppcol, fun); 
-					}
-				}
-			} 
-			
-			void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
-			{
-				foreach_reverse(col; selectedOuterColumns)
-				visitNestedCodeColumns(col, fun); 
-			} 
-			
-			void visitSelectedNestedCodeNodes(void delegate(CodeNode) fun)
-			{
-				foreach_reverse(col; selectedOuterColumns)
-				visitNestedCodeNodes(col, fun); 
-			} 
-			
-			static bool removeVerticalTabs(CodeColumn col)
-			{
-				bool anyVT; 
-				foreach(row; col.rows)
-				if(row.chars.endsWith('\x0b'))
-				{
-					row.subCells = row.subCells[0 .. $-1]; 
-					row.refreshTabIdx; 
-					row.needMeasure; 
-					anyVT = true; 
-				}
-				if(anyVT) col.measure; 
-				return anyVT; 
-			} 
-			
-			static bool addVerticalTabs(CodeColumn col, float targetHeight, float targetAspect)
-			{
-				bool anyVT; 
-				float y0 = 0; 
-				
-				auto pageHeight = targetHeight; 
-				//pageHeight.maximize(col.outerSize.area.sqrt / targetAspect);
-				const totalHeight = col.rows.map!(r => r.outerHeight).sum; 
-				const numPages = (totalHeight / pageHeight).iceil.max(1); 
-				if(numPages<=1) return false; 
-				
-				pageHeight = totalHeight / numPages; 
-				
-				int actPages; 
-				foreach(row; col.rows)
-				if(row.outerBottom - y0 >= pageHeight)
-				{
-					static TextStyle tsVT; 
-					static bool initialized; 
-					if(initialized.chkSet) tsVT.applySyntax(skIdentifier1); //style for vertical tab
-					
-					y0 = row.outerBottom; 
-					row.appendChar('\x0b', tsVT); 
-					row.refreshTabIdx; 
-					row.needMeasure; 
-					anyVT = true; 
-					
-					actPages++; 
-					if(actPages > numPages-1) break; 
-				}
-				if(anyVT) col.measure; 
-				return anyVT; 
-			} 
-			
-			
-			
-			
-			@VERB void test_realignVerticalTabs()
-			{
-				//Todo: This fucks up Undo/Redo and ignored edit permissions.
-				preserveTextSelections(
-					{
-						visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
-						visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
-					}
-				); 
-			} 
-			
-			@VERB void test_removeVerticalTabs()
-			{
-				//Todo: This fucks up Undo/Redo and ignored edit permissions.
-				preserveTextSelections({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
-			} 
-			
-			
-			
-			
-			@VERB void test_setInternalNewLine()
-			{
-				//Todo: This fucks up Undo/Redo and ignored edit permissions.
-				visitSelectedNestedCodeNodes(
-					(CodeNode node){
-						if(auto decl = cast(Declaration) node)
-						{
-							decl.internalNewLineCount = 1; 
-							decl.needMeasure; 
-						}
-					}
-				); 
-			} 
-			
-			@VERB void test_clearInternalNewLine()
-			{
-				//Todo: This fucks up Undo/Redo and ignored edit permissions.
-				visitSelectedNestedCodeNodes(
-					(node){
-						if(auto decl = cast(Declaration) node)
-						{
-							decl.internalNewLineCount = 0; 
-							decl.needMeasure; 
-						}
-					}
-				); 
-			} 
-			
-			 @VERB void test_resyntax()
-			{
-				//foreach(m; modulesWithTextSelection) if(m) m.resyntax; //todo: realing the lines where font.bold has changed.
-				
-			} 
-			
-			@VERB void test_declarationStatistics()
-			{
-				auto files = dirPerS(Path(`c:\d\libs`), "*.d").files.map!"a.file".array; 
-				//auto files = [File(`c:\d\libs\het\test\testTokenizerData\CompilerTester.d`)];
-				dDeclarationRecords.clear; 
-				foreach(i, f; files)
-				{
-					try
-					{
-						print(i, files.length, dDeclarationRecords.length, f); 
-						auto m = scoped!Module(this, f, StructureLevel.structured); 
-						if(m.isStructured) { m.content.processHighLevelPatterns_block; }else { print("Is not structured"); beep; }
-					}
-					catch(Exception e)
-					{ WARN(e.simpleMsg); }
-				}
-				const fnOut = `c:\D\projects\DIDE\DLangStatistics\dDeclarationRecords.json`; 
-				dDeclarationRecords.toJson.saveTo(fnOut); 
-				print("DONE. DeclarationStatistics written to:", fnOut); 
-				
-				/+
-					Todo: implement identifier qString  
-										 File(`c:\D\ldc2\import\std\json.d`)
-										 File(`c:\D\ldc2\import\std\xml.d`)
-										 File(`c:\D\ldc-master\tools\ldc-prune-cache.d`) Invalid block closing token
-									bad tokenString, not my bad...
-										 File(`c:\D\ldc-master\dmd\iasmgcc.d`)
-										 File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token 
-				+/
-				
-			} 
 		}
 	}version(/+$DIDE_REGION UI   +/all)
 	{
@@ -4344,7 +4511,7 @@ Note:
 									//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
 									//Todo: ez ugorhatna regionra is.
 									searchResults = []; 
-									textSelectionsSet = []; 
+									textSelections = []; 
 									if(auto mod = expectOneSelectedModule)
 									if(auto col  = mod.content)
 									if(auto rowCount = col.cellCount)
@@ -4356,7 +4523,7 @@ Note:
 											line = rowCount+line+1; //mirror if negative
 											
 											if(auto ts = col.lineSelection_home(line, true))
-											textSelectionsSet = [ts]; 
+											textSelections = [ts]; 
 										}
 									}
 								}
@@ -4512,10 +4679,10 @@ Note:
 									}
 								*/
 								
-								if(textSelectionsGet.length>1)
-								{ Text(format!"  Multiple Text Selections: %d  "(textSelectionsGet.length)); }
-								else if(textSelectionsGet.length==1)
-								{ Text(format!"  Text Selection: %s  "(textSelectionsGet[0].toReference.text)); }
+								if(textSelections.length>1)
+								{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
+								else if(textSelections.length==1)
+								{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
 							}
 						); 
 					}
@@ -4886,7 +5053,7 @@ Note:
 					
 					dr.color = clSelected; 
 					dr.alpha = alpha; 
-					foreach(sel; textSelectionsGet)
+					foreach(sel; textSelections)
 					if(!sel.isZeroLength)
 					{
 						auto col = sel.codeColumn; 
@@ -5000,14 +5167,14 @@ Note:
 					//caret trail
 					version(AnimatedCursors)
 					{
-						if(textSelectionsGet.length <= MaxAnimatedCursors)
+						if(textSelections.length <= MaxAnimatedCursors)
 						{
 							dr.alpha = blink/2; 
 							dr.lineWidth = -1-(blink)*3; 
 							dr.color = clCaret; 
 							//Opt: culling
 							//Opt: limit max munber of animated cursors
-							foreach(s; textSelectionsGet)
+							foreach(s; textSelections)
 							{
 								CaretPos[3] cp; 
 								cp[0] = s.caret.worldPos; 
@@ -5069,7 +5236,7 @@ Note:
 							return res; 
 						} 
 						
-						auto carets = textSelectionsGet.map!getCaretWorldPos.array; 
+						auto carets = textSelections.map!getCaretWorldPos.array; 
 						
 						void drawCarets(RGB c, float shadow=0)
 						{
@@ -5096,7 +5263,7 @@ Note:
 			void customDraw(Drawing dr)
 			{
 				//customDraw //////////////////////////////
-				if(textSelectionsGet.empty)
+				if(textSelections.empty)
 				{
 					//select means module selection
 					foreach(m; modules)

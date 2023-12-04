@@ -837,7 +837,6 @@ version(/+$DIDE_REGION+/all)
 	{ return parent.subCellIndex(child); } 
 } struct TextCursor
 {
-	//TextCursor /////////////////////////////
 	version(/+$DIDE_REGION+/all)
 	{
 		/+
@@ -927,10 +926,10 @@ version(/+$DIDE_REGION+/all)
 		{ moveRight(delta.to!int); } 
 			
 		//special delta units
-		enum 	home	= int.min,
-			end	= int.max,
-			wordLeft	= home+1,
-			wordRight 	= end-1; 
+		enum home	= int.min,
+		end	= int.max,
+		wordLeft	= home+1,
+		wordRight 	= end-1; 
 			
 		void calcDesiredX_unsafe()
 		{ desiredX = pos.x<=0 ? 0 : codeColumn.rows[pos.y].subCells[pos.x-1].outerBounds.right; } 
@@ -954,7 +953,7 @@ version(/+$DIDE_REGION+/all)
 		} 
 	}version(/+$DIDE_REGION+/all)
 	{
-			
+		
 		void moveToLineStart()
 		{
 			moveRight(home); 
@@ -1027,7 +1026,7 @@ version(/+$DIDE_REGION+/all)
 				if(delta.y<0 && pos.y<=0) delta = ivec2(home); 
 				if(delta.y>0 && pos.y>=codeColumn.rowCount-1) delta = ivec2(end); 
 			}
-				
+			
 			if(delta==ivec2(home))
 			{
 				pos = ivec2(0); desiredX = 0; 
@@ -1926,7 +1925,6 @@ version(/+$DIDE_REGION+/all)
 {
 	struct TextSelectionReference
 	{
-		//TextSelectionReference //////////////////////////////
 		TextCursorReference[2] cursors; 
 		bool primary; 
 		
@@ -1959,7 +1957,7 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		private enum primaryMark = "*"; 
-			
+		
 		string toString()
 		{
 			if(!valid) return ""; 
@@ -1973,9 +1971,9 @@ version(/+$DIDE_REGION+/all)
 			else
 			return s0~"|=>|"~s1.split('|')[$-2..$].join('|') ~ primaryStr; 
 		} 
-			
+		
 		this(string s, Module delegate(File) onFindModule) { this = TextSelection(s, onFindModule).toReference; } 
-			
+		
 	} 
 	
 	/// a.b|1|4|5|=>|2|3* -> a.b|1|2|3*
@@ -2469,7 +2467,7 @@ class CodeRow: Row
 				with(avgColor)
 				if(xRange)
 				{
-					dr.color = color; enum gap = .125f;
+					dr.color = color; enum gap = .125f; 
 					auto r = bounds2(xRange.low, innerHeight*gap, xRange.high, innerHeight*(1-gap))+innerPos; 
 					dr.fillRect(r); 
 				}
@@ -3014,6 +3012,9 @@ class CodeRow: Row
 	auto byCell()
 	{ return rows.map!(r => r.subCells).joiner(only(null)); } 
 	
+	auto byNode()
+	{ return byCell.map!(a=>cast(CodeNode)a).filter!"a"; } 
+	
 	Cell singleCellOrNull()
 	{ return rows.length==1 ? rows[0].singleCellOrNull : null; } 
 	
@@ -3446,6 +3447,11 @@ class CodeRow: Row
 	
 	auto getRow(int rowIdx)
 	{ return rowIdx.inRange(subCells) ? rows[rowIdx] : null; } 
+	
+	auto lastRow()
+	{
+		return rows.backOrNull;
+	}
 	
 	int rowCharCount(int rowIdx) const
 	{
@@ -4227,6 +4233,30 @@ version(/+$DIDE_REGION+/all)
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
+	auto subColumnsBackwards()
+	{ return subCells.retro.map!(a => cast(CodeColumn)a).filter!"a"; } 
+	
+	auto columnAfter(CodeColumn act)
+	{
+		const idx = subCells.countUntil(act);
+		if(idx>=0 && idx+1<subCells.length)
+		return subCells[idx+1..$].map!(a => cast(CodeColumn)a).filter!"a".frontOrNull;
+		return null;
+	}
+	
+	auto columnBefore(CodeColumn act)
+	{
+		const idx = subCells.countUntil(act);
+		if(idx>0)
+		return subCells[0..idx].retro.map!(a => cast(CodeColumn)a).filter!"a".frontOrNull;
+		return null;
+	}
+	
+	auto firstColumn()
+	{ return subColumns.frontOrNull; }
+	
+	auto lastColumn()
+	{ return subColumnsBackwards.frontOrNull; }
 	
 	this(Container parent)
 	{
@@ -6592,7 +6622,7 @@ version(/+$DIDE_REGION+/all)
 			RGBSum sum; 
 			foreach(col; only(attributes, header, block))
 			if(col) sum.add(col.avgColor, col.outerSize.area); 
-			sum.add(bkColor, outerSize.area-sum.totalWeight);
+			sum.add(bkColor, outerSize.area-sum.totalWeight); 
 			return sum.avg(bkColor); 
 		} 
 	}
