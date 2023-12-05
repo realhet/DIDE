@@ -716,7 +716,7 @@ version(/+$DIDE_REGION main+/all)
 								Row(
 									{
 										 margin = "0 3"; flags.yAlign = YAlign.center; 
-										foreach(t; EnumMembers!BuildMessageType) { workspace.UI(t, view); }
+										foreach(t; EnumMembers!BuildMessageType) { workspace.UI_BuildMessageType(t, view); }
 									}
 								); 
 								VLine; //---------------------------
@@ -1081,16 +1081,16 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				{
-					auto a = textSelections;         //choose the first if none is marked with the primary flag.
+					auto a = textSelections; //choose the first if none is marked with the primary flag.
 					if(!a.empty) return a.front; 
 				}
 				
 				return TextSelection.init; 
 			} 
-					
+			
 			auto primaryCaret()
 			{ return primaryTextSelection.caret; } 
-					
+			
 			auto moduleWithPrimaryTextSelection()
 			{
 				auto res = textSelections.filter!"a.primary".map!moduleOf.frontOrNull; 
@@ -1484,7 +1484,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			return []; 
 		} 
-			
+		
 		CellLocation[] locate_snapToRow(vec2 mouse, float epsilon = .5f)
 		{
 			auto st = locate(mouse); 
@@ -1630,7 +1630,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			return []; 
 		} 
-			
+		
 		TextCursor cellLocationToTextCursor(CellLocation[] st)
 		{
 			TextCursor res; 
@@ -1670,13 +1670,13 @@ version(/+$DIDE_REGION main+/all)
 			
 			return validate(res); 
 		} 
-	}version(/+$DIDE_REGION+/all)
+	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
 	{
 		TextCursor createCursorAt(vec2 p)
 		{ return cellLocationToTextCursor(locate_snapToRow(p)); } 
 		
 		//textSelection, cursor movements /////////////////////////////
-			
+		
 		int lineSize()
 		{ return DefaultFontHeight; } 
 		int pageSize()
@@ -1768,49 +1768,108 @@ version(/+$DIDE_REGION main+/all)
 			textSelections = merge(arr); //Todo: maybe merge should reside in validateTextSelections
 		} 
 		
-		void scrollV(float dy)
-		{ frmMain.view.scrollV(dy); } 
-		void scrollH(float dx)
-		{ frmMain.view.scrollH(dx); } 
-		void zoom(float log)
-		{ frmMain.view.zoom(log); } //Todo: Only zoom when window is foreground
-			
-		float scrollSpeed()
-		{ return frmMain.deltaTime.value(second)*2000; } 
-		float zoomSpeed()
-		{ return frmMain.deltaTime.value(second)*8; } 
-		float wheelSpeed = 0.375f; 
-			
-		void insertCursor(int dir)
+		version(/+$DIDE_REGION Scrolling+/all)
 		{
-			auto 	prev = textSelections,
-				next = prev.dup; 
+			void scrollV(float dy)
+			{ frmMain.view.scrollV(dy); } 
+			void scrollH(float dx)
+			{ frmMain.view.scrollH(dx); } 
+			void zoom(float log)
+			{ frmMain.view.zoom(log); } //Todo: Only zoom when window is foreground
+				
+			float scrollSpeed()
+			{ return frmMain.deltaTime.value(second)*2000; } 
+			float zoomSpeed()
+			{ return frmMain.deltaTime.value(second)*8; } 
+			float wheelSpeed = 0.375f; 
+				
+			void insertCursor(int dir)
+			{
+				auto 	prev = textSelections,
+					next = prev.dup; 
+				
+				foreach(ref ts; next)
+				foreach(
+					ref tc; ts.cursors
+					/+
+						Note: It is important to move the cursors separately here.
+						Don't let TextSelection.move do cursor collapsing.
+					+/
+				)
+				tc.move(ivec2(0, dir)); 
+				
+				textSelections = merge(prev ~ next); 
+			} 
 			
-			foreach(ref ts; next)
-			foreach(
-				ref tc; ts.cursors
-				/+
-					Note: It is important to move the cursors separately here.
-					Don't let TextSelection.move do cursor collapsing.
-				+/
-			)
-			tc.move(ivec2(0, dir)); 
+			void scrollInModules(Module[] m)
+			{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
 			
-			textSelections = merge(prev ~ next); 
-		} 
-		
-		void scrollInModules(Module[] m)
-		{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
-		
-		void scrollInAllModules()
-		{ scrollInModules(modules); } 
-		
-		void scrollInModule(Module m)
-		{ if(m) scrollInModules([m]); } 
+			void scrollInAllModules()
+			{ scrollInModules(modules); } 
+			
+			void scrollInModule(Module m)
+			{ if(m) scrollInModules([m]); } 
+		}
 		
 		
-	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
-	{
+		version(/+$DIDE_REGION Validate+/all)
+		{
+			void invalidateTextSelections()
+			{
+				mustValidateTextSelections = true; 
+				textSelectionManager.invalidateInternalSelections; 
+			} 
+			
+			void validateTextSelectionsIfNeeded()
+			{
+				if(mustValidateTextSelections.chkClear)
+				{ textSelections_internal = validate(textSelections_internal); }
+			} 
+			
+			auto validate(TextCursor c)
+			{ return validate(TextSelection(c, c, false)).cursors[0]; } 
+			
+			auto validate(TextSelection s)
+			{
+				auto ts = validate([s]); 
+				return ts.empty ? TextSelection.init : ts[0]; 
+			} 
+			
+			auto validate(TextSelection[] arr)
+			{
+				Cell cachedExistingModule; 
+				
+				bool isExistingModule(Cell c)
+				{
+					if(c is cachedExistingModule) return true; 
+					//Opt: this is helping nothing compared to
+					
+					if(auto m = cast(Module)c)
+					if(modules.canFind(m))
+					{
+						cachedExistingModule = c; 
+						return true; 
+					}
+					return false; 
+				} 
+					
+				bool validate(TextSelection sel)
+				{
+					if(!sel.valid) return false; 
+					auto r = sel.toReference; 
+					if(!r.valid) return false; 
+					
+					auto p = r.cursors[0].path; 
+					if(p[0] !is this) return false; 	//not this workspace
+					if(!isExistingModule(p[1])) return false; 	//module died
+					
+					//Todo: check if selection is inside row boundaries.
+					return true; 
+				} 
+				return arr.filter!(a => validate(a)).array; //Todo: try to fix partially broken selections
+			} 
+		}
+		
 		void preserveTextSelections(void delegate() fun)
 		{
 			//Todo: preserve module selections too
@@ -2067,136 +2126,6 @@ version(/+$DIDE_REGION main+/all)
 		
 		bool selectAll_impl()
 		{ return extendSelection_impl(Yes.selectAll); } 
-	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
-	{
-		struct Location
-		{
-			vec2 origin = vec2(0); 
-			float zoomFactor = 1; 
-		} 
-		
-		@STORED Location[10] storedLocations; 
-		
-		void enforceLocationIndex(int n)
-		{
-			enforce(
-				n.inRange(storedLocations),
-				n.format!"Location index out of range: %s"
-			); 
-		} 
-		
-		void storeLocation(int n)
-		{
-			enforceLocationIndex(n); 
-			with(storedLocations[n])
-			{
-				origin	= frmMain.view.origin.vec2,
-				zoomFactor 	= frmMain.view.scale; 
-			}
-			im.flashInfo(n.format!"Location %s stored."); 
-		} 
-		
-		void jumpToLocation(int n)
-		{
-			enforceLocationIndex(n); 
-			if(storedLocations[n] == Location.init)
-			{
-				im.flashWarning(n.format!"Location %s is uninitialized."); 
-				return; 
-			}
-			with(storedLocations[n])
-			{
-				frmMain.view.origin	= origin.dvec2,
-				frmMain.view.scale 	= zoomFactor; 
-			}
-		} 
-		
-		@STORED string[10] storedMemSlots; 
-		
-		void enforceMemSlotIndex(int n)
-		{
-			enforce(
-				n.inRange(storedMemSlots),
-				n.format!"MemSlot index out of range: %s"
-			); 
-		} 
-		
-		void copyMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			auto s = textSelections.sourceText; 
-			storedMemSlots[n] = s; 
-			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
-		} 
-		
-		void pasteMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			if(storedMemSlots[n].empty)
-			{
-				im.flashWarning(n.format!"MemSlot %s is empty."); 
-				return; 
-			}
-			textSelections = paste_impl(textSelections, No.fromClipboard, storedMemSlots[n]); 
-		} 
-		
-	}version(/+$DIDE_REGION Validate+/all)
-	{
-		//Validation //////////////////////////////////
-		void invalidateTextSelections()
-		{
-			mustValidateTextSelections = true; 
-			textSelectionManager.invalidateInternalSelections; 
-		} 
-		
-		void validateTextSelectionsIfNeeded()
-		{
-			if(mustValidateTextSelections.chkClear)
-			{ textSelections_internal = validate(textSelections_internal); }
-		} 
-		
-		auto validate(TextCursor c)
-		{ return validate(TextSelection(c, c, false)).cursors[0]; } 
-		
-		auto validate(TextSelection s)
-		{
-			auto ts = validate([s]); 
-			return ts.empty ? TextSelection.init : ts[0]; 
-		} 
-		
-		auto validate(TextSelection[] arr)
-		{
-			Cell cachedExistingModule; 
-			
-			bool isExistingModule(Cell c)
-			{
-				if(c is cachedExistingModule) return true; 
-				//Opt: this is helping nothing compared to
-				
-				if(auto m = cast(Module)c)
-				if(modules.canFind(m))
-				{
-					cachedExistingModule = c; 
-					return true; 
-				}
-				return false; 
-			} 
-				
-			bool validate(TextSelection sel)
-			{
-				if(!sel.valid) return false; 
-				auto r = sel.toReference; 
-				if(!r.valid) return false; 
-				
-				auto p = r.cursors[0].path; 
-				if(p[0] !is this) return false; 	 //not this workspace
-				if(!isExistingModule(p[1])) return false; 	 //module died
-				
-				//Todo: check if selection is inside row boundaries.
-				return true; 
-			} 
-			return arr.filter!(a => validate(a)).array; //Todo: try to fix partially broken selections
-		} 
 	}version(/+$DIDE_REGION Permissions+/all)
 	{
 		protected
@@ -2293,15 +2222,15 @@ version(/+$DIDE_REGION main+/all)
 		//Undo/Redo
 		
 		/+
-			 	3 levels
-					1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
-								 beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
-								 meg lenne 2 extra: removedNextRow, removedPrevRow)
-					2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
-								 nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
-								 Innentol nem idovonal van, hanem graph.
-					3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
-						allapotot. Ezt kesobb delta codinggal tomoriteni kell. 
+			3 levels
+				1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
+							 beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
+							 meg lenne 2 extra: removedNextRow, removedPrevRow)
+				2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
+							 nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
+							 Innentol nem idovonal van, hanem graph.
+				3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
+					allapotot. Ezt kesobb delta codinggal tomoriteni kell. 
 		+/
 		
 		protected void executeUndoRedoRecord(in bool isUndo, in bool isInsert, in TextModificationRecord rec)
@@ -2585,7 +2514,7 @@ version(/+$DIDE_REGION main+/all)
 						const newTabCnt = min(row.leadingCodeTabCount, ts.caret.pos.x); 
 						
 						lines = lines.dup; 
-							lines.back = "\t".replicate(newTabCnt) ~ lines.back; 
+						lines.back = "\t".replicate(newTabCnt) ~ lines.back; 
 					}
 					
 					if(requestInsertPermission_prepare(ts, lines.join(DefaultNewLine)))
@@ -3758,7 +3687,80 @@ Note:
 			} 
 		}
 	}
-	version(/+$DIDE_REGION Refactor+/all)
+	version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+	{
+		struct Location
+		{
+			vec2 origin = vec2(0); 
+			float zoomFactor = 1; 
+		} 
+		
+		@STORED Location[10] storedLocations; 
+		
+		void enforceLocationIndex(int n)
+		{
+			enforce(
+				n.inRange(storedLocations),
+				n.format!"Location index out of range: %s"
+			); 
+		} 
+		
+		void storeLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			with(storedLocations[n])
+			{
+				origin	= frmMain.view.origin.vec2,
+				zoomFactor 	= frmMain.view.scale; 
+			}
+			im.flashInfo(n.format!"Location %s stored."); 
+		} 
+		
+		void jumpToLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			if(storedLocations[n] == Location.init)
+			{
+				im.flashWarning(n.format!"Location %s is uninitialized."); 
+				return; 
+			}
+			with(storedLocations[n])
+			{
+				frmMain.view.origin	= origin.dvec2,
+				frmMain.view.scale 	= zoomFactor; 
+			}
+		} 
+		
+		@STORED string[10] storedMemSlots; 
+		
+		void enforceMemSlotIndex(int n)
+		{
+			enforce(
+				n.inRange(storedMemSlots),
+				n.format!"MemSlot index out of range: %s"
+			); 
+		} 
+		
+		void copyMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			auto s = textSelections.sourceText; 
+			storedMemSlots[n] = s; 
+			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
+		} 
+		
+		void pasteMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			if(storedMemSlots[n].empty)
+			{
+				im.flashWarning(n.format!"MemSlot %s is empty."); 
+				return; 
+			}
+			textSelections = paste_impl(textSelections, No.fromClipboard, storedMemSlots[n]); 
+		} 
+		
+	}version(/+$DIDE_REGION Refactor+/all)
 	{
 		static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
 		{
@@ -3904,7 +3906,7 @@ Note:
 									 File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token 
 			+/
 		} 
-		
+		
 		void UI_refactor()
 		{
 			with(im)
@@ -4213,7 +4215,7 @@ Note:
 					//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 				} 
 				
-				@VERB("Ctrl+Enter") void insertNewPage()
+				@VERB("Shift+Enter") void insertNewPage()
 				{
 					/+
 						Todo: it should automatically insert at the end of the selected rows.
@@ -4239,6 +4241,60 @@ Note:
 					}
 					else
 					{ im.flashWarning("Unable to outdent."); }
+				} 
+				
+				@VERB("Ctrl+R") void feed()
+				{
+					if(primaryCaret.valid)
+					{
+						print("---------"); 
+						
+						
+						auto breadcrumbs = primaryCaret.toBreadcrumbs; 
+						if(breadcrumbs.length)
+						{
+							preserveTextSelections
+							(
+								{
+									try
+									{
+										/+
+											Todo: Handle undo.  
+											Save it with a cut operation. 
+											And paste the new stuff with an upgraded paste() 
+											that can work with Nodes too.
+										+/
+										
+										auto node = breadcrumbs.back.node; 
+										auto mod = cast(Module) breadcrumbs.front.node.enforce("Unable to reach module."); 
+										enforce(!mod.isReadOnly, "Module is readonly"); 
+										
+										const source = node.sourceText; 
+										auto newMod = new Module(null, source, StructureLevel.managed); 
+										
+										auto newNode = (cast(CodeNode) newMod.content.firstCell).enforce("Unable to extract first Node."); 
+										enforce(typeid(node)==typeid(newNode), "Node type mismatch"); //todo: Module should handled differently.
+										
+										//Todo: refactor this into row.replaceNode()
+										auto row = (cast(CodeRow) node.parent).enforce("Can't get Node's Row"); 
+										const charIdx = row.subCells.countUntil(node); 
+										enforce(charIdx>=0, "Can't find Node in Row."); 
+										
+										newNode.setParent(row); 
+										row.subCells[charIdx] = newNode; 
+										
+										row.refreshTabIdx; 
+										row.spreadElasticNeedMeasure; 
+										row.setChangedCreated; 
+										row.setChangedRemoved; 
+										
+									}
+									catch(Exception e)
+									im.flashError(e.simpleMsg); 
+								}
+							); 
+						}
+					}
 				} 
 				
 				@VERB("Alt+Up") void moveLineUp()
@@ -4451,972 +4507,973 @@ Note:
 				} 
 			}
 		}
-	}version(/+$DIDE_REGION UI   +/all)
+	}version(/+$DIDE_REGION UI         +/all)
 	{
-		//! UI /////////////////////////////////////////////////////////
-		version(/+$DIDE_REGION+/all)
+		deprecated void UI_ModuleBtns()
 		{
-			
-			deprecated void UI_ModuleBtns()
-			{
-				with(im) {
-					File fileToClose; 
-					foreach(m; modules)
-					{
-						if(
-							Btn(
-								m.file.name,
-														hint(m.file.fullName),
-														genericId(m.file.fullName),
-														selected(0),
-														{
-									fh = 12; theme="tool"; 
-									if(Btn(symbol("Cancel")))
-									fileToClose = m.file; 
-								}
-							)
-						) {}
-					}
-					if(Btn(symbol("Add"))) openModule; 
-					
-					if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))) { closeAllModules; }
-					
-					if(fileToClose) closeModule(fileToClose); 
-				}
-			} 
-			
-			void UI_structureLevel()
-			{
-				with(im) {
-					BtnRow(
-						{
-							Module[] modules = selectedModules; 
-							if(modules.empty) modules = modulesWithTextSelection.array; 
-							
-							static foreach(lvl; EnumMembers!StructureLevel)
+			with(im) {
+				File fileToClose; 
+				foreach(m; modules)
+				{
+					if(
+						Btn(
+							m.file.name,
+							hint(m.file.fullName),
+							genericId(m.file.fullName),
+							selected(0),
 							{
-								{
-									const capt = lvl.text[0..1].capitalize; 
-									if(
-										Btn(
-											{
-												style.bold = modules.any!(m => m.structureLevel==lvl); 
-												Text(capt); 
-											}, 
-											genericId(capt), 
-											selected(desiredStructureLevel==lvl), 
-											{ width = fh/4; },
-											hint("Select desired StructureLevel.\n(Ctrl = reload and apply)")
-										)
-									)
-									{
-										desiredStructureLevel = lvl; 
-										
-										if(
-											inputs.Ctrl.down//apply
-										)
-										preserveTextSelections(
-											{
-												Module[] cantReload; 
-												foreach(m; modules)
-												if(m.structureLevel != desiredStructureLevel)
-												{ if(m.changed) { cantReload ~= m; }else { m.reload(desiredStructureLevel); }}
-												
-												if(!cantReload.empty)
-												{
-													beep; 
-													WARN("Unable to reload modules because they has unsaved changes. ", cantReload.map!"a.file.name"); 
-												}
-											}
-										); 
-									}
-								}
+								fh = 12; theme="tool"; 
+								if(Btn(symbol("Cancel")))
+								fileToClose = m.file; 
 							}
-						}
-					); 
+						)
+					) {}
 				}
-			} 
-			
-			void UI_SearchBox(View2D view)
-			{
-				//UI_SearchBox /////////////////////////////////////////////
-				UI_SearchBox(view, markerLayers[BuildMessageType.find].searchResults); 
-			} 
-			
-			void zoomAt(View2D view, in Container.SearchResult[] searchResults)
-			{
-				if(searchResults.empty) return; 
-				const maxScale = max(view.scale, 1); 
-				view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12); 
-				view.scale = min(view.scale, maxScale); 
-			} 
-					
-			void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults)
-			{
-				with(im)
-				Row
-								(
+				if(Btn(symbol("Add"))) openModule; 
+				
+				if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))) { closeAllModules; }
+				
+				if(fileToClose) closeModule(fileToClose); 
+			}
+		} 
+		
+		void UI_structureLevel()
+		{
+			with(im) {
+				BtnRow(
 					{
-						//Keyboard shortcuts
-						auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
-							kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
-							kcFindClose	= KeyCombo("Esc"); //always
+						Module[] modules = selectedModules; 
+						if(modules.empty) modules = modulesWithTextSelection.array; 
 						
-						//activate searchbox
-						bool needFocus; 
-						if(!searchBoxVisible && searchBoxActivate_request)
-						{ searchBoxVisible = needFocus = true; }
-						searchBoxActivate_request = false; 
-						
-						if(searchBoxVisible)
+						static foreach(lvl; EnumMembers!StructureLevel)
 						{
-							width = fh*12; 
-							
-							Text("Find "); 
-							.Container editContainer; 
-							
-							if(Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; }))
 							{
-								//refresh search results
-								if(searchText.startsWith(':'))
-								{
-									//goto line
-									//Todo: Ctrl+G not works inside Edit
-									//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
-									//Todo: ez ugorhatna regionra is.
-									searchResults = []; 
-									textSelections = []; 
-									if(auto mod = expectOneSelectedModule)
-									if(auto col  = mod.content)
-									if(auto rowCount = col.cellCount)
-									{
-										if(auto line = searchText[1..$].to!int.ifThrown(0))
+								const capt = lvl.text[0..1].capitalize; 
+								if(
+									Btn(
 										{
+											style.bold = modules.any!(m => m.structureLevel==lvl); 
+											Text(capt); 
+										}, 
+										genericId(capt), 
+										selected(desiredStructureLevel==lvl), 
+										{ width = fh/4; },
+										hint("Select desired StructureLevel.\n(Ctrl = reload and apply)")
+									)
+								)
+								{
+									desiredStructureLevel = lvl; 
+									
+									if(
+										inputs.Ctrl.down//apply
+									)
+									preserveTextSelections
+									(
+										{
+											Module[] cantReload; 
+											foreach(m; modules)
+											if(m.structureLevel != desiredStructureLevel)
+											{
+												if(m.changed)	{ cantReload ~= m; }
+												else	{ m.reload(desiredStructureLevel); }
+											}
 											
-											if(line<0 && line>=-rowCount)
-											line = rowCount+line+1; //mirror if negative
-											
-											if(auto ts = col.lineSelection_home(line, true))
-											textSelections = [ts]; 
+											if(!cantReload.empty)
+											{
+												beep; 
+												WARN(
+													"Unable to reload modules because they has unsaved changes. ", 
+													cantReload.map!"a.file.name"
+												); 
+											}
 										}
-									}
+									); 
 								}
-								else
-								{ searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join; }
 							}
-							
-							//display the number of matches. Also save the location of that number on the screen.
-							const matchCnt = searchResults.length; 
-							Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
-							
-							if(
-								Btn(
-									symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-									enable(matchCnt>0), hint("Zoom screen on search results.")
-								)
-							)
-							{ zoomAt(view, searchResults); }
-							if(
-								Btn(
-									"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-									enable(matchCnt>0), hint("Select search results.")
-								)
-							)
-							{ selectSearchResults(searchResults); }
-							
-							if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
-							{
-								searchBoxVisible = false; 
-								searchText = ""; 
-								searchResults = []; 
-							}
-						}
-						else
-						{
-							if(Btn(symbol("Zoom"), hint("Start searching.")))
-							searchBoxActivate; 
-							//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
 						}
 					}
 				); 
+			}
+		} 
+		
+		void UI_BuildMessageType(BuildMessageType bmt, View2D view)
+		{
+			with(im) {
+				//Todo: ennek nem itt a helye....
+				auto hit = Btn(
+					{
+						const hidden = markerLayers[bmt].visible ? 0 : .75f; 
+						
+						auto fade(RGB c) { return c.mix(clSilver, hidden); } 
+						
+						const bmi = buildMessageInfo[bmt]; 
+						style.bkColor = bkColor = fade(bmi.syntax.syntaxBkColor); 
+						const highContrastFontColor = bmi.syntax.syntaxFontColor; 
+						style.fontColor = fade(highContrastFontColor); 
+						Text(bmi.caption); 
+						
+						if(const len = markerLayers[bmt].searchResults.length)
+						{
+							style.fontColor = highContrastFontColor; 
+							Text(" ", len.text); 
+						}
+					}, genericId(bmt)
+				); 
 				
-			} 
-		}version(/+$DIDE_REGION+/all)
-		{
-			void UI(BuildMessageType bmt, View2D view)
-			{
-				with(im) {
-					//UI_BuildMessageTypeBtn ///////////////////////////
-					//Todo: ennek nem itt a helye....
-					auto hit = Btn(
-						{
-							const hidden = markerLayers[bmt].visible ? 0 : .75f; 
-									
-							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
-									
-							const bmi = buildMessageInfo[bmt]; 
-							style.bkColor = bkColor = fade(bmi.syntax.syntaxBkColor); 
-							const highContrastFontColor = bmi.syntax.syntaxFontColor; 
-							style.fontColor = fade(highContrastFontColor); 
-							Text(bmi.caption); 
-									
-							if(const len = markerLayers[bmt].searchResults.length)
-							{
-								style.fontColor = highContrastFontColor; 
-								Text(" ", len.text); 
-							}
-						}, genericId(bmt)
-					); 
-							
-					if(mainWindow.isForeground && hit.pressed)
-					{
-						markerLayers[bmt].visible = true; 
-						zoomAt(view, markerLayers[bmt].searchResults); 
-					}
-							
-					if(mainWindow.isForeground && hit.hover && inputs.RMB.pressed)
-					{ markerLayers[bmt].visible.toggle; }
-				}
-			} 
-					
-			void UI_selectedModulesHint()
-			{
-				with(im) {
-					//UI_selectedModulesHint//////////////////////////
-					auto sm = selectedModules; 
-					void stats()
-					{
-						Row(
-							format!"(%d LOC, %sB)"(
-								sm.map!(m => m.linesOfCode).sum,
-								shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
-							)
-						); 
-					} 
-					if(sm.length==1)
-					{
-						auto m = sm.front; 
-						Row(
-							{ padding="0 8"; }, 
-							"Selected module: ", 
-							{ CodeLocation(m.file.fullName).UI; },
-							{
-								if(sameText(m.file.fullName, mainModuleFile.fullName))
-								{ Btn("Main", enable(false)); }
-								else
-								{
-									if(m.isMain)
-									{ if(Btn("Set Main")) mainModule = m; }
-								}
-								stats; 
-							}
-						); 
-					}
-					else if(sm.length>1)
-					{ Row({ padding="0 8"; }, sm.length.text, " modules selected ", { stats; }); }
-					else
-					{ Row({ padding="0 8"; }, "No modules selected."); }
-				}
-			} 
-					
-			void UI_mouseLocationHint(View2D view)
-			{
-				with(im) {
-					if(!view.isMouseInside) return; 
-					auto st = locate_snapToRow(view.mousePos.vec2); 
-					if(st.length)
-					{
-						Row(
-							{ padding="0 8"; }, "\u2316 ",
-												{
-								const loc = cellLocationToCodeLocation(st); 
-								loc.UI; 
-								
-								/*
-									if(loc.file && loc.line){
-																if(loc.column) with(findModule(loc.file).code){
-																	const pos = ivec2(loc.column, loc.line)-1;
-																	Text("   ", pos.text);
-																}else with(findModule(loc.file).code){
-																	const pos = ivec2(st.back.localPos.x<=0 ? 0 
-																		: rows[loc.line-1].cellCount, loc.line-1);
-																	Text("   ", pos.text);
-																}
-															}
-								*/
-								
-								/*
-									auto crsr = cellLocationToTextCursor(st);
-									if(crsr.valid){
-										Text("   ", crsr.text, "   ", crsr.toReference.text, "   ",
-											crsr.worldPos.text, "   ", view.mousePos.text);
-									}
-								*/
-								
-								if(textSelections.length>1)
-								{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
-								else if(textSelections.length==1)
-								{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
-							}
-						); 
-					}
-				}
-			} 
-		}version(/+$DIDE_REGION+/all)
-		{
-			auto UI_ErrorList()
-			{
-				with(im) {
-					//UI_ErrorList ////////////////////////////
-					auto siz = innerSize; 
-					Container
-					(
-						{
-							outerSize = siz; 
-							with(flags) {
-								clipSubCells = true; 
-								vScrollState = ScrollState.auto_; 
-								hScrollState = ScrollState.auto_; 
-							}
-							
-							if(auto mod = errorModule)
-							{
-								if(auto col = mod.content)
-								{
-									//total size placeholder
-									Container({ outerPos = col.outerSize; outerSize = vec2(0); }); 
-									
-									flags.saveVisibleBounds = true; 
-									if(auto visibleBounds = imstVisibleBounds(actId))
-									{
-										CodeRow[] visibleRows = col.rows.filter!(
-											r => r.outerBounds.overlaps(visibleBounds)
-											&& r.subCells.length
-										).array; 
-										//Opt: binary search
-										
-										actContainer.append(cast(Cell[])visibleRows); 
-										//Note: append is important because it already has the spaceHolder Container.
-										
-										/+
-											print("-------------------------------");
-											
-											//print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
-											
-											void visitLocations(.Container act){
-												if(!act) return;
-												
-												if(auto row = cast(.Row)act){
-													enum prefix = "CodeLocation:";
-													if(row.id.isWild(prefix~"*")){
-														print("LOC:", wild[0]);
-													}
-												}
-												foreach(sc; act.subContainers)
-													visitLocations(sc); //recursive
-											}
-											visitLocations(actContainer);
-											print("-------------------------------");
-										+/
-									}
-								}
-								else
-								WARN("Invalid errorList"); 
-							}
-						}
-					); 
-				}
-			} 
-					
-			auto findErrorListItemByLocation(string locStr)
-			{ if(auto mod = errorModule) if(auto col = mod.content) {}} 
-					
-					
-			string lastNearestSearchResultReference; 
-					
-			Container mouseOverHintCntr; 
-					
-			///must be called from root level
-			void UI_mouseOverHint()
-			{
-				with(im) {
-					if(lastNearestSearchResultReference.chkSet(nearestSearchResult.reference))
-					{
-						mouseOverHintCntr = null; 
-						
-						if(nearestSearchResult.reference!="")
-						{
-							
-							//Todo: this is dead code. ErrorModule has changed a lot.
-							/+
-								if(auto mod = errorModule)
-									if(auto col = mod.content)
-									{
-										const locationRef = nearestSearchResult.reference;
-										foreach(row; col.rows)
-										{
-											bool found = false;
-											void visitLocations(.Container act)
-											{
-												//Todo: visitor pattern for cells/containers. 
-												//Similar to the allParents() thing.
-												if(!act) return;
-												
-												if(auto row = cast(.Row)act)
-												{ if(row.id==locationRef) { found = true; } }
-												foreach(sc; act.subContainers)
-												visitLocations(sc); //recursive
-											}
-											
-											visitLocations(row);
-											
-											if(found)
-											{
-												Container(
-													{
-														border = row.border;
-														padding = row.padding;
-														bkColor = row.bkColor;
-														outerSize = row.outerSize;
-														
-														actContainer.subCells = row.subCells;
-													}
-												);
-												mouseOverHintCntr = removeLastContainer;
-												break;
-											}
-										}
-									}
-							+/
-							
-							//Note: This is the new buildMessage hint
-							if(!mouseOverHintCntr)
-							if(nearestSearchResult.reference.isWild(CodeLocationPrefix~"*") && wild[0] in messageSourceTextByLocation)
-							{
-								auto msgSrc = messageSourceTextByLocation[wild[0]]; 
-								if(msgSrc in messageUICache) {
-									mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]); 
-									//Todo: Highlight the CodeLocation comment which is nerest to the mouse
-									//Todo: show bezier arrows from the message hint's codelocations
-									//Todo: a way to lock the message hint to be able to interact with it using the mouse
-									//Todo: a way to scroll errorlist over the hovered item
-								}
-							}
-							
-							//if unable to generate a hint, display the SearchResult.reference:
-							if(!mouseOverHintCntr) {
-								Text(nearestSearchResult.reference); 
-								mouseOverHintCntr = removeLastContainer; 
-							}
-						}
-					}
-					
-					if(mouseOverHintCntr)
-					actContainer.append(mouseOverHintCntr); 
-				}
-			} 
-		}	
-	}version(/+$DIDE_REGION Draw   +/all)
-	{
-		//! draw routines ////////////////////////////////////////////////////
-		version(/+$DIDE_REGION+/all)
-		{
-			SearchResult nearestSearchResult;  //Todo: MMB jumps to nearestSearchResult
-			float nearestSearchResult_dist; 
-			RGB nearestSearchResult_color, _nearestSearchResult_ActColor; 
-					
-			void resetNearestSearchResult()
-			{
-				nearestSearchResult = SearchResult.init; 
-				nearestSearchResult_dist = 1e30; 
-			} 
-					
-			void updateNearestSearchResult(float dist, lazy const SearchResult sr)
-			{
-				if(dist<nearestSearchResult_dist)
+				if(mainWindow.isForeground && hit.pressed)
 				{
-					nearestSearchResult_dist = dist; 
-					nearestSearchResult = cast()sr; //Todo: constness
-					nearestSearchResult_color = _nearestSearchResult_ActColor; 
+					markerLayers[bmt].visible = true; 
+					zoomAt(view, markerLayers[bmt].searchResults); 
 				}
-			} 
+				
+				if(mainWindow.isForeground && hit.hover && inputs.RMB.pressed)
+				{ markerLayers[bmt].visible.toggle; }
+			}
+		} 
+		
+		void UI_SearchBox(View2D view)
+		{
+			//UI_SearchBox /////////////////////////////////////////////
+			UI_SearchBox(view, markerLayers[BuildMessageType.find].searchResults); 
+		} 
+		
+		void zoomAt(View2D view, in Container.SearchResult[] searchResults)
+		{
+			if(searchResults.empty) return; 
+			const maxScale = max(view.scale, 1); 
+			view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12); 
+			view.scale = min(view.scale, maxScale); 
+		} 
+		
+		void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults)
+		{
+			with(im)
+			Row
+			(
+				{
+					//Keyboard shortcuts
+					auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
+						kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
+						kcFindClose	= KeyCombo("Esc"); //always
 					
-			void drawSearchResults(Drawing dr, in SearchResult[] searchResults, RGB clSearchHighLight, float extraThickness = 0)
-			{
-				with(dr) {
-					const 	arrowSize = 12+3*blink,
-						arrowThickness = arrowSize*.2f,
-						
-						far = lod.level>1,
-						extra = lod.pixelSize* (2.5f*blink+.5f + extraThickness),
-						
-						clamper = RectClamperF(im.getView, arrowThickness*2); 
+					//activate searchbox
+					bool needFocus; 
+					if(!searchBoxVisible && searchBoxActivate_request)
+					{ searchBoxVisible = needFocus = true; }
+					searchBoxActivate_request = false; 
 					
-					bool isVisible(in bounds2 b)
-					{ return clamper.overlaps(b); } 
-					
-					//always draw these
-					color = clSearchHighLight; 
-					_nearestSearchResult_ActColor = clSearchHighLight; 
-					
-					auto mp = frmMain.view.mousePos.vec2; 
-					
-					static float distanceB(in vec2 p, in bounds2 b)
+					if(searchBoxVisible)
 					{
-						const 	dx = max(b.low.x - p.x, 0, p.x - b.high.x),
-							dy = max(b.low.y - p.y, 0, p.y - b.high.y); 
-						return sqrt(dx*dx + dy*dy); 
-					} 
-					
-					foreach(sr; searchResults)
-					if(auto b = sr.bounds)
-					{
-						//Todo: constness
-						if(isVisible(b))
+						width = fh*12; 
+						
+						Text("Find "); 
+						.Container editContainer; 
+						
+						if(Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; }))
 						{
-							updateNearestSearchResult(distanceB(mp, b), sr); 
-							if(far)
-							{ fillRect(b.inflated(extra)); }
+							//refresh search results
+							if(searchText.startsWith(':'))
+							{
+								//goto line
+								//Todo: Ctrl+G not works inside Edit
+								//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
+								//Todo: ez ugorhatna regionra is.
+								searchResults = []; 
+								textSelections = []; 
+								if(auto mod = expectOneSelectedModule)
+								if(auto col  = mod.content)
+								if(auto rowCount = col.cellCount)
+								{
+									if(auto line = searchText[1..$].to!int.ifThrown(0))
+									{
+										
+										if(line<0 && line>=-rowCount)
+										line = rowCount+line+1; //mirror if negative
+										
+										if(auto ts = col.lineSelection_home(line, true))
+										textSelections = [ts]; 
+									}
+								}
+							}
+							else
+							{ searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join; }
+						}
+						
+						//display the number of matches. Also save the location of that number on the screen.
+						const matchCnt = searchResults.length; 
+						Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
+						
+						if(
+							Btn(
+								symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
+								enable(matchCnt>0), hint("Zoom screen on search results.")
+							)
+						)
+						{ zoomAt(view, searchResults); }
+						if(
+							Btn(
+								"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
+								enable(matchCnt>0), hint("Select search results.")
+							)
+						)
+						{ selectSearchResults(searchResults); }
+						
+						if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
+						{
+							searchBoxVisible = false; 
+							searchText = ""; 
+							searchResults = []; 
+						}
+					}
+					else
+					{
+						if(Btn(symbol("Zoom"), hint("Start searching.")))
+						searchBoxActivate; 
+						//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
+					}
+				}
+			); 
+			
+		} 
+		
+		void UI_selectedModulesHint()
+		{
+			with(im) {
+				auto sm = selectedModules; 
+				void stats()
+				{
+					Row(
+						format!"(%d LOC, %sB)"(
+							sm.map!(m => m.linesOfCode).sum,
+							shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
+						)
+					); 
+				} 
+				if(sm.length==1)
+				{
+					auto m = sm.front; 
+					Row(
+						{ padding="0 8"; }, 
+						"Selected module: ", 
+						{ CodeLocation(m.file.fullName).UI; },
+						{
+							if(sameText(m.file.fullName, mainModuleFile.fullName))
+							{ Btn("Main", enable(false)); }
 							else
 							{
-								lineWidth = extra; 
-								arrowStyle = ArrowStyle.none; 
-								drawRect(b); 
+								if(m.isMain)
+								{ if(Btn("Set Main")) mainModule = m; }
+							}
+							stats; 
+						}
+					); 
+				}
+				else if(sm.length>1)
+				{ Row({ padding="0 8"; }, sm.length.text, " modules selected ", { stats; }); }
+				else
+				{ Row({ padding="0 8"; }, "No modules selected."); }
+			}
+		} 
+		
+		void UI_mouseLocationHint(View2D view)
+		{
+			with(im) {
+				if(!view.isMouseInside) return; 
+				auto st = locate_snapToRow(view.mousePos.vec2); 
+				if(st.length)
+				{
+					Row(
+						{ padding="0 8"; }, "\u2316 ",
+						{
+							const loc = cellLocationToCodeLocation(st); 
+							loc.UI; 
+							
+							/*
+								if(loc.file && loc.line){
+									if(loc.column) with(findModule(loc.file).code){
+										const pos = ivec2(loc.column, loc.line)-1;
+										Text("   ", pos.text);
+									}else with(findModule(loc.file).code){
+										const pos = ivec2(st.back.localPos.x<=0 ? 0 
+											: rows[loc.line-1].cellCount, loc.line-1);
+										Text("   ", pos.text);
+									}
+								}
+							*/
+							
+							/*
+								auto crsr = cellLocationToTextCursor(st);
+								if(crsr.valid){
+									Text("   ", crsr.text, "   ", crsr.toReference.text, "   ",
+										crsr.worldPos.text, "   ", view.mousePos.text);
+								}
+							*/
+							
+							if(textSelections.length>1)
+							{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
+							else if(textSelections.length==1)
+							{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+						}
+					); 
+				}
+			}
+		} 
+		
+		auto UI_ErrorList()
+		{
+			with(im) {
+				//UI_ErrorList ////////////////////////////
+				auto siz = innerSize; 
+				Container
+				(
+					{
+						outerSize = siz; 
+						with(flags) {
+							clipSubCells = true; 
+							vScrollState = ScrollState.auto_; 
+							hScrollState = ScrollState.auto_; 
+						}
+						
+						if(auto mod = errorModule)
+						{
+							if(auto col = mod.content)
+							{
+								//total size placeholder
+								Container({ outerPos = col.outerSize; outerSize = vec2(0); }); 
+								
+								flags.saveVisibleBounds = true; 
+								if(auto visibleBounds = imstVisibleBounds(actId))
+								{
+									CodeRow[] visibleRows = col.rows.filter!(
+										r => r.outerBounds.overlaps(visibleBounds)
+										&& r.subCells.length
+									).array; 
+									//Opt: binary search
+									
+									actContainer.append(cast(Cell[])visibleRows); 
+									//Note: append is important because it already has the spaceHolder Container.
+									
+									/+
+										print("-------------------------------");
+										
+										//print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
+										
+										void visitLocations(.Container act){
+											if(!act) return;
+											
+											if(auto row = cast(.Row)act){
+												enum prefix = "CodeLocation:";
+												if(row.id.isWild(prefix~"*")){
+													print("LOC:", wild[0]);
+												}
+											}
+											foreach(sc; act.subContainers)
+												visitLocations(sc); //recursive
+										}
+										visitLocations(actContainer);
+										print("-------------------------------");
+									+/
+								}
+							}
+							else
+							WARN("Invalid errorList"); 
+						}
+					}
+				); 
+			}
+		} 
+		
+		
+		auto findErrorListItemByLocation(string locStr)
+		{ if(auto mod = errorModule) if(auto col = mod.content) {}} 
+		
+		string lastNearestSearchResultReference; 
+		
+		Container mouseOverHintCntr; 
+		
+		///must be called from root level
+		void UI_mouseOverHint()
+		{
+			with(im) {
+				if(lastNearestSearchResultReference.chkSet(nearestSearchResult.reference))
+				{
+					mouseOverHintCntr = null; 
+					
+					if(nearestSearchResult.reference!="")
+					{
+						
+						//Todo: this is dead code. ErrorModule has changed a lot.
+						/+
+							if(auto mod = errorModule)
+								if(auto col = mod.content)
+								{
+									const locationRef = nearestSearchResult.reference;
+									foreach(row; col.rows)
+									{
+										bool found = false;
+										void visitLocations(.Container act)
+										{
+											//Todo: visitor pattern for cells/containers. 
+											//Similar to the allParents() thing.
+											if(!act) return;
+											
+											if(auto row = cast(.Row)act)
+											{ if(row.id==locationRef) { found = true; } }
+											foreach(sc; act.subContainers)
+											visitLocations(sc); //recursive
+										}
+										
+										visitLocations(row);
+										
+										if(found)
+										{
+											Container(
+												{
+													border = row.border;
+													padding = row.padding;
+													bkColor = row.bkColor;
+													outerSize = row.outerSize;
+													
+													actContainer.subCells = row.subCells;
+												}
+											);
+											mouseOverHintCntr = removeLastContainer;
+											break;
+										}
+									}
+								}
+						+/
+						
+						//Note: This is the new buildMessage hint
+						if(!mouseOverHintCntr)
+						if(
+							nearestSearchResult.reference.isWild(CodeLocationPrefix~"*") 
+							&& wild[0] in messageSourceTextByLocation
+						)
+						{
+							auto msgSrc = messageSourceTextByLocation[wild[0]]; 
+							if(msgSrc in messageUICache)
+							{
+								mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]); 
+								//Todo: Highlight the CodeLocation comment which is nerest to the mouse
+								//Todo: show bezier arrows from the message hint's codelocations
+								//Todo: a way to lock the message hint to be able to interact with it using the mouse
+								//Todo: a way to scroll errorlist over the hovered item
 							}
 						}
+						
+						//if unable to generate a hint, display the SearchResult.reference:
+						if(!mouseOverHintCntr) {
+							Text(nearestSearchResult.reference); 
+							mouseOverHintCntr = removeLastContainer; 
+						}
+					}
+				}
+				
+				if(mouseOverHintCntr)
+				actContainer.append(mouseOverHintCntr); 
+			}
+		} 
+	}version(/+$DIDE_REGION Draw     +/all)
+	{
+		
+		SearchResult nearestSearchResult;  //Todo: MMB jumps to nearestSearchResult
+		float nearestSearchResult_dist; 
+		RGB nearestSearchResult_color, _nearestSearchResult_ActColor; 
+		
+		void resetNearestSearchResult()
+		{
+			nearestSearchResult = SearchResult.init; 
+			nearestSearchResult_dist = 1e30; 
+		} 
+		
+		void updateNearestSearchResult(float dist, lazy const SearchResult sr)
+		{
+			if(dist<nearestSearchResult_dist)
+			{
+				nearestSearchResult_dist = dist; 
+				nearestSearchResult = cast()sr; //Todo: constness
+				nearestSearchResult_color = _nearestSearchResult_ActColor; 
+			}
+		} 
+		
+		void drawSearchResults(
+			Drawing dr, in SearchResult[] searchResults, 
+			RGB clSearchHighLight, float extraThickness = 0
+		)
+		{
+			with(dr) {
+				const 	arrowSize = 12+3*blink,
+					arrowThickness = arrowSize*.2f,
+					
+					far = lod.level>1,
+					extra = lod.pixelSize* (2.5f*blink+.5f + extraThickness),
+					
+					clamper = RectClamperF(im.getView, arrowThickness*2); 
+				
+				bool isVisible(in bounds2 b)
+				{ return clamper.overlaps(b); } 
+				
+				//always draw these
+				color = clSearchHighLight; 
+				_nearestSearchResult_ActColor = clSearchHighLight; 
+				
+				auto mp = frmMain.view.mousePos.vec2; 
+				
+				static float distanceB(in vec2 p, in bounds2 b)
+				{
+					const 	dx = max(b.low.x - p.x, 0, p.x - b.high.x),
+						dy = max(b.low.y - p.y, 0, p.y - b.high.y); 
+					return sqrt(dx*dx + dy*dy); 
+				} 
+				
+				foreach(sr; searchResults)
+				if(auto b = sr.bounds)
+				{
+					//Todo: constness
+					if(isVisible(b))
+					{
+						updateNearestSearchResult(distanceB(mp, b), sr); 
+						if(far)
+						{ fillRect(b.inflated(extra)); }
 						else
 						{
-							if(sr.showArrow)
-							{
-								lineWidth = -arrowThickness -extraThickness; 
-								arrowStyle = ArrowStyle.arrow; 
-								
-								const p = clamper.clampArrow(b.center); 
-								line(p); 
-								updateNearestSearchResult(distance(mp, p[1]), sr); 
+							lineWidth = extra; 
+							arrowStyle = ArrowStyle.none; 
+							drawRect(b); 
+						}
+					}
+					else
+					{
+						if(sr.showArrow)
+						{
+							lineWidth = -arrowThickness -extraThickness; 
+							arrowStyle = ArrowStyle.arrow; 
+							
+							const p = clamper.clampArrow(b.center); 
+							line(p); 
+							updateNearestSearchResult(distance(mp, p[1]), sr); 
+						}
+					}
+				}
+				
+				arrowStyle = ArrowStyle.none; 
+				
+				//later pass, draw the columns as highlighted so this will always visible
+				/*
+					if(!far){
+						foreach(sr; searchResults)
+							if(isVisible(sr.bounds)){
+								dr.alpha = .5*blink;
+								sr.drawHighlighted(dr, clSearchHighLight); //close lod
 							}
-						}
 					}
-					
-					arrowStyle = ArrowStyle.none; 
-					
-					//later pass, draw the columns as highlighted so this will always visible
-					/*
-						if(!far){
-											foreach(sr; searchResults)
-												if(isVisible(sr.bounds)){
-													dr.alpha = .5*blink;
-													sr.drawHighlighted(dr, clSearchHighLight); //close lod
-												}
-										}
-										dr.alpha = 1;
-					*/
-				}
-			} 
-		}version(/+$DIDE_REGION+/all)
+					dr.alpha = 1;
+				*/
+			}
+		} 
+		
+		/// A flashing effect, when right after the module was loaded.
+		void drawModuleLoadingHighlights(string field)(Drawing dr, RGB c)
 		{
-			/// A flashing effect, when right after the module was loaded.
-			void drawModuleLoadingHighlights(string field)(Drawing dr, RGB c)
+			const t0 = now; 
+			foreach(m; modules)
 			{
-				const t0 = now; 
-				foreach(m; modules)
-				{
-					const dt = (t0-mixin("m."~field)).value(2.5f*second); 
-					if(dt<1)
-					drawHighlight(dr, m, c, sqr(1-dt)); 
-				}
-			} 
-					
-			/*
-				protected void drawSelectedModules(Drawing dr, RGB clSelected, float selectedAlpha, RGB clHovered, float hoveredAlpha){ with(dr){
-								selectedModules.each!(m => drawHighlight(dr, m, clSelected, selectedAlpha));
-								drawHighlight(dr, hoveredModule, clHovered, hoveredAlpha);
-							}}
-			*/
-					
-			protected void drawSelectionRect(Drawing dr, RGB clRect)
-			{
-				if(auto bnd = moduleSelectionManager.selectionBounds)
-				with(dr) {
-					lineWidth = -1; 
-					lineStyle = LineStyle.dash; 
-					color = clRect; 
-					drawRect(bnd); 
-					lineStyle = LineStyle.normal; 
-				}
-			} 
-					
-			protected void drawMainModuleOutlines(Drawing dr)
-			{
-				auto mm=mainModule; 
-				foreach(m; modules)
-				{
-					if(m==mm) { dr.color = RGB(0xFF, 0xD7, 0x00); dr.lineWidth = -2.5f; dr.drawRect(m.outerBounds); }
-					else if(m.isMain) { dr.color = clSilver; dr.lineWidth = -1.5f; dr.drawRect(m.outerBounds); }
-					//else if(m.file.extIs(".d")){ dr.color = clSilver; dr.lineWidth = 12; dr.drawRect(m.outerBounds); }
-				}
-			} 
-					
-			protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
-			{
-				//Todo: detect changes and only collect info when changed.
-				
-				const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
-				
-				foreach(folderPath; paths)
-				{
-					bounds2 bnd; 
-					foreach(m; modules)
-					{
-						const modulePath = m.file.path.fullPath; 
-						if(modulePath.startsWith(folderPath))
-						{
-							const intermediateFolderCount = modulePath[folderPath.length..$].filter!`a=='\\'`.walkLength; 
-							
-							bnd |= m.outerBounds.inflated((1+intermediateFolderCount)*255.0f/*max font size ATM*/); 
-						}
-					}
-					
-					if(bnd) {
-						dr.lineWidth = -1; 
-						dr.color = clFrame; 
-						dr.drawRect(bnd); 
-					}
-							
-					with(cachedFolderLabel(folderPath))
-					{
-						outerPos = bnd.topLeft - vec2(0, 255); 
-						draw(dr); 
-					}
-				}
-			} 
-			
-			void drawModuleBuildStates(Drawing dr)
-			{
-				with(ModuleBuildState)
-				foreach(m; modules)
-				if(m.buildState!=notInProject)
-				{
-					dr.color = moduleBuildStateColors[m.buildState]; 
-					dr.lineWidth = -4; 
-					//if(m.buildState==compiling) dr.drawRect(m.outerBounds);
-					dr.alpha = m.buildState==compiling ? mix(.15f, .55f, blink) : .15f; 
-					dr.fillRect(m.outerBounds); 
-				}
-				dr.alpha = 1; 
-			} 
-		}version(/+$DIDE_REGION+/all)
+				const dt = (t0-mixin("m."~field)).value(2.5f*second); 
+				if(dt<1)
+				drawHighlight(dr, m, c, sqr(1-dt)); 
+			}
+		} 
+		
+		/*
+			protected void drawSelectedModules(
+				Drawing dr, RGB clSelected, float selectedAlpha, 
+				RGB clHovered, float hoveredAlpha
+			){ with(dr){
+				selectedModules.each!(m => drawHighlight(dr, m, clSelected, selectedAlpha));
+				drawHighlight(dr, hoveredModule, clHovered, hoveredAlpha);
+			}}
+		*/
+		
+		protected void drawSelectionRect(Drawing dr, RGB clRect)
 		{
-			void drawTextSelections(Drawing dr, View2D view)
+			if(auto bnd = moduleSelectionManager.selectionBounds)
+			with(dr) {
+				lineWidth = -1; 
+				lineStyle = LineStyle.dash; 
+				color = clRect; 
+				drawRect(bnd); 
+				lineStyle = LineStyle.normal; 
+			}
+		} 
+		
+		void drawTextSelections(Drawing dr, View2D view)
+		{
+			version(/+$DIDE_REGION+/all)
 			{
-				//drawTextSelections ////////////////////////////
-				version(/+$DIDE_REGION+/all)
+				scope(exit) dr.alpha = 1; 
+				
+				const 	near	= lod.zoomFactor.smoothstep(0.02, 0.1),
+					clSelected	= mix(
+					mix(RGB(0x404040), clGray, near*.66f),
+					mix(clWhite, clGray, near*.66f), blink
+				),
+					clCaret	= clSilver,
+					clPrimaryCaret 	= clWhite,
+					alpha	= mix(0.75f, .4f, near); 
+				
+				const cullBounds = view.subScreenBounds_anim; 
+				
+				dr.color = clSelected; 
+				dr.alpha = alpha; 
+				foreach(sel; textSelections)
+				if(!sel.isZeroLength)
 				{
-					scope(exit) dr.alpha = 1; 
-					
-					const 	near	= lod.zoomFactor.smoothstep(0.02, 0.1),
-						clSelected	= mix(
-						mix(RGB(0x404040), clGray, near*.66f),
-														mix(clWhite, clGray, near*.66f), blink
-					),
-						clCaret	= clSilver,
-						clPrimaryCaret 	= clWhite,
-						alpha	= mix(0.75f, .4f, near); 
-					
-					const cullBounds = view.subScreenBounds_anim; 
-					
-					dr.color = clSelected; 
-					dr.alpha = alpha; 
-					foreach(sel; textSelections)
-					if(!sel.isZeroLength)
+					auto col = sel.codeColumn; 
+					const 	colInnerPos	= worldInnerPos(col), //Opt: group selections by codeColumn.
+						colInnerBounds 	= bounds2(colInnerPos, colInnerPos+col.innerSize); 
+					if(cullBounds.overlaps(colInnerBounds))
 					{
-						auto col = sel.codeColumn; 
-						const 	colInnerPos	= worldInnerPos(col), //Opt: group selections by codeColumn.
-							colInnerBounds 	= bounds2(colInnerPos, colInnerPos+col.innerSize); 
-						if(cullBounds.overlaps(colInnerBounds))
+						const localCullBounds = cullBounds - colInnerPos; 
+						auto 	st	= sel.start,
+							en 	= sel.end; 
+						
+						const 	pages = col.getPageRowRanges,
+							singlePage = pages.length==1; 
+						
+						foreach(y; st.pos.y..en.pos.y+1)
 						{
-							const localCullBounds = cullBounds - colInnerPos; 
-							auto 	st	= sel.start,
-								en 	= sel.end; 
+							//Todo: this loop is in the copy routine as well. Must refactor and reuse
+							auto row = col.rows[y]; 
+							const rowCellCount = row.cellCount; 
 							
-							const 	pages = col.getPageRowRanges,
-								singlePage = pages.length==1; 
-							
-							foreach(y; st.pos.y..en.pos.y+1)
+							//culling
+							if(row.outerBottom < localCullBounds.top) continue;  //Opt: trisect
+							if(singlePage)
+							{ if(row.outerTop > localCullBounds.bottom) break; }
+							else
 							{
-								//Todo: this loop is in the copy routine as well. Must refactor and reuse
-								auto row = col.rows[y]; 
-								const rowCellCount = row.cellCount; 
-								
-								//culling
-								if(row.outerBottom < localCullBounds.top) continue;  //Opt: trisect
-								if(singlePage)
-								{ if(row.outerTop > localCullBounds.bottom) break; }
-								else
+								if(row.outerTop > localCullBounds.bottom) continue; //next page can follow
+								if(row.outerLeft > localCullBounds.right) break; 
+							}
+							
+							const 	isFirstRow 	= y==st.pos.y,
+								isLastRow	= y==en.pos.y; 
+							const 	x0 	= isFirstRow ? st.pos.x : 0,
+								x1	= isLastRow ? en.pos.x : rowCellCount+1; 
+							const 	rowInnerPos 	= colInnerPos + row.innerPos; 
+							
+							dr.translate(rowInnerPos); scope(exit) dr.pop; 
+							
+							if(lod.level<=1)
+							{
+								foreach(x; x0..x1)
 								{
-									if(row.outerTop > localCullBounds.bottom) continue; //next page can follow
-									if(row.outerLeft > localCullBounds.right) break; 
-								}
-								
-								const 	isFirstRow 	= y==st.pos.y,
-									isLastRow	= y==en.pos.y; 
-								const 	x0 	= isFirstRow ? st.pos.x : 0,
-									x1	= isLastRow ? en.pos.x : rowCellCount+1; 
-								const 	rowInnerPos 	= colInnerPos + row.innerPos; 
-								
-								dr.translate(rowInnerPos); scope(exit) dr.pop; 
-								
-								if(lod.level<=1)
-								{
-									foreach(x; x0..x1)
-									{
-										
-										void fade(bounds2 bnd)
-										{
-											dr.color = clSelected; 
-											dr.alpha = alpha; 
-											
-											enum gap = .5f; 
-											if(isFirstRow)
-											{
-												bnd.top += gap; 
-												if(x==x0) bnd.left += gap; 
-											}
-											if(isLastRow)
-											{
-												bnd.bottom -= gap; 
-												if(x==x1-1) bnd.right -= gap; 
-											}
-											dr.fillRect(bnd); 
-										} 
-										
-										assert(x.inRange(0, rowCellCount), "out of range"); 
-										if(x<rowCellCount)
-										{
-											/+
-												Todo: make the nice version: the font will be NOT blended to gray, 
-												but it hides the markerLayers completely. Should make a 
-												text drawer that uses alpha on the background and leaves 
-												the font color as is.
-											+/
-											/+
-												if(auto g = row.glyphs[x]){
-													const old = tuple(g.bkColor, g.fontColor);
-													g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
-													dr.alpha = 1;
-													g.draw(dr);
-													g.bkColor = old[0]; g.fontColor = old[1];
-												}else
-											+/
-											{ fade(row.subCells[x].outerBounds); }
-										}
-										else
-										{
-											//newLine
-											auto g = newLineGlyph; 
-											g.bkColor = row.bkColor;  g.fontColor = clGray; 
-											dr.alpha = 1; 
-											g.outerPos = row.newLinePos; 
-											g.draw(dr); 
-											
-											fade(g.outerBounds); 
-										}
-									}
 									
+									void fade(bounds2 bnd)
+									{
+										dr.color = clSelected; 
+										dr.alpha = alpha; 
+										
+										enum gap = .5f; 
+										if(isFirstRow)
+										{
+											bnd.top += gap; 
+											if(x==x0) bnd.left += gap; 
+										}
+										if(isLastRow)
+										{
+											bnd.bottom -= gap; 
+											if(x==x1-1) bnd.right -= gap; 
+										}
+										dr.fillRect(bnd); 
+									} 
+									
+									assert(x.inRange(0, rowCellCount), "out of range"); 
+									if(x<rowCellCount)
+									{
+										/+
+											Todo: make the nice version: the font will be NOT blended to gray, 
+											but it hides the markerLayers completely. Should make a 
+											text drawer that uses alpha on the background and leaves 
+											the font color as is.
+										+/
+										/+
+											if(auto g = row.glyphs[x]){
+												const old = tuple(g.bkColor, g.fontColor);
+												g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
+												dr.alpha = 1;
+												g.draw(dr);
+												g.bkColor = old[0]; g.fontColor = old[1];
+											}else
+										+/
+										{ fade(row.subCells[x].outerBounds); }
+									}
+									else
+									{
+										//newLine
+										auto g = newLineGlyph; 
+										g.bkColor = row.bkColor;  g.fontColor = clGray; 
+										dr.alpha = 1; 
+										g.outerPos = row.newLinePos; 
+										g.draw(dr); 
+										
+										fade(g.outerBounds); 
+									}
+								}
+								
+							}
+							else
+							{
+								if(!isFirstRow && !isLastRow)
+								{
+									if(row.cellCount)
+									dr.fillRect(bounds2(0, 0, row.subCells.back.outerRight, row.innerHeight)); 
 								}
 								else
 								{
-									if(!isFirstRow && !isLastRow)
-									{
-										if(row.cellCount)
-										dr.fillRect(bounds2(0, 0, row.subCells.back.outerRight, row.innerHeight)); 
-									}
-									else
-									{
-										dr.fillRect(
-											bounds2(
-												row.localCaretPos(x0).pos.x, 0, 
-												row.localCaretPos(x1).pos.x, row.innerHeight
-											)
-										); 
-									}
+									dr.fillRect(
+										bounds2(
+											row.localCaretPos(x0).pos.x, 0, 
+											row.localCaretPos(x1).pos.x, row.innerHeight
+										)
+									); 
 								}
 							}
-							
 						}
+						
 					}
-				}version(/+$DIDE_REGION+/all)
+				}
+			}version(/+$DIDE_REGION+/all)
+			{
+				//caret trail
+				version(AnimatedCursors)
 				{
-					//caret trail
-					version(AnimatedCursors)
+					if(textSelections.length <= MaxAnimatedCursors)
 					{
-						if(textSelections.length <= MaxAnimatedCursors)
+						dr.alpha = blink/2; 
+						dr.lineWidth = -1-(blink)*3; 
+						dr.color = clCaret; 
+						//Opt: culling
+						//Opt: limit max munber of animated cursors
+						foreach(s; textSelections)
 						{
-							dr.alpha = blink/2; 
-							dr.lineWidth = -1-(blink)*3; 
-							dr.color = clCaret; 
-							//Opt: culling
-							//Opt: limit max munber of animated cursors
-							foreach(s; textSelections)
+							CaretPos[3] cp; 
+							cp[0] = s.caret.worldPos; 
+							cp[1..3] = cp[0]; 
+							cp[2].pos += s.caret.animatedPos - s.caret.targetPos; 
+							cp[2].height = s.caret.animatedHeight; 
+							cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f); 
+							
+							auto dir = cp[1].pos-cp[2].pos; 
+							if(dir)
 							{
-								CaretPos[3] cp; 
-								cp[0] = s.caret.worldPos; 
-								cp[1..3] = cp[0]; 
-								cp[2].pos += s.caret.animatedPos - s.caret.targetPos; 
-								cp[2].height = s.caret.animatedHeight; 
-								cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f); 
-								
-								auto dir = cp[1].pos-cp[2].pos; 
-								if(dir)
+								if(dir.normalize.x.abs<0.05f)
 								{
-									if(dir.normalize.x.abs<0.05f)
+									//vertical line
+									vec2[2] p = [cp[1].pos, cp[2].pos]; 
+									if(p[0].y<p[1].y) p[1].y += cp[2].height; 
+									else p[0].y += cp[1].height; 
+									dr.line(p[0], p[1]); 
+								}
+								else
+								{
+									//horizontal bar
+									vec2[4] p; 
+									p[0] = cp[1].pos; 
+									p[1] = cp[1].pos + vec2(0, cp[1].height); 
+									p[2] = cp[2].pos + vec2(0, cp[2].height); 
+									p[3] = cp[2].pos; 
+									
+									if(p[0].x<p[3].x)
 									{
-										//vertical line
-										vec2[2] p = [cp[1].pos, cp[2].pos]; 
-										if(p[0].y<p[1].y) p[1].y += cp[2].height; 
-										else p[0].y += cp[1].height; 
-										dr.line(p[0], p[1]); 
+										dr.fillTriangle(p[0], p[1], p[3]); 
+										dr.fillTriangle(p[1], p[2], p[3]); 
 									}
 									else
 									{
-										//horizontal bar
-										vec2[4] p; 
-										p[0] = cp[1].pos; 
-										p[1] = cp[1].pos + vec2(0, cp[1].height); 
-										p[2] = cp[2].pos + vec2(0, cp[2].height); 
-										p[3] = cp[2].pos; 
-										
-										if(p[0].x<p[3].x)
-										{
-											dr.fillTriangle(p[0], p[1], p[3]); 
-											dr.fillTriangle(p[1], p[2], p[3]); 
-										}
-										else
-										{
-											dr.fillTriangle(p[3], p[2], p[0]); 
-											dr.fillTriangle(p[2], p[1], p[0]); 
-										}
+										dr.fillTriangle(p[3], p[2], p[0]); 
+										dr.fillTriangle(p[2], p[1], p[0]); 
 									}
 								}
 							}
 						}
 					}
+				}
+				
+				
+				{
+					const clamper = RectClamperF(view, 7*blink+2); 
 					
-					
+					auto getCaretWorldPos(TextSelection ts)
 					{
-						const clamper = RectClamperF(view, 7*blink+2); 
+						CaretPos res = ts.caret.worldPos; 
 						
-						auto getCaretWorldPos(TextSelection ts)
+						if(!clamper.overlaps(res.bounds))
 						{
-							CaretPos res = ts.caret.worldPos; 
-							
-							if(!clamper.overlaps(res.bounds))
-							{
-								res.pos = clamper.clamp(res.center); 
-								res.height = lod.pixelSize; 
-							}
-							
-							return res; 
-						} 
-						
-						auto carets = textSelections.map!getCaretWorldPos.array; 
-						
-						void drawCarets(RGB c, float shadow=0)
-						{
-							dr.alpha = blink; 
-							dr.lineWidth = -1-(blink)*3 -shadow; 
-							dr.color = c; 
-							foreach(cwp; carets) cwp.draw(dr); 
-						} 
-						
-						drawCarets(clBlack, 3); 	//shadow
-						drawCarets(clCaret); 	//inner
-						
-						//primary
-						if(auto ts = primaryTextSelection)
-						{
-							dr.color = clPrimaryCaret; 
-							getCaretWorldPos(ts).draw(dr); 
+							res.pos = clamper.clamp(res.center); 
+							res.height = lod.pixelSize; 
 						}
+						
+						return res; 
+					} 
+					
+					auto carets = textSelections.map!getCaretWorldPos.array; 
+					
+					void drawCarets(RGB c, float shadow=0)
+					{
+						dr.alpha = blink; 
+						dr.lineWidth = -1-(blink)*3 -shadow; 
+						dr.color = c; 
+						foreach(cwp; carets) cwp.draw(dr); 
+					} 
+					
+					drawCarets(clBlack, 3); 	//shadow
+					drawCarets(clCaret); 	//inner
+					
+					//primary
+					if(auto ts = primaryTextSelection)
+					{
+						dr.color = clPrimaryCaret; 
+						getCaretWorldPos(ts).draw(dr); 
 					}
 				}
-			} 
-		}version(/+$DIDE_REGION+/all)
+			}
+		} 
+		
+		
+		protected void drawMainModuleOutlines(Drawing dr)
 		{
-			void customDraw(Drawing dr)
+			auto mm=mainModule; 
+			foreach(m; modules)
 			{
-				//customDraw //////////////////////////////
-				if(textSelections.empty)
+				if(m==mm) { dr.color = RGB(0xFF, 0xD7, 0x00); dr.lineWidth = -2.5f; dr.drawRect(m.outerBounds); }
+				else if(m.isMain) { dr.color = clSilver; dr.lineWidth = -1.5f; dr.drawRect(m.outerBounds); }
+				//else if(m.file.extIs(".d")){ dr.color = clSilver; dr.lineWidth = 12; dr.drawRect(m.outerBounds); }
+			}
+		} 
+		
+		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
+		{
+			//Todo: detect changes and only collect info when changed.
+			
+			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
+			
+			foreach(folderPath; paths)
+			{
+				bounds2 bnd; 
+				foreach(m; modules)
 				{
-					//select means module selection
-					foreach(m; modules)
-					if(m.flags.selected)
-					drawHighlight(dr, m, clAccent, .25); 
-					if(!lod.codeLevel)
+					const modulePath = m.file.path.fullPath; 
+					if(modulePath.startsWith(folderPath))
 					{
-						if(0/+It's annoying, so I disabled it.+/)
-						drawHighlight(dr, hoveredModule, clWhite, .125); 
+						const intermediateFolderCount = modulePath[folderPath.length..$].filter!`a=='\\'`.walkLength; 
+						
+						bnd |= m.outerBounds.inflated((1+intermediateFolderCount)*255.0f/*max font size ATM*/); 
 					}
 				}
-				else
-				{
-					//select means text editing
-					foreach(m; modules)
-					if(!m.flags.selected)
-					drawHighlight(dr, m, clGray, .25); 
+				
+				if(bnd) {
+					dr.lineWidth = -1; 
+					dr.color = clFrame; 
+					dr.drawRect(bnd); 
 				}
-				
-				if(lod.moduleLevel || frmMain.building) drawModuleBuildStates(dr); 
-				
-				drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  ); 
-				drawModuleLoadingHighlights!"fileSaved" (dr, clYellow); 
-				
-				drawMainModuleOutlines(dr); 
-				drawFolders(dr, clGray, clWhite); 
-				drawSelectionRect(dr, clAccent); 
-				
-				resetNearestSearchResult; 
-				foreach_reverse(t; EnumMembers!BuildMessageType)
-				if(markerLayers[t].visible)
-				drawSearchResults(dr, markerLayers[t].searchResults, buildMessageInfo[t].syntax.syntaxBkColor); 
-				
-				if(nearestSearchResult_dist > frmMain.view.invScale*24)
-				nearestSearchResult = SearchResult.init; 
-				
-				if(nearestSearchResult.bounds)
-				{ drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f)); }
-				
-				.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
-				.drawProbes(dr); globalVisibleProbes.clear; 
-				
-				drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
-				
-				void drawProgressBalls()
+						
+				with(cachedFolderLabel(folderPath))
 				{
-					//Todo: put this into the drawing module
-					dr.pointSize = 25; 
-					dr.color = clBlue; 
-					foreach(i; -10..10)
-					{
-						const t = (i + QPS.value(0.5 * second).fract) / 3; 
-						dr.point((t+t^^5)*100, 0); 
-					}
-				} 
-			} 
-			
-			
-			override void onDraw(Drawing dr)
-			{} 
-			
-			override void draw(Drawing dr)
+					outerPos = bnd.topLeft - vec2(0, 255); 
+					draw(dr); 
+				}
+			}
+		} 
+		
+		void drawModuleBuildStates(Drawing dr)
+		{
+			with(ModuleBuildState)
+			foreach(m; modules)
+			if(m.buildState!=notInProject)
 			{
-				globalChangeindicatorsAppender.clear; 
-				
-				structureMap.beginCollect; 
-				super.draw(dr); 
-				structureMap.endCollect(dr); 
-				customDraw(dr); 
+				dr.color = moduleBuildStateColors[m.buildState]; 
+				dr.lineWidth = -4; 
+				//if(m.buildState==compiling) dr.drawRect(m.outerBounds);
+				dr.alpha = m.buildState==compiling ? mix(.15f, .55f, blink) : .15f; 
+				dr.fillRect(m.outerBounds); 
+			}
+			dr.alpha = 1; 
+		} 
+		
+		void customDraw(Drawing dr)
+		{
+			//customDraw //////////////////////////////
+			if(textSelections.empty)
+			{
+				//select means module selection
+				foreach(m; modules)
+				if(m.flags.selected)
+				drawHighlight(dr, m, clAccent, .25); 
+				if(!lod.codeLevel)
+				{
+					if(0/+It's annoying, so I disabled it.+/)
+					drawHighlight(dr, hoveredModule, clWhite, .125); 
+				}
+			}
+			else
+			{
+				//select means text editing
+				foreach(m; modules)
+				if(!m.flags.selected)
+				drawHighlight(dr, m, clGray, .25); 
+			}
+			
+			if(lod.moduleLevel || frmMain.building) drawModuleBuildStates(dr); 
+			
+			drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  ); 
+			drawModuleLoadingHighlights!"fileSaved" (dr, clYellow); 
+			
+			drawMainModuleOutlines(dr); 
+			drawFolders(dr, clGray, clWhite); 
+			drawSelectionRect(dr, clAccent); 
+			
+			resetNearestSearchResult; 
+			foreach_reverse(t; EnumMembers!BuildMessageType)
+			if(markerLayers[t].visible)
+			drawSearchResults(dr, markerLayers[t].searchResults, buildMessageInfo[t].syntax.syntaxBkColor); 
+			
+			if(nearestSearchResult_dist > frmMain.view.invScale*24)
+			nearestSearchResult = SearchResult.init; 
+			
+			if(nearestSearchResult.bounds)
+			{ drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f)); }
+			
+			.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
+			.drawProbes(dr); globalVisibleProbes.clear; 
+			
+			drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
+			
+			void drawProgressBalls()
+			{
+				//Todo: put this into the drawing module
+				dr.pointSize = 25; 
+				dr.color = clBlue; 
+				foreach(i; -10..10)
+				{
+					const t = (i + QPS.value(0.5 * second).fract) / 3; 
+					dr.point((t+t^^5)*100, 0); 
+				}
 			} 
-		}
+		} 
+		
+		override void onDraw(Drawing dr)
+		{} 
+		
+		override void draw(Drawing dr)
+		{
+			globalChangeindicatorsAppender.clear; 
+			
+			structureMap.beginCollect; 
+			super.draw(dr); 
+			structureMap.endCollect(dr); 
+			customDraw(dr); 
+		} 
 	}
 } 

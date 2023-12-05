@@ -530,6 +530,55 @@ version(/+$DIDE_REGION+/all)
 			{ return bounds2(top, bottom); } 
 		} 
 		
+	}
+	version(/+$DIDE_REGION Breadcrumbs+/all)
+	{
+		struct Breadcrumb
+		{
+			/+Note: This is a hierarchical path element for navigation.+/
+			
+			CodeNode node; 
+			
+			@property valid() const
+			{ return !!node; } 
+			bool opCast(B : bool)() const { return valid; } 
+			
+			string toString()
+			{
+				if(cast(CodeString) node) return "q{}"; 
+				if(auto d = cast(Declaration) node) { if(d.isRegion) return d.caption.quoted; }; 
+				return node ? node.identifier : "null"; 
+			} 
+		} 
+		
+		static toBreadcrumb(Cell cell)
+		{
+			CodeNode n; 
+			if(auto d = cast(Declaration) cell)
+			{
+				if(
+					(d.isBlock && d.identifier!="") ||
+					(d.isRegion && d.caption!="")
+				) n = d; 
+			}
+			else if(auto m = cast(Module) cell)
+			n = m; 
+			else if(auto s = cast(CodeString) cell) n = s.isTokenString ? s : null; 
+			
+			return Breadcrumb(n); 
+		} 
+		
+		Breadcrumb[] toBreadcrumbs(Cell cell)
+		{
+			if(!cell) return []; 
+			return cell.thisAndAllParents.map!toBreadcrumb.filter!"a".array.retro.array; 
+		} 
+		
+		Breadcrumb[] toBreadcrumbs(TextCursor tc)
+		{ return tc.codeColumn.toBreadcrumbs; } 
+		
+		Breadcrumb[] toBreadcrumbs(TextSelection ts)
+		{ return ts.codeColumn.toBreadcrumbs; } 
 	}	
 }version(/+$DIDE_REGION UI functions+/all)
 {
@@ -857,7 +906,7 @@ version(/+$DIDE_REGION+/all)
 				animatedPos 	= vec2(float.nan); 
 			float 	targetHeight,
 				animatedHeight; 
-			//todo: should use CaretPos structs and interpolate them.
+			//Todo: should use CaretPos structs and interpolate them.
 		}
 		
 		@property bool valid() const
@@ -5055,6 +5104,9 @@ version(/+$DIDE_REGION+/all)
 	{ return TypePrefix[type]; } 
 	override string postfix() const
 	{ return TypePostfix[type]~sizePostfix; } 
+	
+	@property isTokenString() const
+	{ return type==Type.tokenString; } 
 	
 	this(CodeRow parent) { super(parent); } 
 	
