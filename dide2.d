@@ -366,10 +366,17 @@ version(/+$DIDE_REGION main+/all)
 				LOG("DBGLOG:", s); 
 			} 
 			
+			void overrideBuildResult(string output, bool clear=true)
+			{
+				if(!ready) WARN("overrideBuildResult() while BuildSys is not ready."); 
+				auto br = &buildResult; 
+				if(clear) br.messages.clear; 
+				br.insertSyntaxCheckOutput(output); 
+				br.lastUpdateTime = now; //This trigger workspace.update()
+			} 
+			
 			void onDebugException(string s)
 			{ LOG("DBGEXC:", s); } 
-			
-			
 			
 			////////////////////////////////////////////////////////////////////////////////////////////////////
 			
@@ -1223,7 +1230,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(!file.exists) return []; 
 				//Todo: not just for //@exe of //@dll
-				BuildSettings settings = { verbose : false}; 
+				BuildSettings settings = {verbose : false}; 
 				BuildSystem buildSystem; 
 				return buildSystem.findDependencies(file, settings).map!(m => m.file).array; 
 			} 
@@ -1372,10 +1379,9 @@ version(/+$DIDE_REGION main+/all)
 		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
 		
-		void convertBuildMessagesToSearchResults()
+		void convertBuildMessagesToSearchResults(ref BuildResult br)
 		{
 			T0; 
-			auto br = frmMain.buildResult; 
 			
 			const outFile = File(`virtual:\__compilerOutput.d`); 
 			
@@ -1687,6 +1693,33 @@ version(/+$DIDE_REGION main+/all)
 			const stepIn = stepInOut; 
 			
 			auto arr = textSelections; 
+			
+			void dump(string title)
+			{
+				static if(0)
+				if(arr.length)
+				{
+					LOG(title, arr[0], arr[0].valid, arr[0].toReference.valid); 
+					TextCursorReference res; 
+					with(arr[0].cursors[0])
+					if(valid)
+					{
+						auto row = codeColumn.getRow(pos.y); 
+						LOG("ROW", row); 
+						if(row)
+						{
+							LOG("parents", row.thisAndAllParents.array.retro.array); 
+							res.path = CellPath(row); 
+							res.left	= row.subCells.get(pos.x-1); 
+							res.right	= row.subCells.get(pos.x); 
+						}
+					}
+					LOG("refCursor",res.path, res.left, res.right); 
+				}
+			} 
+			
+			dump("BEFORE"); 
+			
 			foreach(ref ts; arr)
 			if(!stepInOut)
 			{ ts.move(dir, select); }
@@ -1764,6 +1797,8 @@ version(/+$DIDE_REGION main+/all)
 					}
 				}
 			}
+			
+			dump("AFTER"); 
 			
 			textSelections = merge(arr); //Todo: maybe merge should reside in validateTextSelections
 		} 
@@ -1852,7 +1887,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 					return false; 
 				} 
-					
+				
 				bool validate(TextSelection sel)
 				{
 					if(!sel.valid) return false; 
@@ -1874,7 +1909,8 @@ version(/+$DIDE_REGION main+/all)
 		{
 			//Todo: preserve module selections too
 			const savedTextSelections = textSelections.map!(a => a.toReference.text).array; 
-			scope(exit) textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; 
+			scope(exit)
+			{ textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; } 
 			if(fun) fun(); 
 		} 
 		
@@ -2253,7 +2289,7 @@ version(/+$DIDE_REGION main+/all)
 				if(isCut)
 				cut_impl!true([ts]); 
 				else
-				paste_impl!true([ts], No.fromClipboard, rec.what); 
+				paste_impl!true([ts], rec.what); 
 				
 				if(decodeTs(isCut))
 				textSelections = [ts]; 
@@ -2400,9 +2436,10 @@ version(/+$DIDE_REGION main+/all)
 						}
 						else
 						assert(0, "TextSelection out of range Y"); 
-					}//for y
+					}
 					
 					needResyntax(col); 
+					col.edited = true; 
 				}
 				else
 				assert(0, "TextSelection invalid CodeColumn"); 
@@ -2445,18 +2482,17 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: For this CodeColumn deep copy must be implemented somehow.  //Maybe by exporting and rendering it again. Speed is not important
 		auto paste_impl(bool dontMeasure=false)(
 			TextSelection[] textSelections,
-			Flag!"fromClipboard" fromClipboard,
 			string input,
-			Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs
+			Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs,
+			Flag!"isObject" isObject = No.isObject
 		)
 		{
 			//paste_impl //////////////////////////////////
 			if(textSelections.empty) return textSelections; //no target
 			
-			if(fromClipboard)
-			input = clipboard.text;  //Todo: BOM handling
+			//Todo: BOM handling
 			
-			auto lines = input.splitLines; 
+			auto lines = isObject ? (input.length ? [input] : []) : input.splitLines; 
 			if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 			
 			if(!cut_impl2!dontMeasure(textSelections, /+writes into this if successful -> +/textSelections))
@@ -2492,6 +2528,7 @@ version(/+$DIDE_REGION main+/all)
 						
 						requestInsertPermission_finish(ts); 
 						needResyntax(ts.codeColumn); 
+						ts.codeColumn.edited = true; 
 					}
 					
 					savedSelections ~= ts.toReference; 
@@ -2552,6 +2589,7 @@ version(/+$DIDE_REGION main+/all)
 						
 						requestInsertPermission_finish(ts); 
 						needResyntax(ts.codeColumn); 
+						ts.codeColumn.edited = true; 
 					}
 					
 					savedSelections ~= ts.toReference; 
@@ -3364,10 +3402,10 @@ version(/+$DIDE_REGION main+/all)
 								{
 									/+
 										if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
-																			from keyboard or clipboard! Maybe it's a bug.
+										from keyboard or clipboard! Maybe it's a bug.
 									+/
 									auto s = ch.to!string; 
-									textSelections = paste_impl(textSelections, No.fromClipboard, s); 
+									textSelections = paste_impl(textSelections, s); 
 								}
 								catch(Exception)
 								{ unprocessed ~= ch; }
@@ -3540,7 +3578,10 @@ Note:
 						popupModule = null; 
 					}
 				}
-			} void update(View2D view, in BuildResult buildResult)
+			} void update(
+				View2D view, 
+				ref BuildResult buildResult/+Must be a ref because there is an internal file name correction cache.+/
+			)
 			{
 				//update ////////////////////////////////////
 				try
@@ -3676,7 +3717,7 @@ Note:
 					if(buildStateChanged)
 					{
 						updateModuleBuildStates(buildResult); 
-						convertBuildMessagesToSearchResults; 
+						convertBuildMessagesToSearchResults(buildResult); 
 					}
 					
 					updateLastKnownModulePositions; 
@@ -3757,7 +3798,7 @@ Note:
 				im.flashWarning(n.format!"MemSlot %s is empty."); 
 				return; 
 			}
-			textSelections = paste_impl(textSelections, No.fromClipboard, storedMemSlots[n]); 
+			textSelections = paste_impl(textSelections, storedMemSlots[n]); 
 		} 
 		
 	}version(/+$DIDE_REGION Refactor+/all)
@@ -3875,7 +3916,204 @@ Note:
 			if(anyVT) col.measure; 
 			return anyVT; 
 		} 
+		
+		void feedNode(CodeNode node)
+		{
+			node.enforce("Unable to reach node."); 
+			auto mod = cast(Module) node; 
+			if(!mod) mod = moduleOf(node); 
+			mod.enforce("Unable to reach module."); 
+			enforce(!mod.isReadOnly, "Module is readonly"); 
+			enforce(mod.isManaged, "Module Structure Level must be Managed."); 
+			
+			const source = node.sourceText; 
+			
+			{
+				import std.process; 
+				auto f = File(`z:\temp\__syntax.d`); 
+				f.write(format!"#line %d\nversion(none):%s"(max(node.lineIdx, 1), source)); 
+				auto cmd = ["ldc2", "-c", "-o-", "-vcolumns", "-verrors-context", f.fullName]; 
+				auto ex = executeShell(cmd.joinCommandLine, null, Config.suppressConsole); 
+				f.remove; 
+				if(ex.status!=0)
+				{
+					string output = ex.output; 
+					
+					{
+						//replace filenames
+						const fOld = f.fullName.toLower~"("; 
+						const fNew = mod.file.fullName~"("; 
+						output = output	.splitLines
+							.map!(s=>((s.map!toLower.startsWith(fOld)) ?(fNew~s[fOld.length..$]) :(s)))
+							.filter!(s=>!s.endsWith("): Error: declaration expected, not `module`"))
+							.join('\n'); 
+						//LOG(output); 
+					}
+					
+					assert(frmMain.ready); 
+					frmMain.overrideBuildResult(output); 
+					
+					if(frmMain.buildResult.messages.values.map!(m=>m.type==BuildMessageType.error).any)
+					raise("LDC2 Syntax Check failed"); 
+				}
+			}
+			
+			auto newCol = new CodeColumn(node); 
+			with(newCol.rebuilder)
+			{
+				staticLineCounter = node.lineIdx; 
+				appendStructured(source); //This can throw all kinds of syntax errors.
+			}
+			processHighLevelPatterns_block(newCol); 
+			if(cast(Module) node)
+			{
+				//reload the whole module.
+				mod.content = newCol; 
+				
+				mod.setChanged; 
+				node.measure;  //this will rebuild subCells
+				
+				//Parent-child relations: do some saniti checks.
+				enforce(newCol.parent is mod); 
+				enforce(mod.subCells.canFind(newCol)); 
+			}
+			else
+			{
+				//reload an internal structured object only.
+				
+				static categorize(Cell c)
+				{
+					if(!c) return ' '; 
+					return c.castSwitch!(
+						(Glyph g)	=> isDLangWhitespace(g.ch) ? ' ' : 'A'	,
+						(CodeNode n) 	=> 'N'	
+					); 
+				} 
+				
+				auto cellCat = newCol.byCell.map!categorize.text.replace(" ", ""); 
+				enforce(
+					cellCat=="N", 
+					cellCat.format!"Block source must not contain only a single Node (or whitespace). (%s)"
+				); 
+				
+				auto newNode = newCol.byCell.map!(a=>cast(CodeNode)a).filter!"a".frontOrNull; 
+				enforce(newNode, "Unable to extract first Node."); 
+				enforce(
+					typeid(node)==typeid(newNode), 
+					format!"Node typeid mismatch (old:%s, new:%s)"(typeid(node), typeid(newNode))
+				); 
+				
+				//Todo: refactor this into row.replaceNode()
+				auto row = (cast(CodeRow) node.parent).enforce("Can't get Node's Row"); 
+				const charIdx = row.subCells.countUntil(node); 
+				enforce(charIdx>=0, "Can't find Node in Row."); 
+				
+				/+
+					Todo: parent-child kapcsolatok karbantartasa kozponti funkciokkal. 
+					Pl. setRow() setContent(), ami a subCells[]-t is updateolja.
+					Ha a node subCells[]-e nincs karbantartva, akkor a CursorReference is invalid lesz.
+					Oda-vissza jonak kell lennie a fának!
+				+/
+				newNode.setParent(row); 
+				row.subCells[charIdx] = newNode; 
+				
+				newNode.setChanged; 
+				newNode.measure;//this will rebuild subCells
+				row.refreshTabIdx; 
+				row.spreadElasticNeedMeasure; 
+				
+				//Parent-child relations: do some saniti checks.
+				enforce(newNode.parent is row); 
+				enforce(row.subCells.canFind(newNode)); 
+			}
+			
+			frmMain.overrideBuildResult(""); 
+		} 
+		
+		void feedCursor(TextCursor cursor)
+		{
+			if(!cursor.valid) return; 
+			auto breadcrumbs = cursor.toBreadcrumbs; 
+			if(breadcrumbs.empty) return; 
+			/+
+				Todo: Handle undo.  
+				Save it with a cut operation. 
+				And paste the new stuff with an upgraded paste() 
+				that can work with Nodes too.
+			+/
+			
+			enforce(frmMain.ready, "BuildSystem is working."); 
+			
+			feedNode(breadcrumbs.back.node); 
+		} 
 		
+		CodeNode[] editedBreadcrumbNodes(CodeNode rootNode)
+		{
+			CodeNode[] res; 
+			bool[CodeNode] added; 
+			void visit(CodeNode node)
+			{
+				//visit all [changed] and collect the [edited] ones.
+				//Forward order, root nodes at the front.
+				if(!node.changed) return; 
+				bool anyColEdited = node.subColumns.map!(a=>a.edited).any; 
+				if(anyColEdited)
+				{
+					auto bNode = node.thisAndAllParents.map!toBreadcrumb.filter!"a".frontOr(Breadcrumb.init); 
+					CodeNode n = bNode ? bNode.node : node; 
+					if(n !in added)
+					{
+						res ~= n; 
+						added[n]=true; 
+					}
+				}
+				foreach(col; node.subColumns.filter!(a=>a.changed))
+				{
+					anyColEdited |= col.edited; 
+					foreach(row; col.rows.filter!(a=>a.changed))
+					foreach(subNode; row.subCells.map!(a=>cast(CodeNode)a).filter!(a=>a && a.changed))
+					visit(subNode); 
+				}
+			} 
+			
+			visit(rootNode); 
+			if(res.length<=1) return res; 
+			
+			res = res.retro.array; 
+			//root is at the end of list.
+			//filter redundant leafs
+			foreach(i; 0..res.length)
+			foreach(j; i+1..res.length)
+			if(res[i].allParents!CodeNode.canFind(res[j]))
+			res[i] = null; 
+			
+			res = res.filter!"a".array; 
+			
+			return res; 
+		} 
+		
+		void feedChangedModule(Module mod)
+		{
+			if(!mod) return; 
+			if(!mod.changed) return; 
+			if(!mod.isManaged) return; 
+			
+			enforce(frmMain.ready, "BuildSystem is currently working."); 
+			
+			foreach(n; editedBreadcrumbNodes(mod))
+			feedNode(n); 
+		} 
+		
+		void feedAndSaveModules(R)(R modules)
+		{
+			preserveTextSelections(
+				{
+					modules.each!((m){ feedChangedModule(m); }); 
+					modules.each!"a.save"; 
+				}
+			); 
+		} 
+		
 		void declarationStatistics_impl()
 		{
 			auto files = dirPerS(Path(`c:\d\libs`), "*.d").files.map!"a.file".array; 
@@ -3906,7 +4144,7 @@ Note:
 									 File(`c:\D\ldc-master\dmd\mars.d`) Invalid block closing token 
 			+/
 		} 
-		
+		
 		void UI_refactor()
 		{
 			with(im)
@@ -4204,14 +4442,14 @@ Note:
 				} 
 				
 				@VERB("Ctrl+V Shift+Ins") void paste()
-				{ textSelections = paste_impl(textSelections, Yes.fromClipboard, ""	); } 
+				{ textSelections = paste_impl(textSelections, clipboard.text); } 
 				
 				@VERB("Tab") void insertTab()
-				{ textSelections = paste_impl(textSelections, No.fromClipboard, "\t"); } 
+				{ textSelections = paste_impl(textSelections, "\t"); } 
 				
 				@VERB("Enter") void insertNewLine()
 				{
-					textSelections = paste_impl(textSelections, No.fromClipboard, "\n", Yes.duplicateTabs); 
+					textSelections = paste_impl(textSelections, "\n", Yes.duplicateTabs); 
 					//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
 				} 
 				
@@ -4221,14 +4459,14 @@ Note:
 						Todo: it should automatically insert at the end of the selected rows.
 						But what if the selection spans across multiple rows...
 					+/
-					textSelections = paste_impl(textSelections, No.fromClipboard, "\v"); 
+					textSelections = paste_impl(textSelections, "\v"); 
 					//Vertical Tab -> MultiColumn
 				} 
 				
 				@VERB("Ctrl+]") void indent()
 				{
 					insertCursorAtStartOfEachLineSelected; 
-					paste_impl(textSelections, No.fromClipboard, "\t"); 
+					paste_impl(textSelections, "\t"); 
 				} 
 				@VERB("Ctrl+[") void outdent()
 				{
@@ -4241,60 +4479,6 @@ Note:
 					}
 					else
 					{ im.flashWarning("Unable to outdent."); }
-				} 
-				
-				@VERB("Ctrl+R") void feed()
-				{
-					if(primaryCaret.valid)
-					{
-						print("---------"); 
-						
-						
-						auto breadcrumbs = primaryCaret.toBreadcrumbs; 
-						if(breadcrumbs.length)
-						{
-							preserveTextSelections
-							(
-								{
-									try
-									{
-										/+
-											Todo: Handle undo.  
-											Save it with a cut operation. 
-											And paste the new stuff with an upgraded paste() 
-											that can work with Nodes too.
-										+/
-										
-										auto node = breadcrumbs.back.node; 
-										auto mod = cast(Module) breadcrumbs.front.node.enforce("Unable to reach module."); 
-										enforce(!mod.isReadOnly, "Module is readonly"); 
-										
-										const source = node.sourceText; 
-										auto newMod = new Module(null, source, StructureLevel.managed); 
-										
-										auto newNode = (cast(CodeNode) newMod.content.firstCell).enforce("Unable to extract first Node."); 
-										enforce(typeid(node)==typeid(newNode), "Node type mismatch"); //todo: Module should handled differently.
-										
-										//Todo: refactor this into row.replaceNode()
-										auto row = (cast(CodeRow) node.parent).enforce("Can't get Node's Row"); 
-										const charIdx = row.subCells.countUntil(node); 
-										enforce(charIdx>=0, "Can't find Node in Row."); 
-										
-										newNode.setParent(row); 
-										row.subCells[charIdx] = newNode; 
-										
-										row.refreshTabIdx; 
-										row.spreadElasticNeedMeasure; 
-										row.setChangedCreated; 
-										row.setChangedRemoved; 
-										
-									}
-									catch(Exception e)
-									im.flashError(e.simpleMsg); 
-								}
-							); 
-						}
-					}
 				} 
 				
 				@VERB("Alt+Up") void moveLineUp()
@@ -4331,19 +4515,22 @@ Note:
 				{ fileDialog.openMulti.each!(f => queueModuleRecursive(f)); } 
 				@VERB("Alt+O") void revertSelectedModules()
 				{
-					preserveTextSelections(
+					preserveTextSelections
+					(
 						{
 							foreach(m; selectedModules)
 							{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
 						}
 					); 
 				} 
+				
 				@VERB("Alt+S") void saveSelectedModules()
-				{ selectedModules.each!"a.save"; } 
+				{ feedAndSaveModules(selectedModules); } 
 				@VERB("Ctrl+S") void saveSelectedModulesIfChanged()
-				{ selectedModules.filter!"a.changed".each!"a.save"; } 
+				{ feedAndSaveModules(selectedModules.filter!"a.changed"); } 
 				@VERB("Ctrl+Shift+S") void saveAllModulesIfChanged()
-				{ modules.filter!"a.changed".each!"a.save"; } 
+				{ feedAndSaveModules(modules.filter!"a.changed"); } 
+				
 				@VERB("Ctrl+W") void closeSelectedModules()
 				{
 					closeSelectedModules_impl; 
@@ -4372,19 +4559,29 @@ Note:
 				@VERB("Shift+F8") void gotoPrevError()
 				{ NOTIMPL; } 
 				
+				@VERB("Ctrl+R") void feed()
+				{
+					enforce(frmMain.ready, "BuildSystem is working."); 
+					preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
+				} 
+				
 				@VERB("F9") void run()
 				{
 					with(frmMain)
 					if(ready && !running)
-					{ saveChangedProjectModules; run; }
+					{
+						feedAndSaveModules(changedProjectModules); 
+						run; 
+					}
 				} 
 				@VERB("Shift+F9") void rebuild()
 				{
 					with(frmMain)
 					if(ready && !running)
 					{
+						feedAndSaveModules(changedProjectModules); 
 						messageUICache.clear; //Todo: This UI cache should be emptied automatically.
-						saveChangedProjectModules; rebuild; 
+						rebuild; 
 					}
 				} 
 				@VERB("Ctrl+F2") void kill()
@@ -4393,6 +4590,7 @@ Note:
 					if(building || running)
 					{ cancelBuildAndResetApp; }
 					//Todo: some keycombo to clear error markers
+					//Todo: Longpress to kill all LDC processes
 				} 
 				
 				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
@@ -4465,45 +4663,49 @@ Note:
 				{ declarationStatistics_impl; } 
 			}version(/+$DIDE_REGION Rich editing+/all)
 			{
-				@VERB("Shift+Ctrl+'") newCString()
+				@VERB("Shift+Alt+[") insertSquareBlock()
 				{
-					static struct Item
-					{
-						TextSelection sel; 
-						string source; 
-						Module module_; 
-						string error; 
-						
-						CodeNode node()
+					textSelections = paste_impl(textSelections, "{}"	);
+					
+					/+
+						static struct Item
 						{
-							if(module_) if(auto col=module_.content) return col.firstCell!CodeNode; 
-							return null; 
+							TextSelection sel; 
+							string source; 
+							Module module_; 
+							string error; 
+							
+							CodeNode node()
+							{
+								if(module_) if(auto col=module_.content) return col.firstCell!CodeNode; 
+								return null; 
+							} 
+							bool valid()
+							{ return error=="" && node; } 
 						} 
-						bool valid()
-						{ return error=="" && node; } 
-					} 
-					Item createItem(TextSelection sel, string source)
-					{
-						Item res; 
-						res.source = source; 
-						try
-						res.module_ = new Module(null, source, StructureLevel.managed); 
-						catch(Exception e)
-						res.error = e.simpleMsg; 
-						return res; 
-					} 
-					
-					auto 	sels = textSelections,
-						items = sels.map!(sel=>createItem(sel, sel.sourceText.quoted)).array; 
-					
-					foreach_reverse(item; items)
-					{
-						print; 
-						item.source.print; 
-						item.module_.sourceText.print; 
-						item.error.print; 
-						print; 
-					}
+						Item createItem(TextSelection sel, string source)
+						{
+							Item res; 
+							res.source = source; 
+							try
+							res.module_ = new Module(null, source, StructureLevel.managed); 
+							catch(Exception e)
+							res.error = e.simpleMsg; 
+							return res; 
+						} 
+						
+						auto 	sels = textSelections,
+							items = sels.map!(sel=>createItem(sel, sel.sourceText.quoted)).array; 
+						
+						foreach_reverse(item; items)
+						{
+							print; 
+							item.source.print; 
+							item.module_.sourceText.print; 
+							item.error.print; 
+							print; 
+						}
+					+/
 				} 
 			}
 		}

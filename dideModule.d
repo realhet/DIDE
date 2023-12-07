@@ -925,7 +925,7 @@ version(/+$DIDE_REGION+/all)
 		
 		int opCmp(in TextCursor b) const
 		{
-			//simple case: they are on the same column or both invalid
+			//simple case: they are on the same column or any of them are invalid
 			if(codeColumn is b.codeColumn || !valid || !b.valid)
 			return cmpChain(cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); 
 			
@@ -935,8 +935,8 @@ version(/+$DIDE_REGION+/all)
 			+/
 			
 			/+
-				/opt: this index searching is fucking slow. But this is the correct way to sort. 
-							Maybe it should be cached somehow...
+				Opt: this index searching is fucking slow. But this is the correct way to sort. 
+				Maybe it should be cached somehow...
 			+/
 			auto order(in TextCursor c)
 			{
@@ -1123,11 +1123,11 @@ version(/+$DIDE_REGION+/all)
 		auto worldPos()
 		{ return localPos!true; } 
 		
-		auto toReference() const
+		auto toReference()
 		{
 			TextCursorReference res; 
 			if(valid)
-			if(auto row = (cast()codeColumn).getRow(pos.y))
+			if(auto row = (codeColumn).getRow(pos.y))
 			{
 				//Todo: fix constness!!
 				res.path = CellPath(row); 
@@ -2690,7 +2690,7 @@ class CodeRow: Row
 		
 		static if(rebuild)
 		{
-			static int staticLineCounter; 
+			static int staticLineCounter;  //Bug: this one is global. So it only works in a single thread.
 			
 			void NL_internal()
 			{
@@ -3043,6 +3043,8 @@ class CodeRow: Row
 	
 	DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
 	
+	bool edited; //this column is marked, so it can be syntax checked before saving.
+	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
 	this(Container parent)
 	{
@@ -3117,6 +3119,7 @@ class CodeRow: Row
 	
 	bool isStructuredCode() //Todo: constness
 	{ return getStructureLevel >= StructureLevel.structured; } 
+	
 	
 	SyntaxKind getSyntax(dchar ch)
 	{
@@ -3719,6 +3722,8 @@ class CodeRow: Row
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/); 
 		
+		if(edited) { dr.lineWidth = -2; dr.color = clFuchsia; dr.drawRect(outerBounds); }
+		
 		//visualize structuredLevel
 		if(visualizeStructureLevels)
 		{
@@ -4191,7 +4196,7 @@ version(/+$DIDE_REGION+/all)
 					case EventType.saved: 	again = true; break; //nothing happened, "save event" is it's just a marking for the user
 					case EventType.loaded: 	reload(
 						actEvent.modifications[0].modifications[0].where,
-												actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]
+						actEvent.modifications[0].modifications[0].what.decodePrevAndNextSourceText[1]
 					); break; 
 						//Todo: ^^^^ ugly and needs range check
 				}
@@ -5832,7 +5837,11 @@ popup menu"
 			super.draw(dr); 
 			
 			if(!content.changed && props_hash!=hashOf(props))
-			content.setChanged; 
+			{
+				content.setChanged; 
+				content.edited = true; 
+			}
+			
 		} 
 		
 		/+
