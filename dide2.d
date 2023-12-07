@@ -375,8 +375,34 @@ version(/+$DIDE_REGION main+/all)
 				br.lastUpdateTime = now; //This trigger workspace.update()
 			} 
 			
-			void onDebugException(string s)
-			{ LOG("DBGEXC:", s); } 
+			void onDebugException(string message)
+			{
+				LOG("DBGEXC:\n"~message); 
+				
+				const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
+				string lastPrefix; 
+				string[] processed; 
+				foreach(s; message.splitLines)
+				{
+					if(s.isWild(`?:\?*.d*(?*): *`)) {
+						lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
+						processed ~= s; 
+					}
+					else
+					{
+						s = s.strip; 
+						if(s!="")
+						processed ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
+					}
+				}
+				
+				LOG("PROCESSED:\n"~processed.join('\n')); 
+				
+				//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
+				
+				overrideBuildResult(processed.join('\n'), false); 
+				im.flashError(processed.frontOr("Exception without message.")); 
+			} 
 			
 			////////////////////////////////////////////////////////////////////////////////////////////////////
 			
@@ -696,9 +722,15 @@ version(/+$DIDE_REGION main+/all)
 								
 								Row(
 									{
-										 margin = "0 3"; flags.yAlign = YAlign.center; 
+										margin = "0 3"; flags.yAlign = YAlign.center; 
 										//style.fontHeight = 18+6;
 										buildSystemWorkerState.UI; 
+										
+										if(dbgsrv.active)
+										{
+											if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
+											if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
+										}
 									}
 								); 
 								
@@ -2484,15 +2516,33 @@ version(/+$DIDE_REGION main+/all)
 			TextSelection[] textSelections,
 			string input,
 			Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs,
-			Flag!"isObject" isObject = No.isObject
+			Flag!"isObject" isObject = No.isObject,
+			int objectSubColumnIdx = 0
 		)
 		{
-			//paste_impl //////////////////////////////////
-			if(textSelections.empty) return textSelections; //no target
+			if(input=="" || textSelections.empty) return textSelections; //no target
+			
+			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //Todo: merge check
 			
 			//Todo: BOM handling
 			
-			auto lines = isObject ? (input.length ? [input] : []) : input.splitLines; 
+			string[] lines; 
+			
+			if(isObject)
+			{
+				const source = input.replace("\0", ""); 
+				//syntaxCheck(source);   not good for expressions
+				auto testCol = new CodeColumn(null, source, StructureLevel.managed); 
+				enforce(testCol.byCell.drop(1).empty, "Object insert: Column must have only 1 object."); 
+				auto testNode = cast(CodeNode) testCol.byCell.frontOrNull; 
+				enforce(testNode, "Object insert: CodeNode expected."); 
+				
+				lines = textSelections.map!"a.sourceText".array; 
+				//this will be the content inserted into the object
+			}
+			else
+			{ lines = input.splitLines; }
+			
 			if(lines.empty) return textSelections; //nothing to do with an empty clipboard
 			
 			if(!cut_impl2!dontMeasure(textSelections, /+writes into this if successful -> +/textSelections))
@@ -2519,8 +2569,38 @@ version(/+$DIDE_REGION main+/all)
 				{
 					if(requestInsertPermission_prepare(ts, str))
 					{
-						const insertedCnt = row.insertText(ts.caret.pos.x, str); //INS
-						//Todo: shift adjust selections that are on this row
+						int insertedCnt; 
+						TextCursor updatedCursor; 
+						
+						if(isObject)
+						{
+							const source = input.replace("\0", str); 
+							try
+							{
+								auto col = new CodeColumn(null, source, StructureLevel.managed); 
+								auto node = col.extractSingleNode; 
+								insertedCnt = row.insertSomething(
+									ts.caret.pos.x, {
+										node.setParent(row); 
+										row.append(node); 
+									}
+								); 
+								
+								node.measure; //regenerates subColumns
+								if(objectSubColumnIdx>=0)
+								if(auto subCol = node.subColumns.array.get(objectSubColumnIdx))
+								updatedCursor = subCol.endCursor; 
+							}
+							catch(Exception e)
+							{
+								im.flashWarning("Error inserting CodeNode."); 
+								insertedCnt = row.insertText(ts.caret.pos.x, source); 
+							}
+						}
+						else
+						{ insertedCnt = row.insertText(ts.caret.pos.x, str); }
+						//INS
+						
 						
 						//adjust caret and save
 						ts.cursors[0].moveRight(insertedCnt); 
@@ -2529,6 +2609,9 @@ version(/+$DIDE_REGION main+/all)
 						requestInsertPermission_finish(ts); 
 						needResyntax(ts.codeColumn); 
 						ts.codeColumn.edited = true; 
+						
+						if(updatedCursor.valid)
+						{ ts.cursors[] = updatedCursor; }
 					}
 					
 					savedSelections ~= ts.toReference; 
@@ -2630,7 +2713,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 				else
 				{
-					 //cyclically paste the lines of the clipboard
+					//cyclically paste the lines of the clipboard
 					foreach_reverse(ref ts, line; lockstep(textSelections, lines.cycle.take(textSelections.length)))
 					insertSingleLine(ts, line); 
 				}
@@ -3917,136 +4000,50 @@ Note:
 			return anyVT; 
 		} 
 		
-		void feedNode(CodeNode node)
+		enum syntaxCheckTempFile = File(`z:\temp\__syntax.d`); 
+		
+		void syntaxCheck(File moduleFile, string source, int lineIdx=1)
 		{
-			node.enforce("Unable to reach node."); 
-			auto mod = cast(Module) node; 
-			if(!mod) mod = moduleOf(node); 
-			mod.enforce("Unable to reach module."); 
-			enforce(!mod.isReadOnly, "Module is readonly"); 
-			enforce(mod.isManaged, "Module Structure Level must be Managed."); 
-			
-			const source = node.sourceText; 
-			
 			{
-				import std.process; 
-				auto f = File(`z:\temp\__syntax.d`); 
-				f.write(format!"#line %d\nversion(none):%s"(max(node.lineIdx, 1), source)); 
-				auto cmd = ["ldc2", "-c", "-o-", "-vcolumns", "-verrors-context", f.fullName]; 
-				auto ex = executeShell(cmd.joinCommandLine, null, Config.suppressConsole); 
-				f.remove; 
-				if(ex.status!=0)
+				static bool[string] simpleValids; 
+				if(simpleValids.empty)
+				["{}", "q{}", "[]", "()", "``", "''", `""`].each!((s){ simpleValids[s]=true; }); 
+				
+				if(source in simpleValids) return; 
+			}
+			
+			import std.process; 
+			auto f = syntaxCheckTempFile; 
+			f.write(format!"#line %d\nversion(none):%s"(max(lineIdx, 1), source)); 
+			auto cmd = ["ldc2", "-c", "-o-", "-vcolumns", "-verrors-context", f.fullName]; 
+			auto ex = executeShell(cmd.joinCommandLine, null, Config.suppressConsole); 
+			f.remove; 
+			if(ex.status!=0)
+			{
+				string output = ex.output; 
+				
 				{
-					string output = ex.output; 
-					
-					{
-						//replace filenames
-						const fOld = f.fullName.toLower~"("; 
-						const fNew = mod.file.fullName~"("; 
-						output = output	.splitLines
-							.map!(s=>((s.map!toLower.startsWith(fOld)) ?(fNew~s[fOld.length..$]) :(s)))
-							.filter!(s=>!s.endsWith("): Error: declaration expected, not `module`"))
-							.join('\n'); 
-						//LOG(output); 
-					}
-					
-					assert(frmMain.ready); 
-					frmMain.overrideBuildResult(output); 
-					
-					if(frmMain.buildResult.messages.values.map!(m=>m.type==BuildMessageType.error).any)
-					raise("LDC2 Syntax Check failed"); 
+					//replace filenames
+					const fOld = f.fullName.toLower~"("; 
+					const fNew = moduleFile.fullName~"("; 
+					output = output	.splitLines
+						.map!(s=>((s.map!toLower.startsWith(fOld)) ?(fNew~s[fOld.length..$]) :(s)))
+						.filter!(s=>!s.endsWith("): Error: declaration expected, not `module`"))
+						.join('\n'); 
+					//LOG(output); 
 				}
+				
+				assert(frmMain.ready); 
+				frmMain.overrideBuildResult(output); 
+				
+				if(frmMain.buildResult.messages.values.map!(m=>m.type==BuildMessageType.error).any)
+				raise("LDC2 Syntax Check failed"); 
 			}
-			
-			auto newCol = new CodeColumn(node); 
-			with(newCol.rebuilder)
-			{
-				staticLineCounter = node.lineIdx; 
-				appendStructured(source); //This can throw all kinds of syntax errors.
-			}
-			processHighLevelPatterns_block(newCol); 
-			if(cast(Module) node)
-			{
-				//reload the whole module.
-				mod.content = newCol; 
-				
-				mod.setChanged; 
-				node.measure;  //this will rebuild subCells
-				
-				//Parent-child relations: do some saniti checks.
-				enforce(newCol.parent is mod); 
-				enforce(mod.subCells.canFind(newCol)); 
-			}
-			else
-			{
-				//reload an internal structured object only.
-				
-				static categorize(Cell c)
-				{
-					if(!c) return ' '; 
-					return c.castSwitch!(
-						(Glyph g)	=> isDLangWhitespace(g.ch) ? ' ' : 'A'	,
-						(CodeNode n) 	=> 'N'	
-					); 
-				} 
-				
-				auto cellCat = newCol.byCell.map!categorize.text.replace(" ", ""); 
-				enforce(
-					cellCat=="N", 
-					cellCat.format!"Block source must not contain only a single Node (or whitespace). (%s)"
-				); 
-				
-				auto newNode = newCol.byCell.map!(a=>cast(CodeNode)a).filter!"a".frontOrNull; 
-				enforce(newNode, "Unable to extract first Node."); 
-				enforce(
-					typeid(node)==typeid(newNode), 
-					format!"Node typeid mismatch (old:%s, new:%s)"(typeid(node), typeid(newNode))
-				); 
-				
-				//Todo: refactor this into row.replaceNode()
-				auto row = (cast(CodeRow) node.parent).enforce("Can't get Node's Row"); 
-				const charIdx = row.subCells.countUntil(node); 
-				enforce(charIdx>=0, "Can't find Node in Row."); 
-				
-				/+
-					Todo: parent-child kapcsolatok karbantartasa kozponti funkciokkal. 
-					Pl. setRow() setContent(), ami a subCells[]-t is updateolja.
-					Ha a node subCells[]-e nincs karbantartva, akkor a CursorReference is invalid lesz.
-					Oda-vissza jonak kell lennie a fának!
-				+/
-				newNode.setParent(row); 
-				row.subCells[charIdx] = newNode; 
-				
-				newNode.setChanged; 
-				newNode.measure;//this will rebuild subCells
-				row.refreshTabIdx; 
-				row.spreadElasticNeedMeasure; 
-				
-				//Parent-child relations: do some saniti checks.
-				enforce(newNode.parent is row); 
-				enforce(row.subCells.canFind(newNode)); 
-			}
-			
-			frmMain.overrideBuildResult(""); 
-		} 
-		
-		void feedCursor(TextCursor cursor)
-		{
-			if(!cursor.valid) return; 
-			auto breadcrumbs = cursor.toBreadcrumbs; 
-			if(breadcrumbs.empty) return; 
-			/+
-				Todo: Handle undo.  
-				Save it with a cut operation. 
-				And paste the new stuff with an upgraded paste() 
-				that can work with Nodes too.
-			+/
-			
-			enforce(frmMain.ready, "BuildSystem is working."); 
-			
-			feedNode(breadcrumbs.back.node); 
 		} 
 		
+		void syntaxCheck(string source, int lineIdx=1)
+		{ syntaxCheck(File(`c:\$unknown$.d`), source, lineIdx); } 
+		
 		CodeNode[] editedBreadcrumbNodes(CodeNode rootNode)
 		{
 			CodeNode[] res; 
@@ -4090,6 +4087,55 @@ Note:
 			res = res.filter!"a".array; 
 			
 			return res; 
+		} 
+		
+		void feedNode(CodeNode node)
+		{
+			node.enforce("Unable to reach node."); 
+			auto mod = cast(Module) node; 
+			if(!mod) mod = moduleOf(node); 
+			mod.enforce("Unable to reach module."); 
+			enforce(!mod.isReadOnly, "Module is readonly"); 
+			enforce(mod.isManaged, "Module Structure Level must be Managed."); 
+			
+			const source = node.sourceText; 
+			
+			syntaxCheck(mod.file, source, node.lineIdx); 
+			auto newCol = new CodeColumn(node, source, StructureLevel.managed); 
+			
+			if(cast(Module) node)
+			{ mod.replaceContent(newCol); }
+			else
+			{
+				//reload an internal structured object only.
+				auto newNode = newCol.extractSingleNode; 
+				
+				enforce(
+					typeid(node)==typeid(newNode), 
+					format!"Node typeid mismatch (old:%s, new:%s)"(typeid(node), typeid(newNode))
+				); 
+				
+				node.replaceWith(newNode); 
+			}
+			
+			frmMain.overrideBuildResult(""); 
+		} 
+		
+		void feedCursor(TextCursor cursor)
+		{
+			if(!cursor.valid) return; 
+			auto breadcrumbs = cursor.toBreadcrumbs; 
+			if(breadcrumbs.empty) return; 
+			/+
+				Todo: Handle undo.  
+				Save it with a cut operation. 
+				And paste the new stuff with an upgraded paste() 
+				that can work with Nodes too.
+			+/
+			
+			enforce(frmMain.ready, "BuildSystem is working."); 
+			
+			feedNode(breadcrumbs.back.node); 
 		} 
 		
 		void feedChangedModule(Module mod)
@@ -4513,7 +4559,7 @@ Note:
 				{ fileDialog.openMulti.each!(f => queueModule(f)); } 
 				@VERB("Ctrl+Shift+O") void openModuleRecursive()
 				{ fileDialog.openMulti.each!(f => queueModuleRecursive(f)); } 
-				@VERB("Alt+O") void revertSelectedModules()
+				@VERB("Ctrl+R") void revertSelectedModules()
 				{
 					preserveTextSelections
 					(
@@ -4559,7 +4605,7 @@ Note:
 				@VERB("Shift+F8") void gotoPrevError()
 				{ NOTIMPL; } 
 				
-				@VERB("Ctrl+R") void feed()
+				@VERB void feed()
 				{
 					enforce(frmMain.ready, "BuildSystem is working."); 
 					preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
@@ -4663,50 +4709,37 @@ Note:
 				{ declarationStatistics_impl; } 
 			}version(/+$DIDE_REGION Rich editing+/all)
 			{
-				@VERB("Shift+Alt+[") insertSquareBlock()
+				void insertBlock(string source, int subColumnIdx=-1)
+				{ textSelections = paste_impl(textSelections, source, No.duplicateTabs, Yes.isObject, subColumnIdx); } 
+				
+				@VERB("Shift+Alt+9") insertBraceBlock()
+				{ insertBlock("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
+				{ insertBlock("(\0)"); } 
+				@VERB("Alt+[") insertSquareBlock    ()
+				{ insertBlock("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
+				{ insertBlock("[\0]"); } 
+				@VERB("Shift+Alt+[") insertCurlyBlock ()
+				{ insertBlock("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
+				{ insertBlock("{\0}"); } 
+				
+				@VERB("Alt+`") insertDString()
+				{ insertBlock("`\0`", 0); } @VERB("Alt+'") insertCChar()
+				{ insertBlock("'\0'"); } @VERB("Shift+Alt+'") insertCString()
+				{ insertBlock("\"\0\""); } 
+				
+				@VERB("Alt+/") insertDComment()
+				{ insertBlock("/+\0+/", 0); } 
+				
+				@VERB("Shift+Alt+/") insertTenary()
 				{
-					textSelections = paste_impl(textSelections, "{}"	);
-					
-					/+
-						static struct Item
-						{
-							TextSelection sel; 
-							string source; 
-							Module module_; 
-							string error; 
-							
-							CodeNode node()
-							{
-								if(module_) if(auto col=module_.content) return col.firstCell!CodeNode; 
-								return null; 
-							} 
-							bool valid()
-							{ return error=="" && node; } 
-						} 
-						Item createItem(TextSelection sel, string source)
-						{
-							Item res; 
-							res.source = source; 
-							try
-							res.module_ = new Module(null, source, StructureLevel.managed); 
-							catch(Exception e)
-							res.error = e.simpleMsg; 
-							return res; 
-						} 
-						
-						auto 	sels = textSelections,
-							items = sels.map!(sel=>createItem(sel, sel.sourceText.quoted)).array; 
-						
-						foreach_reverse(item; items)
-						{
-							print; 
-							item.source.print; 
-							item.module_.sourceText.print; 
-							item.error.print; 
-							print; 
-						}
-					+/
+					insertBlock("((\0)?():())", 0); 
+					//Todo: must be inserted as an expression!!!
+				} @VERB("Shift+Alt+;") insertGenericArg()
+				{
+					insertBlock("((\0).genericArg!q{})", 0); 
+					//Todo: must be inserted as an expression!!!
 				} 
+				
 			}
 		}
 	}version(/+$DIDE_REGION UI         +/all)
@@ -4860,8 +4893,9 @@ Note:
 					
 					//activate searchbox
 					bool needFocus; 
-					if(!searchBoxVisible && searchBoxActivate_request)
+					if(/+!searchBoxVisible && +/searchBoxActivate_request)
 					{ searchBoxVisible = needFocus = true; }
+					
 					searchBoxActivate_request = false; 
 					
 					if(searchBoxVisible)

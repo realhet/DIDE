@@ -79,7 +79,7 @@ version(/+$DIDE_REGION+/all)
 	const clModuleText = clBlack; 
 	
 	enum specialCommentMarker = "$DIDE_"; //used in /++/ comments to mark DIDE special comments
-	enum compoundObjectChar = '\uFFFC'; 
+	enum compoundObjectChar = '￼'; 
 	
 }version(/+$DIDE_REGION ChangeIndicator+/all)
 {
@@ -3052,10 +3052,10 @@ class CodeRow: Row
 		//this.context = context;
 		//id.value = this.identityStr;  //id is not used anymore for this
 		
-		needMeasure;  //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
-		flags.wordWrap	= false; 
-		flags.clipSubCells	= true; 
-		flags.cullSubCells	= true; 
+		needMeasure; //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
+		flags.wordWrap = false; 
+		flags.clipSubCells = true; 
+		flags.cullSubCells = true; 
 		flags.columnElasticTabs = true; 
 		bkColor = mix(clCodeBackground, clGray, .25f); 
 	} 
@@ -3067,6 +3067,25 @@ class CodeRow: Row
 		
 		//one row must always present.
 		if(subCells.empty) subCells ~= new CodeRow(this); 
+	} 
+	
+	this(CodeNode parent_, string source, StructureLevel structureLevel, int lineIdx_=0)
+	{
+		this(parent_); 
+		switch(structureLevel)
+		{
+			case StructureLevel.managed: 
+			{
+				with(rebuilder)
+				{
+					if(parent_) staticLineCounter = parent_.lineIdx; 
+					if(lineIdx_) staticLineCounter = lineIdx_; 
+					appendStructured(source); //This can throw all kinds of syntax errors.
+				}
+				processHighLevelPatterns_block(this); 
+			}break; 
+			default: raise("Unhandled structureLevel"); 
+		}
 	} 
 	
 	bool empty() const
@@ -3199,6 +3218,30 @@ class CodeRow: Row
 		//Note: this is just lame statistics to detect the size of a tab only for converting spaces to tabs.
 		return whitespaceStats; 
 	} 
+	
+	CodeNode extractSingleNode()
+	{
+		CodeNode res; 
+		
+		foreach(c; byCell)
+		{
+			if(auto n = cast(CodeNode) c)
+			{
+				enforce(res is null, "extractSingleNode: Only one CodeNode allowed."); 
+				res = n; 
+			}
+			else if(auto g = cast(Glyph) c)
+			{
+				if(g.ch.isDLangWhitespace) continue; 
+				raise("extractSingleNode: Only whitespace characters allowed."); 
+			}
+		}
+		
+		enforce(res, "extractSingleNode: Unable to extract CodeNode."); 
+		return res; 
+	} 
+	
+	
 	
 	void convertSpacesToTabs(Flag!"outdent" outdent)
 	{
@@ -3722,7 +3765,7 @@ class CodeRow: Row
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/); 
 		
-		if(edited) { dr.lineWidth = -2; dr.color = clFuchsia; dr.drawRect(outerBounds); }
+		if(0)if(edited) { dr.lineWidth = -2; dr.color = clFuchsia; dr.drawRect(outerBounds); }
 		
 		//visualize structuredLevel
 		if(visualizeStructureLevels)
@@ -4501,6 +4544,34 @@ version(/+$DIDE_REGION+/all)
 			int retrieveLineIdx_max()
 			{ return retrieveLineIdx_min!retro; }
 	+/
+	
+	void replaceWith(CodeNode newNode)
+	{
+		enforce(newNode); 
+		if(newNode is this) return; 
+		
+		auto row = (cast(CodeRow) parent).enforce("Can't get Node's Row"); 
+		
+		const charIdx = row.subCells.countUntil(this); 
+		enforce(charIdx>=0, "Can't find Node in Row."); 
+		
+		/+
+			Todo: parent-child kapcsolatok karbantartasa kozponti funkciokkal. 
+			Pl. setRow() setContent(), ami a subCells[]-t is updateolja.
+			Ha a node subCells[]-e nincs karbantartva, akkor a CursorReference is invalid lesz.
+			Oda-vissza jonak kell lennie a fának!
+		+/
+		
+		this.setParent = null; 
+		
+		newNode.setParent(row); 
+		row.subCells[charIdx] = newNode; 
+		
+		row.setChanged; 
+		row.measure; //this will rebuild subCells
+		row.refreshTabIdx; 
+		row.spreadElasticNeedMeasure; 
+	} 
 } class CodeContainer : CodeNode
 {
 	//CodeContainer /////////////////////////////
@@ -5402,6 +5473,20 @@ version(/+$DIDE_REGION+/all)
 			{
 				this(parent); 
 				loadContents(contents, desiredStructureLevel); 
+			} 
+			
+			void replaceContent(CodeColumn col)
+			{
+				enforce(col); 
+				if(col is content) return; 
+				
+				content.setParent = null; 
+				
+				content = col; 
+				content.setParent = this; //Todo: Safe parent/child reowning system.
+				
+				setChanged; 
+				measure;  //this will rebuild subCells
 			} 
 			
 			void loadFile(File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
