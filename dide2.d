@@ -2517,7 +2517,8 @@ version(/+$DIDE_REGION main+/all)
 			string input,
 			Flag!"duplicateTabs" duplicateTabs = No.duplicateTabs,
 			Flag!"isObject" isObject = No.isObject,
-			int objectSubColumnIdx = 0
+			int objectSubColumnIdx = 0,
+			TextFormat objectTextFormat = TextFormat.managed_block
 		)
 		{
 			if(input=="" || textSelections.empty) return textSelections; //no target
@@ -2531,8 +2532,8 @@ version(/+$DIDE_REGION main+/all)
 			if(isObject)
 			{
 				const source = input.replace("\0", ""); 
-				//syntaxCheck(source);   not good for expressions
-				auto testCol = new CodeColumn(null, source, StructureLevel.managed); 
+				//syntaxCheck(source);   not good for expressions, only good for blocks.
+				auto testCol = new CodeColumn(null, source, objectTextFormat); 
 				enforce(testCol.byCell.drop(1).empty, "Object insert: Column must have only 1 object."); 
 				auto testNode = cast(CodeNode) testCol.byCell.frontOrNull; 
 				enforce(testNode, "Object insert: CodeNode expected."); 
@@ -2577,7 +2578,7 @@ version(/+$DIDE_REGION main+/all)
 							const source = input.replace("\0", str); 
 							try
 							{
-								auto col = new CodeColumn(null, source, StructureLevel.managed); 
+								auto col = new CodeColumn(null, source, objectTextFormat); 
 								auto node = col.extractSingleNode; 
 								insertedCnt = row.insertSomething(
 									ts.caret.pos.x, {
@@ -4101,7 +4102,7 @@ Note:
 			const source = node.sourceText; 
 			
 			syntaxCheck(mod.file, source, node.lineIdx); 
-			auto newCol = new CodeColumn(node, source, StructureLevel.managed); 
+			auto newCol = new CodeColumn(node, source, TextFormat.managed_block); 
 			
 			if(cast(Module) node)
 			{ mod.replaceContent(newCol); }
@@ -4709,8 +4710,11 @@ Note:
 				{ declarationStatistics_impl; } 
 			}version(/+$DIDE_REGION Rich editing+/all)
 			{
+				void insertBlock(string source, TextFormat textFormat, int subColumnIdx=-1)
+				{ textSelections = paste_impl(textSelections, source, No.duplicateTabs, Yes.isObject, subColumnIdx, textFormat); } 
 				void insertBlock(string source, int subColumnIdx=-1)
 				{ textSelections = paste_impl(textSelections, source, No.duplicateTabs, Yes.isObject, subColumnIdx); } 
+				
 				
 				@VERB("Shift+Alt+9") insertBraceBlock()
 				{ insertBlock("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
@@ -4732,11 +4736,12 @@ Note:
 				
 				@VERB("Shift+Alt+/") insertTenary()
 				{
-					insertBlock("((\0)?():())", 0); 
+					insertBlock("((\0)?():())", TextFormat.managed_goInside, 0); 
 					//Todo: must be inserted as an expression!!!
-				} @VERB("Shift+Alt+;") insertGenericArg()
+				} 
+				@VERB("Shift+Alt+;") insertGenericArg()
 				{
-					insertBlock("((\0).genericArg!q{})", 0); 
+					insertBlock("((\0).genericArg!q{})", TextFormat.managed_goInside, 0); 
 					//Todo: must be inserted as an expression!!!
 				} 
 				

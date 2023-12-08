@@ -81,6 +81,17 @@ version(/+$DIDE_REGION+/all)
 	enum specialCommentMarker = "$DIDE_"; //used in /++/ comments to mark DIDE special comments
 	enum compoundObjectChar = '￼'; 
 	
+	
+	enum TextFormat {
+		plain, highlighted, cChar, cString, dString, comment, 
+		
+		managed, managed_block, managed_enum, managed_statement, managed_goInside, managed_optionalBlock,
+		managed_first = managed, managed_last = managed_optionalBlock
+	} 
+	
+	bool isManaged(TextFormat tf)
+	{ return tf.inRange(TextFormat.managed_first, TextFormat.managed_last); } 
+	
 }version(/+$DIDE_REGION ChangeIndicator+/all)
 {
 	//ChangeIndicator /////////////////////////////////////
@@ -3069,12 +3080,12 @@ class CodeRow: Row
 		if(subCells.empty) subCells ~= new CodeRow(this); 
 	} 
 	
-	this(CodeNode parent_, string source, StructureLevel structureLevel, int lineIdx_=0)
+	this(CodeNode parent_, string source, TextFormat textFormat, int lineIdx_=0)
 	{
 		this(parent_); 
-		switch(structureLevel)
+		switch(textFormat)
 		{
-			case StructureLevel.managed: 
+			case TextFormat.managed_first: ..case TextFormat.managed_last: 
 			{
 				with(rebuilder)
 				{
@@ -3082,9 +3093,11 @@ class CodeRow: Row
 					if(lineIdx_) staticLineCounter = lineIdx_; 
 					appendStructured(source); //This can throw all kinds of syntax errors.
 				}
-				processHighLevelPatterns_block(this); 
-			}break; 
-			default: raise("Unhandled structureLevel"); 
+				processHighLevelPatterns(this, textFormat); 
+			}
+			break; 
+			
+			default: raise(textFormat.format!"Unhandled textFormat: %s"); 
 		}
 	} 
 	
@@ -3765,7 +3778,7 @@ class CodeRow: Row
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/); 
 		
-		if(0)if(edited) { dr.lineWidth = -2; dr.color = clFuchsia; dr.drawRect(outerBounds); }
+		if(0) if(edited) { dr.lineWidth = -2; dr.color = clFuchsia; dr.drawRect(outerBounds); }
 		
 		//visualize structuredLevel
 		if(visualizeStructureLevels)
@@ -7916,6 +7929,20 @@ version(/+$DIDE_REGION+/all)
 		else
 		{
 			processHighLevelPatterns_goInside(col_); //keep continue to discover recursively
+		}
+	} 
+	
+	
+	void processHighLevelPatterns(CodeColumn col_, TextFormat textFormat)
+	{
+		switch(textFormat)
+		{
+			case TextFormat.managed_block: 	processHighLevelPatterns_block(col_); break; 
+			case TextFormat.managed_enum: 	processHighLevelPatterns_enum(col_); break; 
+			case TextFormat.managed_statement: 	processHighLevelPatterns_statement(col_); break; 
+			case TextFormat.managed_goInside: 	processHighLevelPatterns_goInside(col_); break; 
+			case TextFormat.managed_optionalBlock: 	processHighLevelPatterns_optionalBlock(col_); break; 
+			default: 
 		}
 	} 
 	
