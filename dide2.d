@@ -488,13 +488,13 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				invalidate; //Todo: low power usage
-				caption = format!"%s - [%s]%s %s PID:%s CON:%s"(
+				caption = format!"%s - [%s]%s %s %s %s"(
 					baseCaption,
 					workspace.mainModuleFile.fullName,
 					workspace.modules.any!"a.changed" ? "CHG" : "",
 					dbgsrv.pingLedStateText,
-					dbgsrv.exe_pid,
-					dbgsrv.console_hwnd
+					dbgsrv.exe_pid ? dbgsrv.exe_pid.format!"PID:%s" : "",
+					dbgsrv.console_hwnd ? dbgsrv.console_hwnd.format!"CON:%s" : ""
 				); 
 				
 				/+
@@ -4834,8 +4834,11 @@ Note:
 								PostMessage(cast(HANDLE) cast(long) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
 							}
 						}
+						else if(cancelling)	{
+							globalPidList.killAll; 
+							/+Must checked before checking 'building'!+/
+						}
 						else if(building)	{ cancelBuild; }
-						else if(cancelling)	{ globalPidList.killAll; }
 						
 						resetDbg; 
 					}
