@@ -59,7 +59,7 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
 		//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
 		
-		//Todo: Ctrl+ 1..9		 Copy to clipboard[n]       Esetleg Ctrl+C+1..9
+		//Todo: Ctrl+ 1..9		 Copy to clipboard[n]        Esetleg Ctrl+C+1..9
 		//Todo: Alt + 1..9		 Paste from clipboard[n]
 		//Todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
 		
@@ -213,8 +213,6 @@ version(/+$DIDE_REGION main+/all)
 	auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
 	{ with(im) return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); } 
 	
-	//! FrmMain ///////////////////////////////////////////////
-	
 	class FrmMain : GLWindow
 	{
 		mixin autoCreate; 
@@ -249,7 +247,7 @@ version(/+$DIDE_REGION main+/all)
 			bool cancelling()const
 			{ return buildSystemWorkerState.cancelling; } 
 			bool running()const
-			{ return false; /+Todo: debugServer+/} 
+			{ return dbgsrv.exe_pid || dbgsrv.console_hwnd != 0; } 
 			
 			void initBuildSystem()
 			{
@@ -319,16 +317,8 @@ version(/+$DIDE_REGION main+/all)
 				launchBuildSystem!"rebuild"; 
 			} 
 			
-			void cancelBuildAndResetApp()
-			{
-				if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
-				
-				dbgsrv.forcedStop; 
-				resetDbg; 
-				
-				//Todo: kill app
-				//Todo: debugServer
-			} 
+			void cancelBuild()
+			{ if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); } 
 			
 			override void onCreate()
 			{
@@ -498,11 +488,13 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				invalidate; //Todo: low power usage
-				caption = format!"%s - [%s]%s %s"(
+				caption = format!"%s - [%s]%s %s PID:%s CON:%s"(
 					baseCaption,
 					workspace.mainModuleFile.fullName,
 					workspace.modules.any!"a.changed" ? "CHG" : "",
-					dbgsrv.pingLedStateText
+					dbgsrv.pingLedStateText,
+					dbgsrv.exe_pid,
+					dbgsrv.console_hwnd
 				); 
 				
 				/+
@@ -2730,11 +2722,18 @@ version(/+$DIDE_REGION main+/all)
 	{
 		version(/+$DIDE_REGION+/all)
 		{
-			//ContainerSelectionManager ///////////////////////////////////////////////
-			//this uses Containers. flags.selected, flags.oldSelected
-			
-			bounds2 getBounds(T item)
-			{ return item.outerBounds; } 
+			//T must have some bool properties:
+			static if(0)
+			static assert(
+				__traits(
+					compiles, {
+						T a; 
+						a.setSelected(a.getSelected); 
+						a.setOldSelected(a.getOldSelected); 
+						bounds2 b = a.getBounds; 
+					}
+				), "Field requirements not met."
+			); 
 			
 			enum MouseOp
 			{ idle, beforeMove, move, rectSelect} 
@@ -2754,20 +2753,26 @@ version(/+$DIDE_REGION main+/all)
 			private vec2 accumulatedMoveStartDelta, mouseLast; 
 			
 			///must be called after an items removed
-			void validateItemReferences(T[] items) {
+			void validateItemReferences(T[] items)
+			{
 				if(
 					!items.canFind(hoveredItem)//Opt: slow linear search
 				)
 				hoveredItem = null; 
 				//Todo: maybe use a hovered containerflag.
-			}   private static void select(alias op)(T[] items, T selectItem=null)
+			}  
+			
+			 private static void select(alias op)(T[] items, T selectItem=null)
 			{
 				foreach(a; items)
-				a.flags.selected = a.flags.selected.unaryFun!op; 
-					if(selectItem) select!"true"([selectItem]); 
-			}   bounds2 selectionBounds() {
+				a.setSelected = a.getSelected.unaryFun!op; 
+				if(selectItem) select!"true"([selectItem]); 
+			}   
+			
+			bounds2 selectionBounds()
+			{
 				if(mouseOp == MouseOp.rectSelect)
-				return dragBounds; 
+				return dragBounds /+Note: It's sorted.+/; 
 				else
 				return bounds2.init; 
 			} 
@@ -2796,7 +2801,7 @@ version(/+$DIDE_REGION main+/all)
 				void selectOnly(T item)
 				{ select!"false"(items, item); } 
 				void saveOldSelected()
-				{ foreach(a; items) a.flags.oldSelected = a.flags.selected; } 
+				{ foreach(a; items) a.setOldSelected = a.getSelected; } 
 				
 				auto mouseAct = view.mousePos.vec2; 
 				//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
@@ -2834,10 +2839,11 @@ version(/+$DIDE_REGION main+/all)
 					hoveredItem = null; 
 					if(mouseEnabled)
 					foreach(item; items)
-					if(getBounds(item).contains!"[)"(mouseAct))
+					if(item.getBounds.contains!"[)"(mouseAct))
 					hoveredItem = item; 
 				}
-			}version(/+$DIDE_REGION+/all)
+			}
+			version(/+$DIDE_REGION+/all)
 			{
 				version(/+$DIDE_REGION LMB was pressed+/all)
 				{
@@ -2888,11 +2894,12 @@ version(/+$DIDE_REGION main+/all)
 						if(mouseOp == MouseOp.rectSelect && inputChanged)
 						{
 							foreach(a; items)
-							if(dragBounds.contains!"[]"(getBounds(a)))
+							if(dragBounds.contains!"[]"(a.getBounds))
 							{
 								final switch(selectOp)
 								{
-									case SelectOp.add, SelectOp.clearAdd: 	a.flags.selected = true; 	break; 
+									case 	SelectOp.add, 
+										SelectOp.clearAdd: 	a.flags.selected = true; 	break; 
 									case SelectOp.sub: 	a.flags.selected = false; 	break; 
 									case SelectOp.toggle: 	a.flags.selected = !a.flags.oldSelected; 	break; 
 									case SelectOp.none: 		break; 
@@ -2947,6 +2954,182 @@ version(/+$DIDE_REGION main+/all)
 						accumulatedMoveStartDelta = 0; 
 					}
 				}
+			}
+		} 
+	} class OriginalSelectionManager(T : Cell)
+	{
+		//Todo: Combine and refactor this with the one inside DIDE
+		
+		//T must have some bool properties:
+		static assert(
+			__traits(
+				compiles, {
+					T a; 
+					a.isSelected = true; 
+					a.oldSelected = true; 
+				}
+			), "Field requirements not met."
+		); 
+		
+		bounds2 getBounds(T item)
+		{ return item.outerBounds; } 
+		
+		T hoveredItem; 
+		
+		enum MouseOp
+		{ idle, move, rectSelect} MouseOp mouseOp; 
+		
+		vec2 mouseLast; 
+		
+		enum SelectOp
+		{ none, add, sub, toggle, clearAdd} SelectOp selectOp; 
+		
+		vec2 dragSource; 
+		bounds2 dragBounds; 
+		
+		bounds2 selectionBounds()
+		{
+			if(mouseOp == MouseOp.rectSelect)
+			return dragBounds; 
+			else return bounds2.init; 
+		} 
+		
+		//notification functions: the manager must know when an item is deleted
+		void notifyRemove(T cell)
+		{
+			if(hoveredItem && hoveredItem is cell)
+			hoveredItem = null; 
+		} 
+		void notifyRemove(T[] cells)
+		{
+			if(hoveredItem)
+			cells.each!(c => notifyRemove(c)); 
+		} 
+		void notifyRemoveAll()
+		{ hoveredItem = null; } 
+		
+		T[] delegate() onBringToFront; //Use bringSelectedItemsToFront() for default behavior
+		bool deselectBelow; 
+		
+		void update(bool mouseEnabled, View2D view, T[] items)
+		{
+			
+			void selectNone()
+			{
+				foreach(a; items)
+				a.isSelected = false; 
+			} 	void selectOnly(T item)
+			{
+				selectNone; if(item)
+				item.isSelected = true; 
+			} 
+			void selectHoveredOnly()
+			{ selectOnly(hoveredItem); } 	void saveOldSelected()
+			{
+				foreach(a; items)
+				a.oldSelected = a.isSelected; 
+			} 
+			
+			//acquire mouse positions
+			auto mouseAct = view.mousePos.vec2; 
+			auto mouseDelta = mouseAct-mouseLast; 
+			scope(exit) mouseLast = mouseAct; 
+			
+			const 	LMB	= inputs.LMB.down,
+				LMB_pressed	= inputs.LMB.pressed,
+				LMB_released 	= inputs.LMB.released,
+				Shift	= inputs.Shift.down,
+				Ctrl	= inputs.Ctrl.down; 	const 	modNone	= !Shift 	&& !Ctrl,
+				modShift	= Shift	&& !Ctrl,
+				modCtrl	= !Shift	&& Ctrl,
+				modShiftCtrl 	= Shift	&& Ctrl; 
+			
+			const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed; 
+			
+			//update current selection mode
+			if(modNone)
+			selectOp = SelectOp.clearAdd; 	if(modShift)
+			selectOp = SelectOp.add; 
+			if(modCtrl)
+			selectOp = SelectOp.sub; 	if(modShiftCtrl)
+			selectOp = SelectOp.toggle; 
+			
+			//update dragBounds
+			if(LMB_pressed)
+			dragSource = mouseAct; 
+			if(LMB)
+			dragBounds = bounds2(dragSource, mouseAct).sorted; 
+			
+			//update hovered item
+			hoveredItem = null; 
+			foreach(item; items)
+			if(getBounds(item).contains!"[)"(mouseAct))
+			hoveredItem = item; 
+			
+			if(LMB_pressed && mouseEnabled)
+			{
+				//Left Mouse pressed //
+				if(hoveredItem)
+				{
+					if(modNone)
+					{
+						if(!hoveredItem.isSelected) selectHoveredOnly; 
+						mouseOp = MouseOp.move; 
+						if(deselectBelow) .deselectBelow(items, hoveredItem); 
+						if(onBringToFront) items = onBringToFront(); 
+					}
+					if(modShift || modCtrl || modShiftCtrl)
+					hoveredItem.isSelected.toggle; 
+				}
+				else
+				{
+					mouseOp = MouseOp.rectSelect; 
+					saveOldSelected; 
+				}
+			}
+			
+			{
+				//update ongoing things //
+				if(mouseOp == MouseOp.rectSelect && inputChanged)
+				{
+					foreach(a; items)
+					if(dragBounds.contains!"[]"(getBounds(a)))
+					{
+						final switch(selectOp)
+						{
+							case 	SelectOp.add,
+								SelectOp.clearAdd: 	a.isSelected = true; 	break; 
+							case SelectOp.sub: 	a.isSelected = false; 	break; 
+							case SelectOp.toggle: 	a.isSelected = !a.oldSelected; 	break; 
+							case SelectOp.none: 		break; 
+						}
+					}
+					else
+					{ a.isSelected = (selectOp == SelectOp.clearAdd) ? false : a.oldSelected; }
+					
+				}
+			}
+			
+			if(mouseOp == MouseOp.move && mouseDelta)
+			{
+				foreach(a; items)
+				if(a.isSelected)
+				{
+					a.outerPos += mouseDelta; 
+					static if(__traits(compiles, { a.cachedDrawing.free; }))
+					a.cachedDrawing.free; 
+				}
+				
+			}
+			
+			
+			if(LMB_released)
+			{
+				 //left mouse released //
+				
+				//...
+				
+				mouseOp = MouseOp.idle; 
 			}
 		} 
 	} struct TextSelectionManager
@@ -4013,11 +4196,10 @@ Note:
 				if(source in simpleValids) return; 
 			}
 			
-			import std.process; 
 			auto f = syntaxCheckTempFile; 
 			f.write(format!"#line %d\nversion(none):%s"(max(lineIdx, 1), source)); 
 			auto cmd = ["ldc2", "-c", "-o-", "-vcolumns", "-verrors-context", f.fullName]; 
-			auto ex = executeShell(cmd.joinCommandLine, null, Config.suppressConsole); 
+			auto ex = executeShell(cmd.joinCommandLine, null, ExecuteConfig.suppressConsole); 
 			f.remove; 
 			if(ex.status!=0)
 			{
@@ -4057,8 +4239,7 @@ Note:
 				bool anyColEdited = node.subColumns.map!(a=>a.edited).any; 
 				if(anyColEdited)
 				{
-					auto bNode = node.thisAndAllParents.map!toBreadcrumb.filter!"a".frontOr(Breadcrumb.init); 
-					CodeNode n = bNode ? bNode.node : node; 
+					auto n = node.nearestDeclarationBlock; 
 					if(n !in added)
 					{
 						res ~= n; 
@@ -4090,7 +4271,7 @@ Note:
 			return res; 
 		} 
 		
-		void feedNode(CodeNode node)
+		void feedNode(CodeNode node, Flag!"syntaxCheck" enableSyntaxCheck = Yes.syntaxCheck)
 		{
 			node.enforce("Unable to reach node."); 
 			auto mod = cast(Module) node; 
@@ -4101,7 +4282,7 @@ Note:
 			
 			const source = node.sourceText; 
 			
-			syntaxCheck(mod.file, source, node.lineIdx); 
+			if(enableSyntaxCheck) syntaxCheck(mod.file, source, node.lineIdx); 
 			auto newCol = new CodeColumn(node, source, TextFormat.managed_block); 
 			
 			if(cast(Module) node)
@@ -4122,7 +4303,7 @@ Note:
 			frmMain.overrideBuildResult(""); 
 		} 
 		
-		void feedCursor(TextCursor cursor)
+		void feedCursor(TextCursor cursor, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
 		{
 			if(!cursor.valid) return; 
 			auto breadcrumbs = cursor.toBreadcrumbs; 
@@ -4136,10 +4317,10 @@ Note:
 			
 			enforce(frmMain.ready, "BuildSystem is working."); 
 			
-			feedNode(breadcrumbs.back.node); 
+			feedNode(breadcrumbs.back.node, syntaxCheck); 
 		} 
 		
-		void feedChangedModule(Module mod)
+		void feedChangedModule(Module mod, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
 		{
 			if(!mod) return; 
 			if(!mod.changed) return; 
@@ -4148,14 +4329,14 @@ Note:
 			enforce(frmMain.ready, "BuildSystem is currently working."); 
 			
 			foreach(n; editedBreadcrumbNodes(mod))
-			feedNode(n); 
+			feedNode(n, syntaxCheck); 
 		} 
 		
-		void feedAndSaveModules(R)(R modules)
+		void feedAndSaveModules(R)(R modules, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
 		{
 			preserveTextSelections(
 				{
-					modules.each!((m){ feedChangedModule(m); }); 
+					modules.each!((m){ feedChangedModule(m, syntaxCheck); }); 
 					modules.each!"a.save"; 
 				}
 			); 
@@ -4575,6 +4756,8 @@ Note:
 				{ feedAndSaveModules(selectedModules); } 
 				@VERB("Ctrl+S") void saveSelectedModulesIfChanged()
 				{ feedAndSaveModules(selectedModules.filter!"a.changed"); } 
+				@VERB("Ctrl+Alt+S") void saveSelectedModulesIfChanged_noSyntaxCheck()
+				{ feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); } 
 				@VERB("Ctrl+Shift+S") void saveAllModulesIfChanged()
 				{ feedAndSaveModules(modules.filter!"a.changed"); } 
 				
@@ -4634,10 +4817,33 @@ Note:
 				@VERB("Ctrl+F2") void kill()
 				{
 					with(frmMain)
-					if(building || running)
-					{ cancelBuildAndResetApp; }
+					{
+						if(running)	{
+							if(dbgsrv.exe_pid)
+							{
+								import core.sys.windows.windows; 
+								if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
+								{
+									TerminateProcess(hProcess, 0); 
+									CloseHandle(hProcess); 
+								}
+							}
+							if(dbgsrv.console_hwnd)
+							{
+								import core.sys.windows.windows; 
+								PostMessage(cast(HANDLE) cast(long) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
+							}
+						}
+						else if(building)	{ cancelBuild; }
+						else if(cancelling)	{ globalPidList.killAll; }
+						
+						resetDbg; 
+					}
+					
+					//Todo: Kill running app too
+					//Todo: Double press to kill all LDC processes
 					//Todo: some keycombo to clear error markers
-					//Todo: Longpress to kill all LDC processes
+					
 				} 
 				
 				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }

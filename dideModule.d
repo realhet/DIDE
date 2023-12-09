@@ -569,7 +569,7 @@ version(/+$DIDE_REGION+/all)
 			{
 				if(
 					(d.isBlock && d.identifier!="") ||
-					(d.isRegion && d.caption!="")
+					(d.isRegion /+&& d.caption!=""  region can be unnamed+/)
 				) n = d; 
 			}
 			else if(auto m = cast(Module) cell)
@@ -590,6 +590,50 @@ version(/+$DIDE_REGION+/all)
 		
 		Breadcrumb[] toBreadcrumbs(TextSelection ts)
 		{ return ts.codeColumn.toBreadcrumbs; } 
+		
+		
+		bool isTokenString(Cell cell)
+		{ if(auto s = cast(CodeString) cell) return s.isTokenString; return false; } 
+		bool isModule(Cell cell)
+		{ return !!(cast(Module) cell); } 
+		bool isDeclaration(Cell cell)
+		{ return !!(cast(Declaration) cell); } 
+		bool isSimpleBlock(Cell cell)
+		{ if(auto d = cast(Declaration) cell) return d.isSimpleBlock; return false; } 
+		bool isRegion(Cell cell)
+		{ if(auto d = cast(Declaration) cell) return d.isRegion; return false; } 
+		bool isFunction(Cell cell)
+		{ if(auto d = cast(Declaration) cell) return d.isFunction; return false; } 
+		bool isAttributeBlock(Cell cell)
+		{ if(auto d = cast(Declaration) cell) return d.isAttributeBlock; return false; } 
+		
+		static isAnyDeclarationBlock(Cell cell)
+		{
+			if(auto d = cast(Declaration) cell)
+			{
+				if(d.isAttributeBlock) return true; 
+				if(d.isBlock && d.keyword.among("template", "struct", "union", "class", "interface")) return true; 
+			}
+			else if(cast(Module) cell)
+			return true; 
+			
+			return false; 
+		} 
+		
+		CodeNode nearestDeclarationBlock(Cell cell)
+		{
+			auto nodes = cell.thisAndAllParents.map!(c=>cast(CodeNode)c).filter!"a".array.retro; 
+			auto skippable = nodes.until!(n=>!n.isAnyDeclarationBlock && !n.isRegion).array; 
+			auto unskippable = nodes[skippable.length..$]; 
+			
+			//a non nested function is a valid candidate
+			if(unskippable.length && unskippable.front.isFunction) return unskippable.front; 
+			
+			return skippable.backOrNull; 
+			
+			/+Note: Do not deal with tokenStrings, stop at the very first function block.+/
+		} 
+		
 	}	
 }version(/+$DIDE_REGION UI functions+/all)
 {
@@ -6301,6 +6345,12 @@ version(/+$DIDE_REGION+/all)
 		bool isSimpleBlock() const
 		{ return isBlock && keyword=="" && header.empty && attributes.empty; } 
 		
+		bool isFunction()
+		{ return isBlock && !isRegion && keyword=="" && identifier!=""; } 
+		
+		bool isAttributeBlock()
+		{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
+		
 		void verify()
 		{
 			if(isBlock)
@@ -8076,6 +8126,10 @@ version(/+$DIDE_REGION+/all)
 				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
 				((condition)?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
 				((condition) ?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
+				
+				//Todo: this should be marked with different desing: bright colors and black text.
+				//Todo: Also the namedParameter's title should be plack.
+				
 					
 				((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
 			} 
