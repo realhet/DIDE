@@ -240,14 +240,16 @@ version(/+$DIDE_REGION main+/all)
 			@VERB("Alt+F4") void closeApp()
 			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
 			
-			bool building()const
+			@property building()const
 			{ return buildSystemWorkerState.building; } 
-			bool ready()const
+			@property ready()const
 			{ return !buildSystemWorkerState.building; } 
-			bool cancelling()const
+			@property cancelling()const
 			{ return buildSystemWorkerState.cancelling; } 
-			bool running()const
-			{ return dbgsrv.exe_pid || dbgsrv.console_hwnd != 0; } 
+			@property running()const
+			{ return !!dbgsrv.exe_pid; } 
+			@property running_console()const
+			{ return !!dbgsrv.console_hwnd; } 
 			
 			void initBuildSystem()
 			{
@@ -258,6 +260,27 @@ version(/+$DIDE_REGION main+/all)
 			void updateBuildSystem()
 			{
 				buildResult.receiveBuildMessages; 
+				
+				if(dbgsrv.exe_pid)
+				{
+					T0; 
+					import core.sys.windows.windows; 
+					if(auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dbgsrv.exe_pid))
+					CloseHandle(hProcess); 
+					else
+					dbgsrv.exe_pid = 0; 
+					LOG("pid", DT); 
+				}
+				
+				if(dbgsrv.console_hwnd)
+				{
+					T0; 
+					import core.sys.windows.windows; 
+					if(!IsWindow(cast(HANDLE) dbgsrv.console_hwnd))
+					dbgsrv.console_hwnd = 0; 
+					LOG("hwnd", DT); 
+				}
+				
 				//Todo: it's only good for ONE workspace!!!
 			} 
 			
@@ -281,7 +304,7 @@ version(/+$DIDE_REGION main+/all)
 				if(!workPath.exists) workPath.make; 
 				
 				BuildSettings bs = {
-					killExe	: true,
+					killExe	: false/+It's deprecated. DIDE Kills it.+/,
 					rebuild	: command=="rebuild",
 					verbose	: false,
 					compileOnly	: command=="rebuild",
@@ -307,18 +330,56 @@ version(/+$DIDE_REGION main+/all)
 			
 			void run()
 			{
+				if(!running) killRunningConsole; 
 				resetDbg; 
 				launchBuildSystem!"run"; 
 			} 
 			
 			void rebuild()
 			{
+				if(!running) killRunningConsole; 
 				resetDbg; 
 				launchBuildSystem!"rebuild"; 
 			} 
 			
 			void cancelBuild()
 			{ if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); } 
+			
+			void killCompilers()
+			{ globalPidList.killAll; } 
+			
+			void killRunningProcess()
+			{
+				if(dbgsrv.exe_pid)
+				{
+					import core.sys.windows.windows; 
+					if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
+					{
+						TerminateProcess(hProcess, 0); 
+						CloseHandle(hProcess); 
+					}
+				}
+			} 
+			
+			void killRunningConsole()
+			{
+				if(dbgsrv.console_hwnd)
+				{
+					import core.sys.windows.windows; 
+					PostMessage(cast(HANDLE) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
+				}
+			} 
+			
+			@property canTryCloseProcess()
+			{ return dbgsrv.exe_hwnd && !dbgsrv.isForcingExit; /+Note: windowed app.+/} 
+			
+			void closeOrKillProcess()
+			{
+				if(canTryCloseProcess)
+				{ dbgsrv.forceExit; }
+				else
+				{ killRunningProcess; killRunningConsole; }
+			} 
 			
 			override void onCreate()
 			{
@@ -723,6 +784,103 @@ version(/+$DIDE_REGION main+/all)
 											if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
 											if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
 										}
+										
+										static bool buildOpt_release, buildOpt_debug; 
+										//return Btn({ Column({ Row(); Row(); }); });
+										
+										static CaptIconBtn(string srcModule=__MODULE__, size_t srcLine=__LINE__)(string capt, string icon)
+										{
+											return Btn!(srcModule, srcLine)(
+												{
+													Column(
+														{
+															flags.clickable = false; 
+															Row(HAlign.center, { fh = ceil(fh*.66f); Text(capt); flags.clickable = false; }); 
+															Row(HAlign.center, { Text(icon); flags.clickable = false; }); 
+														}
+													); 
+												}
+											); 
+										} 
+										
+										BtnRow(
+											{
+												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")))) buildOpt_release.toggle; 
+												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")))) buildOpt_debug.toggle; 
+											}
+										); 
+										
+										static CaptIconBtn2(string srcModule=__MODULE__, size_t srcLine=__LINE__)(string capt, string icon, float w, bool en = true)
+										{
+											return Btn!(srcModule, srcLine)(
+												{
+													Row(
+														{
+															innerWidth = fh*w; 
+															innerHeight = ceil(fh*1.66f); 
+															flags.clickable = false; 
+															Text(" ", icon!="" ? icon~" " : ""); 
+															Text(capt); 
+														}
+													); 
+												}, enable(en)
+											); 
+										} 
+										
+										enum greenRightTriangle = tag("style fontColor=green")~" ▶ "~tag("style fontColor=black"); 
+										
+										static struct A { string capt, icon; void delegate() task; bool en = true; } 
+										
+										const modifier_rebuild = inputs.Shift.down; 
+										
+										{
+											auto a = 	cancelling 	? A("Cancelling", "", {}, false) : 
+												building 	? A("Building", "", {}, false) : 
+												running 	? A("Running", "", {}, false) 
+													: (
+												modifier_rebuild 	? A("Rebuild", "⚙", { rebuild; })
+													: A("Run", greenRightTriangle, { run; })
+											); 
+											if(CaptIconBtn2(a.capt, a.icon, 4, a.en)) a.task(); 
+										}
+										{
+											auto a = 	cancelling 	? A("Kill", "🔪", { killCompilers; }) :
+												building 	? A("Cancel", "❌", { cancelBuild; }) :
+												running	? (
+												canTryCloseProcess 	? A("Close", "✖", { closeOrKillProcess; }) 
+													: A("Kill", "🔪", { closeOrKillProcess; })
+											)
+													: A("Stop", "   ", {}, false); 
+											if(CaptIconBtn2(a.capt, a.icon, 3.5, a.en)) a.task(); 
+										}
+										
+										
+										/+
+											🐌🚀  ✨🐞
+											
+											➖🐌
+											➖🚀
+											🐞🐌
+											🐞🚀
+											
+											🚀 Release ON 
+											🐌 Release OFF
+											🐞 Debug ON
+											➖ Debug OFF
+											
+											🛠 ReBuild
+											
+											▶ Run
+											■ Stop
+											🔪 Kill
+											
+											🛠▶ Build/Run
+											🛑🟥■ Stop 
+											🔪 
+											
+											
+											
+										+/
 									}
 								); 
 								
@@ -4814,39 +4972,15 @@ Note:
 						rebuild; 
 					}
 				} 
+				
 				@VERB("Ctrl+F2") void kill()
 				{
 					with(frmMain)
 					{
-						if(running)	{
-							if(dbgsrv.exe_pid)
-							{
-								import core.sys.windows.windows; 
-								if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
-								{
-									TerminateProcess(hProcess, 0); 
-									CloseHandle(hProcess); 
-								}
-							}
-							if(dbgsrv.console_hwnd)
-							{
-								import core.sys.windows.windows; 
-								PostMessage(cast(HANDLE) cast(long) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
-							}
-						}
-						else if(cancelling)	{
-							globalPidList.killAll; 
-							/+Must checked before checking 'building'!+/
-						}
+						if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
 						else if(building)	{ cancelBuild; }
-						
-						resetDbg; 
+						else if(running)	{ closeOrKillProcess; }
 					}
-					
-					//Todo: Kill running app too
-					//Todo: Double press to kill all LDC processes
-					//Todo: some keycombo to clear error markers
-					
 				} 
 				
 				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
