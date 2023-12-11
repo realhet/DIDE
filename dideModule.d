@@ -763,8 +763,8 @@ version(/+$DIDE_REGION+/all)
 					}
 				); 
 			}
-			
 		} 
+		
 	}version(/+$DIDE_REGION+/all)
 	{
 		void UI_BuildMessageTextBlock(string message, RGB clFont)

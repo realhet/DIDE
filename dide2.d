@@ -261,24 +261,29 @@ version(/+$DIDE_REGION main+/all)
 			{
 				buildResult.receiveBuildMessages; 
 				
+				//Note: These operations are fast: only 0.015 ms
+				
 				if(dbgsrv.exe_pid)
 				{
-					T0; 
 					import core.sys.windows.windows; 
 					if(auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dbgsrv.exe_pid))
 					CloseHandle(hProcess); 
 					else
 					dbgsrv.exe_pid = 0; 
-					LOG("pid", DT); 
 				}
 				
 				if(dbgsrv.console_hwnd)
 				{
-					T0; 
 					import core.sys.windows.windows; 
 					if(!IsWindow(cast(HANDLE) dbgsrv.console_hwnd))
 					dbgsrv.console_hwnd = 0; 
-					LOG("hwnd", DT); 
+				}
+				
+				if(dbgsrv.exe_hwnd)
+				{
+					import core.sys.windows.windows; 
+					if(!IsWindow(cast(HANDLE) dbgsrv.exe_hwnd))
+					dbgsrv.exe_hwnd = 0; 
 				}
 				
 				//Todo: it's only good for ONE workspace!!!
@@ -345,12 +350,19 @@ version(/+$DIDE_REGION main+/all)
 			void cancelBuild()
 			{ if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); } 
 			
+			@property canKillCompilers()
+			{ return !!globalPidList[].length; } 
+			
 			void killCompilers()
 			{ globalPidList.killAll; } 
 			
+			
+			@property canKillRunningProcess()
+			{ return !!dbgsrv.exe_pid; } 
+			
 			void killRunningProcess()
 			{
-				if(dbgsrv.exe_pid)
+				if(canKillRunningProcess)
 				{
 					import core.sys.windows.windows; 
 					if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
@@ -361,17 +373,32 @@ version(/+$DIDE_REGION main+/all)
 				}
 			} 
 			
+			@property canKillRunningConsole()
+			{ return !!dbgsrv.console_hwnd; } 
+			
 			void killRunningConsole()
 			{
-				if(dbgsrv.console_hwnd)
+				if(canKillRunningConsole)
 				{
 					import core.sys.windows.windows; 
 					PostMessage(cast(HANDLE) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
 				}
 			} 
 			
+			@property canCloseRunningWindow()
+			{ return !!dbgsrv.exe_hwnd; } 
+			
+			void closeRunningWindow()
+			{
+				if(canCloseRunningWindow)
+				{ dbgsrv.forceExit; }
+			} 
+			
 			@property canTryCloseProcess()
-			{ return dbgsrv.exe_hwnd && !dbgsrv.isForcingExit; /+Note: windowed app.+/} 
+			{
+				//this is condition is used by the Ctrl+F2 button. Only tries once.
+				return canCloseRunningWindow && !dbgsrv.isForcingExit; /+Note: windowed app.+/
+			} 
 			
 			void closeOrKillProcess()
 			{
@@ -788,9 +815,11 @@ version(/+$DIDE_REGION main+/all)
 										static bool buildOpt_release, buildOpt_debug; 
 										//return Btn({ Column({ Row(); Row(); }); });
 										
-										static CaptIconBtn(string srcModule=__MODULE__, size_t srcLine=__LINE__)(string capt, string icon)
+										static CaptIconBtn	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
+											(string capt, string icon, bool en = true)
 										{
-											return Btn!(srcModule, srcLine)(
+											return Btn!(srcModule, srcLine)
+											(
 												{
 													Column(
 														{
@@ -799,20 +828,23 @@ version(/+$DIDE_REGION main+/all)
 															Row(HAlign.center, { Text(icon); flags.clickable = false; }); 
 														}
 													); 
-												}
+												},
+												enable(en)
 											); 
 										} 
 										
 										BtnRow(
 											{
-												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")))) buildOpt_release.toggle; 
-												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")))) buildOpt_debug.toggle; 
+												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
+												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
 											}
 										); 
 										
-										static CaptIconBtn2(string srcModule=__MODULE__, size_t srcLine=__LINE__)(string capt, string icon, float w, bool en = true)
+										static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
+											(string capt, string icon, float w, bool en, void delegate() fun)
 										{
-											return Btn!(srcModule, srcLine)(
+											return Btn!(srcModule, srcLine)
+											(
 												{
 													Row(
 														{
@@ -820,10 +852,13 @@ version(/+$DIDE_REGION main+/all)
 															innerHeight = ceil(fh*1.66f); 
 															flags.clickable = false; 
 															Text(" ", icon!="" ? icon~" " : ""); 
-															Text(capt); 
+															Text(capt~"\n"); 
+															fh = ceil(fh*.66f); 
+															fun(); 
 														}
 													); 
-												}, enable(en)
+												},
+												enable(en)
 											); 
 										} 
 										
@@ -841,7 +876,96 @@ version(/+$DIDE_REGION main+/all)
 												modifier_rebuild 	? A("Rebuild", "⚙", { rebuild; })
 													: A("Run", greenRightTriangle, { run; })
 											); 
-											if(CaptIconBtn2(a.capt, a.icon, 4, a.en)) a.task(); 
+											if(
+												CaptIconBtn2(
+													a.capt, a.icon, 4, a.en, 
+													{
+														fh = ceil(fh*.66f); 
+														with(buildSystemWorkerState)
+														{
+															if(0)
+															Row(
+																{
+																	width = 6*fh; 
+																	Row(
+																		{
+																			if(building) style.fontColor = mix(style.fontColor, style.bkColor, blink); 
+																			Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready"); 
+																		}
+																	); 
+																	Row(
+																		{
+																			 flex=1; flags.hAlign = HAlign.right; 
+																			if(building && !cancelling && totalModules)
+																			Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules)); 
+																			else if(building && cancelling) { Text(format!"\u2026%d"(inFlight)); }
+																		}
+																	); 
+																}
+															); 
+															
+															const w = innerWidth; 
+															Row(
+																{
+																	flags.clickable = false; 
+																	innerSize = vec2(w, fh); 
+																	
+																	static drawProgress(
+																		vec2 size, int compiled, int inFlight, int total,
+																		RGB clBackground, RGB clQueued, RGB clCompiled
+																	)
+																	{
+																		auto dr = new Drawing; 
+																		
+																		auto r = bounds2(vec2(0), size); 
+																		if(!r.empty)
+																		{
+																			dr.color = clBackground; 
+																			dr.fillRect(r); 
+																			r = r.inflated(-.5f, -1);  //Opt: ellenorizni, ha ez double, akkor is floattal szamol-e.
+																		}
+																		
+																		
+																		if(total.inRange(1, 1000) && !r.empty)
+																		{
+																			//Must do errorchecks, because it updated asynchronously as nasty globals.
+																			compiled = compiled.clamp(0, total); 
+																			inFlight = inFlight.clamp(0, total-compiled); 
+																			
+																			const sc = r.width / total; //Opt: ellenorizni, hogy ha ezt belerakom a box()-ba, akkor 1x szamolja-e.
+																			
+																			void box(int i) { dr.fillRect(bounds2(i*sc+.5f, r.top, i*sc+sc-.5f, r.bottom)); } 
+																			
+																			dr.color = clCompiled; 	foreach(i; 0 .. compiled) box(i); 
+																			dr.color = mix(clQueued, clCompiled, blink^^2); 	foreach(i; compiled .. compiled+inFlight) box(i); 
+																			dr.color = clQueued; 	foreach(i; compiled+inFlight .. total) box(i); 
+																		}
+																		
+																		//Todo: a szinezes lehetne error/warning alapjan is.  A rectangle belseje lehetne olyan szinu.
+																		//Todo: a legutolso forditas eredmenye maradjon kint. Ha projectet valt, akkor tunjon el.
+																		
+																		return dr; 
+																	} 
+																	bkColor = mix(bkColor, clGray, .175f); 
+																	addOverlayDrawing(
+																		drawProgress(
+																			innerSize, compiledModules, inFlight, totalModules, 
+																			bkColor, mix(bkColor, clGray, .25f), clAccent
+																		)
+																	); 
+																}
+															); 
+															/+
+																style.fontColor = clGreen; 	Text("●".replicate(compiledModules.clamp(0, 64))); 
+																style.fontColor = mix(style.bkColor, clGreen, blink); 	Text("●".replicate(inFlight.clamp(0, 64))); 
+																style.fontColor = clSilver; 	Text("●".replicate((totalModules - compiledModules - inFlight).clamp(0, 64))); 
+															+/
+														}
+														
+														//Text("●●●●●●●●●●●●●●"); 
+													}
+												)
+											) a.task(); 
 										}
 										{
 											auto a = 	cancelling 	? A("Kill", "🔪", { killCompilers; }) :
@@ -851,36 +975,42 @@ version(/+$DIDE_REGION main+/all)
 													: A("Kill", "🔪", { closeOrKillProcess; })
 											)
 													: A("Stop", "   ", {}, false); 
-											if(CaptIconBtn2(a.capt, a.icon, 3.5, a.en)) a.task(); 
+											if(
+												CaptIconBtn2(
+													a.capt, a.icon, 4, a.en, 
+													{
+														theme = "tool"; 
+														const m = Margin(0, .5, 0, .5); 
+														if(canKillCompilers)
+														{
+															if(Btn("LDC", enable(true), { margin = m; }))
+															killCompilers; 
+														}
+														if(canKillRunningProcess)
+														{
+															if(Btn("PID", enable(true), { margin = m; }))
+															killRunningProcess; 
+														}
+														if(canCloseRunningWindow)
+														{
+															if(Btn("WND", enable(true), { margin = m; }))
+															closeRunningWindow; 
+														}
+														if(canKillRunningConsole)
+														{
+															if(Btn("CON", enable(true), { margin = m; }))
+															killRunningConsole; 
+														}
+														
+														//Todo: Ha a window es a console open, de a nagy button disabled, akkor ezek sem hasznalhatoak.
+														//Todo: ha csak a console window marad, azt is be lehessen zarni.🖥🗔
+													}
+												)
+											) a.task(); 
 										}
 										
 										
-										/+
-											🐌🚀  ✨🐞
-											
-											➖🐌
-											➖🚀
-											🐞🐌
-											🐞🚀
-											
-											🚀 Release ON 
-											🐌 Release OFF
-											🐞 Debug ON
-											➖ Debug OFF
-											
-											🛠 ReBuild
-											
-											▶ Run
-											■ Stop
-											🔪 Kill
-											
-											🛠▶ Build/Run
-											🛑🟥■ Stop 
-											🔪 
-											
-											
-											
-										+/
+										/+🐌🚀✨🐞🔪🛠▶🛑🟥■+/
 									}
 								); 
 								
@@ -4980,6 +5110,7 @@ Note:
 						if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
 						else if(building)	{ cancelBuild; }
 						else if(running)	{ closeOrKillProcess; }
+						//Todo: Vannak ezen belul a mini buttonok. Azok alapjan kell eldonteni, hogy ez mit csinaljon.
 					}
 				} 
 				
