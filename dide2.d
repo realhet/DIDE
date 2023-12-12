@@ -36,8 +36,7 @@
 //Todo: automatic spaces around operators and ligatures.
 //Todo: automatic space after ;
 //Todo: toggle space/tab/newline after prepositions.
-//Todo: Alt+F4 akkor is mukodik, ha nem a DIDE a focused, argh...
-//Todo: progress indicator on the windows taskbar
+
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -286,7 +285,15 @@ version(/+$DIDE_REGION main+/all)
 					dbgsrv.exe_hwnd = 0; 
 				}
 				
-				//Todo: it's only good for ONE workspace!!!
+				with(buildSystemWorkerState)
+				{
+					enum scale = 16; /+Note: It shows a tiny bit of progress at the start+/
+					const total = totalModules*scale; 
+					const act = (compiledModules*scale).clamp(1, total); 
+					setTaskbarProgress(building, act, total); 
+					
+					//Todo: show error on the taskbarList
+				}
 			} 
 			
 			void destroyBuildSystem()
@@ -541,10 +548,9 @@ version(/+$DIDE_REGION main+/all)
 			
 		}version(/+$DIDE_REGION+/all)
 		{
-					
+			
 			override void onUpdate()
 			{
-				 //onUpdate ////////////////////////////////////////
 				//showFPS = true;
 				//im.focus
 				
@@ -838,7 +844,8 @@ version(/+$DIDE_REGION main+/all)
 												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
 												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
 											}
-										); 
+										)
+										/+Todo: ezt a 2 buttont bekotni, hogy modositsa a project forrast.+/; 
 										
 										static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
 											(string capt, string icon, float w, bool en, void delegate() fun)
@@ -883,27 +890,6 @@ version(/+$DIDE_REGION main+/all)
 														fh = ceil(fh*.66f); 
 														with(buildSystemWorkerState)
 														{
-															if(0)
-															Row(
-																{
-																	width = 6*fh; 
-																	Row(
-																		{
-																			if(building) style.fontColor = mix(style.fontColor, style.bkColor, blink); 
-																			Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready"); 
-																		}
-																	); 
-																	Row(
-																		{
-																			 flex=1; flags.hAlign = HAlign.right; 
-																			if(building && !cancelling && totalModules)
-																			Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules)); 
-																			else if(building && cancelling) { Text(format!"\u2026%d"(inFlight)); }
-																		}
-																	); 
-																}
-															); 
-															
 															const w = innerWidth; 
 															Row(
 																{
@@ -924,7 +910,6 @@ version(/+$DIDE_REGION main+/all)
 																			dr.fillRect(r); 
 																			r = r.inflated(-.5f, -1);  //Opt: ellenorizni, ha ez double, akkor is floattal szamol-e.
 																		}
-																		
 																		
 																		if(total.inRange(1, 1000) && !r.empty)
 																		{
@@ -955,14 +940,7 @@ version(/+$DIDE_REGION main+/all)
 																	); 
 																}
 															); 
-															/+
-																style.fontColor = clGreen; 	Text("●".replicate(compiledModules.clamp(0, 64))); 
-																style.fontColor = mix(style.bkColor, clGreen, blink); 	Text("●".replicate(inFlight.clamp(0, 64))); 
-																style.fontColor = clSilver; 	Text("●".replicate((totalModules - compiledModules - inFlight).clamp(0, 64))); 
-															+/
 														}
-														
-														//Text("●●●●●●●●●●●●●●"); 
 													}
 												)
 											) a.task(); 
@@ -973,7 +951,8 @@ version(/+$DIDE_REGION main+/all)
 												running	? (
 												canTryCloseProcess 	? A("Close", "✖", { closeOrKillProcess; }) 
 													: A("Kill", "🔪", { closeOrKillProcess; })
-											)
+											) :
+												canKillRunningConsole	? A("Close", "🖥", { killRunningConsole; })
 													: A("Stop", "   ", {}, false); 
 											if(
 												CaptIconBtn2(
@@ -5110,6 +5089,7 @@ Note:
 						if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
 						else if(building)	{ cancelBuild; }
 						else if(running)	{ closeOrKillProcess; }
+						else if(canKillRunningConsole)	{ killRunningConsole; }
 						//Todo: Vannak ezen belul a mini buttonok. Azok alapjan kell eldonteni, hogy ez mit csinaljon.
 					}
 				} 
