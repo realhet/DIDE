@@ -1571,6 +1571,7 @@ version(/+$DIDE_REGION main+/all)
 		{
 			int lineIdx; 
 			string reference; 
+			bool optimized = true; 
 			
 			Container.SearchResult[] searchResults; 
 			
@@ -1587,6 +1588,15 @@ version(/+$DIDE_REGION main+/all)
 				//ignore trailing empty rows
 				while(rows.length && !rows.back.lineIdx)
 				rows.popBack; 
+				
+				//Todo: must do something with the fucking lineIdx==0 rows at the end...
+				
+				if(!optimized)
+				{
+					if(!rows.map!"a.lineIdx".isSorted) ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
+					rows.each!((r){ visitRow(r); }); 
+					return; 
+				}
 				
 				//ignore all rows higher than lineIdx
 				rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length]; 
@@ -1631,7 +1641,7 @@ version(/+$DIDE_REGION main+/all)
 			} 
 		} 
 		
-		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc)
+		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
 		{
 			//Opt: unoptimal to return a dynamic array
 			
@@ -1649,6 +1659,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				auto locator = LineIdxLocator(loc.lineIdx, CodeLocationPrefix ~ loc.text); 
+				locator.optimized = optimized; 
 				locator.visitNode(mod); 
 				
 				auto res = locator.searchResults; 
@@ -1745,7 +1756,49 @@ version(/+$DIDE_REGION main+/all)
 				
 				foreach(msgIdx, const msg; br.messages)
 				if(msg.type==type)
-				arr ~= codeLocationToSearchResults(msg.location); 
+				{
+					auto sr = codeLocationToSearchResults(msg.location); 
+					
+					//Todo: Must fix this crap.  Many rows are is unable to find.  Especially the rows on the surfaces of the fucking Nodes.
+					
+					static if(0)
+					if(sr.empty && msg.location.lineIdx>1)
+					{
+						auto loc2 = cast()msg.location; 
+						loc2.lineIdx--; 
+						sr = codeLocationToSearchResults(loc2, false); 
+						//WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+						/+
+							Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
+							It is on the surface of the Node which has no updated lineIdx.
+						+/
+					}
+					
+					
+					static if(0)
+					if(sr.empty)
+					{
+						WARN("Unable to find line for BuildMessage:\n"~msg.text); 
+						sr = codeLocationToSearchResults(msg.location, false); 
+						if(sr.empty)
+						{
+							WARN("Skipping binary search:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+							
+							if(msg.location.lineIdx>1)
+							{
+								auto loc2 = cast()msg.location; 
+								loc2.lineIdx--; 
+								sr = codeLocationToSearchResults(loc2, false); 
+								WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+								/+
+									Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
+									It is on the surface of the Node which has no updated lineIdx.
+								+/
+							}
+						}
+					}
+					arr ~= sr; 
+				}
 				
 				return arr; 
 			} 
@@ -4456,6 +4509,11 @@ Note:
 		void syntaxCheck(File moduleFile, string source, int lineIdx=1)
 		{
 			{
+				/+
+					Todo: The error can be in another imported module too, not just this module. 
+					But the error file is wrongly renamed to this file.
+				+/
+				
 				static bool[string] simpleValids; 
 				if(simpleValids.empty)
 				["{}", "q{}", "[]", "()", "``", "''", `""`].each!((s){ simpleValids[s]=true; }); 
