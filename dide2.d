@@ -37,6 +37,20 @@
 //Todo: automatic space after ;
 //Todo: toggle space/tab/newline after prepositions.
 
+/+
+	Todo: use japanese symbols to encode NiceExpressions.
+	- It's effective coding.  Much more effective than writing latin unique identifiers like: $DIDE_REGION
+	- It will be automated, so I don't have to write them manually.
+	- They will be hidden by a nice UI.
++/
+
+//Todo: 査 = inspection
+auto 査(T)(T val)
+{
+	print("査:", val); 
+	return val; 
+} 
+
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)
@@ -4558,6 +4572,7 @@ Note:
 			bool[CodeNode] added; 
 			void visit(CodeNode node)
 			{
+				if(!node) return; 
 				//visit all [changed] and collect the [edited] ones.
 				//Forward order, root nodes at the front.
 				if(!node.changed) return; 
