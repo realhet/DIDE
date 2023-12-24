@@ -101,13 +101,16 @@ auto predecodeLdcOutput(string input)
 		{
 			fetchLastMessage; 
 			lastMessageIdx = i; 
-		}else if(
+		}
+		else if(
 			isContextPositionLine(lines[i]) &&
-									 i>0 && lines[i-1].length>=lines[i].length && //previous line is sameSize or longer?
-									 lastMessageIdx>=0 && i-lastMessageIdx>=2 && //is there 3 lines from the last message?
-									 lines[i].countUntil('^')== (lines[lastMessageIdx].isWild("*(*,*)*") ? wild.ints(2, -1)-1 : -1) //spaces before marker and column in message are correct?
+			i>0 && lines[i-1].length>=lines[i].length && //previous line is sameSize or longer?
+			lastMessageIdx>=0 && i-lastMessageIdx>=2 && //is there 3 lines from the last message?
+			lines[i].countUntil('^')==(lines[lastMessageIdx].isWild("*(*,*)*") ? wild.ints(2, -1)-1 : -1)
+			/+spaces before marker and column in message are correct?+/
 		)
-		{ fetchLastMessage(i); }else
+		{ fetchLastMessage(i); }
+		else
 		stack ~= lines[i]; 
 	}
 	fetchLastMessage; 
@@ -150,80 +153,66 @@ void test_predecodeLdcOutput()
 	}; 
 	
 	//C:\D>ldc2 --vcolumns --verrors-context -Ic:\d\libs testMixinError.d
-	
 	immutable inputText = 
-	q"{
-		
-				
-						
-								
-										
-										the first pragma
-										c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-										    body
-										    ^
-										c:\d\libs\quantities\internal\dimensions.d(136,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-										    body
-										    ^
-										c:\d\testMixinError.d(10,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-										  depr1; depr1;
-										  ^
-										c:\d\testMixinError.d(10,10): Deprecation: function `testMixinError.depr1` is deprecated - cause
-										  depr1; depr1;
-										         ^
-										c:\d\testMixinError.d(11,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-										  depr1;
-										  ^
-										c:\d\testMixinError.d(16,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-										  depr1;
-										  ^
-										this is just a pragma
-										c:\D\ldc2\bin\..\import\std\functional.d-mixin-124(124,1): Error: undefined identifier `b`
-										c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(627,19): Error: template instance `std.functional.unaryFun!("b+5", "a").unaryFun!int` error instantiating
-										        return fun(_input.front);
-										                  ^
-										c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(524,16):        instantiated from here: `MapResult!(unaryFun, Result)`
-										        return MapResult!(_fun, Range)(r);
-										               ^
-										c:\d\testMixinError.d(21,10):        instantiated from here: `map!(Result)`
-										  iota(5).map!"b+5".print;
-										         ^
-										c:\d\testMixinError.d-mixin-22(22,15): Error: found `b` when expecting `;` following statement
-										this is just a pragma
-										with multiple lines
-										c:\d\testMixinError.d(24,35): Error: template `std.algorithm.searching.countUntil` cannot deduce function from argument types `!((a, b) => c > d)(Result, int)`
-										  iota(5).countUntil!((a, b)=>c>d)(5);
-										                                  ^
-										c:\D\ldc2\bin\..\import\std\algorithm\searching.d(770,11):        Candidates are: `countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)`
-										  with `pred = __lambda1,
-										       R = Result,
-										       Rs = (int)`
-										  must satisfy the following constraint:
-										`       allSatisfy!(canTestStartsWith!(pred, R), Rs)`
-										ptrdiff_t countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)
-										          ^
-										c:\D\ldc2\bin\..\import\std\algorithm\searching.d(858,11):                        `countUntil(alias pred = "a == b", R, N)(R haystack, N needle)`
-										  with `pred = __lambda1,
-										       R = Result,
-										       N = int`
-										  must satisfy the following constraint:
-										`       is(typeof(binaryFun!pred(haystack.front, needle)) : bool)`
-										ptrdiff_t countUntil(alias pred = "a == b", R, N)(R haystack, N needle)
-										          ^
-										c:\D\ldc2\bin\..\import\std\algorithm\searching.d(917,11):                        `countUntil(alias pred, R)(R haystack)`
-										ptrdiff_t countUntil(alias pred, R)(R haystack)
-										          ^
-										also a pragma
-										fake markes here
-										       ^
-										end of file
-										
-									
-							
-					
-			
-	}"; 
-	//Todo: This fucking tokenstring keeps growing on save/reload.
+	q"{the first pragma
+c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
+    body
+    ^
+c:\d\libs\quantities\internal\dimensions.d(136,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
+    body
+    ^
+c:\d\testMixinError.d(10,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+  depr1; depr1;
+  ^
+c:\d\testMixinError.d(10,10): Deprecation: function `testMixinError.depr1` is deprecated - cause
+  depr1; depr1;
+         ^
+c:\d\testMixinError.d(11,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+  depr1;
+  ^
+c:\d\testMixinError.d(16,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
+  depr1;
+  ^
+this is just a pragma
+c:\D\ldc2\bin\..\import\std\functional.d-mixin-124(124,1): Error: undefined identifier `b`
+c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(627,19): Error: template instance `std.functional.unaryFun!("b+5", "a").unaryFun!int` error instantiating
+        return fun(_input.front);
+                  ^
+c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(524,16):        instantiated from here: `MapResult!(unaryFun, Result)`
+        return MapResult!(_fun, Range)(r);
+               ^
+c:\d\testMixinError.d(21,10):        instantiated from here: `map!(Result)`
+  iota(5).map!"b+5".print;
+         ^
+c:\d\testMixinError.d-mixin-22(22,15): Error: found `b` when expecting `;` following statement
+this is just a pragma
+with multiple lines
+c:\d\testMixinError.d(24,35): Error: template `std.algorithm.searching.countUntil` cannot deduce function from argument types `!((a, b) => c > d)(Result, int)`
+  iota(5).countUntil!((a, b)=>c>d)(5);
+                                  ^
+c:\D\ldc2\bin\..\import\std\algorithm\searching.d(770,11):        Candidates are: `countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)`
+  with `pred = __lambda1,
+       R = Result,
+       Rs = (int)`
+  must satisfy the following constraint:
+`       allSatisfy!(canTestStartsWith!(pred, R), Rs)`
+ptrdiff_t countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)
+          ^
+c:\D\ldc2\bin\..\import\std\algorithm\searching.d(858,11):                        `countUntil(alias pred = "a == b", R, N)(R haystack, N needle)`
+  with `pred = __lambda1,
+       R = Result,
+       N = int`
+  must satisfy the following constraint:
+`       is(typeof(binaryFun!pred(haystack.front, needle)) : bool)`
+ptrdiff_t countUntil(alias pred = "a == b", R, N)(R haystack, N needle)
+          ^
+c:\D\ldc2\bin\..\import\std\algorithm\searching.d(917,11):                        `countUntil(alias pred, R)(R haystack)`
+ptrdiff_t countUntil(alias pred, R)(R haystack)
+          ^
+also a pragma 
+fake markes here
+       ^
+end of file}"; 
 	
 	inputText.predecodeLdcOutput.dump; 
 } 
@@ -1429,6 +1418,9 @@ struct BuildSystem
 		
 		void compile(File[] srcFiles, File[] cachedFiles) //Compile ////////////////////////
 	{
+		
+		
+		
 		if(srcFiles.empty)
 		return; 
 		
@@ -1456,13 +1448,18 @@ struct BuildSystem
 		
 		//////////////////////////////////////////////////////////////////////////////////////
 		
-		string[] sOutputs; 
-		int res; 
+		string[] outputs; 
+		string combinedOutput; 
+		string allOutput; 
+		int combinedResult; 
+		
+		void accumulateOutput(string output, File f)
+		{
+			combinedOutput ~= processDMDErrors(output, f.path.fullPath); 
+			allOutput ~= f.fullName~": COMPILER OUTPUT:\n"~output~"\n"; 
+		} 
 		
 		log(bold("Compiling: ")); 
-		
-		
-		string sOutput; //combined error log
 		
 		foreach(srcFile; cachedFiles)
 		{
@@ -1472,13 +1469,13 @@ struct BuildSystem
 			if(onCompileProgress)
 			onCompileProgress(srcFile, 0/+success+/, outputCache[objHash]); 
 			
-			sOutput ~= processDMDErrors(output, srcFile.path.fullPath); 
+			accumulateOutput(output, srcFile); 
 		}
 		
 		bool cancelled; 
-		res = spawnProcessMulti2
+		combinedResult = spawnProcessMulti2
 		(
-			srcFiles, cmdLines, null, /*working dir=*/Path.init, /*log path=*/workPath, sOutputs, 
+			srcFiles, cmdLines, null, /*working dir=*/Path.init, /*log path=*/workPath, outputs, 
 			(idx, result, output){
 				
 				//logln(bold("COMPILED("~result.text~"): ")~joinCommandLine(cmdLines[idx]));
@@ -1515,25 +1512,26 @@ struct BuildSystem
 			}
 		); 
 		
-		enforce(!cancelled, "Compillation cancelled."); 
-		
-		//Todo: refactor cancel/kill functionality.. onIdle should be able to kill too.
-		
 		logln; 
 		logln; 
 		
 		//process combined error log
-		foreach(i, ref o; sOutputs)
-		sOutput ~= processDMDErrors(o, srcFiles[i].path.fullPath); 
-		sOutput = mergeDMDErrors(sOutput); 
+		foreach(i, o; outputs)
+		accumulateOutput(o, srcFiles[i]); 
+		combinedOutput = mergeDMDErrors(combinedOutput); 
+		
 		//add todos
 		if(settings.collectTodos)
-		sOutput ~= todos.map!(s => s~"\r\n").join; 
+		combinedOutput ~= todos.map!(s => s~"\r\n").join; 
+		
+		if(!combinedOutput.empty)
+		logln(combinedOutput); 
+		
+		if(1) { File(workPath, `$output.txt`).write(allOutput); }
 		
 		//check results
-		enforce(res==0, sOutput); 
-		if(!sOutput.empty)
-		logln(sOutput); 
+		enforce(!cancelled, "Compillation cancelled."); 
+		enforce(combinedResult==0, combinedOutput); 
 	} 
 	
 		void overwriteObjsFromCache(File[] filesInCache)

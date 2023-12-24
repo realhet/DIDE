@@ -1970,7 +1970,12 @@ version(/+$DIDE_REGION+/all)
 		void put(string prefix, string customPrefix, CodeColumn block, string postfix)
 		{
 			const enableIndent_prev = enableIndent; 
-			if(!prefix.empty && prefix.back.among('\'', '"', '`', '#')) enableIndent = false; 
+			if(
+				!prefix.empty && (
+					prefix.back.among('\'', '"', '`', '#') 
+					|| prefix.get(1)=='"'
+				)
+			) enableIndent = false; 
 			scope(exit) enableIndent = enableIndent_prev; 
 			
 			put(prefix); 
@@ -5216,7 +5221,7 @@ version(/+$DIDE_REGION+/all)
 	//Todo: qString_id
 	enum Type
 	{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	} 
-	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`	]; 
+	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`]; 
 	enum TypePostfix 	= 	["`"	, "'"	, `"`	, `"`	, `)"`	, `]"`	, `}"`	, `>"`	, `/"`	, `}`	]; 
 	
 	enum CharSize

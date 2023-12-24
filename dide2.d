@@ -4586,10 +4586,10 @@ Note:
 						added[n]=true; 
 					}
 				}
-				foreach(col; node.subColumns.filter!(a=>a.changed))
+				foreach(col; node.subColumns.filter!(a=>a && a.changed))
 				{
 					anyColEdited |= col.edited; 
-					foreach(row; col.rows.filter!(a=>a.changed))
+					foreach(row; col.rows.filter!(a=>a && a.changed))
 					foreach(subNode; row.subCells.map!(a=>cast(CodeNode)a).filter!(a=>a && a.changed))
 					visit(subNode); 
 				}
