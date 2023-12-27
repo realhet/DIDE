@@ -5117,10 +5117,12 @@ version(/+$DIDE_REGION+/all)
 						padding = "4"; 
 						
 						auto img = new Img(f, darkColor); 
-						
+						img.autoRefresh = true; //Todo: this eats up too much resources!!!
+						//need a lighter refresh strategy
 						img.flags.autoWidth = false; 
 						img.flags.autoHeight = false; 
 						img.outerSize = bmp.size.vec2; 
+						
 						
 						//restrict maxHeight
 						if(maxHeight>0 && img.outerHeight>maxHeight)
@@ -5139,6 +5141,7 @@ version(/+$DIDE_REGION+/all)
 					auto 	locStr 	= scmt[keyword.length..$].stripLeft,
 						loc	= CodeLocation(locStr),
 						img	= new Img(File(`icon:\`~loc.file.ext), style.bkColor); 
+					img.autoRefresh = false; //For 1000 iconst it would be terribly slow!!!
 					
 					id = "CodeLocation:"~locStr; 
 					

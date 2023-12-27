@@ -1,5 +1,14 @@
 //@exe
-import het; 
+import het, std.regex; 
+
+class FileNameFixer
+{
+	private File[string] nameMap; 
+	File fix(File f)
+	{ return nameMap.require(f.fullName, f.actualFile); }  File opCall(File f)
+	{ return fix(f); } File opCall(string s)
+	{ return fix(s.File); } 
+} 
 
 struct DMDMessage
 {
@@ -39,25 +48,14 @@ struct DMDMessage
 	bool isSupplemental() const
 	{ return type==Type.unknown && content.startsWith(' '); } 
 	
-	string toString_internal(int level=0) const
+	bool isInstantiatedFrom() const
 	{
-		auto res = format	!"%s%s%s(%d,%d): %s"
-		(
-			"  ".replicate(level),
-			file.fullName, 
-			mixinLine ? "-mixin-"~mixinLine.text : "", 
-			line, col, 
-			typeColorCode[type]~typePrefixes[type]~"\33\7"~content
+		return 	isSupplemental && 
+			(
+			content.stripLeft.startsWith("instantiated from here: ") ||
+			content.endsWith(" instantiations, -v to show) ...")
 		); 
-		
-		foreach(const ref sm; subMessages)
-		res ~= "\n"~sm.toString_internal(level+1); 
-		
-		return res; 
 	} 
-	
-	string toString() const
-	{ return toString_internal; } 
 	
 	private void detectType()
 	{
@@ -71,159 +69,288 @@ struct DMDMessage
 			break; 
 		}
 	} 
-} 
-
-class FileNameFixer
-{
-	private File[string] nameMap; 
-	File fix(File f)
-	{ return nameMap.require(f.fullName, f.actualFile); }  File opCall(File f)
-	{ return fix(f); } File opCall(string s)
-	{ return fix(s.File); } 
-} 
-
-auto processDMDOutput(string input, FileNameFixer fileNameFixer = null)
-{
-	import std.regex; 
 	
-	if(!fileNameFixer) fileNameFixer = new FileNameFixer; 
-	
-	static decodeColumnMarker(string s)
-	{ return (s.endsWith('^') &&(s.length==1 || s[0..$-1].map!"a==' '".all)) ? s.length.to!int : 0; } 
-	
-	DMDMessage decodeDMDMessage(string s)
+	string locationText() const
 	{
-		enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`; 
-		DMDMessage res; 
-		auto m = matchFirst(s, rx); 
-		if(!m.empty)
-		{
-			with(res)
-			{
-				file = fileNameFixer(m[1]); 
-				mixinLine = m[3].to!int.ifThrown(0); 
-				line = m[4].to!int.ifThrown(0); 
-				col = m[5].to!int.ifThrown(0); 
-				content = m[6]; 
-				detectType; 
-			}
-		}
+		if(!file) return ""; 
+		return format!"%s%s(%s,%s)"(
+			file.fullName, 
+			mixinLine ? "-mixin-"~mixinLine.text : "", 
+			line, col, 
+		); 
+	} 
+	
+	string toString_internal(int level, bool enableColor, string indentStr) const
+	{
+		auto res = 	indentStr.replicate(level) ~
+			withEndingColon(locationText) ~
+			(enableColor ? typeColorCode[type] : "") ~ typePrefixes[type] ~
+			(enableColor ? "\33\7" : "") ~ content; 
+		
+		foreach(const ref sm; subMessages)
+		res ~= "\n"~sm.toString_internal(level + sm.isInstantiatedFrom, enableColor, indentStr); 
+		
 		return res; 
 	} 
 	
-	File decodeFileMarker(string line)
+	string toString() const
+	{ return toString_internal(0, true, "  "); } 
+	
+	
+	private static
 	{
-		enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
-		auto m = matchFirst(line, rx); 
-		return m.empty ? File.init : fileNameFixer(m[1]); 
+		static withEndingColon(string s)
+		{ return s=="" ? "" : s~": "; }  static withStartingSpace(string s)
+		{ return s=="" ? "" : " "~s; } 
+		
+		int[] findQuotePairIndices(string s)
+		{
+			int[] indices; 
+			foreach(i, char ch; s) if(ch=='`') indices ~= i.to!int; 
+			
+			if(indices.length & 1)
+			{
+				indices = indices.remove(max(indices.length.to!int - 2, 0)); 
+				//it removes the second rightmost element. The leftmost and the rightmost are always valid.
+			}
+			return indices; 
+		} 
+		
+		string toInnerDComment(string msg)
+		{
+			//break up DComment tokens in original message
+			msg = msg.replace("/+", "/ +").replace("+/", "+ /"); 
+			
+			//locate all the code snippets inside `` and surround them with / +Code: ... + /
+			const indices = findQuotePairIndices(msg); 
+			bool opening = false; 
+			foreach_reverse(i; indices)
+			{
+				const 	left = msg[0 .. i],
+					right = msg[i+1 .. $]; 
+				
+				auto separ = opening ? "/+Code: " :"+/"; 
+				if(left.endsWith(separ[1])) separ = ' ' ~ separ; //Not to produce "/+/" or "+/+"
+				
+				msg = left ~ separ ~ right; 
+				opening = !opening; 
+			}
+			
+			if(msg.endsWith('/')) msg ~= ' '; //Not to produce "/+/"
+			
+			//find filenames and transform them into / + $DIDE_LOC ... + /
+			
+			static rxCodeLocation = ctRegex!(`[a-z]:\\[a-z0-9_\.\-\\!#$%^@~]+.d(-mixin-[0-9]+)?\([0-9]+,[0-9]+\)`, `gim`); 
+			//Note: This filename parser only handles English letters.
+			
+			auto fileNames = msg.matchAll(rxCodeLocation).map!"a[0]".array; 
+			foreach(fn; fileNames.sort.uniq)
+			{
+				msg = msg.replace(fn, "/+$DIDE_LOC " ~ fn ~ "+/"); 
+				//Note: The filenames MUST be correct names.
+			}
+			
+			return msg; 
+		} 
 	} 
 	
-	auto lines = input.splitLines; 
+	
+	private string sourceText_internal(int level=0) const
+	{
+		auto res = 	"\t".replicate(level) ~
+			typePrefixes[type] ~
+			content.stripLeft ~
+			withStartingSpace(locationText); 
+		
+		foreach(const ref sm; subMessages)
+		res ~= "\n"~sm.sourceText_internal(level + sm.isInstantiatedFrom); 
+		
+		return res; 
+	} 
+	
+	string sourceText() const
+	{ return "/+\n" ~ toInnerDComment(sourceText_internal) ~ "\n+/"; } 
+} 
+
+struct DMDMessages
+{
+	alias messages this; 
 	
 	DMDMessage[] messages; 
-	size_t[size_t] messageMap; 
 	string[][File] pragmas; 
 	
-	File actSourceFile; 
-	
-	DMDMessage* parentMessage; 
-	
-	while(lines.length)
+	//internal state
+	private
 	{
-		if(auto msg = decodeDMDMessage(lines.front))
+		size_t[size_t] messageMap; 
+		File actSourceFile; 
+		DMDMessage* parentMessage; 
+		FileNameFixer fileNameFixer; 
+	}  void dump()
+	{
+		void bar() { "-".replicate(80).print; } 
+		messages.each!((m){ m.print; bar; }); 
+		pragmas.keys.sort.each!(
+			(k){
+				print(k.fullName, ": Pragma messages:"); 
+				pragmas[k].each!((a){ print(a); }); bar; 
+			}
+		); 
+	} 
+	
+	string sourceText()
+	{ return messages.map!"a.sourceText".join("\n"); } 
+	
+	auto processDMDOutput(string input)
+	{
+		if(!fileNameFixer) fileNameFixer = new FileNameFixer; 
+		
+		static decodeColumnMarker(string s)
 		{
-			//find the end of this message
-			int endIdx; 
-			foreach(i; 1 .. lines.length.to!int)
+			return (
+				s.endsWith('^') &&(
+					s.length==1 || 
+					s[0..$-1].map!"a==' '".all
+				)
+			) ? s.length.to!int : 0; 
+		} 
+		
+		DMDMessage decodeDMDMessage(string s)
+		{
+			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`; 
+			DMDMessage res; 
+			auto m = matchFirst(s, rx); 
+			if(!m.empty)
 			{
-				if(decodeColumnMarker(lines[i])==msg.col)
-				{ endIdx = i; break; }
-				if(decodeDMDMessage(lines[i])) break; 
-				if(decodeFileMarker(lines[i])) break; 
-			}
-			
-			if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
-			{
-				lines.fetchFront; //first line of a multiline message
-				foreach(i; 1..endIdx-1)
-				if(lines.length)
-				msg.content ~= "\n"~lines.fetchFront; 
-				msg.lineSource = lines.fetchFront; 
-				lines.fetchFront; //skip the marker line
-			}
-			else
-			{
-				lines.fetchFront; //slingle line message
-			}
-			
-			if(msg.isSupplemental)
-			{
-				if(parentMessage)
+				with(res)
 				{
-					auto idx = parentMessage.subMessages.countUntil(msg); 
-					if(idx>=0)
+					file = fileNameFixer(m[1]); 
+					mixinLine = m[3].to!int.ifThrown(0); 
+					line = m[4].to!int.ifThrown(0); 
+					col = m[5].to!int.ifThrown(0); 
+					content = m[6]; 
+					detectType; 
+				}
+			}
+			return res; 
+		} 
+		
+		File decodeFileMarker(string line)
+		{
+			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
+			auto m = matchFirst(line, rx); 
+			return m.empty ? File.init : fileNameFixer(m[1]); 
+		} 
+		
+		DMDMessage fetchDMDMessage(ref string[] lines)
+		{
+			auto msg = decodeDMDMessage(lines.front); 
+			if(msg)
+			{
+				int endIdx; 
+				foreach(i; 1 .. lines.length.to!int)
+				{
+					if(decodeColumnMarker(lines[i])==msg.col)
+					{ endIdx = i; break; }
+					if(decodeDMDMessage(lines[i])) break; 
+					if(decodeFileMarker(lines[i])) break; 
+				}
+				
+				if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
+				{
+					lines.fetchFront; //first line of a multiline message
+					foreach(i; 1..endIdx-1)
+					if(lines.length)
+					msg.content ~= "\n"~lines.fetchFront; 
+					msg.lineSource = lines.fetchFront; 
+					lines.fetchFront; //skip the marker line
+				}
+				else
+				{
+					lines.fetchFront; //slingle line message
+				}
+			}
+			return msg; 
+		} 
+		
+		auto lines = input.splitLines; 
+		
+		while(lines.length)
+		{
+			if(auto msg = fetchDMDMessage(lines))
+			{
+				if(msg.isSupplemental)
+				{
+					if(parentMessage)
 					{
-						parentMessage = &parentMessage.subMessages[idx]; 
-						parentMessage.count++; 
+						auto idx = parentMessage.subMessages.countUntil(msg); 
+						if(idx>=0)
+						{
+							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage.count++; 
+						}
+						else
+						{
+							idx = parentMessage.subMessages.length; 
+							parentMessage.subMessages ~= msg; 
+							parentMessage = &parentMessage.subMessages[idx]; 
+						}
+					}
+					else
+					WARN("No parent message for supplemental message:", msg); 
+				}
+				else
+				{
+					const hash = msg.hashOf; 
+					if(auto idx = hash in messageMap)
+					{
+						messages[*idx].count++; 
+						parentMessage = &messages[*idx]; 
 					}
 					else
 					{
-						idx = parentMessage.subMessages.length; 
-						parentMessage.subMessages ~= msg; 
-						parentMessage = &parentMessage.subMessages[idx]; 
+						const idx = messages.length; 
+						messages ~= msg; 
+						messageMap[hash] = idx; 
+						parentMessage = &messages[idx]; 
 					}
 				}
-				else
-				WARN("No parent message for supplemental message:", msg); 
+			}
+			else if(auto f = decodeFileMarker(lines.front))
+			{
+				lines.popFront; 
+				actSourceFile = fileNameFixer(f); 
 			}
 			else
-			{
-				const hash = msg.hashOf; 
-				if(auto idx = hash in messageMap)
-				{
-					messages[*idx].count++; 
-					parentMessage = &messages[*idx]; 
-				}
-				else
-				{
-					const idx = messages.length; 
-					messages ~= msg; 
-					messageMap[hash] = idx; 
-					parentMessage = &messages[idx]; 
-				}
-			}
+			{ pragmas[actSourceFile] ~= lines.fetchFront; }
 		}
-		else if(auto f = decodeFileMarker(lines.front))
+		
+		//adjust pragma messages
+		foreach(f; pragmas.keys.sort)
 		{
-			lines.popFront; 
-			actSourceFile = fileNameFixer(f); 
+			auto list = pragmas[f]; 
+			
+			while(list.length && list.front.empty) list.popFront; 
+			while(list.length && list.back.empty) list.popBack; 
+			
+			if(list.empty)
+			pragmas.remove(f); 
+			else
+			pragmas[f] = list; 
 		}
-		else
-		{ pragmas[actSourceFile] ~= lines.fetchFront; }
-	}
+	} 
 	
-	messages.each!print; 
-	
-	if(1)
-	foreach(f; pragmas.keys.sort)
-	{
-		auto list = pragmas[f]; 
-		
-		while(list.length && list.front.empty) list.popFront; 
-		while(list.length && list.back.empty) list.popBack; 
-		
-		pragmas[f] = list; 
-		
-		if(list.length)
-		{
-			print("Pragmas: ", f); 
-			list.each!print; 
-		}
-	}
 } 
 
+
+
 void run()
-{ `c:\D\projects\DIDE\errorDB\$output.txt`.File.readStr.processDMDOutput; } 
+{
+	DMDMessages msgs; 
+	msgs.processDMDOutput(`c:\D\projects\DIDE\errorDB\$output.txt`.File.readStr); 
+	msgs.dump; 
+	msgs.sourceText.print; 
+} 
 
 
 

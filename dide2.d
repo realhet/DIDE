@@ -4601,10 +4601,11 @@ Note:
 			res = res.retro.array; 
 			//root is at the end of list.
 			//filter redundant leafs
-			foreach(i; 0..res.length)
-			foreach(j; i+1..res.length)
+			const len = res.length.to!int; 
+			foreach(i; 0..len-1)
+			inner: foreach(j; i+1..len)
 			if(res[i].allParents!CodeNode.canFind(res[j]))
-			res[i] = null; 
+			{ res[i] = null;  break inner; }
 			
 			res = res.filter!"a".array; 
 			
