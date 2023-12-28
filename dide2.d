@@ -4038,7 +4038,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(!loc) return; 
 				
-				if(auto mod = findModule(loc.file))
+				if(auto mod = findModule(loc.file.withoutDMixin))
 				{
 					//Todo: load the module automatically
 					
