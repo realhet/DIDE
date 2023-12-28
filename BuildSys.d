@@ -1904,6 +1904,7 @@ struct BuildSystem
 			//old version
 			const batFile = File(targetFile.path, "$run.bat"); 
 			batFile.remove; 
+			//Bug: When DIDE is compiled and running, the program it runs will overwrite this same bat file. Solution -> $run_exename.bat
 			
 			auto runCmd = runLines.join("\r\n"); 
 			
@@ -1921,6 +1922,7 @@ struct BuildSystem
 				logln(idx ? " ".replicate(9):bold("RUNNING: "), line); 
 				const env = settings.dideDbgEnv!="" ? ["DideDbgEnv" : settings.dideDbgEnv] : null; 
 				
+				//Todo: spawnShell could be simpler...
 				spawnProcess(["cmd", "/c", "start", batFile.fullName], env, Config.detached, targetFile.path.fullPath); 
 			}
 		}
@@ -2147,175 +2149,6 @@ void buildSystemWorker()
 	}
 	
 } 
-File withoutDMixin(File f)
-{
-	if(f.fullName.isWild("*.d-mixin-*"))
-	{ return File(wild[0]~".d"); }
-	return f; 
-} 
-
-struct CodeLocation
-{
-	File file; 
-	int lineIdx, columnIdx, mixinLineIdx; 
-	bool isMixin; 
-	
-	this(string s)
-	{
-		//example: onlineapp.d-mixin-4(4)
-		
-		//strip off line/column index
-		if(s.endsWith(')'))
-		{
-			const idx = s.retro.countUntil('('); 
-			if(idx>0)
-			{
-				const sNew = s[0 .. $-idx-1]; 
-				const p = s[$-idx .. $-1].split(','); 
-				
-				if(p.empty)
-				{
-					//filename()  <- this is treated as valid
-					s = sNew; 
-				}
-				else if(p.length.among(1, 2) && p.all!"a.to!int.ifThrown(0) > 0")
-				{
-					lineIdx = p[0].to!int; 
-					if(p.length==2) columnIdx = p[1].to!int; 
-					s = sNew; 
-				}
-			}
-		}
-		
-		//strip off "-mixin-#" ending
-		{
-			const idx = s.retro.countUntil('-'); 
-			enum kw = "-mixin-"; 
-			if(idx>0 && s[$-idx .. $].all!isDigit && s[$-idx-kw.length .. $-idx]==kw)
-			{
-				isMixin = true; 
-				mixinLineIdx = s[$-idx .. $].to!int.ifThrown(0); 
-				s = s[0 .. $-idx-kw.length]; 
-			}
-		}
-		
-		file = File(s); 
-	} 
-	
-	bool opCast(T:bool)() const
-	{ return cast(bool)file; } 
-	int opCmp(in CodeLocation b) const
-	{ return icmp(file.fullName, b.file.fullName).cmpChain(cmp(lineIdx, b.lineIdx)).cmpChain(cmp(columnIdx, b.columnIdx)); } 
-	
-	string lineText() const
-	{ return (lineIdx ? format!"(%d)"(lineIdx) : ""); } 
-	string lineColText() const
-	{ return (lineIdx && columnIdx ? format!"(%d,%d)"(lineIdx, columnIdx) : lineIdx ? format!"(%d)"(lineIdx) : ""); } 
-	string mixinText() const
-	{ return isMixin ? "-mixin-"~mixinLineIdx.text : ""; } 
-	
-	string toString() const
-	{ return file.fullName ~ mixinText ~ lineColText; } 
-	string shortText() const
-	{ return file.name ~ lineText; } 
-	
-	
-	
-} 
-
-struct CodeLocationFuck
-{
-	File file; 
-	int lineIdx, columnIdx, mixinLineIdx; 
-	
-	this(string s)
-	{
-		//example: onlineapp.d-mixin-4(4)
-		
-		//strip off line/column index
-		if(s.endsWith(')'))
-		{
-			const idx = s.retro.countUntil('('); 
-			if(idx>0)
-			{
-				const sNew = s[0 .. $-idx-1]; 
-				const p = s[$-idx .. $-1].split(','); 
-				
-				if(p.empty)
-				{
-					//filename()  <- this is treated as valid
-					s = sNew; 
-				}
-				else if(p.length.among(1, 2) && p.all!"a.to!int.ifThrown(0) > 0")
-				{
-					lineIdx = p[0].to!int; 
-					if(p.length==2) columnIdx = p[1].to!int; 
-					s = sNew; 
-				}
-			}
-		}
-		
-		//strip off "-mixin-#" ending
-		{
-			const idx = s.retro.countUntil('-'); 
-			enum kw = "-mixin-"; 
-			if(idx>0 && s[$-idx .. $].all!isDigit && s[$-idx-kw.length .. $-idx]==kw)
-			{
-				mixinLineIdx = s[$-idx .. $].to!int.ifThrown(0); 
-				s = s[0 .. $-idx-kw.length]; 
-			}
-		}
-		
-		static withoutDMixin(File f)
-		{
-			if(f.fullName.isWild("*.d-mixin-*"))
-			{ return File(wild[0]~".d"); }
-			return f; 
-		} 
-		
-		file = withoutDMixin(s.File); 
-	} 
-	
-	bool opCast(T : bool)() const
-	{ return cast(bool)file; } 
-	int opCmp(in CodeLocation b) const //case sens!!!
-	{
-		return 	cmp(file.fullName, b.file.fullName)
-			.cmpChain(cmp(lineIdx, b.lineIdx))
-			.cmpChain(cmp(columnIdx, b.columnIdx))
-			.cmpChain(cmp(mixinLineIdx, b.mixinLineIdx)); 
-	} bool opEquals(in CodeLocation b) const //case sens!!!
-	{
-		return 	file.fullName == b.file.fullName &&
-			lineIdx == b.lineIdx &&
-			columnIdx == b.columnIdx &&
-			mixinLineIdx == b.mixinLineIdx; 
-	} 
-	size_t toHash() const
-	{ return file.fullName.hashOf(only(lineIdx, columnIdx, mixinLineIdx).hashOf); } 
-	
-	bool isMixin() const
-	{ return !!mixinLineIdx; } 
-	
-	string lineText() const
-	{ return (lineIdx ? format!"(%d)"(lineIdx) : ""); } 
-	string lineColText() const
-	{
-		return (
-			lineIdx && columnIdx 	? format!"(%d,%d)"(lineIdx, columnIdx) 
-				: lineIdx 	? format!"(%d)"(lineIdx) 
-					: ""
-		); 
-	} 
-	string mixinText() const
-	{ return isMixin ? "-mixin-"~mixinLineIdx.text : ""; } 
-	
-	string toString() const
-	{ return file.fullName ~ mixinText ~ lineColText; } 
-	string shortText() const
-	{ return file.name ~ lineText; } 
-} 
-
 struct BuildMessageInfo
 {
 	SyntaxKind syntax; 

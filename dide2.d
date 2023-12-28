@@ -1661,7 +1661,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			if(!loc) return []; 
 			
-			if(auto mod = findModule(loc.file.withoutDMixin))
+			if(auto mod = findModule(loc.file))
 			{
 				//Opt: bottleneck! linear search
 				//Todo: return the whole module if the line is unspecified, or unable to find
@@ -4038,7 +4038,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(!loc) return; 
 				
-				if(auto mod = findModule(loc.file.withoutDMixin))
+				if(auto mod = findModule(loc.file))
 				{
 					//Todo: load the module automatically
 					

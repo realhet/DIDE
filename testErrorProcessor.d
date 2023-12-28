@@ -1,14 +1,5 @@
 //@exe
-import het, std.regex; 
-
-class FileNameFixer
-{
-	private File[string] nameMap; 
-	File fix(File f)
-	{ return nameMap.require(f.fullName, f.actualFile); }  File opCall(File f)
-	{ return fix(f); } File opCall(string s)
-	{ return fix(s.File); } 
-} 
+import het, het.parser, std.regex; 
 
 struct DMDMessage
 {
@@ -17,8 +8,7 @@ struct DMDMessage
 	typeColorCode = ["", "\33\14", "\33\16", "\33\13"],
 	typeColor = [clSilver, clRed, clYellow, clAqua]; 
 	
-	File file; 
-	int line, col, mixinLine; 
+	CodeLocation location; 
 	Type type; 
 	string content, lineSource; 
 	
@@ -26,23 +16,33 @@ struct DMDMessage
 	
 	DMDMessage[] subMessages; //it's a tree
 	
+	@property col() const
+	{ return location.columnIdx; } @property line() const
+	{ return location.lineIdx; } @property mixinLine() const
+	{ return location.mixinLineIdx; } 
+	
 	bool opCast(B : bool)() const
-	{ return !!file; } 
+	{ return !!location; } 
 	
 	bool opEquals(in DMDMessage b)const
 	{
-		return 	file==b.file && 
-			line==b.line && 
-			col==b.col && 
-			mixinLine==b.mixinLine && 
+		return 	location == b.location &&
 			type==b.type && 
 			content==b.content; 
-	}  size_t toHash()const
+	}  int opCmp(const DMDMessage b) const
 	{
-		const h1 = file.hashOf(line); 
-		const h2 = type.hashOf(col); 
-		const h3 = content.hashOf(mixinLine); 
-		return h1.hashOf(h2.hashOf(h3)); 
+		return 	cmp(location, b.location)
+			.cmpChain(cmp(type, b.type))
+			.cmpChain(cmp(content, b.content)); 
+	} 
+	
+	size_t toHash()const
+	{
+		return 	location.hashOf
+			(
+			type.hashOf
+			(content.hashOf)
+		); 
 	} 
 	
 	bool isSupplemental() const
@@ -70,20 +70,10 @@ struct DMDMessage
 		}
 	} 
 	
-	string locationText() const
-	{
-		if(!file) return ""; 
-		return format!"%s%s(%s,%s)"(
-			file.fullName, 
-			mixinLine ? "-mixin-"~mixinLine.text : "", 
-			line, col, 
-		); 
-	} 
-	
 	string toString_internal(int level, bool enableColor, string indentStr) const
 	{
 		auto res = 	indentStr.replicate(level) ~
-			withEndingColon(locationText) ~
+			withEndingColon(location.text) ~
 			(enableColor ? typeColorCode[type] : "") ~ typePrefixes[type] ~
 			(enableColor ? "\33\7" : "") ~ content; 
 		
@@ -140,8 +130,12 @@ struct DMDMessage
 			
 			//find filenames and transform them into / + $DIDE_LOC ... + /
 			
-			static rxCodeLocation = ctRegex!(`[a-z]:\\[a-z0-9_\.\-\\!#$%^@~]+.d(-mixin-[0-9]+)?\([0-9]+,[0-9]+\)`, `gim`); 
-			//Note: This filename parser only handles English letters.
+			static rxCodeLocation = ctRegex!(`[a-z]:\\[a-z0-9_\.\-\\!#$%^@~]+.di?(-mixin-[0-9]+)?\([0-9]+(,[0-9]+)?\)`, `i`); 
+			/+
+				Note: This filename parser only handles English letters. 
+				No spaces allowed inside ().
+				Only .d and .di files are supported.
+			+/
 			
 			auto fileNames = msg.matchAll(rxCodeLocation).map!"a[0]".array; 
 			foreach(fn; fileNames.sort.uniq)
@@ -160,7 +154,7 @@ struct DMDMessage
 		auto res = 	"\t".replicate(level) ~
 			typePrefixes[type] ~
 			content.stripLeft ~
-			withStartingSpace(locationText); 
+			withStartingSpace(location.text); 
 		
 		foreach(const ref sm; subMessages)
 		res ~= "\n"~sm.sourceText_internal(level + sm.isInstantiatedFrom); 
@@ -224,10 +218,12 @@ struct DMDMessages
 			{
 				with(res)
 				{
-					file = fileNameFixer(m[1]); 
-					mixinLine = m[3].to!int.ifThrown(0); 
-					line = m[4].to!int.ifThrown(0); 
-					col = m[5].to!int.ifThrown(0); 
+					location = CodeLocation(
+						fileNameFixer(m[1]).fullName, 
+						m[4].to!int.ifThrown(0), 
+						m[5].to!int.ifThrown(0), 
+						m[3].to!int.ifThrown(0)
+					); 
 					content = m[6]; 
 					detectType; 
 				}
@@ -319,7 +315,7 @@ struct DMDMessages
 			else if(auto f = decodeFileMarker(lines.front))
 			{
 				lines.popFront; 
-				actSourceFile = fileNameFixer(f); 
+				actSourceFile = f; 
 			}
 			else
 			{ pragmas[actSourceFile] ~= lines.fetchFront; }
