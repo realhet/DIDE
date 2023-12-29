@@ -4,55 +4,56 @@
 //@release
 //@debug
 
-/+
-	Todo: this crashes the StructureScanner:
-	
-				}
-				
-				__gshared const LodStruct lod;
-				
-				void setLod(float zoomFactor_)
-				{
-					with(cast(LodStruct*)(&lod))
-					{
-						zoomFactor = zoomFactor_;
-						pixelSize = 1/zoomFactor;
-						level = pixelSize>6 ? 2 :
-										pixelSize>2 ? 1 : 0;
-				
-						codeLevel = level==0;
-			
-	
-+/
-
-//Todo: Multiline todo's
-//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
-//Todo: Ability to change the whitespace after a	proposition: space, tab, newline
-//Todo: Handle exceptions.
-//Todo: longpressing Ctrl+F2 kill ldc2 processes.
-//Todo: Insert unicode chars from other apps.	https://www.amp-what.com/unicode/search/watch
-//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.
-//Todo: WYSIWYG printf editor plan  (emailek kozott)
-//Todo: automatic spaces around operators and ligatures.
-//Todo: automatic space after ;
-//Todo: toggle space/tab/newline after prepositions.
-
-/+
-	Todo: use japanese symbols to encode NiceExpressions.
-	- It's effective coding.  Much more effective than writing latin unique identifiers like: $DIDE_REGION
-	- It will be automated, so I don't have to write them manually.
-	- They will be hidden by a nice UI.
-+/
-
-//Todo: 査 = inspection
-auto 査(T)(T val)
-{
-	print("査:", val); 
-	return val; 
-} 
 
 version(/+$DIDE_REGION main+/all)
 {
+	
+	/+
+		Todo: this crashes the StructureScanner:
+		
+					}
+					
+					__gshared const LodStruct lod;
+					
+					void setLod(float zoomFactor_)
+					{
+						with(cast(LodStruct*)(&lod))
+						{
+							zoomFactor = zoomFactor_;
+							pixelSize = 1/zoomFactor;
+							level = pixelSize>6 ? 2 :
+											pixelSize>2 ? 1 : 0;
+					
+							codeLevel = level==0;
+				
+		
+	+/
+	
+	//Todo: Multiline todo's
+	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
+	//Todo: Ability to change the whitespace after a	proposition: space, tab, newline
+	//Todo: Handle exceptions.
+	//Todo: longpressing Ctrl+F2 kill ldc2 processes.
+	//Todo: Insert unicode chars from other apps.	https://www.amp-what.com/unicode/search/watch
+	//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.
+	//Todo: WYSIWYG printf editor plan  (emailek kozott)
+	//Todo: automatic spaces around operators and ligatures.
+	//Todo: automatic space after ;
+	//Todo: toggle space/tab/newline after prepositions.
+	
+	/+
+		Todo: use japanese symbols to encode NiceExpressions.
+		- It's effective coding.  Much more effective than writing latin unique identifiers like: $DIDE_REGION
+		- It will be automated, so I don't have to write them manually.
+		- They will be hidden by a nice UI.
+	+/
+	
+	//Todo: 査 = inspection
+	auto 査(T)(T val)
+	{
+		print("査:", val); 
+		return val; 
+	} 
 	version(/+$DIDE_REGION Todo+/all)
 	{
 		
@@ -226,6 +227,7 @@ version(/+$DIDE_REGION main+/all)
 	auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
 	{ with(im) return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); } 
 	
+	
 	class FrmMain : GLWindow
 	{
 		mixin autoCreate; 
@@ -852,15 +854,6 @@ version(/+$DIDE_REGION main+/all)
 												enable(en)
 											); 
 										} 
-										
-										BtnRow(
-											{
-												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
-												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
-											}
-										)
-										/+Todo: ezt a 2 buttont bekotni, hogy modositsa a project forrast.+/; 
-										
 										static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
 											(string capt, string icon, float w, bool en, void delegate() fun)
 										{
@@ -882,6 +875,15 @@ version(/+$DIDE_REGION main+/all)
 												enable(en)
 											); 
 										} 
+										
+										
+										BtnRow(
+											{
+												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
+												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
+											}
+										)
+										/+Todo: ezt a 2 buttont bekotni, hogy modositsa a project forrast.+/; 
 										
 										enum greenRightTriangle = tag("style fontColor=green")~" ▶ "~tag("style fontColor=black"); 
 										
@@ -1027,8 +1029,11 @@ version(/+$DIDE_REGION main+/all)
 								
 								Row(
 									{
-										 margin = "0 3"; flags.yAlign = YAlign.center; 
-										foreach(t; EnumMembers!BuildMessageType) { workspace.UI_BuildMessageType(t, view); }
+										margin = "0 3"; flags.yAlign = YAlign.center; 
+										foreach(t; [EnumMembers!(DMDMessage.Type)]) {
+											if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.console))
+											workspace.UI_BuildMessageType(t, view); 
+										}
 									}
 								); 
 								VLine; //---------------------------
@@ -1180,12 +1185,12 @@ version(/+$DIDE_REGION main+/all)
 			
 			
 			struct MarkerLayer {
-				const BuildMessageType type; 
+				const DMDMessage.Type type; 
 				Container.SearchResult[] searchResults; 
 				bool visible = true; 
 			} 
 			
-			auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!MarkerLayer.array  )(); 
+			auto markerLayers = (()=>[EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array)(); 
 			//Note: compiler drops weird error. this also works:
 			//Writing Explicit type also works:
 			//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
@@ -1680,6 +1685,19 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(res.length>1) foreach(ref a; res[1..$]) a.showArrow = false; 
 				
+				version(none)
+				if(res.empty)
+				{
+					if(optimized)
+					{
+						WARN("Unable to locate:", loc); 
+						return codeLocationToSearchResults(loc, false); 
+					}
+					else
+					{ ERR("Gave up locate:", loc); }
+					//if(optimized) 
+				}
+				
 				return res; 
 			}
 			else
@@ -1692,7 +1710,7 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		
-		CodeRow[string] messageUICache; 
+		CodeRow[string] messageUICache;  //why a row??????
 		string[string] messageSourceTextByLocation; 
 		
 		void convertBuildMessagesToSearchResults(ref BuildResult br)
@@ -1701,49 +1719,36 @@ version(/+$DIDE_REGION main+/all)
 			
 			const outFile = File(`virtual:\__compilerOutput.d`); 
 			
-			auto unprocessedSourceTexts = br.unprocessedSourceTexts; 
-			auto messageSourceTexts = br.messageSourceTexts; 
-			auto allSourceTexts = unprocessedSourceTexts ~ messageSourceTexts; 
-			auto output = allSourceTexts.join('\n'); 
-			outFile.write(output); 
+			outFile.write(br.sourceText); 
 			
 			const tAccessBuildMessages = DT;  //40 ms
 			
 			errorModule = new Module(null, "", StructureLevel.structured); 
 			messageSourceTextByLocation.clear; 
-			if(allSourceTexts.length)
+			if(1)
 			{
 				//load all messages through a cache
 				float y = 0; 
 				errorModule.content.subCells = []; 
-				foreach(msg; allSourceTexts)
+				foreach(msg; br.messages)
 				{
 					//hide messages of unselected markerLayers
-					bool messageIsVisible = true; 
-					if(msg.isWild("/+?*:*"))
-					{
-						ignoreExceptions(
-							{
-								const bmt = wild[0].toLower.to!BuildMessageType; 
-								messageIsVisible = markerLayers[bmt].visible; 
-							}
-						); 
-					}
+					const messageIsVisible = markerLayers[msg.type].visible; 
 					
 					if(!messageIsVisible) continue; 
 					
+					const src = msg.sourceText; 
 					//extract all locations from the message.
-					foreach(s; msg.splitter("/+$"~"DIDE_LOC ").drop(1))
-					if(s.isWild("?*+/*"))
-					messageSourceTextByLocation[wild[0]] = msg; 
+					msg.allLocations.each!((in loc){ messageSourceTextByLocation[loc.text] = src; }); 
 					
-					if(msg !in messageUICache)
+					if(src !in messageUICache)
 					{
-						auto tempModule = new Module(null, msg, StructureLevel.structured); 
+						//Todo: use CodeColumn here!
+						auto tempModule = new Module(null, msg.sourceText, StructureLevel.structured); 
 						tempModule.measure; 
-						messageUICache[msg] = tempModule.content.rows[0]; 
+						messageUICache[src] = tempModule.content.rows.get(0); 
 					}
-					errorModule.content.subCells ~= messageUICache[msg]; 
+					errorModule.content.subCells ~= messageUICache[src]; 
 					with(errorModule.content.subCells.back)
 					{
 						setParent(errorModule.content); 
@@ -1763,7 +1768,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			const tMeasureErrorModule = DT; //0 ms (because of the messageUICache[])
 			
-			auto buildMessagesAsSearchResults(BuildMessageType type)
+			auto buildMessagesAsSearchResults(DMDMessage.Type type)
 			{
 				//Todo: opt
 				Container.SearchResult[] arr; 
@@ -1822,8 +1827,10 @@ version(/+$DIDE_REGION main+/all)
 				module change, module move.
 			+/
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
-			foreach(t; EnumMembers!BuildMessageType[1..$])
-			markerLayers[t].searchResults = buildMessagesAsSearchResults(t); 
+			foreach(t; EnumMembers!(DMDMessage.Type))
+			if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
+			{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
+			
 			
 			const tBuildSearchResults = DT; //60 ms
 			
@@ -1963,9 +1970,12 @@ version(/+$DIDE_REGION main+/all)
 					void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; } 
 					auto cell = st.back.cell; 
 					
-					if(auto glyph = cast(Glyph)cell) setLineIdx(glyph.lineIdx); 
-					else if(auto node = cast(CodeNode)cell) setLineIdx(node.lineIdx); 
-					else if(auto row = cast(CodeRow)cell) {
+					if(auto glyph = cast(Glyph)cell)
+					setLineIdx(glyph.lineIdx); 
+					else if(auto node = cast(CodeNode)cell)
+					setLineIdx(node.lineIdx); 
+					else if(auto row = cast(CodeRow)cell)
+					{
 						setLineIdx(row.lineIdx); 
 						/+
 							Todo: this should be row.findLineIdx_max,
@@ -4558,7 +4568,7 @@ Note:
 				assert(frmMain.ready); 
 				frmMain.overrideBuildResult(output); 
 				
-				if(frmMain.buildResult.messages.values.map!(m=>m.type==BuildMessageType.error).any)
+				if(frmMain.buildResult.messages.map!(m=>m.type==DMDMessage.Type.error).any)
 				raise("LDC2 Syntax Check failed"); 
 			}
 		} 
@@ -5113,7 +5123,7 @@ Note:
 				@VERB("Ctrl+F") void searchBoxActivate()
 				{ searchBoxActivate_request = true; } 
 				@VERB("Ctrl+Shift+L") void selectSearchResults()
-				{ selectSearchResults(markerLayers[BuildMessageType.find].searchResults); } 
+				{ selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); } 
 				@VERB("F3") void gotoNextFind()
 				{ NOTIMPL; } 
 				@VERB("Shift+F3") void gotoPrevFind()
@@ -5364,45 +5374,55 @@ Note:
 			}
 		} 
 		
-		void UI_BuildMessageType(BuildMessageType bmt, View2D view)
+		void UI_BuildMessageType(DMDMessage.Type bmt, View2D view)
 		{
 			with(im) {
-				//Todo: ennek nem itt a helye....
-				auto hit = Btn(
-					{
-						const hidden = markerLayers[bmt].visible ? 0 : .75f; 
-						
-						auto fade(RGB c) { return c.mix(clSilver, hidden); } 
-						
-						const bmi = buildMessageInfo[bmt]; 
-						style.bkColor = bkColor = fade(bmi.syntax.syntaxBkColor); 
-						const highContrastFontColor = bmi.syntax.syntaxFontColor; 
-						style.fontColor = fade(highContrastFontColor); 
-						Text(bmi.caption); 
-						
-						if(const len = markerLayers[bmt].searchResults.length)
+				if(
+					Btn(
 						{
-							style.fontColor = highContrastFontColor; 
-							Text(" ", len.text); 
-						}
-					}, genericId(bmt)
-				); 
-				
-				if(mainWindow.isForeground && hit.pressed)
-				{
-					markerLayers[bmt].visible = true; 
-					zoomAt(view, markerLayers[bmt].searchResults); 
-				}
-				
-				if(mainWindow.isForeground && hit.hover && inputs.RMB.pressed)
-				{ markerLayers[bmt].visible.toggle; }
+							const hidden = markerLayers[bmt].visible ? 0 : .75f; 
+							
+							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
+							
+							const syntax = DMDMessage.typeSyntax[bmt]; 
+							style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
+							const highContrastFontColor = syntax.syntaxFontColor; 
+							style.fontColor = fade(highContrastFontColor); 
+							
+							Row(
+								{
+									flags.hAlign = HAlign.center; 
+									//innerWidth = ceil(fh*2); 
+									innerHeight = ceil(fh*1.66f); 
+									flags.clickable = false; 
+									Text(DMDMessage.typeShortCaption[bmt]); NL; 
+									fh = ceil(fh*.66f); 
+									
+									theme = "tool"; 
+									const m = Margin(0, .5, 0, .5); 
+									
+									if(const len = markerLayers[bmt].searchResults.length)
+									{
+										if(Btn(len.text))
+										{
+											markerLayers[bmt].visible = true; 
+											zoomAt(view, markerLayers[bmt].searchResults); 
+										}
+									}
+								}
+							); 
+						},
+						((bmt).genericArg!q{id})
+					)
+				)
+				markerLayers[bmt].visible.toggle; ; 
 			}
 		} 
 		
 		void UI_SearchBox(View2D view)
 		{
 			//UI_SearchBox /////////////////////////////////////////////
-			UI_SearchBox(view, markerLayers[BuildMessageType.find].searchResults); 
+			UI_SearchBox(view, markerLayers[DMDMessage.Type.find].searchResults); 
 		} 
 		
 		void zoomAt(View2D view, in Container.SearchResult[] searchResults)
@@ -6147,7 +6167,7 @@ Note:
 					dr.color = clFrame; 
 					dr.drawRect(bnd); 
 				}
-						
+				
 				with(cachedFolderLabel(folderPath))
 				{
 					outerPos = bnd.topLeft - vec2(0, 255); 
@@ -6204,9 +6224,13 @@ Note:
 			drawSelectionRect(dr, clAccent); 
 			
 			resetNearestSearchResult; 
-			foreach_reverse(t; EnumMembers!BuildMessageType)
+			
+			markerLayers[DMDMessage.Type.unknown].visible = false; 
+			markerLayers[DMDMessage.Type.console].visible = true; 
+			
+			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
 			if(markerLayers[t].visible)
-			drawSearchResults(dr, markerLayers[t].searchResults, buildMessageInfo[t].syntax.syntaxBkColor); 
+			drawSearchResults(dr, markerLayers[t].searchResults, DMDMessage.typeSyntax[t].syntaxBkColor); 
 			
 			if(nearestSearchResult_dist > frmMain.view.invScale*24)
 			nearestSearchResult = SearchResult.init; 

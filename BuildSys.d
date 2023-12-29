@@ -2149,45 +2149,70 @@ void buildSystemWorker()
 	}
 	
 } 
-struct BuildMessageInfo
+version(none)
 {
-	SyntaxKind syntax; 
-	string caption; 
-} 
-
-enum BuildMessageType
-{
-	find,
-	error,
-	warning,
-	deprecation,
-	note,
-	todo,
-	opt,
-	bug
-} static immutable BuildMessageInfo[] buildMessageInfo = 
-[
-	{ skFoundAct	, "Find"	},
-	{ skError	, "Err"	},
-	{ skWarning	, "Warn"	},
-	{ skDeprecation	, "Depr"	},
-	{ skNote	, "Note"	},
-	{ skTodo	, "Todo"	},
-	{ skOpt	, "Opt"	},
-	{ skBug	, "Bug"	},
-]; 
-
-//Todo: the UDA version of buildMessageInfo is a fucking piece of crap
-/+
-	auto buildMessageInfo(BuildMessageType bmt)
+	//Note: keep this code to test the CodeTable feature.
+	struct OldBuildMessageInfo
 	{
-		final switch(bmt) static foreach(e; EnumMembers!BuildMessageType) case e: return getUDAs!(e, BuildMessageInfo)[0];
-	}
-+/
+		SyntaxKind syntax; 
+		string caption; 
+	} 
+	
+	
+	/+
+		Todo: This is a perfect candidate for a table.
+		
+		colulmns:
+		$0 	Expr	
+		$1 	Expr	
+		$2 	CString 	
+		
+		table:
+		find	skBug	Bug
+		error	skTodo	Todo
+		warning	skOpt	Opt
+		deprecation	skWarning	Err
+		todo	skDeprecation	Warn
+		opt	skFoundAct	Depr
+		bug	skError	Find
+		
+		outputs:
+		/+
+			Code: enum BuildMessageType{ $0, ... }
+			static immutable BuildMessageInfo[] buildMessageInfo = [ {$1, $2}, ... ];
+		+/
+	+/
+	enum OldBuildMessageType
+	{
+		find,
+		error,
+		warning,
+		deprecation,
+		todo,
+		opt,
+		bug
+	} static immutable OldBuildMessageInfo[] oldBuildMessageInfo = 
+	[
+		{ skFoundAct, "Find"},
+		{ skError, "Err"},
+		{ skWarning, "Warn"},
+		{ skDeprecation, "Depr"},
+		{ skTodo, "Todo"},
+		{ skOpt, "Opt"},
+		{ skBug, "Bug"},
+	]; 
+}
+
+enum ModuleBuildState
+{ notInProject, queued, compiling, aborted, hasErrors, hasWarnings, hasDeprecations, flawless} 
+
+auto moduleBuildStateColors = [clBlack, clWhite, clWhite, clGray, clRed, (RGB(128, 255, 0)), (RGB(64, 255, 0)), clLime]; 
+
 
 //Todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
 
 
+version(none)
 struct BuildMessage
 {
 	//Todo: ""BuildMessage" is not a good name, it starts with a verb.
@@ -2209,35 +2234,389 @@ struct BuildMessage
 			: format!"%s: %s: %s"	(location, type.text.capitalize, message); 
 	} 
 } 
+
+struct DMDMessage
+{
+	enum Type {        unknown, find,      error,     warning,      deprecation,     todo,      opt,      bug,  console} 
+	enum typePrefixes = ["",   "Find: ", "Error: ", "Warning: ", "Deprecation: ", "Todo: ", "Opt: ",  "Bug: ", "Console: "],
+	typeShortCaption = ["", "Find", "Err",  "Warn",    "Depr",        "Todo",  "Opt",   "Bug", "Con"], 
+	typeColorCode = ["", "",    "\33\14", "\33\16",    "\33\13",      "\33\11", "\33\15", "\33\6", ""],
+	typeColor = [clBlack,   clSilver,   clRed,     clYellow,      clAqua,          clBlue,     clFuchsia,  clOrange, clWhite],
+	typeSyntax = [skWhitespace, skFoundAct, skError, skWarning, skDeprecation, skTodo,      skOpt,     skBug,  skConsole]; 
+	//Todo: this must be also table driven!!!
+	
+	CodeLocation location; 
+	Type type; 
+	string content, lineSource; 
+	
+	int count = 1; //occurences of this message in the multi-module build
+	
+	DMDMessage[] subMessages; //it's a tree
+	
+	@property col() const
+	{ return location.columnIdx; } @property line() const
+	{ return location.lineIdx; } @property mixinLine() const
+	{ return location.mixinLineIdx; } 
+	
+	bool opCast(B : bool)() const
+	{ return !!location; } 
+	
+	bool opEquals(in DMDMessage b)const
+	{
+		return 	location == b.location &&
+			type==b.type && 
+			content==b.content; 
+	}  int opCmp(const DMDMessage b) const
+	{
+		return 	cmp(location, b.location)
+			.cmpChain(cmp(type, b.type))
+			.cmpChain(cmp(content, b.content)); 
+	} 
+	
+	size_t toHash()const
+	{
+		return 	location.hashOf
+			(
+			type.hashOf
+			(content.hashOf)
+		); 
+	} 
+	
+	bool isSupplemental() const
+	{ return type==Type.unknown && content.startsWith(' '); } 
+	
+	bool isInstantiatedFrom() const
+	{
+		return 	isSupplemental && 
+			(
+			content.stripLeft.startsWith("instantiated from here: ") ||
+			content.endsWith(" instantiations, -v to show) ...")
+		); 
+	} 
+	
+	private void detectType()
+	{
+		if(type!=Type.unknown) return; 
+		
+		foreach(i, prefix; typePrefixes)
+		if(i && content.startsWith(prefix))
+		{
+			content = content[prefix.length .. $]; 
+			type = cast(Type) i; 
+			break; 
+		}
+	} 
+	
+	string toString_internal(int level, bool enableColor, string indentStr) const
+	{
+		auto res = 	indentStr.replicate(level) ~
+			withEndingColon(location.text) ~
+			(enableColor ? typeColorCode[type] : "") ~ typePrefixes[type] ~
+			(enableColor ? "\33\7" : "") ~ content; 
+		
+		foreach(const ref sm; subMessages)
+		res ~= "\n"~sm.toString_internal(level + sm.isInstantiatedFrom, enableColor, indentStr); 
+		
+		return res; 
+	} 
+	
+	string toString() const
+	{ return toString_internal(0, true, "  "); } 
+	
+	
+	private static
+	{
+		static withEndingColon(string s)
+		{ return s=="" ? "" : s~": "; }  static withStartingSpace(string s)
+		{ return s=="" ? "" : " "~s; } 
+		
+		int[] findQuotePairIndices(string s)
+		{
+			int[] indices; 
+			foreach(i, char ch; s) if(ch=='`') indices ~= i.to!int; 
+			
+			if(indices.length & 1)
+			{
+				indices = indices.remove(max(indices.length.to!int - 2, 0)); 
+				//it removes the second rightmost element. The leftmost and the rightmost are always valid.
+			}
+			return indices; 
+		} 
+		
+		string safeDComment(string s)
+		{ return s.replace("/+", "/ +").replace("+/", "+ /"); } 
+		
+		string encapsulateCodeBlocks(string msg)
+		{
+			//locate all the code snippets inside `` and surround them with / +Code: ... + /
+			const indices = findQuotePairIndices(msg); 
+			bool opening = false; 
+			foreach_reverse(i; indices)
+			{
+				const 	left = msg[0 .. i],
+					right = msg[i+1 .. $]; 
+				
+				auto separ = opening ? "/+Code: " :"+/"; 
+				if(left.endsWith(separ[1])) separ = ' ' ~ separ; //Not to produce "/+/" or "+/+"
+				
+				msg = left ~ separ ~ right; 
+				opening = !opening; 
+			}
+			
+			return msg; 
+		} 
+	} 
+	
+	
+	private string sourceText_internal(int level=0) const
+	{
+		auto res = 	"\t".replicate(level) ~
+			typePrefixes[type] ~
+			encapsulateCodeBlocks(safeDComment(content.stripLeft)) ~
+			((location)?(" /+$DIDE_LOC "~location.text~"+/"):("")); 
+		
+		foreach(const ref sm; subMessages)
+		res ~= "\n"~sm.sourceText_internal(level + sm.isInstantiatedFrom); 
+		
+		return res; 
+	} 
+	
+	string sourceText() const
+	{ return "/+\n" ~ sourceText_internal ~ "\n+/"; } 
+	
+	CodeLocation[] allLocations() const
+	{
+		CodeLocation[] res; 
+		if(location) res ~= location; 
+		foreach(const m; subMessages)
+		res ~= m.allLocations; 
+		return res; 
+	} 
+} 
 
-enum ModuleBuildState
-{ notInProject, queued, compiling, aborted, hasErrors, hasWarnings, hasDeprecations, flawless} 
+
+struct DMDMessages
+{
+	alias messages this; 
+	
+	DMDMessage[] messages; 
+	string[][File] pragmas; 
+	
+	//message filtering
+	
+	__gshared string[] messageFilters = [/*"Warning: C preprocessor directive "*/]; 
+	
+	//internal state
+	private
+	{
+		size_t[size_t] messageMap; 
+		File actSourceFile; 
+		DMDMessage* parentMessage; 
+		FileNameFixer fileNameFixer; 
+	}  void dump()
+	{
+		void bar() { "-".replicate(80).print; } 
+		messages.each!((m){ m.print; bar; }); 
+		pragmas.keys.sort.each!(
+			(k){
+				print(k.fullName, ": Pragma messages:"); 
+				pragmas[k].each!((a){ print(a); }); bar; 
+			}
+		); 
+	} 
+	
+	string sourceText() const
+	{ return messages.map!"a.sourceText".join("\n"); } 
+	
+	void processDMDOutput(string str)
+	{ processDMDOutput(str.splitLines); } 
+	
+	private static keepMessage(in DMDMessage m)
+	{
+		foreach(f; messageFilters)
+		if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f)) return false; 
+		return true; 
+	} 
+	
+	void processDMDOutput(string[] lines)
+	{
+		if(lines.empty) return; 
+		
+		if(!fileNameFixer) fileNameFixer = new FileNameFixer; 
+		
+		static decodeColumnMarker(string s)
+		{
+			return (
+				s.endsWith('^') &&(
+					s.length==1 || 
+					s[0..$-1].map!"a==' '".all
+				)
+			) ? s.length.to!int : 0; 
+		} 
+		
+		DMDMessage decodeDMDMessage(string s)
+		{
+			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`; 
+			DMDMessage res; 
+			auto m = matchFirst(s, rx); 
+			if(!m.empty)
+			{
+				with(res)
+				{
+					location = CodeLocation(
+						fileNameFixer(m[1]).fullName, 
+						m[4].to!int.ifThrown(0), 
+						m[5].to!int.ifThrown(0), 
+						m[3].to!int.ifThrown(0)
+					); 
+					content = m[6]; 
+					detectType; 
+				}
+			}
+			return res; 
+		} 
+		
+		File decodeFileMarker(string line)
+		{
+			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
+			auto m = matchFirst(line, rx); 
+			return m.empty ? File.init : fileNameFixer(m[1]); 
+		} 
+		
+		DMDMessage fetchDMDMessage(ref string[] lines)
+		{
+			auto msg = decodeDMDMessage(lines.front); 
+			if(msg)
+			{
+				int endIdx; 
+				foreach(i; 1 .. lines.length.to!int)
+				{
+					if(decodeColumnMarker(lines[i])==msg.col)
+					{ endIdx = i; break; }
+					if(decodeDMDMessage(lines[i])) break; 
+					if(decodeFileMarker(lines[i])) break; 
+				}
+				
+				if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
+				{
+					lines.fetchFront; //first line of a multiline message
+					foreach(i; 1..endIdx-1)
+					if(lines.length)
+					msg.content ~= "\n"~lines.fetchFront; 
+					msg.lineSource = lines.fetchFront; 
+					lines.fetchFront; //skip the marker line
+				}
+				else
+				{
+					lines.fetchFront; //slingle line message
+				}
+			}
+			return msg; 
+		} 
+		
+		while(lines.length)
+		{
+			if(auto msg = fetchDMDMessage(lines))
+			{
+				if(msg.isSupplemental && parentMessage)
+				{
+					auto idx = parentMessage.subMessages.countUntil(msg); 
+					if(idx>=0)
+					{
+						parentMessage = &parentMessage.subMessages[idx]; 
+						parentMessage.count++; 
+					}
+					else
+					{
+						idx = parentMessage.subMessages.length; 
+						parentMessage.subMessages ~= msg; 
+						parentMessage = &parentMessage.subMessages[idx]; 
+					}
+				}
+				else
+				{
+					if(msg.isSupplemental)
+					WARN("No parent message for supplemental message:", msg); 
+					
+					if(keepMessage(msg))
+					{
+						const hash = msg.hashOf; 
+						if(auto idx = hash in messageMap)
+						{
+							messages[*idx].count++; 
+							parentMessage = &messages[*idx]; 
+						}
+						else
+						{
+							const idx = messages.length; 
+							messages ~= msg; 
+							messageMap[hash] = idx; 
+							parentMessage = &messages[idx]; 
+						}
+					}
+				}
+			}
+			else if(auto f = decodeFileMarker(lines.front))
+			{
+				lines.popFront; 
+				actSourceFile = f; 
+			}
+			else
+			{ pragmas[actSourceFile] ~= lines.fetchFront; }
+		}
+		
+	} 
+	
+	void finalizePragmas(string extraText)
+	{
+		string[] arr; 
+		foreach(f; pragmas.keys.sort)
+		{
+			auto list = pragmas[f]; 
+			
+			//remove empty lines
+			while(list.length && list.front.empty) list.popFront; 
+			while(list.length && list.back.empty) list.popBack; 
+			
+			auto s = list.join('\n'); 
+			if(s.length) arr ~= s; 
+		}
+		
+		foreach(i; 0..arr.length)
+		foreach(j; 0..arr.length)
+		if(i!=j && arr[i]!="" && arr[j]!="" && arr[j].canFind(arr[i]))
+		arr[i] = ""; 
+		
+		if(extraText.length) arr = extraText ~ arr; 
+		
+		auto s = arr.filter!`a!=""`.join('\n'); 
+		if(s!="")
+		{
+			auto m = DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
+			messages = m ~ messages; 
+		}
+		
+		pragmas.clear; 
+	} 
+} 
 
-auto moduleBuildStateColors = [clBlack, clWhite, clWhite, clGray, clRed, RGB(128, 255, 0), RGB(64, 255, 0), clLime]; 
 
 class BuildResult
 {
 	File mainFile; 
 	File[] filesToCompile, filesInCache; 
+	File[] allFiles; 
+	bool[File] filesInProject, filesInFlight; 
+	
 	int[File] results; //command line console exit codes
 	string[][File] outputs, remainings; //raw output lines, remaining output lines after processing
-	BuildMessage[CodeLocation] messages; //all the things referencing a code location
 	
-	private
-	{
-		CodeLocation _lastAddedLocation; 
-		BuildMessageType _lastAddedType; 
-	} 
+	DMDMessages messages; 
 	
-	File[] allFiles; 
-	bool[File] filesInFlight; 
-	bool[File] filesInProject; 
-	
-	string[string] correctFileCase; 
+	SourceStats sourceStats; 
 	
 	DateTime lastUpdateTime; 
 	
-	SourceStats sourceStats; 
 	DateTime buildStarted, buildFinished; 
 	
 	mixin ClassMixin_clear; 
@@ -2258,79 +2637,33 @@ class BuildResult
 		}
 	} 
 	
-	
-	string repairFileCase(string fn)
+	string unprocessedSourceTexts()
 	{
-		return correctFileCase.require(
-			fn, (){
-				return allFiles	.map!"a.fullName"
-					.filter!(a=>sameText(a, fn))
-					.frontOr(fn.File.actualFile.fullName); 
-			}()
-		); 
+		string[] res; 
+		
+		foreach(f; remainings.keys.sort)
+		{
+			if(f in remainings && remainings[f].length)
+			{
+				auto act = "/+Output:/+$DIDE_LOC "~f.fullName~"+/\n/+"; 
+				remainings[f].each!(a => act ~= DMDMessage.safeDComment(a)~"\n"); 
+				act ~= "+/+/"; 
+				
+				res ~= act; 
+			}
+		}
+		
+		return res.join('\n'); 
 	} 
 	
-	private bool _processLine(string line)
-	{
-		try
-		{
-			if(line.isWild(`?:\?*.d*(?*,?*):?*`))
-			{
-				string fn = repairFileCase(wild[0]~`:\`~wild[1]~`.d`); 
-				string mixinPostfix = wild[2]; 
-				
-				
-				auto	location 	= CodeLocation(format!"%s%s(%s,%s)"(fn, mixinPostfix, wild[3], wild[4])),
-					content 	= wild[5]; 
-				//if(dbg) WARN(location);
-				
-				void add(BuildMessage bm)
-				{
-					messages[bm.location] = bm; 
-					_lastAddedLocation = bm.location; 
-					_lastAddedType = bm.type; 
-					
-					/+
-						const dbg = fn==`c:\D\dideTestProject.d`;
-						if(dbg) WARN(bm);
-					+/
-				} 
-				
-				if(auto orig = location in messages)
-				{
-					 //duplicated location: append the contents to the end of the existing message
-					orig.message ~= "\n" ~ content.strip; 
-				}else if(content.startsWith("  "))
-				{
-					 //supplemental message
-					enforce(_lastAddedLocation); 
-					add(BuildMessage(location, _lastAddedType, content.strip, _lastAddedLocation)); 
-					return true; 
-				}else if(content.isWild(" ?*:?*"))
-				{
-					 //original message
-					const type = wild[0].decapitalize.to!(BuildMessageType); //can throw
-					const msg = wild[1].strip; 
-					
-					//filter out useless meddages
-					if(type == BuildMessageType.warning && msg.isWild("C preprocessor directive `#*` is not supported"))
-					return false; 
-					//Todo: make this filtering accessible from the IDE. Let te used see the dropped messages too.
-					
-					add(BuildMessage(location, type, msg)); //this is a true original message
-					
-					return true; 
-				}
-			}
-		}catch(Exception e)
-		{}
-		return false; 
-	} 
+	string sourceText()
+	{ return only(unprocessedSourceTexts, messages.sourceText).join('\n'); } 
+	
+	
 	void insertSyntaxCheckOutput(string output)
 	{
-		auto o = predecodeLdcOutput(output); 
-		foreach(m; o.messages)
-		_processLine(m.join('\n')); 
+		messages.processDMDOutput(output); 
+		messages.finalizePragmas(""); 
 	} 
 	
 	void receiveBuildMessages()
@@ -2349,9 +2682,14 @@ class BuildResult
 					filesInCache = msg.filesInCache.dup; 
 					
 					allFiles = (filesToCompile~filesInCache); 
-					allFiles.each!((f){ filesInProject[f] = true; }); 
+					allFiles.each!(
+						(f){
+							filesInProject[f] = true; 
+							//Todo: initialize fileNameFixer with these correct names
+						}
+					); 
 					
-					msg.todos.each!(t => _processLine(t)); 
+					messages.processDMDOutput(cast(string[]) msg.todos); 
 					
 					foreach(f; filesInCache)
 					{
@@ -2370,7 +2708,6 @@ class BuildResult
 				},
 					
 				(in MsgCompileProgress msg)	{
-					
 					auto f = msg.file; 
 					filesInFlight.remove(f); 
 					results[f] = msg.result; 
@@ -2391,31 +2728,37 @@ class BuildResult
 						remainings[f] = remaining;
 					+/
 					
-					auto o = predecodeLdcOutput(msg.output); 
-					foreach(m; o.messages)
-					_processLine(m.join('\n')); 
+					messages.processDMDOutput(msg.output); 
 					
 					outputs[f] = msg.output.splitLines; //Todo: not used anymore. Everything is in messages[]
-					remainings[f] = o.pragmas;  //Todo: rename remainings to pragmas
+					remainings[f] = messages.pragmas.get(f); //Todo: rename remainings to pragmas
 				},
 					
 				(in MsgBuildFinished msg)	{
 					filesInFlight.clear; 
 					
+					string errorText; 
+					
 					if(msg.error!="")
 					{
 						beep; ERR("BUILDERROR", msg.error); 
-						remainings[mainFile] ~= msg.error.splitLines; 
-						//Todo: Show this linker error in DIDE properly
+						errorText = msg.error; 
 					}
 					
 					buildFinished = now; 
-					remainings[mainFile] ~= format!	"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
+					const buildStatText = format!	"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
 						(
 						(buildFinished-buildStarted).value(second), 
 						sourceStats.totalModules,
 						sourceStats.totalLines,
 						sourceStats.totalBytes
+					); 
+					
+					messages.finalizePragmas(
+						only(
+							errorText,
+							buildStatText
+						).filter!`a!=""`.join('\n')
 					); 
 					
 					//decide the global success of the build procedure
@@ -2429,220 +2772,6 @@ class BuildResult
 		{ lastUpdateTime = now; }
 		
 	} 
-	
-	
-	string dumpMessage(in BuildMessage bm, string indent="")
-	{
-		string res = indent ~ bm.text ~"\n"; 
-		
-		foreach(const v; messages.values)
-		if(v.parentLocation == bm.location)
-		res ~= dumpMessage(v, indent~"  "); 
-		
-		return res; 
-	} 
-	
-	string dumpMessage(in CodeLocation location, string indent="")
-	{
-		if(!location)
-		return ""; 
-		if(const bm = location in messages)
-		return dumpMessage(*bm, indent); 
-		return ""; 
-	} 
-	
-	string dump()
-	{
-		string res; 
-		
-		res ~= ("\n"); 
-		res ~= ("///////////////////////////////////\n"); 
-		res ~= ("///  Output                     ///\n"); 
-		res ~= ("///////////////////////////////////\n"); 
-		static if(0)
-		{
-			 auto f = mainFile; 
-			if(f in remainings && remainings[f].length)
-			{ remainings[f].each!(a => res ~= a~"\n"); }
-		}else
-		{
-			foreach(f; remainings.keys.sort)
-			{
-				if(f in remainings && remainings[f].length)
-				{
-					res ~= f.fullName~": Output:\n"; 
-					remainings[f].each!(a => res ~= a~"\n"); 
-				}
-			}
-		}
-		res ~= "\n"; 
-		
-		res ~= ("///////////////////////////////////\n"); 
-		res ~= ("///  Messages                   ///\n"); 
-		res ~= ("///////////////////////////////////\n"); 
-		foreach(loc; messages.keys.sort)
-		{
-			const bm = messages[loc]; 
-			if(!bm.parentLocation)
-			res ~= dumpMessage(bm, "  "); 
-		}
-		res ~= "\n"; 
-		
-		return res; 
-	} 
-	
-		//find sub-messages recursively
-		auto subMessagesOf(in CodeLocation loc)
-	{
-		BuildMessage[] subMessages;  //Todo: this is an array of struct. It's unoptimal
-		void doit(in CodeLocation parentLocation)
-		{
-			auto sm = messages.byValue.filter!(m => m.parentLocation==parentLocation).array; 
-			subMessages ~= sm; 
-			sm.each!(m => doit(m.location)); 
-		} 
-		doit(loc); 
-		return subMessages; 
-	} 
-	
-	private
-	{
-		static private string safeText(string s)
-		{
-			//Note: this string can be safely placed into /++/ comments.
-			s = s.replace("/+", "/ +").replace("+/", "+ /"); 
-			return s; 
-		} 
-		
-		private string innerSourceText(in BuildMessage msg)
-		{
-			with(msg) {
-				if(location.text.canFind(' ')) WARN("Space is not allowed in the code location paths."); 
-				//Todo: Handle modern "" filenames with space characters in $ DIDE_LOC
-				
-				const t = type.text.capitalize ~ ':'; 
-				const s = formatErrorMessage(fixDuplicatedMessages(message, t~" ")); 
-				
-				if(isMain)	return format!"%s/+$DIDE_LOC %s+/ %s"(t, location, s); 
-				else if(location)	return format!"/+$DIDE_LOC %s+/ %s"(location, s); 
-				else	return s; 
-			}
-		} 
-		
-		
-		static private string fixDuplicatedMessages(string msg, string prefix)
-		{
-			auto lines = msg.splitLines; 
-			if(lines.length>1)
-			{
-				const s = prefix ~ lines[0]; 
-				if(lines[1..$].all!(line => line == s))
-				return lines[0] ~ " (x"~lines.length.text~")"; 
-			}
-			
-			return msg; 
-		} 
-		
-		private string formatErrorMessage(string msg)
-		{
-			{
-				/+
-					Bug: Find a way to encode comment characters without ruining the syntax of the comment.
-					$ DIDE_CHAR(ind charcode) seems good.
-					
-					The following is a cheap workaround only:
-				+/
-				msg = safeText(msg); 
-			}
-			
-			//locate all the code snippets inside `` and surround them with / +Code: ... + /
-			int[] indices; 
-			
-			foreach(i, char ch; msg) if(ch=='`') indices ~= i.to!int; 
-			
-			if(indices.length & 1)
-			{
-				indices = indices.remove(max(indices.length.to!int - 2, 0)); 
-				//it removes the second rightmost element. The leftmost and the rightmost are always valid.
-			}
-			
-			bool opening = false; 
-			foreach_reverse(i; indices)
-			{
-				const 	left = msg[0 .. i],
-					right = msg[i+1 .. $]; 
-				
-				auto separ = opening ? "/+Code: " :"+/"; 
-				if(left.endsWith(separ[1])) separ = ' ' ~ separ; //Not to produce "/+/" or "+/+"
-				
-				msg = left ~ separ ~ right; 
-				opening = !opening; 
-			}
-			
-			if(msg.endsWith('/')) msg ~= ' '; //Not to produce "/+/"
-			
-			//find filenames and transform them into / + $DIDE_LOC ... + /
-			
-			static rxCodeLocation = ctRegex!(`[a-z]:\\[a-z0-9_\.\-\\!#$%^@~]+.d(-mixin-[0-9]+)?\([0-9]+,[0-9]+\)`, `gim`); 
-			//Todo: this filename parser regex fails with accented chars and with space.
-			
-			auto fileNames = msg.matchAll(rxCodeLocation).map!"a[0]".array; 
-			foreach(fn; fileNames.sort.uniq)
-			{
-				msg = msg.replace(fn, "/+$DIDE_LOC " ~ repairFileCase(fn) ~ "+/"); 
-				//Opt: maybe repairFileCase is slow. But maybe caching makes it less of a problem...
-			}
-			
-			return msg; 
-		} 
-	} 
-	
-	
-	string[] unprocessedSourceTexts()
-	{
-		string[] res; 
-		
-		foreach(f; remainings.keys.sort)
-		{
-			if(f in remainings && remainings[f].length)
-			{
-				auto act = "/+Output:/+$DIDE_LOC "~f.fullName~"+/\n/+"; 
-				remainings[f].each!(a => act ~= safeText(a)~"\n"); 
-				act ~= "+/+/"; 
-				
-				res ~= act; 
-			}
-		}
-		
-		return res; 
-	} 
-	
-	string[] messageSourceTexts()
-	{
-		//Note: This produces a compiler message list out of advanced DIDE comments.
-		
-		string[] res; 
-		
-		foreach(loc; messages.keys.sort)
-		{
-			const bm = messages[loc]; 
-			
-			if(bm.isMain)
-			{
-				auto act = "/+"~innerSourceText(bm); 
-				foreach(const sm; subMessagesOf(bm.location))
-				act ~= "\n"~innerSourceText(sm); 
-				act ~= "+/"; 
-				
-				res ~= act; 
-			}
-		}
-		
-		return res; 
-	} 
-	
-	string sourceText()
-	{ return chain(unprocessedSourceTexts, messageSourceTexts).join('\n'); } 
 	
 } 
 

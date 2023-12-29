@@ -665,8 +665,6 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		//! UI ///////////////////////////////
-		
 		static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 		{
 			with(im)
@@ -699,30 +697,7 @@ version(/+$DIDE_REGION+/all)
 			); 
 		} 
 		
-		static void UI_BuildMessageContents(CodeLocation location, string title, void delegate() contents)
-		{
-			with(im) {
-				location.UI;   //Opt: this is FUCKING slow
-				if(title!="") Text(bold(" "~title~" ")); 
-				if(contents) contents(); 
-			}
-		} 
-		
-		static void UI_ConsoleTextBlock(string contents)
-		{
-			with(im) {
-				UI_InnerBlockFrame(
-					clBlack, clWhite, {
-						style.font = "Lucida Console"; 
-						Text(contents); 
-						//Todo: Use codeRow here for optimized LOD. Refer to -> UI_BuildMessageTextBlock()
-					}
-				); 
-			}
-		} 
-		
-		static void UI_CompilerOutput(File file, string text)
-		{ UI_OuterBlockFrame(RGB(0xD0D0D0), { UI_BuildMessageContents(CodeLocation(file.fullName), "Output:", { UI_ConsoleTextBlock(text); }); }); } 
+		//! UI ///////////////////////////////
 		
 		deprecated void UI(in CodeLocation cl)
 		{
@@ -737,7 +712,6 @@ version(/+$DIDE_REGION+/all)
 				}
 			); 
 		} 
-		
 		
 		void UI(in BuildSystemWorkerState bsws)
 		{
@@ -765,84 +739,6 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-	}version(/+$DIDE_REGION+/all)
-	{
-		void UI_BuildMessageTextBlock(string message, RGB clFont)
-		{
-			//Apply syntax highlight on the texts between `` quotes.
-			auto isCode = new bool[message.length]; 
-			{
-				bool inCode = false; 
-				size_t i; 
-				foreach(ch; message.byChar)
-				{
-					if(!inCode)
-					{ if(ch=='`') inCode=true; }
-					else
-					{ if(ch=='`') inCode=false; else isCode[i]=true; }
-					i++; 
-				}
-			}
-					
-			auto codeOnly = message.dup; 
-			foreach(i, b; isCode) if(!b) codeOnly.ptr[i] = ' '; 
-					
-			auto sc = scoped!SourceCode(cast(string)codeOnly); 
-					
-			void appendLine(int idx) {
-				with(im) {
-					auto cr = cast(CodeRow)actContainer; 
-					auto r = sc.getLineRange(idx); 
-					cr.set(message[r[0]..r[1]], sc.syntax[r[0]..r[1]]); 
-					auto g = cr.glyphs; 
-					foreach(i, b; isCode[r[0]..r[1]])
-					if(!b) g[i].fontColor = clFont; 
-				}
-			} 
-					
-			const lineCount = sc.lineCount; 
-			if(lineCount>=1)
-			{
-				with(im)
-				UI_InnerBlockFrame!CodeColumn(
-					clCodeBackground,
-					clFont,
-					{
-						foreach(i; 0..lineCount)
-						Container!CodeRow({ appendLine(i); }); 
-					}
-				); 
-			}
-		} 
-		
-		
-		void UI(in BuildMessage msg, BuildResult br)
-		{ UI(msg, br.subMessagesOf(msg.location)); } 
-		
-		void UI(in BuildMessage msg, in BuildMessage[] subMessages)
-		{
-			const color = buildMessageInfo[msg.type].syntax.syntaxBkColor; 
-			with(msg)
-			with(im)
-			UI_OuterBlockFrame(
-				color,
-				{
-					UI_BuildMessageContents(
-						location,
-						parentLocation ? "\u2026" : type.to!string.capitalize~":",
-						{
-							const clFont = avg(color, clWhite); 
-							
-							UI_BuildMessageTextBlock(message, clFont); 
-							
-							foreach(sm; subMessages)
-							{ Text("\n    "); sm.UI([]); }
-						}
-					); 
-				}
-			); 
-		} 
-		
 		//! Draw //////////////////////////////////////////////////////
 		
 		void drawHighlight(Drawing dr, bounds2 bnd, RGB color, float alpha)
@@ -861,6 +757,7 @@ version(/+$DIDE_REGION+/all)
 			if(!c) return; 
 			drawHighlight(dr, c.outerBounds, color, alpha); 
 		} 
+		
 		
 	}
 }struct CellPath
@@ -4733,8 +4630,8 @@ version(/+$DIDE_REGION+/all)
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
 		"include", "define", /*"if",*/ "ifdef", "ifndef", "endif", "elif", "else" 	//Link: Arduino directives
 	],
-		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation],
-		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:"]
+		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation, skConsole],
+		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:", "Console:"]
 		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 		; 
 	
@@ -8124,6 +8021,8 @@ version(/+$DIDE_REGION+/all)
 				//Note: color constants
 				RGB(68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
 				(RGB(68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+				//Todo: Should go inside enum; !!!
+				
 				
 				//Note: named parameters
 				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
