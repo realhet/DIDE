@@ -305,7 +305,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					enum scale = 16; /+Note: It shows a tiny bit of progress at the start+/
 					const total = totalModules*scale; 
-					const act = (compiledModules*scale).clamp(1, total); 
+					const act = (compiledModules*scale).max(1).min(total); 
 					setTaskbarProgress(building, act, total); 
 					
 					//Todo: show error on the taskbarList
@@ -1424,6 +1424,9 @@ version(/+$DIDE_REGION main+/all)
 				return null; 
 			} 
 			
+			Module singleSelectedModule()
+			{ return oneSelectedModule.ifz(primaryModule); } 
+			
 			Module expectOneSelectedModule()
 			{
 				auto m = oneSelectedModule; 
@@ -1586,7 +1589,7 @@ version(/+$DIDE_REGION main+/all)
 	}version(/+$DIDE_REGION+/all)
 	{
 		
-		static struct LineIdxLocator
+		struct LineIdxLocator
 		{
 			int lineIdx; 
 			string reference; 
@@ -1594,8 +1597,14 @@ version(/+$DIDE_REGION main+/all)
 			
 			Container.SearchResult[] searchResults; 
 			
+			/+
+				void log(A...)(A a)
+					{ print(a); } 
+			+/
+			
 			void visitNode(CodeNode node)
 			{
+				//if(lineIdx==3050) log("node:", node.lineIdx, node, node.sourceText.take(30)); 
 				foreach(col; node.subCells.map!(a => cast(CodeColumn) a).filter!"a")
 				visitColumn(col); 
 			} 
@@ -4726,6 +4735,35 @@ Note:
 		
 		void UI_refactor()
 		{
+			void debugLineIndices()
+			{
+				void visit(Container cntr, int level=0)
+				{
+					/+
+						if(auto r = cast(CodeRow) cntr) if(r.lineIdx) print(r.lineIdx.format!"%5d", " ".replicate(level), r); 
+						
+						foreach(c; cntr.subCells)
+						{
+							c.castSwitch!(
+								(Glyph g){ if(g.lineIdx) print(g.lineIdx.format!"%5d", " ".replicate(level), g); },
+								(Container c){ visit(c, level+1); },
+								(Cell c){}
+							); 
+						}
+					+/
+					
+				} 
+				
+				if(auto mod = singleSelectedModule)
+				{
+					auto locator = LineIdxLocator(3050); 
+					
+					locator.visitNode(mod); 
+					
+					print("searchResults:", locator.searchResults); 
+				}
+			} 
+			
 			with(im)
 			{
 				Grp!Row(
@@ -4744,9 +4782,13 @@ Note:
 					}
 				); 
 				
+				
 				Grp!Row(
 					"Statistics",
-					{ if(KeyBtn("", "Declaration Statistics of all D codebase.")) declarationStatistics; }
+					{
+						if(KeyBtn("", "Declaration Statistics of all D codebase")) declarationStatistics; 
+						if(KeyBtn("", "Debug line indices")) debugLineIndices; 
+					}
 				); 
 				
 			}
@@ -4777,7 +4819,7 @@ Note:
 				{ zoom (.5); } 
 				@VERB("Ctrl+-") void zoomOut()
 				{ zoom (-.5); } 
-			}static if(1)
+			}static if(0)
 			version(/+$DIDE_REGION hold      +/all)
 			{
 				@HOLD("Ctrl+Alt+Num8") void holdScrollUp()
@@ -5282,7 +5324,6 @@ Note:
 					insertBlock("((\0).genericArg!q{})", TextFormat.managed_goInside, 0); 
 					//Todo: must be inserted as an expression!!!
 				} 
-				
 			}
 		}
 	}version(/+$DIDE_REGION UI         +/all)
@@ -5470,19 +5511,12 @@ Note:
 								searchResults = []; 
 								textSelections = []; 
 								if(auto mod = expectOneSelectedModule)
-								if(auto col  = mod.content)
-								if(auto rowCount = col.cellCount)
+								if(auto line = searchText[1..$].to!int.ifThrown(0))
 								{
-									if(auto line = searchText[1..$].to!int.ifThrown(0))
-									{
-										
-										if(line<0 && line>=-rowCount)
-										line = rowCount+line+1; //mirror if negative
-										
-										if(auto ts = col.lineSelection_home(line, true))
-										textSelections = [ts]; 
-									}
+									jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
+									//Todo: show a highlight on that row...
 								}
+								
 							}
 							else
 							{ searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join; }

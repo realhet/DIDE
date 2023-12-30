@@ -3144,7 +3144,11 @@ class CodeRow: Row
 				predictedIdx = 0; 
 			}
 			//Note: The line indices of the last empty rows will be 0
-			//Note: This algo is not works with empty columns
+			//Note: This algo is not working with empty columns
+			/+
+				Todo: the current workaround is to regenerate all 
+				the lineindices in the module.load.
+			+/
 		}
 	} 
 	
@@ -4453,6 +4457,19 @@ version(/+$DIDE_REGION+/all)
 		//visualize changed/created/modified
 		addGlobalChangeIndicator(dr, this/*, topLeftGapSize*.5f*/); 
 		
+		
+		enum showDeclarationsWithBadLineIdx = false; 
+		static if(showDeclarationsWithBadLineIdx)
+		if(lineIdx==0)
+		{
+			//Mark nodes with no lineIdx
+			dr.color = clFuchsia; 
+			dr.lineWidth = -5; 
+			if(blink>.5)
+			dr.drawRect(innerBounds); 
+		}
+		
+		
 		if(VisualizeCodeLineIndices) {
 			dr.color = clWhite; 
 			dr.fontHeight = 1.25; 
@@ -4608,7 +4625,7 @@ version(/+$DIDE_REGION+/all)
 	enum Type
 	{ slashComment, cComment, dComment, directive} 
 	enum TypePrefix	= ["//", "/*", "/+", "#"],
-		TypePostfix 	= ["", "*/", "+/", "" ]; 
+	TypePostfix 	= ["", "*/", "+/", "" ]; 
 	//node: directive is detected by the high level parser, not the structured scanner.
 	
 	Type type; 
@@ -5422,6 +5439,7 @@ version(/+$DIDE_REGION+/all)
 			this(Container parent)
 			{
 				super(parent); 
+				lineIdx = 1; //All modue starts with line 1
 				bkColor = clModuleBorder; 
 			} 
 			
@@ -5585,12 +5603,26 @@ version(/+$DIDE_REGION+/all)
 						try
 						{
 							processHighLevelPatterns_block(content); 
-							content.refreshLineIdx; /+
-								Todo: Why is this needed?
-								And why only at the module level?
-								processHighLevelPatterns somehow zeroes out 
-								the structured row lineIndices of the module...
+							
+							/+
+								content.refreshLineIdx; /+
+									Todo: Why is this needed?
+									And why only at the module level?
+									processHighLevelPatterns somehow zeroes out 
+									the structured row lineIndices of the module...
+								+/
+								//note: CodeColumn.RefreshLineIdx is flawed
+								/+
+									Bug: regenerate the fucking lineIndices because processHighLevelPatterns fucks those up.
+									losing 1.5 sec because of this on dide2.startup.load.
+								+/
 							+/
+							{
+								//static Time allT = 0*second; T0; 
+								refreshLineIdx; 
+								//allT += DT; print(allT.value(milli(second))); 
+							}
+							
 							structureLevel = StructureLevel.managed; 
 						}
 						catch(Exception e)
@@ -5604,6 +5636,23 @@ version(/+$DIDE_REGION+/all)
 				[&doPlain, &doHighlighted, &doStructured, &doManaged][desiredStructureLevel](); 
 				
 				needMeasure; 
+			} 
+			
+			void refreshLineIdx()
+			{
+				lineIdx = 1; //first line is always 1.  ignoring the #line directive.
+				
+				SourceTextBuilder builder; 
+				with(builder)
+				{
+					updateLineIdx = true; 
+					foreach(row; content.rows) {
+						put(row); 
+						putNL; 
+					}
+				}
+				
+				//Opt: It's ineffective, because it generates text.
 			} 
 			
 			size_t linesOfCode()
@@ -6369,6 +6418,8 @@ version(/+$DIDE_REGION+/all)
 				
 				if(auto a = col.rows.front.lineIdx) lineIdx = a; 
 			}
+			
+			if(!lineIdx) { static bool a; if(a.chkSet) ERR("Declaration.lineIdx fail. ...sigh..."); }
 		} 
 		
 	}version(/+$DIDE_REGION+/all)
@@ -7200,8 +7251,18 @@ version(/+$DIDE_REGION+/all)
 				directive.content = new CodeColumn(directive, directiveCells); 
 				directive.content.fillSyntax(skDirective); //Todo: directive syntax highlight not working.
 				
-				directive.lineIdx = directive.content.rows.front.lineIdx; //getLineIdxOfFirstGlyphOrNode_notRecursive;
-				if(directive.lineIdx <= 0) WARN("Unable to find lineIdx for directive"); 
+				//generate lineIdx for rows
+				foreach(r; directive.content.rows)
+				{
+					foreach(g; r.glyphs) if(g) { r.lineIdx = g.lineIdx; break; }
+					if(!r.lineIdx==0)
+					ERR("Unable to find lineIdx for directive Row"); 
+				}
+				
+				directive.lineIdx = directive.content.rows.front.lineIdx; 
+				if(!directive.lineIdx)
+				{ ERR("Unable to find lineIdx for directive"); }
+				
 				
 				directive.promoteCustomDirective; 
 				
@@ -7408,6 +7469,17 @@ version(/+$DIDE_REGION+/all)
 {
 	void processHighLevelPatterns_block(CodeColumn col_)
 	{
+		/+
+			const initialFirstRowLineIdx = col_.rows[0].lineIdx; 
+			scope(exit) if(!col_.rows[0].lineIdx) {
+				SourceTextBuilder builder; 
+				builder.lineCounter = initialFirstRowLineIdx; 
+				builder.updateLineIdx = true; 
+				builder.put(col_); 
+				LOG("LineIdx rebuilt for:\n"~builder.result); 
+			} 
+		+/
+		
 		//from here, process statements and declarations
 		
 		//generate Token enum from sentence detection rules.
@@ -7423,7 +7495,6 @@ version(/+$DIDE_REGION+/all)
 				
 				void appendDeclaration(Declaration decl)
 				{
-					
 					if(receiver)
 					{
 						
@@ -7727,7 +7798,7 @@ version(/+$DIDE_REGION+/all)
 						foreach(decl; declarationChain) appendDeclaration(decl); 
 						
 						//collect statistics
-						static if(1)
+						static if(0)
 						foreach(decl; declarationChain)
 						dDeclarationRecords ~= DDeclarationRecord(
 							only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
