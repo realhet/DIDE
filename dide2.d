@@ -1722,6 +1722,46 @@ version(/+$DIDE_REGION main+/all)
 		CodeRow[string] messageUICache;  //why a row??????
 		string[string] messageSourceTextByLocation; 
 		
+		struct MessageConnectionArrow
+		{
+			vec2 p1, p2; 
+			RGB color; 
+		} 
+		bool[MessageConnectionArrow] messageConnectionArrows; 
+		
+		void buildMessageConnectionArrows(ref DMDMessage rootMessage)
+		{
+			const msgColor = DMDMessage.typeColor[rootMessage.type]; 
+			
+			void visit(DMDMessage*[] path)
+			{
+				if(path.back.subMessages.length)
+				{
+					foreach(ref sm; path.back.subMessages)
+					visit(path ~ &sm); 
+				}
+				else
+				{
+					auto conv(ref DMDMessage msg)
+					{
+						auto sr = codeLocationToSearchResults(msg.location); 
+						if(sr.empty) return vec2(0); 
+						return sum(sr.map!(s => s.bounds.center))/sr.length; ; 
+					} 
+					
+					auto p = path.map!(a => conv(*a)).filter!"a".array; 
+					p.slide!(No.withPartial)(2).each!(
+						(a){
+							auto mca = MessageConnectionArrow(a[0], a[1], msgColor); 
+							messageConnectionArrows[mca] = true; 
+						}
+					); 
+				}
+			} 
+			
+			visit([&rootMessage]); 
+		} 
+		
 		void convertBuildMessagesToSearchResults(ref BuildResult br)
 		{
 			T0; 
@@ -1734,6 +1774,9 @@ version(/+$DIDE_REGION main+/all)
 			
 			errorModule = new Module(null, "", StructureLevel.structured); 
 			messageSourceTextByLocation.clear; 
+			
+			messageConnectionArrows.clear; 
+			
 			if(1)
 			{
 				//load all messages through a cache
@@ -1749,6 +1792,8 @@ version(/+$DIDE_REGION main+/all)
 					const src = msg.sourceText; 
 					//extract all locations from the message.
 					msg.allLocations.each!((in loc){ messageSourceTextByLocation[loc.text] = src; }); 
+					
+					buildMessageConnectionArrows(msg); 
 					
 					if(src !in messageUICache)
 					{
@@ -4598,7 +4643,7 @@ Note:
 				bool anyColEdited = node.subColumns.map!(a=>a.edited).any; 
 				if(anyColEdited)
 				{
-					auto n = node.nearestDeclarationBlock; 
+					if(auto n = node.nearestDeclarationBlock)
 					if(n !in added)
 					{
 						res ~= n; 
@@ -4609,7 +4654,10 @@ Note:
 				{
 					anyColEdited |= col.edited; 
 					foreach(row; col.rows.filter!(a=>a && a.changed))
-					foreach(subNode; row.subCells.map!(a=>cast(CodeNode)a).filter!(a=>a && a.changed))
+					foreach(
+						subNode; row.subCells	.map!(a=>cast(CodeNode)a)
+							.filter!(a=>a && a.changed)
+					)
 					visit(subNode); 
 				}
 			} 
@@ -5929,6 +5977,19 @@ Note:
 				lineStyle = LineStyle.normal; 
 			}
 		} 
+		
+		void drawMessageConnectionArrows(Drawing dr)
+		{
+			dr.lineWidth = -1; 
+			dr.lineStyle = LineStyle.dash; 
+			messageConnectionArrows.keys.each!(
+				(a){
+					dr.color = a.color; 
+					dr.line(a.p1, a.p2); 
+				}
+			); 
+			dr.lineStyle = LineStyle.normal; 
+		} 
 		
 		void drawTextSelections(Drawing dr, View2D view)
 		{
@@ -6273,6 +6334,9 @@ Note:
 			{ drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f)); }
 			
 			.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
+			
+			drawMessageConnectionArrows(dr); 
+			
 			.drawProbes(dr); globalVisibleProbes.clear; 
 			
 			drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!

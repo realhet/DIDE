@@ -2404,7 +2404,7 @@ struct DMDMessages
 	
 	//message filtering
 	
-	__gshared string[] messageFilters = [/*"Warning: C preprocessor directive "*/]; 
+	__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
 	
 	//internal state
 	private
