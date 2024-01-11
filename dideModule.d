@@ -7935,6 +7935,9 @@ version(/+$DIDE_REGION+/all)
 		
 		//give it up: it's not a declaration, neither a statement block
 		return CurlyBlockKind.list; 
+		
+		
+		//Todo: Can't detect structure initializer here: VkClearValue clearColor = { color: { float32: [ 0.8f, 0.2f, 0.6f, 1.0f ]}}; 
 	} 
 	
 	

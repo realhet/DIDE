@@ -2290,7 +2290,8 @@ struct DMDMessage
 		return 	isSupplemental && 
 			(
 			content.stripLeft.startsWith("instantiated from here: ") ||
-			content.endsWith(" instantiations, -v to show) ...")
+			content.endsWith(" instantiations, -v to show) ...") ||
+			content.canFind(" recursive instantiations from here: ")
 		); 
 	} 
 	
