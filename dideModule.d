@@ -2045,388 +2045,411 @@ version(/+$DIDE_REGION+/all)
 }
 class CodeRow: Row
 {
-	/// CodeRow ////////////////////////////////////////////////
-	version(/+$DIDE_REGION+/all)
+	
+	CodeColumn parent; 
+	
+	int lineIdx; 
+	bool halfSize; 
+	
+	protected AvgColor _avgColor; 
+	
+	static if(rearrangeFlash) DateTime rearrangeTime; 
+	
+	override inout(Container) getParent() inout
+	{ return parent; } 
+	override void setParent(Container p)
+	{ parent = enforce(cast(CodeColumn)p); } 
+	
+	int index()
+	{ return parent.subCellIndex(this); } 
+	
+	bool empty() const
+	{ return subCells.empty; } 
+	
+	size_t length() const
+	{ return subCells.length; } 
+	
+	Cell singleCellOrNull()
+	{ return subCells.length==1 ? subCells[0] : null; } 
+	
+	auto glyphs()
+	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
+	
+	auto chars(dchar objectChar=compoundObjectChar)()
+	{ return glyphs.map!(a => a ? a.ch : objectChar); } 
+	
+	string shallowText(dchar objectChar=compoundObjectChar)()
+	{ return chars!objectChar.to!string; } 
+	//Todo: combine this with extractThisLevelDString
+	
+	//Todo: mode isSpace inside elastic tab detection, it's way too specialized
+	
+	private static bool isIndentableSyntax(T)(T sk)
 	{
-		CodeColumn parent; 
-		
-		int lineIdx; 
-		
-		static if(rearrangeFlash) DateTime rearrangeTime; 
-		
-		override inout(Container) getParent() inout
-		{ return parent; } 
-		override void setParent(Container p)
-		{ parent = enforce(cast(CodeColumn)p); } 
-		
-		int index()
-		{ return parent.subCellIndex(this); } 
-		
-		bool empty() const
-		{ return subCells.empty; } 
-		
-		size_t length() const
-		{ return subCells.length; } 
-		
-		Cell singleCellOrNull()
-		{ return subCells.length==1 ? subCells[0] : null; } 
-		
-		auto glyphs()
-		{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
-		
-		auto chars(dchar objectChar=compoundObjectChar)()
-		{ return glyphs.map!(a => a ? a.ch : objectChar); } 
-		
-		string shallowText(dchar objectChar=compoundObjectChar)()
-		{ return chars!objectChar.to!string; } 
-		//Todo: combine this with extractThisLevelDString
-		
-		//Todo: mode isSpace inside elastic tab detection, it's way too specialized
-		
-		private static bool isIndentableSyntax(T)(T sk)
-		{
-			return !!sk.among(skWhitespace, skComment); 
-			/+don't count string literals, their indent must be preserved!+/
-		} 
-		
-		//Todo: refactor isCode* to isIndentable*
-		private static bool isCodeSpace(Cell c)
-		{
-			if(auto g = cast(Glyph)c)
-			return g.ch==' ' && isIndentableSyntax(g.syntax); 
-			return false; 
-		} 
-		private static bool isCodeTab(Cell c)
-		{
-			if(auto g = cast(Glyph)c)
-			return g.ch=='\t' && isIndentableSyntax(g.syntax); 
-			return false; 
-		} 
-		private static bool isAnyWhitespace(Cell c)
-		{
-			if(auto g = cast(Glyph)c)
-			return !!g.ch.among(' ', '\t'); 
-			return false; 
-		} 
-		private auto isCodeSpaces()
-		{ return subCells.map!isCodeSpace; } 
-		
-		auto leadingCodeSpaces()
-		{ return subCells.until!(not!isCodeSpace	); } 
-		auto leadingCodeTabs()
-		{ return subCells.until!(not!isCodeTab	); } 
-		auto leadingAnyWhitespaces()
-		{ return subCells.until!(not!isAnyWhitespace	); } 
-		
-		auto leadingCodeSpaceCount()
-		{ return cast(int)leadingCodeSpaces.walkLength; } 
-		auto leadingCodeTabCount()
-		{ return cast(int)leadingCodeTabs.walkLength; } 
-		auto leadingAnyWhitespaceCount()
-		{ return cast(int)leadingAnyWhitespaces.walkLength; } 
-		
-		auto codeTabCount()
-		{ return subCells.count!isCodeTab; } 
-		
-	}version(/+$DIDE_REGION+/all)
+		return !!sk.among(skWhitespace, skComment); 
+		/+don't count string literals, their indent must be preserved!+/
+	} 
+	
+	//Todo: refactor isCode* to isIndentable*
+	private static bool isCodeSpace(Cell c)
 	{
-		this(CodeColumn parent_)
-		{
-			parent = enforce(parent_); 
-			id.value = this.identityStr; 
-			
-			needMeasure; 
-			//also sets measureOnlyOnce flag. This is an on-demand realigned Container.
-			
-			flags.wordWrap	= false; 
-			flags.clipSubCells	= true; 
-			flags.cullSubCells	= true; 
-			flags.rowElasticTabs	= false; 
-			flags.dontHideSpaces	= true; 
-			flags.noBackground	= true; 
-			
-			//bkColor = parent.bkColor;
-		} 
-		
-		this(CodeColumn parent_, string line, ubyte[] syntax)
-		{
-			assert(line.length==syntax.length); 
-			this(parent_); 
-			set(line, syntax); 
-		} 
-		
-		void set(string line, ubyte[] syntax)
-		{
-			//set is called from CodeColumnBuilder.
-			internal_setSubCells([]); 
-			
-			static TextStyle style; //it is needed by appendCode/applySyntax
-			this.appendCode(
-				line, syntax, (ubyte s){ applySyntax(style, s); },
-								style/+, must paste tabs!!! DefaultIndentSize+/
-			); 
-			
-			//Note: tabIdx is already refreshed by appendCode
-			//spreadElasticNeedMeasure;
-		} 
-		
-		this(CodeColumn parent_, string line)
-		{
-			this(parent_); 
-			insertText(0, line); 
-		} 
-		
-		this(CodeColumn parent_, Cell[] cells)
-		{
-			this(parent_); 
-			
-			//take ownership of the cells.
-			cells.each!(c => c.setParent(this)); 
-			subCells = cells; 
-			refreshTabIdx; 
-			needMeasure; 
-			/+
-				Note: this is used from the high level parser.
-				It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
-			+/
-		} 
-		
-		final string sourceText()
-		{
-			//Todo: refactor this as a template mixin
-			SourceTextBuilder builder; 
-			builder.put(this); 
-			return builder.result; 
-		} 
-		
-		CaretPos localCaretPos(int idx)
-		{
-			const len = cellCount; 
-			if(len==0) return CaretPos(vec2(0, 0), innerHeight); 
-			
-			idx = idx.clamp(0, len); 
-			//if(idx<0 || idx>len) return CaretPos.init;
-			
-			if(idx==len) with(subCells.back) return CaretPos(outerTopRight, outerHeight); 
-			if(idx==0) with(subCells[0]) return CaretPos(outerPos, outerHeight); 
-			
-			const 	y0 = min(subCells[idx-1].outerTop   , subCells[idx].outerTop   ),
-				y1 = max(subCells[idx-1].outerBottom, subCells[idx].outerBottom); 
-			
-			return CaretPos(vec2(subCells[idx].outerLeft, y0), y1-y0); 
-		} 
-		
-		bounds2 newLineBounds()
-		{
-			const p = newLinePos; 
-			return bounds2(p, p + DefaultFontNewLineSize); 
-		} 
-		
-		vec2 newLinePos()
-		{
-			assert(innerHeight>=DefaultFontHeight); 
-			return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); 
-		} 
-	}version(/+$DIDE_REGION+/all)
+		if(auto g = cast(Glyph)c)
+		return g.ch==' ' && isIndentableSyntax(g.syntax); 
+		return false; 
+	} 
+	private static bool isCodeTab(Cell c)
 	{
-		/// Returns inserted count
-		int insertSomething(int at, void delegate() appendFun)
-		{
-			enforce(at>=0 && at<=subCells.length, "Out of bounds"); 
-			
-			auto after = subCells[at..$]; 
-			subCells = subCells[0..at]; 
-			
-			const cnt0 = subCells.length; 
-			
-			appendFun(); 
-			
-			const insertedCnt = (subCells.length-cnt0).to!int; 
-			if(insertedCnt) setChangedCreated; 
-			
-			subCells ~= after; 
-			
-			refreshTabIdx; 
-			needMeasure; 
-			spreadElasticNeedMeasure; 
-			
-			return insertedCnt; 
-		} 
+		if(auto g = cast(Glyph)c)
+		return g.ch=='\t' && isIndentableSyntax(g.syntax); 
+		return false; 
+	} 
+	private static bool isAnyWhitespace(Cell c)
+	{
+		if(auto g = cast(Glyph)c)
+		return !!g.ch.among(' ', '\t'); 
+		return false; 
+	} 
+	private auto isCodeSpaces()
+	{ return subCells.map!isCodeSpace; } 
+	
+	auto leadingCodeSpaces()
+	{ return subCells.until!(not!isCodeSpace	); } 
+	auto leadingCodeTabs()
+	{ return subCells.until!(not!isCodeTab	); } 
+	auto leadingAnyWhitespaces()
+	{ return subCells.until!(not!isAnyWhitespace	); } 
+	
+	auto leadingCodeSpaceCount()
+	{ return cast(int)leadingCodeSpaces.walkLength; } 
+	auto leadingCodeTabCount()
+	{ return cast(int)leadingCodeTabs.walkLength; } 
+	auto leadingAnyWhitespaceCount()
+	{ return cast(int)leadingAnyWhitespaces.walkLength; } 
+	
+	auto codeTabCount()
+	{ return subCells.count!isCodeTab; } 
+	
+	
+	this(CodeColumn parent_)
+	{
+		parent = enforce(parent_); 
+		id.value = this.identityStr; 
 		
-		/// Returns inserted count
-		int insertText(int at, string str)
-		{
-			if(str.empty) return 0; 
-			const res = insertSomething(
-				at, {
-					CodeColumn col = parent.enforce("CodeRow must have a CodeColumn parent."); 
-					const syntax = col.getSyntax(str.empty ? ' ' : str.front); 
-					this.appendCodeStr(str, syntax); 
-				}
-			); 
-			
-			return res; 
-		} 
+		needMeasure; 
+		//also sets measureOnlyOnce flag. This is an on-demand realigned Container.
 		
-		/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
-		CodeRow splitRow(int x)
-		{
-			assert(x>=0 && x<=cellCount); 
-			
-			auto nextRow = new CodeRow(parent); 
-			nextRow.setChangedCreated; 
-			
-			nextRow.subCells = this.subCells[x..$]; 
-			nextRow.adoptSubCells; 
-			this.subCells = this.subCells[0..x]; 
-			
-			if(nextRow.subCells.length)
-			this.setChangedRemoved; 
-			
-			only(this, nextRow).each!"a.refreshTabIdx"; 
-			only(this, nextRow).each!"a.spreadElasticNeedMeasure"; 
-			
-			return nextRow; 
-		} 
+		flags.wordWrap	= false; 
+		flags.clipSubCells	= true; 
+		flags.cullSubCells	= true; 
+		flags.rowElasticTabs	= false; 
+		flags.dontHideSpaces	= true; 
+		flags.noBackground	= true; 
 		
-		///must be called after the code changed. It tracks elasticTabs, and realigns if needed
-		void spreadElasticNeedMeasure()
-		{
-			//Todo: such beautyful name... NOT!
-			if(needMeasure)
-			{
-				
-				//extend up and down along elastic tabs
-				auto i = index; //Opt: this index calculation is slow. Feed index from the inside
-				assert(i>=0); 
-				
-				//simple but unefficient criteria: has any tabs or not
-				foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
-				foreach(a; parent.rows[i+1..$]  .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
+		//bkColor = parent.bkColor;
+	} 
+	
+	this(CodeColumn parent_, string line, ubyte[] syntax)
+	{
+		assert(line.length==syntax.length); 
+		this(parent_); 
+		set(line, syntax); 
+	} 
+	
+	void set(string line, ubyte[] syntax)
+	{
+		//set is called from CodeColumnBuilder.
+		internal_setSubCells([]); 
+		
+		static TextStyle style; //it is needed by appendCode/applySyntax
+		this.appendCode(
+			line, syntax, (ubyte s){ applySyntax(style, s); },
+			style/+, must paste tabs!!! DefaultIndentSize+/
+		); 
+		
+		//Note: tabIdx is already refreshed by appendCode
+		//spreadElasticNeedMeasure;
+	} 
+	
+	this(CodeColumn parent_, string line)
+	{
+		this(parent_); 
+		insertText(0, line); 
+	} 
+	
+	this(CodeColumn parent_, Cell[] cells)
+	{
+		this(parent_); 
+		
+		//take ownership of the cells.
+		cells.each!(c => c.setParent(this)); 
+		subCells = cells; 
+		refreshTabIdx; 
+		needMeasure; 
+		/+
+			Note: this is used from the high level parser.
+			It will sort out elastic tabs, but elastic tabs should be updated automatically somehow...
+		+/
+	} 
+	
+	final string sourceText()
+	{
+		//Todo: refactor this as a template mixin
+		SourceTextBuilder builder; 
+		builder.put(this); 
+		return builder.result; 
+	} 
+	
+	CaretPos localCaretPos(int idx)
+	{
+		const len = cellCount; 
+		if(len==0) return CaretPos(vec2(0, 0), innerHeight); 
+		
+		idx = idx.clamp(0, len); 
+		//if(idx<0 || idx>len) return CaretPos.init;
+		
+		if(idx==len) with(subCells.back) return CaretPos(outerTopRight, outerHeight); 
+		if(idx==0) with(subCells[0]) return CaretPos(outerPos, outerHeight); 
+		
+		const 	y0 = min(subCells[idx-1].outerTop   , subCells[idx].outerTop   ),
+			y1 = max(subCells[idx-1].outerBottom, subCells[idx].outerBottom); 
+		
+		return CaretPos(vec2(subCells[idx].outerLeft, y0), y1-y0); 
+	} 
+	
+	bounds2 newLineBounds()
+	{
+		const p = newLinePos; 
+		return bounds2(p, p + DefaultFontNewLineSize); 
+	} 
+	
+	vec2 newLinePos()
+	{
+		assert(innerHeight>=DefaultFontHeight); 
+		return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); 
+	} 
+	
+	/// Returns inserted count
+	int insertSomething(int at, void delegate() appendFun)
+	{
+		enforce(at>=0 && at<=subCells.length, "Out of bounds"); 
+		
+		auto after = subCells[at..$]; 
+		subCells = subCells[0..at]; 
+		
+		const cnt0 = subCells.length; 
+		
+		appendFun(); 
+		
+		const insertedCnt = (subCells.length-cnt0).to!int; 
+		if(insertedCnt) setChangedCreated; 
+		
+		subCells ~= after; 
+		
+		refreshTabIdx; 
+		needMeasure; 
+		spreadElasticNeedMeasure; 
+		
+		return insertedCnt; 
+	} 
+	
+	/// Returns inserted count
+	int insertText(int at, string str)
+	{
+		if(str.empty) return 0; 
+		const res = insertSomething(
+			at, {
+				CodeColumn col = parent.enforce("CodeRow must have a CodeColumn parent."); 
+				const syntax = col.getSyntax(str.empty ? ' ' : str.front); 
+				this.appendCodeStr(str, syntax); 
 			}
-		} 
+		); 
 		
-		override void rearrange()
-		{
-			
-			assert(verifyTabIdx, "tabIdxInternal check fail"); 
-			
-			invalidateAvgColor; 
-			
-			adjustCharWidths; 
-			
-			innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true; 
-			
-			super.rearrange; 
-			
-			innerSize = max(innerSize, DefaultFontEmptyEditorSize); 
-			
-			static if(rearrangeLOG) LOG("rearranging", this); 
-			
-			static if(rearrangeFlash) rearrangeTime = now; 
-			
-			//Opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
-		} 
-		
-		protected int findRowLineIdx_min()
-		{
-			foreach(cell; subCells) {
-				if(auto a = cast(Glyph)cell) { if(a.lineIdx) return a.lineIdx; }
-				else if(auto a = cast(CodeNode)cell) { if(a.lineIdx) return a.lineIdx; }
-			}
-			return 0; 
-		} 
-		
-	}version(/+$DIDE_REGION+/all)
+		return res; 
+	} 
+	
+	/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
+	CodeRow splitRow(int x)
 	{
-		protected
+		assert(x>=0 && x<=cellCount); 
+		
+		auto nextRow = new CodeRow(parent); 
+		nextRow.setChangedCreated; 
+		
+		nextRow.subCells = this.subCells[x..$]; 
+		nextRow.adoptSubCells; 
+		this.subCells = this.subCells[0..x]; 
+		
+		if(nextRow.subCells.length)
+		this.setChangedRemoved; 
+		
+		only(this, nextRow).each!"a.refreshTabIdx"; 
+		only(this, nextRow).each!"a.spreadElasticNeedMeasure"; 
+		
+		return nextRow; 
+	} 
+	
+	///must be called after the code changed. It tracks elasticTabs, and realigns if needed
+	void spreadElasticNeedMeasure()
+	{
+		//Todo: such beautyful name... NOT!
+		if(needMeasure)
 		{
-			static immutable float 	NormalSpaceWidth	= 7.25f, //same as '0'..'9' and +-_
-				LeadingSpaceWidth 	= NormalSpaceWidth; 
 			
-			void adjustCharWidths()
+			//extend up and down along elastic tabs
+			auto i = index; //Opt: this index calculation is slow. Feed index from the inside
+			assert(i>=0); 
+			
+			//simple but unefficient criteria: has any tabs or not
+			foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
+			foreach(a; parent.rows[i+1..$]  .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
+		}
+	} 
+	
+	override void rearrange()
+	{
+		
+		assert(verifyTabIdx, "tabIdxInternal check fail"); 
+		
+		invalidateAvgColor; 
+		
+		adjustCharWidths; 
+		
+		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true; 
+		
+		super.rearrange; 
+		
+		innerSize = max(innerSize, ((halfSize)?(DefaultFontEmptyEditorSize/2) :(DefaultFontEmptyEditorSize))); 
+		
+		static if(rearrangeLOG) LOG("rearranging", this); 
+		
+		static if(rearrangeFlash) rearrangeTime = now; 
+		
+		//Opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
+	} 
+	
+	protected int findRowLineIdx_min()
+	{
+		foreach(cell; subCells) {
+			if(auto a = cast(Glyph)cell) { if(a.lineIdx) return a.lineIdx; }
+			else if(auto a = cast(CodeNode)cell) { if(a.lineIdx) return a.lineIdx; }
+		}
+		return 0; 
+	} 
+	
+	void applyHalfSize(RGB fontColor_, RGB bkColor_)
+	{
+		//this is used from NiceExpression
+		halfSize = true; 
+		
+		enum targetHeight 	= DefaultFontHeight/2,
+		triggerHeight 	= DefaultFontHeight-1; 
+		
+		foreach(glyph; glyphs.filter!"a")
+		{
+			//shrink the text
+			if(glyph.outerHeight>=triggerHeight)
+			glyph.outerSize *= ((targetHeight)/(glyph.outerHeight)); 
+			//set inverse colors
+			glyph.fontColor = fontColor_; 
+			glyph.bkColor = bkColor_; 
+		}
+		
+		bkColor = bkColor_; 
+		needMeasure; 
+	} 
+	
+	
+	protected
+	{
+		static immutable float 	NormalSpaceWidth	= 7.25f, //same as '0'..'9' and +-_
+			LeadingSpaceWidth 	= NormalSpaceWidth; 
+		
+		void adjustCharWidths()
+		{
+			
+			bool isLeading = true; 
+			foreach(g; glyphs)
+			if(g)
 			{
+				//Todo: make this nicer
+				void setWidth(float w)
+				{ g.outerWidth = halfSize ? w*.5f : w; } 
 				
-				bool isLeading = true; 
-				foreach(g; glyphs)
-				if(g)
+				if(isCodeSpace(g))
 				{
-					//Todo: make this nicer
-					if(isCodeSpace(g))
-					{
-						g.outerWidth = isLeading 	? LeadingSpaceWidth
-							: NormalSpaceWidth; 
-					}
-					else
-					{
-						isLeading = false; 
-						
-						//non-leading char width modifications
-						if(
-							g.syntax==5 && g.ch!='.'	//number except '.'
-							|| g.ch.among('+', '-', '_')	//symbols next to numbers
-							/*|| g.syntax==6/+string+/*/
-						) g.outerWidth = NormalSpaceWidth; 
-					}
+					setWidth(
+						isLeading 	? LeadingSpaceWidth
+												: NormalSpaceWidth
+					); 
 				}
 				else
-				{ isLeading = false; }
-				
-				//foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
-			} 
-			
-			private void spaceToTab(long i)
-			{
-				auto g = glyphs[i]; 
-				assert(isCodeSpace(g)); 
-				g.ch = '\t'; 
-				g.isTab = true; 
-				//Note: refreshTabIdx must be called later
-			} 
-			
-			void replaceSpacesWithTabs(int xStart, int xTab, size_t tabCount)
-			{
-				assert(xStart<=xTab	, "invalid xStart, xTab"); 
-				assert(xStart>=0	, "xStart out of range"); 
-				assert(xTab<subCells.length	, "xTab out of range"); 
-				assert(glyphs[xStart..xTab+1].all!(g => isCodeSpace(g))	, "All must be spaces"); 
-				assert(tabCount <= xTab-xStart+1	, "tabCount too much."); 
-				
-				auto normalizeLeadingSpaces(Cell[] sc)
 				{
-					sc	.until!(a => !(isCodeSpace(a) && a.outerWidth!=NormalSpaceWidth))
-						.each!(a => a.outerWidth = NormalSpaceWidth); 
-					return sc; 
-				} 
-				
-				internal_setSubCells(
-					subCells[0..xStart+tabCount] ~
-					(xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : [])
-				); 
-				foreach(i; xStart..xStart+tabCount) spaceToTab(i); //promote spaces to tabs
-				
-				refreshTabIdx; //Todo: should only be done once at the end...
+					isLeading = false; 
+					
+					//non-leading char width modifications
+					if(
+						g.syntax==5 && g.ch!='.'	//number except '.'
+						|| g.ch.among('+', '-', '_')	//symbols next to numbers
+						/*|| g.syntax==6/+string+/*/
+						/+Bug: Write a number in front of an identifier! It turns all the identifier to monospace.+/
+					) setWidth(NormalSpaceWidth); 
+				}
+			}
+			else
+			{ isLeading = false; }
+			
+			//foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
+		} 
+		
+		private void spaceToTab(long i)
+		{
+			auto g = glyphs[i]; 
+			assert(isCodeSpace(g)); 
+			g.ch = '\t'; 
+			g.isTab = true; 
+			//Note: refreshTabIdx must be called later
+		} 
+		
+		void replaceSpacesWithTabs(int xStart, int xTab, size_t tabCount)
+		{
+			assert(xStart<=xTab	, "invalid xStart, xTab"); 
+			assert(xStart>=0	, "xStart out of range"); 
+			assert(xTab<subCells.length	, "xTab out of range"); 
+			assert(glyphs[xStart..xTab+1].all!(g => isCodeSpace(g))	, "All must be spaces"); 
+			assert(tabCount <= xTab-xStart+1	, "tabCount too much."); 
+			
+			auto normalizeLeadingSpaces(Cell[] sc)
+			{
+				sc	.until!(a => !(isCodeSpace(a) && a.outerWidth!=NormalSpaceWidth))
+					.each!(a => a.outerWidth = NormalSpaceWidth); 
+				return sc; 
 			} 
 			
-			void convertLeadingSpacesToTabs(int spaceCnt)
-			{
-				//Todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
-				//subCells.each!LOG;
-				assert(spaceCnt>0); 
-				const tabCnt = leadingCodeSpaceCount/spaceCnt; 
-				//LOG(leadingCodeSpaceCount, spaceCnt);
-				if(tabCnt>0) {
-					const removeCnt = tabCnt*spaceCnt-tabCnt; 
-					internal_setSubCells(subCells[removeCnt..$]); 
-					foreach(i; 0..tabCnt) spaceToTab(i); 
-					refreshTabIdx; //Todo: should only be done once at the end...
-				}
-			} 
+			internal_setSubCells(
+				subCells[0..xStart+tabCount] ~
+				(xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : [])
+			); 
+			foreach(i; xStart..xStart+tabCount) spaceToTab(i); //promote spaces to tabs
+			
+			refreshTabIdx; //Todo: should only be done once at the end...
+		} 
+		
+		void convertLeadingSpacesToTabs(int spaceCnt)
+		{
+			//Todo: tab inside string literal. width is too big  File(`c:\D\libs\!shit\_unused.arsd\html.d`)
+			//subCells.each!LOG;
+			assert(spaceCnt>0); 
+			const tabCnt = leadingCodeSpaceCount/spaceCnt; 
+			//LOG(leadingCodeSpaceCount, spaceCnt);
+			if(tabCnt>0) {
+				const removeCnt = tabCnt*spaceCnt-tabCnt; 
+				internal_setSubCells(subCells[removeCnt..$]); 
+				foreach(i; 0..tabCnt) spaceToTab(i); 
+				refreshTabIdx; //Todo: should only be done once at the end...
+			}
 		} 
 		
 		
-	}version(/+$DIDE_REGION+/all)
-	{
 		struct AvgColor
 		{
 			RGB color; 
@@ -2466,14 +2489,21 @@ class CodeRow: Row
 				xRange = bounds1.init; //nothing to fill
 			} 
 			
-		} private AvgColor _avgColor; ref avgColor()
+		} 
+		ref avgColor()
 		{
 			if(_avgColor.valid.chkSet)
 			_avgColor.recalculate(this); 
 			
 			return _avgColor; 
-		} void invalidateAvgColor()
+		}  void invalidateAvgColor()
 		{ _avgColor.valid = false; } 
+	} 
+	
+	
+	version(/+$DIDE_REGION+/all)
+	{
+		
 		
 		override void draw(Drawing dr)
 		{
@@ -2521,7 +2551,7 @@ class CodeRow: Row
 					+/
 				}
 			} 
-			
+			
 			void drawLigatures()
 			{
 				//Todo: --- 3 dashes should be a straight line.   === too.   With | < > at the end too.  With + at the middle.
@@ -3001,6 +3031,9 @@ class CodeRow: Row
 	DateTime lastResyntaxTime; //needed for the multithreaded syntax highligh processing. It can detect if the delayed syntax highlight is up-to-date or not.
 	
 	bool edited; //this column is marked, so it can be syntax checked before saving.
+	
+	bool halfSize; 
+	
 	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
 	this(Container parent)
@@ -3633,9 +3666,19 @@ class CodeRow: Row
 	
 	void setupBorder()
 	{
-		this.setRoundBorder(8); 
-		margin.set(.5); 
-		padding.set(.5, 4); 
+		if(halfSize)
+		{
+			//This is used in Niceexpression
+			margin.set(0); 
+			border = Border.init; 
+			padding.set(0, 2); 
+		}
+		else
+		{
+			this.setRoundBorder(8); 
+			margin.set(.5); 
+			padding.set(.5, 4); 
+		}
 	} 
 	
 	Row[][] cachedPageRowRanges; 
@@ -3750,6 +3793,18 @@ class CodeRow: Row
 		//Note: This is cached in CodeRow. I dont thint it should be cached here too.
 		
 		return sum.avg(bkColor); 
+	} 
+	
+	void applyHalfSize(RGB fontColor_, RGB bkColor_)
+	{
+		halfSize = true; //no going back...
+		
+		//NiceExpressions are using this
+		foreach(row; rows)
+		row.applyHalfSize(fontColor_, bkColor_); 
+		bkColor = bkColor_; 
+		
+		rearrange; 
 	} 
 	
 	static void selfTest()
@@ -7903,6 +7958,23 @@ version(/+$DIDE_REGION+/all)
 		p = p.replace(" (", ")"); 
 		p = p.strip; 
 		
+		//Todo: A a={a:{b:c}};  <- it thinks this is a function body
+		/+
+			Note: In a ',' separated list, if there is any identifier ':' starting, then it's an expression, not a code.
+			Inside {} it is a structure initializer
+			Inside () it is a parameter list
+		+/
+		version(none)
+		{ A a={ a: { b: c}}; }
+		
+		version(none)
+		{ A a={ a: c}; /+this one is ok+/}
+		/+
+			Todo: if there is a comment at the end of a one liner block, 
+			then there will be an an extra space at the start of the block /sigh
+		+/
+		
+		
 		//first start with easy decisions at the end of the block
 		if(p=="") return CurlyBlockKind.empty; 
 		if(p.endsWith(';') || p.endsWith(':')) return CurlyBlockKind.declarationsOrStatements; 
@@ -8048,6 +8120,29 @@ version(/+$DIDE_REGION+/all)
 			switch(op)
 			{
 				case "sqrt", "magnitude", "normalize", "RGB", "RGBA": 	outerCell = new NiceExpression(blk.parent, op, right.content); 	break; 
+				case "mixin": {
+					if(right.content.rows.length==1)
+					if(auto row2 = right.content.getRow(0))
+					if(row2.subCells.length==3)
+					if(row2.chars[1]=='!')
+					if(const opIndex = row2.chars[0].among('體', '舉', '幟'))
+					{
+						const mixinOp = "mixin "~["struct", "enum", "flags"][opIndex-1]; 
+						if(auto right2 = asListBlock(row2.subCells.back))
+						if(right2.content.rowCount==1)
+						if(auto row3 = right2.content.rows[0])
+						if(row3.cellCount==3 && row3.chars[1]==',')
+						if(auto left3 = asListBlock(row3.subCells[0]))
+						if(auto right3 = asTokenString(row3.subCells[2]))
+						{
+							/+row3: (left3),q{right3}+/
+							//print("Special string mixin detected:\n"~left3.content.sourceText~"\n,\n"~right3.content.sourceText); 
+							outerCell = new NiceExpression(blk.parent, mixinOp, left3.content, right3.content); 
+						}
+					}
+					
+					
+				}break; 
 				default: 
 			}
 		}
@@ -8113,17 +8208,22 @@ version(/+$DIDE_REGION+/all)
 				
 					
 				((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
+				
+				
+				auto a = (mixin(體!((Type),q{StructInitializer}))); //auto a = (mixin(體!((Type),q{StructInitializer})));
+				auto a = (mixin(舉!((Type),q{EnumProperty}))); //auto a = (mixin(舉!((Type),q{EnumProperty})));
+				auto a = (mixin(幟!((Type),q{Flags}))); //auto a = (mixin(幟!((Type),q{Flags})));
 			} 
 		}
 	} 
-	
+	
 	class NiceExpression : CodeNode
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe} 
-		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2]; 
+		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe, mixinStruct, mixinEnum, mixinFlags} 
+		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!", "mixin struct", "mixin enum", "mixin flags"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2]; 
 		
 		Type type; 
 		CodeColumn[3] operands; 
@@ -8133,7 +8233,7 @@ version(/+$DIDE_REGION+/all)
 			switch(type)
 			{
 				case Type.RGB, Type.RGBA: 	return skBasicType; 
-				case Type.probe: 	return skIdentifier1/+It is handled specially.+/; 
+				case Type.probe, Type.mixinStruct:  	return skIdentifier1/+It is handled specially.+/; 
 				default: 	return skSymbol; 
 			}
 		} 
@@ -8209,6 +8309,39 @@ version(/+$DIDE_REGION+/all)
 						op(0); 
 						put(operator); 
 						op(1); //Todo: encode options
+					}break; 
+					case Type.mixinStruct: 	{
+						put("mixin");  //Todo: REFACTOR these chinese things
+						put('('); 
+							put("體!"); //the only difference!
+							put('('); 
+								op(0); 
+								put(','); 
+								put("q{", operands[1], "}"); 
+							put(')'); 
+						put(')'); 
+					}break; 
+					case Type.mixinEnum: 	{
+						put("mixin");  //Todo: REFACTOR these chinese things
+						put('('); 
+							put("舉!"); //the only difference!
+							put('('); 
+								op(0); 
+								put(','); 
+								put("q{", operands[1], "}"); 
+							put(')'); 
+						put(')'); 
+					}break; 
+					case Type.mixinFlags: 	{
+						put("mixin");  //Todo: REFACTOR these chinese things
+						put('('); 
+							put("幟!"); //the only difference!
+							put('('); 
+								op(0); 
+								put(','); 
+								put("q{", operands[1], "}"); 
+							put(')'); 
+						put(')'); 
 					}break; 
 				}
 				put(")"); 
@@ -8409,6 +8542,37 @@ version(/+$DIDE_REGION+/all)
 						+/
 						super.rearrange; 
 					}break; 
+					case Type.mixinStruct: 	{
+						const sk = skIdentifier1; 
+						style.fontColor = sk.syntaxBkColor; 
+						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("struct"), .33f); 
+						
+						operands[0].applyHalfSize(style.fontColor, bkColor); 
+						
+						op(0); putNL; put("{"); op(1); put("}"); 
+						super.rearrange; 
+					}break; 
+					case Type.mixinEnum: 	{
+						const sk = skIdentifier1; 
+						style.fontColor = sk.syntaxBkColor; 
+						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("enum"/+DIFF+/), .33f); 
+						
+						operands[0].applyHalfSize(style.fontColor, bkColor); 
+						
+						op(0); putNL; put("."); op(1); /+DIFF+/
+						super.rearrange; 
+					}break; 
+					case Type.mixinFlags: 	{
+						const sk = skIdentifier1; 
+						style.fontColor = sk.syntaxBkColor; 
+						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("alias"/+DIFF+/), .33f); 
+						
+						operands[0].applyHalfSize(style.fontColor, bkColor); 
+						
+						op(0); putNL; put('('); op(1); put(')'); /+DIFF+/
+						super.rearrange; 
+					}break; 
+					
 					//Todo: tenary chain: (()?():()?():())
 				}
 			}
