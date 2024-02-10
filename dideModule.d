@@ -6862,6 +6862,16 @@ version(/+$DIDE_REGION+/all)
 			sum.add(bkColor, outerSize.area-sum.totalWeight); 
 			return sum.avg(bkColor); 
 		} 
+		
+		/+
+			Todo: /+
+				Code: static if(a) {a;}
+				else static if(b) {b;}
+				else {c;}
+			+/
+			The statements can be aligned with the TAB.
+			But the expressions can't.
+		+/
 	}
 } version(/+$DIDE_REGION parsing helper fun+/all)
 {
@@ -8209,10 +8219,9 @@ version(/+$DIDE_REGION+/all)
 					
 				((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
 				
-				
-				auto a = (mixin(體!((Type),q{StructInitializer}))); //auto a = (mixin(體!((Type),q{StructInitializer})));
-				auto a = (mixin(舉!((Type),q{EnumProperty}))); //auto a = (mixin(舉!((Type),q{EnumProperty})));
-				auto a = (mixin(幟!((Type),q{Flags}))); //auto a = (mixin(幟!((Type),q{Flags})));
+				auto a = (mixin(體!((RGB),q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
+				auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
+				auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
 			} 
 		}
 	} 

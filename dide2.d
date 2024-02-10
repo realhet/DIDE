@@ -48,12 +48,8 @@ version(/+$DIDE_REGION main+/all)
 		- They will be hidden by a nice UI.
 	+/
 	
-	//Todo: 査 = inspection
-	auto 査(T)(T val)
-	{
-		print("査:", val); 
-		return val; 
-	} 
+	//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
+	
 	version(/+$DIDE_REGION Todo+/all)
 	{
 		
@@ -144,6 +140,8 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: Billentyuzetkiosztás beállíthatósága ()
 		//Todo: Vízszintes elválasztó vona (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
 		//Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
+		
+		//Todo: int a=5//comment;   << The ; is placed on the same line as the comment.
 	}
 	
 	//globals ////////////////////////////////////////
