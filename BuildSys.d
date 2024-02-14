@@ -2405,7 +2405,7 @@ struct DMDMessages
 	
 	//message filtering
 	
-	__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
+	__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; //Todo: The filtered items should placed into a hidden category. Not the console output.
 	
 	//internal state
 	private
