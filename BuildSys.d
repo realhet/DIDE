@@ -1250,7 +1250,18 @@ struct BuildSystem
 		foreach(const imp; act.parser.importDecls)
 		if(imp.isUserModule)
 		{
-			const f = File(imp.resolveFile(mainFile.path, file.fullName, true)); 
+			if(
+				const f = File(
+					imp.resolveFile(
+						mainFile.path, file.fullName, false/*
+							File not found is only a warning, 
+							not exception.
+							The compiler or linkel will find out later
+							if there is a problem.
+						*/
+					)
+				)
+			)
 			if(!mAct.importedFiles.canFind(f))
 			{
 				mAct.importedFiles ~= f; 
@@ -1475,7 +1486,7 @@ struct BuildSystem
 		bool cancelled; 
 		combinedResult = spawnProcessMulti2
 		(
-			srcFiles, cmdLines, null, /*working dir=*/Path.init, /*log path=*/workPath, outputs, 
+			srcFiles, cmdLines, null, /*working dir=*/mainFile.path, /*log path=*/workPath, outputs, 
 			(idx, result, output){
 				
 				//logln(bold("COMPILED("~result.text~"): ")~joinCommandLine(cmdLines[idx]));
@@ -1632,22 +1643,22 @@ struct BuildSystem
 				"ldc2", `-of=` ~ targetFile.fullName,
 				`--link-internally`, //default = ms link
 				`--mscrtlib=libcmt`
-			] //default = libcmt
-				~ ldcLinkArgs
-				~ linkOpts.map!"`-L=`~a".array
-				~ objFiles; 
+			] ~ //default = libcmt
+				ldcLinkArgs ~
+				linkOpts.map!"`-L=`~a".array ~
+				objFiles; 
 		}else
 		{
-			cmd = [
+			cmd = 	[
 				"link",	 `/LIBPATH:`~(is64bit?`c:\D\ldc2\lib64`:`c:\D\ldc2\lib32`), //Todo: the place for these is in DPath
 					 `/OUT:`~targetFile.fullName,
 					 `/MACHINE:`~(is64bit ? "X64" : "X86")
-			]
-									~linkOpts
-									~libFiles
-									~`legacy_stdio_definitions.lib`
-									~objFiles
-									~["druntime-ldc.lib", "phobos2-ldc.lib", /*msvcrt.lib*/ "libcmt.lib"]; 
+			] ~
+				linkOpts ~
+				libFiles ~
+				`legacy_stdio_definitions.lib` ~
+				objFiles ~
+				["druntime-ldc.lib", "phobos2-ldc.lib", /*msvcrt.lib*/ "libcmt.lib"]; 
 		}
 		
 		if(resFile)
@@ -1665,7 +1676,7 @@ struct BuildSystem
 		
 		auto line = joinCommandLine(cmd); 
 		logln(bold("LINKING: "), line); 
-		auto link = executeShell(line, MSVCEnv.getEnv(is64bit), Config.suppressConsole | Config.newEnv); 
+		auto link = executeShell(line, MSVCEnv.getEnv(is64bit), Config.suppressConsole | Config.newEnv, size_t.max, mainFile.path.fullPath); 
 		//Todo: I think MSVCENV not needed anymore
 		
 		//Todo: Linker error is not processed at all!!!
