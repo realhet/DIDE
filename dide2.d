@@ -478,6 +478,14 @@ version(/+$DIDE_REGION main+/all)
 			{
 				LOG("DBGEXC:\n"~message); 
 				
+				/+
+					Bug: Exception messages are fucked up now.
+					Take out the .map file interpreter from the .exe and move it to here.
+					Because in exception handling it must not use GC!
+					Only process .map file if there is no .pdb file.
+					The exe should onpy produce an error report file.  If the map/pdb file is next to it, it can be interpreted.
+				+/
+				
 				const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
 				string lastPrefix; 
 				string[] processed; 

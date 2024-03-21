@@ -25,6 +25,13 @@ module buildsys; /+DIDE+/
 	[-] kill program szinten meghiva a DIDE debug service-t, azt majd tiltani kell. Ugyanis kesobb allandoan mukodni fog ez az exe es emiatt nem csatlakozhat ra a dide-re! Ezen agyalni kell!
 */
 
+/+
+	240317 DConf
+	/+Todo: kiprobalni a DUB-ot (nem multithreaded)+/
+	/+Todo: kiprobalni a reggae-t (multithreaded)+/
+	/+Todo: kiprobalni a compiler time trace-t /+Code: LDC --ftime-trace+/+/
++/
+
 import het, het.parser, std.file, std.regex, std.path, std.process; 
 
 
