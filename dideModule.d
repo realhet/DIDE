@@ -8222,6 +8222,8 @@ version(/+$DIDE_REGION+/all)
 				auto a = (mixin(體!((RGB),q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
 				auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
 				auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
+				
+				//Todo: (mixin(...)) -> File(`...`)
 			} 
 		}
 	} 
