@@ -142,6 +142,8 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
 		
 		//Todo: int a=5//comment;   << The ; is placed on the same line as the comment.
+		
+		//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
 	}
 	
 	//globals ////////////////////////////////////////
