@@ -55,6 +55,7 @@ version(/+$DIDE_REGION+/all)
 	//Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
 	//Todo: Calculate avgColor for all	things. -> CodeRow, CodeColumn(what	about	short rows), CodeNode(diffocult))
 	//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
+	//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
 	
 	import het, het.ui, het.parser ,buildsys; 
 	
