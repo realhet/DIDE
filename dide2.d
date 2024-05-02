@@ -1,8 +1,8 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
-//@debug
+///@release
+///@debug
 
 
 version(/+$DIDE_REGION main+/all)

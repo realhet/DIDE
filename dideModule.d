@@ -3529,6 +3529,12 @@ class CodeRow: Row
 		rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){ g.bkColor = c; }); 
 	} 
 	
+	void fillColor(RGB fc, RGB bkc)
+	{
+		bkColor = bkc; 
+		rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){ g.bkColor = bkc; g.fontColor = fc; }); 
+	} 
+	
 	override inout(Container) getParent() inout
 	{ return parent; } 
 	override void setParent(Container p)
@@ -6014,7 +6020,7 @@ version(/+$DIDE_REGION+/all)
 			//High level stuff ///////////////////////////////////
 			
 			RGB brighter(RGB a, float f)
-			{ return (a.rgbToFloat*(1+f)).floatToRgb; } 
+			{ return (a.from_unorm*(1+f)).to_unorm; } 
 			
 			enum clPiko : RGB8
 			{
@@ -6064,6 +6070,9 @@ version(/+$DIDE_REGION+/all)
 					case "statement": 	return clGray; 
 					case "function", "invariant": 	return clSilver; 
 					case "__region": 	return clGray; 
+						
+					case "auto": 	return clAqua; 
+					
 					default: 	return def; 
 				}
 			} 
@@ -7933,15 +7942,16 @@ version(/+$DIDE_REGION+/all)
 			{
 				final switch(blk.type)
 				{
-					case CodeBlock.Type.block: 
+					case CodeBlock.Type.block: 	{
 						blk.content.processHighLevelPatterns_optionalBlock; 
-						if(blk.content.isHighLevelBlock) { cell = new Declaration(blk); }
-						break; 
-					case CodeBlock.Type.index: blk.content.processHighLevelPatterns_goInside; break; 
-					case CodeBlock.Type.list: blk.content.processHighLevelPatterns_goInside; processNiceExpression(cell); break; 
-					
-					//Todo: function params augmentations: named params
-					//Bug: processNiceExpressions can't seem to look inside (parameters). Got to identify parameter lists somehow.
+						if(blk.content.isHighLevelBlock)
+						{ cell = new Declaration(blk); }
+					}	break; 
+					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
+					case CodeBlock.Type.list: 	{
+						blk.content.processHighLevelPatterns_goInside; 
+						processNiceExpression(cell); 
+					}	break; 
 				}
 			}
 			else if(auto str = cast(CodeString) cell)
@@ -8058,7 +8068,79 @@ version(/+$DIDE_REGION+/all)
 		}
 	} 
 	
-	
+}
+version(/+$DIDE_REGION+/all)
+{
+	enum NicePattern : ubyte
+	{
+		
+		
+		unaryOp,
+		binaryOp,
+		tenaryOp,
+		castOp,
+		mixinOp,
+		namedUnaryOp
+		/+
+			Code: Source form:
+			
+			(op(expr))
+			((expr)op(expr))
+			((expr)op(expr)op(expr))
+			(op(expr)(expr))
+			(mixin(op!((expr),q{code})))
+			((expr)opq{code})
+		+//+
+			Note: Example:
+			
+			sqrt normalize RGB
+			^^  .pow
+			?:
+			cast
+			體
+			genericArg
+		+/
+	} 
+	
+	struct NiceExpressionTemplate
+	{
+		NicePattern pattern; 
+		string name; 
+		string keyword; 
+		SyntaxKind syntax; 
+		ubyte invertMode; 
+	} 
+	
+	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
+	[
+		{NicePattern.binaryOp, "divide", "/", skSymbol, 0},
+		{NicePattern.binaryOp, "power", "^^", skSymbol, 0},
+		{NicePattern.binaryOp, "root", ".root", skSymbol, 0},
+		{NicePattern.binaryOp, "mul", "*", skSymbol, 0},
+		{NicePattern.binaryOp, "dot", ".dot", skSymbol, 0},
+		{NicePattern.binaryOp, "cross", ".cross", skSymbol, 0},
+		{NicePattern.binaryOp, "probe", ".PR!", skIdentifier1, 0},
+		
+		{NicePattern.unaryOp, "sqrt", "sqrt", skSymbol, 0},
+		{NicePattern.unaryOp, "magnitude", "magnitude", skSymbol, 0},
+		{NicePattern.unaryOp, "normalize", "normalize", skSymbol, 0},
+		{NicePattern.unaryOp, "RGB", "RGB", skBasicType, 0},
+		{NicePattern.unaryOp, "RGBA", "RGBA", skBasicType, 0},
+		
+		{NicePattern.tenaryOp, "tenary.0", "?￼:", skSymbol, 2},
+		{NicePattern.tenaryOp, "tenary.1", " ?￼:", skSymbol, 2},
+		{NicePattern.tenaryOp, "tenary.2", "?￼ :", skSymbol, 2},
+		{NicePattern.tenaryOp, "tenary.3", " ?￼ :", skSymbol, 2},
+		
+		{NicePattern.namedUnaryOp, "genericArg", ".genericArg!", skIdentifier1, 2},
+		
+		{NicePattern.mixinOp, "mixinStruct", "體", skIdentifier1, 0},
+		{NicePattern.mixinOp, "mixinEnum", "舉", skIdentifier1, 0},
+		{NicePattern.mixinOp, "mixinFlags", "幟", skIdentifier1, 0},
+		
+		{NicePattern.castOp, "cast.0", "cast￼", skAttribute, 2},
+		{NicePattern.castOp, "cast.1", "cast ￼", skAttribute, 2},
+	]; 
 	
 	void processNiceExpression(ref Cell outerCell)
 	{
@@ -8075,27 +8157,26 @@ version(/+$DIDE_REGION+/all)
 		//Todo: This large if chain is lame.  Should make a configurable pattern detector instead.
 		//Todo: NiceExpressions not working inside   enum ;
 		
-		//Replace ((a)/(b))   ((a)^^(b))
-		if(auto blk = asListBlock(outerCell))
-		if(blk.content.rows.length==1)
-		if(auto row = blk.content.getRow(0))
-		if(row.length.inRange(3, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
-		if(auto right = asListBlock(row.subCells.back))
-		if(auto left = asListBlock(row.subCells.front))
+		void processBinaryPattern(CodeBlock blk, CodeRow row, CodeColumn left, string op, CodeColumn right)
 		{
-			const op = row.chars[1..$-1].text; //Example: (^^(
+			
+			auto tenary(int idx, string op)
+			{
+				if(auto middle = asListBlock(row.subCells[idx]))
+				outerCell = new NiceExpression(blk.parent, op, left, middle.content, right); 
+			} 
+			
 			switch(op)
 			{
-				case "/", "^^", ".root", "*", ".dot", ".cross", ".PR!": 	outerCell = new NiceExpression(blk.parent, op, left.content, right.content); 	break; 
-				case "?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[2]))
-				outerCell = new NiceExpression(blk.parent, "?:", left.content, middle.content, right.content); 	break; 
-				case " ?"~compoundObjectChar.text~":": 	if(auto middle = asListBlock(row.subCells[3]))
-				outerCell = new NiceExpression(blk.parent, " ?:", left.content, middle.content, right.content); 	break; 
-				case "?"~compoundObjectChar.text~" :": 	if(auto middle = asListBlock(row.subCells[2]))
-				outerCell = new NiceExpression(blk.parent, "? :", left.content, middle.content, right.content); 	break; 
-				case " ?"~compoundObjectChar.text~" :": 	if(auto middle = asListBlock(row.subCells[3]))
-				outerCell = new NiceExpression(blk.parent, " ? :", left.content, middle.content, right.content); 	break; 
-				//Todo: this is ugly. should decode the newlines instead.
+				case "/", "^^", ".root", "*", ".dot", ".cross", ".PR!": 	outerCell = new NiceExpression(blk.parent, op, left, right); 	break; 
+				
+				/+Note: tenary: ((expr)op(expr)op(expr))+/
+				case "?"~compoundObjectChar.text~":": 	tenary(2, "?:"); 	break; 
+				case " ?"~compoundObjectChar.text~":": 	tenary(3, " ?:"); 	break; 
+				case "?"~compoundObjectChar.text~" :": 	tenary(2, "? :"); 	break; 
+				case " ?"~compoundObjectChar.text~" :": 	tenary(3, " ? :"); 	break; 
+				
+				//Todo: this is ugly. should decode the newlines instead.  But that would be ugly inside all the ().
 				//Todo: tenary chain
 				//Todo: (cast()())
 				
@@ -8111,7 +8192,6 @@ version(/+$DIDE_REGION+/all)
 					+/
 				+/
 				//Todo: Double _ could be a subText. Example: dir__start
-				//Todo: ((a)*(b))  -> a b   multiplication with no symbol at all.
 				
 				/+
 					Todo: Should use Chinese/Japanese one character symbols instead of complicated (().abc()) format.
@@ -8124,13 +8204,37 @@ version(/+$DIDE_REGION+/all)
 				
 				default: 
 			}
+		} 
+		
+		//Replace ((a)/(b))   ((a)^^(b))
+		if(auto blk = asListBlock(outerCell))
+		if(blk.content.rows.length==1)
+		if(auto row = blk.content.getRow(0))
+		if(row.length.inRange(3, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
+		if(auto right = asListBlock(row.subCells.back))
+		if(auto left = asListBlock(row.subCells.front))
+		{
+			const op = row.chars[1..$-1].text; 
+			if(left.content && right.content)
+			{/+Note: binaryOp: ((expr)op(expr))+/processBinaryPattern(blk, row, left.content, op, right.content); }
 		}
 		else
 		{
-			const op = row.chars[0..$-1].text; //Example: sqrt()
+			const op = row.chars[0..$-1].text; 
 			switch(op)
 			{
-				case "sqrt", "magnitude", "normalize", "RGB", "RGBA": 	outerCell = new NiceExpression(blk.parent, op, right.content); 	break; 
+				case "sqrt", "magnitude", "normalize", "RGB", "RGBA": 	{/+Note: unaryOp: (op(expr))+/outerCell = new NiceExpression(blk.parent, op, right.content); }	break; 
+				
+				/+Note: castOp (op(expr)(expr))+/
+				case "cast"~compoundObjectChar.text: 	{
+					if(auto right2 = asListBlock(row.subCells[$-2]))
+					{ outerCell = new NiceExpression(blk.parent, "cast 0", right2.content, right.content); }
+				}	break; 
+				case "cast "~compoundObjectChar.text: 	{
+					if(auto right2 = asListBlock(row.subCells[$-2]))
+					{ outerCell = new NiceExpression(blk.parent, "cast 1", right2.content, right.content); }
+				}	break; 
+				
 				case "mixin": {
 					if(right.content.rows.length==1)
 					if(auto row2 = right.content.getRow(0))
@@ -8146,13 +8250,12 @@ version(/+$DIDE_REGION+/all)
 						if(auto left3 = asListBlock(row3.subCells[0]))
 						if(auto right3 = asTokenString(row3.subCells[2]))
 						{
+							/+Note: mixinOp: (mixin(op!((expr),q{code})))+/
 							/+row3: (left3),q{right3}+/
 							//print("Special string mixin detected:\n"~left3.content.sourceText~"\n,\n"~right3.content.sourceText); 
 							outerCell = new NiceExpression(blk.parent, mixinOp, left3.content, right3.content); 
 						}
 					}
-					
-					
 				}break; 
 				default: 
 			}
@@ -8161,7 +8264,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			if(auto left = asListBlock(row.subCells.front))
 			{
-				const op = row.chars[1..$-1].text; //Example: (.genericArg!`
+				/+Note: namedUnaryOp: ((expr)op q{code})+/const op = row.chars[1..$-1].text; //Example: (.genericArg!`
 				switch(op)
 				{
 					case ".genericArg!": outerCell = new NiceExpression(blk.parent, op, right.content, left.content); 	break; 
@@ -8169,6 +8272,8 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		}
+		
+		
 		
 		
 		version(none)
@@ -8205,7 +8310,7 @@ version(/+$DIDE_REGION+/all)
 				
 				
 				//Note: named parameters
-				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
+				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); //Todo: multiline style
 				//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
 				
 				//Note: tenary operator
@@ -8224,7 +8329,19 @@ version(/+$DIDE_REGION+/all)
 				auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
 				auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
 				
+				auto a = 	(cast(shared int)(1.5f+rnd(3))) +
+					(cast (shared int)(1.5f+rnd(3)+blablabla)); /+
+					/+Code: (cast(type)(expr))+/
+					/+Code: (cast (type)(expr))+/
+				+/
+				
 				//Todo: (mixin(...)) -> File(`...`)
+				
+				auto DFT(T)(in T[] x, float k)
+				{
+					const N = (cast(int)(x.length)); 
+					return (mixin(和!(q{n=0},q{N-1},q{x[n] * ((ℯ)^^(-i*2*π*((k)/(N))*n))}))); 
+				} 
 			} 
 		}
 	} 
@@ -8233,9 +8350,9 @@ version(/+$DIDE_REGION+/all)
 	{
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
-		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe, mixinStruct, mixinEnum, mixinFlags} 
-		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!", "mixin struct", "mixin enum", "mixin flags"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2]; 
+		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe, mixinStruct, mixinEnum, mixinFlags, cast0, cast1} 
+		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!", "mixin struct", "mixin enum", "mixin flags", "cast 0", "cast 1"],
+		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2]; 
 		
 		Type type; 
 		CodeColumn[3] operands; 
@@ -8246,6 +8363,8 @@ version(/+$DIDE_REGION+/all)
 			{
 				case Type.RGB, Type.RGBA: 	return skBasicType; 
 				case Type.probe, Type.mixinStruct:  	return skIdentifier1/+It is handled specially.+/; 
+				case Type.genericArg: 	return skIdentifier1; 
+				case Type.cast0, Type.cast1: 	return skAttribute; 
 				default: 	return skSymbol; 
 			}
 		} 
@@ -8355,6 +8474,8 @@ version(/+$DIDE_REGION+/all)
 							put(')'); 
 						put(')'); 
 					}break; 
+					case Type.cast0: 	{ put("cast"); op(0); op(1); }break; 
+					case Type.cast1: 	{ put("cast "); op(0); op(1); }break; 
 				}
 				put(")"); 
 			}
@@ -8396,10 +8517,25 @@ version(/+$DIDE_REGION+/all)
 		
 		override void rearrange()
 		{
-			with(nodeBuilder(syntax, 0))
+			int inverseMode = 0; 
+			if(
+				type.among(
+					Type.tenary0,
+					Type.tenary1,
+					Type.tenary2,
+					Type.tenary3,
+					Type.genericArg,
+					Type.cast0,
+					Type.cast1
+				)
+			) inverseMode = 2; 
+			
+			with(nodeBuilder(syntax, inverseMode))
 			{
 				//make it half as bright as the ()[] symbols
-				style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
+				
+				if(!inverseMode) style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
+				
 				//style.bold = syntax!=skSymbol; 
 				//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
 				
@@ -8430,6 +8566,12 @@ version(/+$DIDE_REGION+/all)
 							right = operands[reverse ? 0 : 1],
 							lower = operands[0],
 							upper = operands[1]; 
+						
+						/+
+							Todo: HalfSize
+							if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
+							It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
+						+/
 						
 						put(left); put(right); 
 						super.rearrange; 
@@ -8533,7 +8675,7 @@ version(/+$DIDE_REGION+/all)
 					}break; 
 					case Type.tenary2: 	{
 						put(' '); op(0); 	put("\t?\t"); 	op(1); put(' '); putNL; 
-							put("\t:\t"); 	op(2); put(' '); 
+						put(' '); 	put("\t:\t"); 	op(2); put(' '); 
 						super.rearrange; 
 					}break; 
 					case Type.tenary3: 	{
@@ -8542,7 +8684,10 @@ version(/+$DIDE_REGION+/all)
 						put(" :\t"); 	op(2); 	put(' '); 
 						super.rearrange; 
 					}break; 
-					case Type.genericArg: 	{ put(operands[0]); put(':'); put(operands[1]); super.rearrange; }break; 
+					case Type.genericArg: 	{
+						operands[0].fillColor(darkColor, bkColor); 
+						put(operands[0]); put(':'); put(operands[1]); super.rearrange; 
+					}break; 
 					case 	Type.probe: 	{
 						style.bkColor = bkColor = operands[0].bkColor; 
 						style.fontColor = clWhite; 
@@ -8584,13 +8729,20 @@ version(/+$DIDE_REGION+/all)
 						op(0); putNL; put('('); op(1); put(')'); /+DIFF+/
 						super.rearrange; 
 					}break; 
+					case Type.cast0, Type.cast1: 	{
+						op(1); 
+						if(type==Type.cast1) { putNL; flags.hAlign = HAlign.right; }
+						put(0 ? ".cast" : "↦"); op(0); 
+						super.rearrange; 
+					}break; 
 					
-					//Todo: tenary chain: (()?():()?():())
+					//Todo: tenary chain: (()?():()?():())  -> should do visually only.  No border.
 				}
 			}
 		} 
 	} 
 }
+
 //Test codes ////////////////////////////////////////
 struct TestCodeStruct
 {
