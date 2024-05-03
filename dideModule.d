@@ -8127,6 +8127,9 @@ version(/+$DIDE_REGION+/all)
 	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
 	[
+		{"null" /+This will be rerturned when no template was found.+/},
+		
+		
 		{
 			"sqrt", 
 			NET.unaryOp, 
@@ -8417,6 +8420,7 @@ version(/+$DIDE_REGION+/all)
 		},
 	]; 
 	
+	static assert(niceExpressionTemplates[0].name=="null"); 
 	int[Tuple!(immutable(NiceExpressionType), string)] niceExpressionTemplateIdxByTypeOperator; 
 	
 	shared static this()
@@ -8428,7 +8432,9 @@ version(/+$DIDE_REGION+/all)
 	int findNiceExpressionTemplateIdx(NiceExpressionType type, string operation)
 	{
 		auto a = tuple(cast(immutable)type, operation) in niceExpressionTemplateIdxByTypeOperator; 
-		return a ? *a : -1; 
+		return a ? *a : 0; 
+		
+		//Todo: This should be an enum.
 	} 
 	
 	
@@ -8483,16 +8489,13 @@ version(/+$DIDE_REGION+/all)
 			{
 				{
 					/+Note: binaryOp: ((expr)op(expr))+/
-					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryOp, op); 
-					if(tIdx>=0) {
-						outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
-						return; 
-					}
+					if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryOp, op))
+					{ outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); return; }
 				}
 				{
 					/+Note: tenaryyOp: ((expr)op(expr)op(expr))+/
-					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op); 
-					if(tIdx>=0) {
+					if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op))
+					{
 						const mIdx = op.countUntil('￼'); 
 						if(mIdx>=0)
 						{
@@ -8519,7 +8522,7 @@ version(/+$DIDE_REGION+/all)
 					string mixinOp = row2.chars[0].text; 
 					{
 						/+Note: mixinOp: (mixin(op!((expr),q{code})))+/
-						const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinOp, mixinOp); 
+						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinOp, mixinOp))
 						if(auto right2 = asListBlock(row2.subCells.back))
 						if(right2.content.rowCount==1)
 						if(auto row3 = right2.content.rows[0])
@@ -8541,8 +8544,7 @@ version(/+$DIDE_REGION+/all)
 					{
 						{
 							/+Note: castOp (op(expr)(expr))+/
-							const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.castOp, op.withoutEnding('￼')); 
-							if(tIdx>=0)
+							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.castOp, op.withoutEnding('￼')))
 							{
 								outerCell = new NiceExpression(blk.parent, tIdx, mid.content, right.content); 
 								return; 
@@ -8554,8 +8556,7 @@ version(/+$DIDE_REGION+/all)
 				{
 					{
 						/+Note: unaryOp: (op(expr))+/
-						const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op); 
-						if(tIdx>=0)
+						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op))
 						{
 							outerCell = new NiceExpression(blk.parent, tIdx, right.content); 
 							return; 
@@ -8571,8 +8572,8 @@ version(/+$DIDE_REGION+/all)
 				const op = row.chars[1..$-1].text; 
 				{
 					/+Note: namedUnaryOp: ((expr)op q{code})+///Example: op = .genericArg!`
-					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.namedUnaryOp, op); 
-					if(tIdx>=0) {
+					if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.namedUnaryOp, op))
+					{
 						outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
 						return; 
 					}
@@ -8583,7 +8584,7 @@ version(/+$DIDE_REGION+/all)
 	
 	class NiceExpression : CodeNode
 	{
-		int templateIdx = -1;  //Todo: 0 should mean invalid
+		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
