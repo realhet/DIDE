@@ -2337,7 +2337,7 @@ class CodeRow: Row
 		return 0; 
 	} 
 	
-	void applyHalfSize(RGB fontColor_, RGB bkColor_)
+	void applyHalfSize()
 	{
 		//this is used from NiceExpression
 		halfSize = true; 
@@ -2350,13 +2350,24 @@ class CodeRow: Row
 			//shrink the text
 			if(glyph.outerHeight>=triggerHeight)
 			glyph.outerSize *= ((targetHeight)/(glyph.outerHeight)); 
-			//set inverse colors
-			glyph.fontColor = fontColor_; 
-			glyph.bkColor = bkColor_; 
 		}
 		
-		bkColor = bkColor_; 
 		needMeasure; 
+	} 
+	
+	void fillColor(RGB fc, RGB bkc)
+	{
+		bkColor = bkc; //Todo: Is bkColor used in draw() at all?
+		foreach(g; glyphs.filter!"a") {
+			g.fontColor = fc; 
+			g.bkColor = bkc; 
+		}
+	} 
+	
+	void fillBkColor(RGB bkc)
+	{
+		bkColor = bkc; 
+		foreach(g; glyphs.filter!"a") g.bkColor = bkc; 
 	} 
 	
 	
@@ -3119,7 +3130,7 @@ class CodeRow: Row
 		}
 		else if(auto niceExpr = cast(NiceExpression) parent)
 		{
-			if(this is niceExpr.operands[1] && niceExpr.type==NiceExpression.Type.probe)
+			if(this is niceExpr.operands[1] && niceExpr.isProbe)
 			return StructureLevel.plain; 
 		}
 		
@@ -3139,7 +3150,7 @@ class CodeRow: Row
 			if(auto ccntr = cast(CodeContainer) parent)
 			return ccntr.syntax; 
 			if(auto niceExpr = cast(NiceExpression) parent)
-			if(this is niceExpr.operands[1] && niceExpr.type==NiceExpression.Type.probe)
+			if(this is niceExpr.operands[1] && niceExpr.isProbe)
 			return skConsole; 
 			
 			return skIdentifier1; 
@@ -3521,18 +3532,19 @@ class CodeRow: Row
 				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
 			}
 		); 
+		//Todo: fill row.bkColor
 	} 
 	
-	void fillBkColor(RGB c)
+	void fillBkColor(RGB bkc)
 	{
-		bkColor = c; 
-		rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){ g.bkColor = c; }); 
+		bkColor = bkc; 
+		foreach(r; rows) r.fillBkColor(bkc); 
 	} 
 	
 	void fillColor(RGB fc, RGB bkc)
 	{
 		bkColor = bkc; 
-		rows.map!(r => r.glyphs).joiner.filter!"a".each!((g){ g.bkColor = bkc; g.fontColor = fc; }); 
+		foreach(r; rows) r.fillColor(fc, bkc); 
 	} 
 	
 	override inout(Container) getParent() inout
@@ -3802,15 +3814,10 @@ class CodeRow: Row
 		return sum.avg(bkColor); 
 	} 
 	
-	void applyHalfSize(RGB fontColor_, RGB bkColor_)
+	void applyHalfSize()
 	{
 		halfSize = true; //no going back...
-		
-		//NiceExpressions are using this
-		foreach(row; rows)
-		row.applyHalfSize(fontColor_, bkColor_); 
-		bkColor = bkColor_; 
-		
+		foreach(r; rows) r.applyHalfSize; 
 		rearrange; 
 	} 
 	
@@ -8071,9 +8078,9 @@ version(/+$DIDE_REGION+/all)
 }
 version(/+$DIDE_REGION+/all)
 {
-	enum NicePattern : ubyte
+	enum NiceExpressionType : ubyte
 	{
-		
+		//Todo: no need to type 'Op' all the time
 		
 		unaryOp,
 		binaryOp,
@@ -8100,47 +8107,333 @@ version(/+$DIDE_REGION+/all)
 			體
 			genericArg
 		+/
-	} 
-	
-	struct NiceExpressionTemplate
+	} private alias NET = NiceExpressionType; int getOperandCount(NiceExpressionType t)
 	{
-		NicePattern pattern; 
+		with(NiceExpressionType)
+		final switch(t)
+		{
+			case unaryOp: 	return 1; 
+			case binaryOp, castOp, mixinOp, namedUnaryOp: 	return 2; 
+			case tenaryOp: 	return 3; 
+		}
+	} struct NiceExpressionTemplate
+	{
 		string name; 
-		string keyword; 
+		NiceExpressionType type; 
 		SyntaxKind syntax; 
 		ubyte invertMode; 
+		string example, operator, textCode, rearrangeCode, drawCode; 
 	} 
 	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
 	[
-		{NicePattern.binaryOp, "divide", "/", skSymbol, 0},
-		{NicePattern.binaryOp, "power", "^^", skSymbol, 0},
-		{NicePattern.binaryOp, "root", ".root", skSymbol, 0},
-		{NicePattern.binaryOp, "mul", "*", skSymbol, 0},
-		{NicePattern.binaryOp, "dot", ".dot", skSymbol, 0},
-		{NicePattern.binaryOp, "cross", ".cross", skSymbol, 0},
-		{NicePattern.binaryOp, "probe", ".PR!", skIdentifier1, 0},
+		{
+			"sqrt", 
+			NET.unaryOp, 
+			skSymbol, 0,
+			q{(sqrt(a))},
+			"sqrt",
+			q{put(operator); op(0); },
+			q{
+				op(0); super.rearrange; 
+				const adjust = vec2(
+					10/+width if the root symbol+/, 
+					2 /+Height of the horizontal root line+/
+				); 
+				operands[0].outerPos += adjust; outerSize += adjust; 
+			},
+			q{drawRoot; }
+		},
 		
-		{NicePattern.unaryOp, "sqrt", "sqrt", skSymbol, 0},
-		{NicePattern.unaryOp, "magnitude", "magnitude", skSymbol, 0},
-		{NicePattern.unaryOp, "normalize", "normalize", skSymbol, 0},
-		{NicePattern.unaryOp, "RGB", "RGB", skBasicType, 0},
-		{NicePattern.unaryOp, "RGBA", "RGBA", skBasicType, 0},
+		{
+			"magnitude", 
+			NET.unaryOp, 
+			skSymbol, 0,
+			q{(magnitude(a))},
+			"magnitude",
+			q{put(operator); op(0); },
+			q{put("\u007C"); op(0); put("\u007C"); super.rearrange; }
+		},
 		
-		{NicePattern.tenaryOp, "tenary.0", "?￼:", skSymbol, 2},
-		{NicePattern.tenaryOp, "tenary.1", " ?￼:", skSymbol, 2},
-		{NicePattern.tenaryOp, "tenary.2", "?￼ :", skSymbol, 2},
-		{NicePattern.tenaryOp, "tenary.3", " ?￼ :", skSymbol, 2},
+		{
+			"normalize", 
+			NET.unaryOp, 
+			skSymbol, 0,
+			q{(normalize(a))},
+			"normalize",
+			q{put(operator); op(0); },
+			q{put("\u007C\u007C"); op(0); put("\u007C\u007C"); super.rearrange; }
+		},
 		
-		{NicePattern.namedUnaryOp, "genericArg", ".genericArg!", skIdentifier1, 2},
+		{
+			"RGB", 
+			NET.unaryOp, 
+			skBasicType, 0,
+			q{(RGB(64, 128, 255))},
+			"RGB",
+			q{put(operator); op(0); },
+			q{arrangeRGB; }
+		},
 		
-		{NicePattern.mixinOp, "mixinStruct", "體", skIdentifier1, 0},
-		{NicePattern.mixinOp, "mixinEnum", "舉", skIdentifier1, 0},
-		{NicePattern.mixinOp, "mixinFlags", "幟", skIdentifier1, 0},
+		{
+			"RGBA", 
+			NET.unaryOp, 
+			skBasicType, 0,
+			q{(RGBA(64, 32, 255, 128))},
+			"RGBA",
+			q{put(operator); op(0); },
+			q{arrangeRGB; }
+		},
+		
+		{
+			"divide", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a)/(b))},
+			
+			"/"	,
+			q{op(0); put(operator); op(1); },
+			q{
+				op(0); putNL; op(1); super.rearrange; 
+				foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2; 
+				const h = 2; operands[1].outerPos.y += h; outerHeight += h; 
+			},
+			q{
+				setupLine; 
+				hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
+			}
+		},
 		
-		{NicePattern.castOp, "cast.0", "cast￼", skAttribute, 2},
-		{NicePattern.castOp, "cast.1", "cast ￼", skAttribute, 2},
+		{
+			"power", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a)^^(b))},
+			"^^",
+			q{op(0); put(operator); op(1); },
+			q{arrangeRootPower(operands[0], operands[1], operands[0], operands[1]); },
+		},
+		
+		{
+			"root", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a).root(b))},
+			".root",
+			q{op(0); put(operator); op(1); },
+			q{arrangeRootPower(operands[1], operands[0], operands[0], operands[1]); },
+			q{drawRoot; }
+		},
+		
+		{
+			"mul", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a)*(b))},
+			"*", /+Todo: more than 2 factors+/
+			q{op(0); put(operator); op(1); },
+			q{op(0); op(1); super.rearrange; }
+		},
+		
+		{
+			"dot", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a).dot(b))},
+			".dot",
+			q{op(0); put(operator); op(1); },
+			q{op(0); put('\u22C5'); op(1); super.rearrange; }
+		},
+		
+		{
+			"cross", 
+			NET.binaryOp, 
+			skSymbol, 0,
+			q{((a).cross(b))},
+			".cross",
+			q{op(0); put(operator); op(1); },
+			q{op(0); put('\u2A2F'); op(1); super.rearrange; }
+		},
+		
+		
+		{
+			"probe", 
+			NET.binaryOp, 
+			skIdentifier1, 0,
+			q{((a).PR!(b))},
+			".PR!",
+			q{op(0); put(operator); op(1); },
+			q{
+				style.bkColor = bkColor = operands[0].bkColor; 
+				style.fontColor = clWhite; 
+				style.bold = false; 
+				put(operands[0]); 
+				/+
+					put('▶'); 
+					put(operands[1]); 
+				+/
+				super.rearrange; 
+			},
+			q{addGlobalProbe(dr, this); }
+		},
+		
+		
+		{
+			"tenary_0", 
+			NET.tenaryOp, 
+			skSymbol, 2, 
+			q{((a)?(b):(c))},
+			
+			"?￼:",
+			q{op(0); put('?'); op(1); put(':'); op(2); },
+			q{
+				put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); 
+				super.rearrange; //Todo: make the final super.rearrange automatic!
+			}
+			
+		},
+		
+		{
+			"tenary_1", 
+			NET.tenaryOp, 
+			skSymbol, 2, 
+			q{((a) ?(b):(c))},
+			
+			" ?￼:",
+			q{op(0); put(" ?"); op(1); put(':'); op(2); },
+			q{
+				put(' '); op(0); 	put(' '); putNL; 
+				put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
+				super.rearrange; 
+			}
+			
+		},
+		
+		{
+			"tenary_2", 
+			NET.tenaryOp, 
+			skSymbol, 2, 
+			q{((a)?(b) :(c))},
+			
+			"?￼ :",
+			q{op(0); put('?'); op(1); put(" :"); op(2); },
+			q{
+				put(' '); op(0); 	put("\t?\t"); 	op(1); put(' '); putNL; 
+				put(' '); 	put("\t:\t"); 	op(2); put(' '); 
+				super.rearrange; 
+				//Todo: align the condition centered
+			}
+			
+		},
+		
+		{
+			"tenary_3", 
+			NET.tenaryOp, 
+			skSymbol, 2, 
+			q{((a) ?(b) :(c))},
+			
+			" ?￼ :",
+			q{op(0); put(" ?"); op(1); put(" :"); op(2); },
+			q{
+				put(' '); op(0); 		put(' '); putNL; 
+				put(" ?\t"); 	op(1); 	put(' '); putNL; 
+				put(" :\t"); 	op(2); 	put(' '); 
+				super.rearrange; 
+			}
+		},
+		
+		
+		{
+			"genericArg", 
+			NET.namedUnaryOp, 
+			skIdentifier1, 2,
+			q{((value).genericArg!q{name})},
+			
+			".genericArg!",
+			q{op(0); put(operator); put("q{"); put(opAsIdentifier(1)); put('}'); },
+			q{
+				operands[1].fillColor(darkColor, bkColor); 
+				put(operands[1]); put(':'); put(operands[0]); super.rearrange; 
+			}
+		},
+		
+		
+		{
+			"mixinStruct", 
+			NET.mixinOp, 
+			skIdentifier1, 0, 
+			q{(mixin(體!((Type),q{field: value, ...})))},
+			"體",
+			q{buildMixinText(operator); },
+			q{arrangeMixin(structuredColor("struct"), "{", "}"); }
+		},
+		
+		{
+			"mixinEnum", 
+			NET.mixinOp, 
+			skIdentifier1, 0, 
+			q{(mixin(舉!((Enum),q{member})))},      
+			"舉",
+			q{buildMixinText(operator); },
+			q{arrangeMixin(structuredColor("enum"), ".", ""); }
+			
+		},
+		
+		{
+			"mixinFlags", 
+			NET.mixinOp, 
+			skIdentifier1, 0, 
+			q{(mixin(幟!((Enum),q{member1 | ...})))},
+			"幟",
+			q{buildMixinText(operator); },
+			q{arrangeMixin(structuredColor("enum"), "(", ")"); }
+		},
+		
+		
+		{
+			"cast_0", 
+			NET.castOp, 
+			skAttribute, 2, 
+			q{(cast(a)(b))},
+			
+			"cast",
+			q{put("cast"); op(0); op(1); }, 
+			q{op(1); put(0 ? ".cast" : "↦"); op(0); super.rearrange; }
+		},
+		
+		{
+			"cast_1", 
+			NET.castOp, 
+			skAttribute, 2, 
+			q{(cast (a)(b))},
+			
+			"cast ", 
+			q{put("cast "); op(0); op(1); }, 
+			q{
+				op(1); 
+				putNL; flags.hAlign = HAlign.right; 
+				put(0 ? ".cast" : "↦"); op(0); super.rearrange; 
+			}
+		},
 	]; 
+	
+	int[Tuple!(immutable(NiceExpressionType), string)] niceExpressionTemplateIdxByTypeOperator; 
+	
+	shared static this()
+	{
+		foreach(idx, const ref t; niceExpressionTemplates)
+		niceExpressionTemplateIdxByTypeOperator[tuple(t.type, t.operator)] = idx.to!int; 
+	} 
+	
+	int findNiceExpressionTemplateIdx(NiceExpressionType type, string operation)
+	{
+		auto a = tuple(cast(immutable)type, operation) in niceExpressionTemplateIdxByTypeOperator; 
+		return a ? *a : -1; 
+	} 
+	
+	
+	
+	
 	
 	void processNiceExpression(ref Cell outerCell)
 	{
@@ -8154,59 +8447,30 @@ version(/+$DIDE_REGION+/all)
 		static auto asTokenString(Cell cell)
 		{ if(auto str = cast(CodeString) cell) if(str.type==CodeString.Type.tokenString) return str; return null; } 
 		
-		//Todo: This large if chain is lame.  Should make a configurable pattern detector instead.
 		//Todo: NiceExpressions not working inside   enum ;
 		
-		void processBinaryPattern(CodeBlock blk, CodeRow row, CodeColumn left, string op, CodeColumn right)
-		{
-			
-			auto tenary(int idx, string op)
-			{
-				if(auto middle = asListBlock(row.subCells[idx]))
-				outerCell = new NiceExpression(blk.parent, op, left, middle.content, right); 
-			} 
-			
-			switch(op)
-			{
-				case "/", "^^", ".root", "*", ".dot", ".cross", ".PR!": 	outerCell = new NiceExpression(blk.parent, op, left, right); 	break; 
-				
-				/+Note: tenary: ((expr)op(expr)op(expr))+/
-				case "?"~compoundObjectChar.text~":": 	tenary(2, "?:"); 	break; 
-				case " ?"~compoundObjectChar.text~":": 	tenary(3, " ?:"); 	break; 
-				case "?"~compoundObjectChar.text~" :": 	tenary(2, "? :"); 	break; 
-				case " ?"~compoundObjectChar.text~" :": 	tenary(3, " ? :"); 	break; 
-				
-				//Todo: this is ugly. should decode the newlines instead.  But that would be ugly inside all the ().
-				//Todo: tenary chain
-				//Todo: (cast()())
-				
-				/+
-					Todo: There are more to tenary.
-					The condition could be 2 rows high when it contains a content a comment.
-					But the alignment should be more clever.
-					/+
-						Code: ((
-							sample.avgColor>192
-							//the error and mask is in the alpha.
-						)?(clRed) :(sample.avgColor.rgb))
-					+/
-				+/
-				//Todo: Double _ could be a subText. Example: dir__start
-				
-				/+
-					Todo: Should use Chinese/Japanese one character symbols instead of complicated (().abc()) format.
-					Maybe SYM() would be easier to detect. And there is no way I can type those manually.
-				+/
-				
-				//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
-				
-				//Todo: Symbol for foreach: ∀
-				
-				default: 
-			}
-		} 
+		/+
+			Todo: There are more to tenary.
+			The condition could be 2 rows high when it contains a content a comment.
+			But the alignment should be more clever.
+			/+
+				Code: ((
+					sample.avgColor>192
+					//the error and mask is in the alpha.
+				)?(clRed) :(sample.avgColor.rgb))
+			+/
+		+/
+		//Todo: Double _ could be a subText. Example: dir__start
 		
-		//Replace ((a)/(b))   ((a)^^(b))
+		/+
+			Todo: Should use Chinese/Japanese one character symbols instead of complicated (().abc()) format.
+			Maybe SYM() would be easier to detect. And there is no way I can type those manually.
+		+/
+		
+		//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
+		
+		//Todo: Symbol for foreach: ∀
+		
 		if(auto blk = asListBlock(outerCell))
 		if(blk.content.rows.length==1)
 		if(auto row = blk.content.getRow(0))
@@ -8216,33 +8480,46 @@ version(/+$DIDE_REGION+/all)
 		{
 			const op = row.chars[1..$-1].text; 
 			if(left.content && right.content)
-			{/+Note: binaryOp: ((expr)op(expr))+/processBinaryPattern(blk, row, left.content, op, right.content); }
+			{
+				{
+					/+Note: binaryOp: ((expr)op(expr))+/
+					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryOp, op); 
+					if(tIdx>=0) {
+						outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
+						return; 
+					}
+				}
+				{
+					/+Note: tenaryyOp: ((expr)op(expr)op(expr))+/
+					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op); 
+					if(tIdx>=0) {
+						const mIdx = op.countUntil('￼'); 
+						if(mIdx>=0)
+						{
+							if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
+							{
+								outerCell = new NiceExpression(blk.parent, tIdx, left.content, middle.content, right.content); 
+								return; 
+							}
+						}
+					}
+				}
+			}
 		}
 		else
 		{
 			const op = row.chars[0..$-1].text; 
-			switch(op)
+			if(op=="mixin")
 			{
-				case "sqrt", "magnitude", "normalize", "RGB", "RGBA": 	{/+Note: unaryOp: (op(expr))+/outerCell = new NiceExpression(blk.parent, op, right.content); }	break; 
-				
-				/+Note: castOp (op(expr)(expr))+/
-				case "cast"~compoundObjectChar.text: 	{
-					if(auto right2 = asListBlock(row.subCells[$-2]))
-					{ outerCell = new NiceExpression(blk.parent, "cast 0", right2.content, right.content); }
-				}	break; 
-				case "cast "~compoundObjectChar.text: 	{
-					if(auto right2 = asListBlock(row.subCells[$-2]))
-					{ outerCell = new NiceExpression(blk.parent, "cast 1", right2.content, right.content); }
-				}	break; 
-				
-				case "mixin": {
-					if(right.content.rows.length==1)
-					if(auto row2 = right.content.getRow(0))
-					if(row2.subCells.length==3)
-					if(row2.chars[1]=='!')
-					if(const opIndex = row2.chars[0].among('體', '舉', '幟'))
+				if(right.content.rows.length==1)
+				if(auto row2 = right.content.getRow(0))
+				if(row2.subCells.length==3)
+				if(row2.chars[1]=='!')
+				{
+					string mixinOp = row2.chars[0].text; 
 					{
-						const mixinOp = "mixin "~["struct", "enum", "flags"][opIndex-1]; 
+						/+Note: mixinOp: (mixin(op!((expr),q{code})))+/
+						const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinOp, mixinOp); 
 						if(auto right2 = asListBlock(row2.subCells.back))
 						if(right2.content.rowCount==1)
 						if(auto row3 = right2.content.rows[0])
@@ -8250,123 +8527,92 @@ version(/+$DIDE_REGION+/all)
 						if(auto left3 = asListBlock(row3.subCells[0]))
 						if(auto right3 = asTokenString(row3.subCells[2]))
 						{
-							/+Note: mixinOp: (mixin(op!((expr),q{code})))+/
-							/+row3: (left3),q{right3}+/
-							//print("Special string mixin detected:\n"~left3.content.sourceText~"\n,\n"~right3.content.sourceText); 
-							outerCell = new NiceExpression(blk.parent, mixinOp, left3.content, right3.content); 
+							outerCell = new NiceExpression(blk.parent, tIdx, left3.content, right3.content); 
+							return; 
 						}
 					}
-				}break; 
-				default: 
+				}
+			}
+			else
+			{
+				if(op.endsWith('￼'))
+				{
+					if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
+					{
+						{
+							/+Note: castOp (op(expr)(expr))+/
+							const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.castOp, op.withoutEnding('￼')); 
+							if(tIdx>=0)
+							{
+								outerCell = new NiceExpression(blk.parent, tIdx, mid.content, right.content); 
+								return; 
+							}
+						}
+					}
+				}
+				else
+				{
+					{
+						/+Note: unaryOp: (op(expr))+/
+						const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op); 
+						if(tIdx>=0)
+						{
+							outerCell = new NiceExpression(blk.parent, tIdx, right.content); 
+							return; 
+						}
+					}
+				}
 			}
 		}
 		else if(auto right = asTokenString(row.subCells.back))
 		{
 			if(auto left = asListBlock(row.subCells.front))
 			{
-				/+Note: namedUnaryOp: ((expr)op q{code})+/const op = row.chars[1..$-1].text; //Example: (.genericArg!`
-				switch(op)
+				const op = row.chars[1..$-1].text; 
 				{
-					case ".genericArg!": outerCell = new NiceExpression(blk.parent, op, right.content, left.content); 	break; 
-					default: 
+					/+Note: namedUnaryOp: ((expr)op q{code})+///Example: op = .genericArg!`
+					const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.namedUnaryOp, op); 
+					if(tIdx>=0) {
+						outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
+						return; 
+					}
 				}
 			}
-		}
-		
-		
-		
-		
-		version(none)
-		{
-			void showcase()
-			{
-				(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGB(r, g, b))
-				((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBA(r, g, b, a))
-				((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
-				
-				//Note: scalar operations
-				((2)*(x)); 	/+multiplication: ((a)*(b))+/ //Todo: more than 2 factors: ((a)*(b)*(c)*...)
-				((divident)/(divisor)); 	//divide: ((divident)/(divisor))
-				((base)^^(exponent)); 	//power: ((base)^^(exponent))
-				((radicand).root(index)); 	//root: ((radicand).root(index))
-				(sqrt(base)); 	//sqrt: (sqrt(base))
-				((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
-				//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
-				
-				//Todo: relational operations
-				((a).inRange(b, c)); 	//((a).inRange(b, c))
-				((a)<(b)&&(b)<(c)); 	//((a)<(b)&&(b)<(c))
-				
-				//Note: vector algebra
-				(magnitude(a)); 	//magnitude: (magnitude(a)) a: scalar or vector
-				(normalize(vector)); 	//normalize: (normalize(vector))
-				((a).dot(b)); 	//dot: ((a).dot(b))
-				((a).cross(b)); 	//cross: ((a).cross(b))
-				
-				//Note: color constants
-				RGB(68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
-				(RGB(68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
-				//Todo: Should go inside enum; !!!
-				
-				
-				//Note: named parameters
-				Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); //Todo: multiline style
-				//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
-				
-				//Note: tenary operator
-				((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
-				((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
-				((condition)?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
-				((condition) ?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
-				
-				//Todo: this should be marked with different desing: bright colors and black text.
-				//Todo: Also the namedParameter's title should be plack.
-				
-					
-				((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
-				
-				auto a = (mixin(體!((RGB),q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
-				auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
-				auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
-				
-				auto a = 	(cast(shared int)(1.5f+rnd(3))) +
-					(cast (shared int)(1.5f+rnd(3)+blablabla)); /+
-					/+Code: (cast(type)(expr))+/
-					/+Code: (cast (type)(expr))+/
-				+/
-				
-				//Todo: (mixin(...)) -> File(`...`)
-				
-				auto DFT(T)(in T[] x, float k)
-				{
-					const N = (cast(int)(x.length)); 
-					return (mixin(和!(q{n=0},q{N-1},q{x[n] * ((ℯ)^^(-i*2*π*((k)/(N))*n))}))); 
-				} 
-			} 
 		}
 	} 
 	
 	class NiceExpression : CodeNode
 	{
-		//Todo: Nicexpressions should work inside (parameter) block too!
-		
-		enum Type { divide, power, root, mul, dot, cross, sqrt, magnitude, normalize, RGB, RGBA, tenary0, tenary1, tenary2, tenary3, genericArg, probe, mixinStruct, mixinEnum, mixinFlags, cast0, cast1} 
-		enum TypeOperator	= ["/", "^^", ".root", "*", ".dot", ".cross", "sqrt", "magnitude", "normalize", "RGB", "RGBA", "?:", " ?:", "? :", " ? :", ".genericArg!", ".PR!", "mixin struct", "mixin enum", "mixin flags", "cast 0", "cast 1"],
-		TypeOperandCount 	= [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2]; 
-		
-		Type type; 
+		int templateIdx = -1;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
-		SyntaxKind syntax()
+		//Todo: Nicexpressions should work inside (parameter) block too!
+		
+		const @property validTemplate()
+		{ return templateIdx.inRange(niceExpressionTemplates); } 
+		
+		const ref getTemplate()
 		{
-			switch(type)
-			{
-				case Type.RGB, Type.RGBA: 	return skBasicType; 
-				case Type.probe, Type.mixinStruct:  	return skIdentifier1/+It is handled specially.+/; 
-				case Type.genericArg: 	return skIdentifier1; 
-				case Type.cast0, Type.cast1: 	return skAttribute; 
-				default: 	return skSymbol; 
-			}
+			enforce(validTemplate); 
+			return niceExpressionTemplates[templateIdx]; 
+		} 
+		
+		@property syntax()
+		{ return getTemplate.syntax; } 
+		
+		@property operator()
+		{ return getTemplate.operator; } 
+		
+		@property operandCount()
+		{ return getTemplate.type.getOperandCount; } 
+		
+		@property templateName()
+		{ return getTemplate.name; } 
+		
+		@property isProbe()
+		{
+			return templateName=="probe"; 
+			/+Todo: Need a faster way to identify+/
 		} 
 		
 		override @property RGB avgColor()
@@ -8377,17 +8623,12 @@ version(/+$DIDE_REGION+/all)
 			return sum.avg(bkColor); 
 		} 
 		
-		@property string operator() const
-		{ return TypeOperator[type]; } 
-		@property int operandCount() const
-		{ return TypeOperandCount[type]; } 
-		
-		this(Container parent, string op, CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null)
+		this(Container parent, int templateIdx_, CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null)
 		{
 			super(parent); 
 			
-			try type = TypeOperator.countUntil(op).to!Type; 
-			catch(Exception) raise("Invalid NiceExpression operator: " ~ op.quoted); 
+			templateIdx = templateIdx_; 
+			enforce(validTemplate, "Invalid NiceExpressionTemplate idx."); 
 			
 			lineIdx = col0.getLineIdxOfFirstGlyphOrNode_notRecursive; 
 			
@@ -8407,75 +8648,30 @@ version(/+$DIDE_REGION+/all)
 				void op(int i)
 				{ put("(", operands[i], ")"); } 
 				
-				string op0AsIdentifier()
+				string opAsIdentifier(int i)
 				{
 					//Todo: some error checking would be better.
-					return operands[0].shallowText.filter!isDLangIdentifierCont.text; 
+					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
+				} 
+				
+				void buildMixinText(string opSymbol)
+				{
+					put("mixin"); 
+					put('('); 
+						put(opSymbol~'!'); 
+						put('('); 
+							op(0); put(','); put("q{", operands[1], "}"); 
+						put(')'); 
+					put(')'); 
 				} 
 				
 				put("("); 
-				final switch(type)
 				{
-					case 	Type.divide,
-						Type.power,
-						Type.root,
-						Type.mul,
-						Type.dot,
-						Type.cross: 	{
-						op(0); 
-						put(operator); 
-						op(1); 
-					}break; 
-					case 	Type.sqrt,
-						Type.magnitude,
-						Type.normalize, 
-						Type.RGB,
-						Type.RGBA: 	{ put(operator); op(0); }break; 
-					case Type.tenary0: 	{ op(0); put('?'); op(1); put(':'); op(2); }break; 
-					case Type.tenary1: 	{ op(0); put(" ?"); op(1); put(':'); op(2); }break; 
-					case Type.tenary2: 	{ op(0); put('?'); op(1); put(" :"); op(2); }break; 
-					case Type.tenary3: 	{ op(0); put(" ?"); op(1); put(" :"); op(2); }break; 
-					case Type.genericArg: 	{ op(1); put(operator); put("q{"); put(op0AsIdentifier); put('}'); }break; 
-					case Type.probe: 	{
-						op(0); 
-						put(operator); 
-						op(1); //Todo: encode options
-					}break; 
-					case Type.mixinStruct: 	{
-						put("mixin");  //Todo: REFACTOR these chinese things
-						put('('); 
-							put("體!"); //the only difference!
-							put('('); 
-								op(0); 
-								put(','); 
-								put("q{", operands[1], "}"); 
-							put(')'); 
-						put(')'); 
-					}break; 
-					case Type.mixinEnum: 	{
-						put("mixin");  //Todo: REFACTOR these chinese things
-						put('('); 
-							put("舉!"); //the only difference!
-							put('('); 
-								op(0); 
-								put(','); 
-								put("q{", operands[1], "}"); 
-							put(')'); 
-						put(')'); 
-					}break; 
-					case Type.mixinFlags: 	{
-						put("mixin");  //Todo: REFACTOR these chinese things
-						put('('); 
-							put("幟!"); //the only difference!
-							put('('); 
-								op(0); 
-								put(','); 
-								put("q{", operands[1], "}"); 
-							put(')'); 
-						put(')'); 
-					}break; 
-					case Type.cast0: 	{ put("cast"); op(0); op(1); }break; 
-					case Type.cast1: 	{ put("cast "); op(0); op(1); }break; 
+					sw: switch(templateIdx)
+					{
+						static foreach(a; niceExpressionTemplates.map!"a.textCode".enumerate)
+						{ case a.index: { mixin(a.value); }break sw; }default: 
+					}
 				}
 				put(")"); 
 			}
@@ -8486,7 +8682,6 @@ version(/+$DIDE_REGION+/all)
 			super.draw(dr); 
 			
 			with(dr)
-			switch(type)
 			{
 				void setupLine()
 				{
@@ -8494,12 +8689,8 @@ version(/+$DIDE_REGION+/all)
 					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
 				} 
 				
-				case Type.divide: 	{
-					setupLine; 
-					hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
-				}break; 
-				case 	Type.sqrt,
-					Type.root: 	{
+				void drawRoot()
+				{
 					setupLine; 
 					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
 					moveRel(-8, -12); 
@@ -8507,28 +8698,21 @@ version(/+$DIDE_REGION+/all)
 					lineRel(2, 5); 
 					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
 					lineRel(operands[0].outerWidth-2, 0); 
-				}break; 
-				case Type.probe: 	{ addGlobalProbe(dr, this); }break; 
+				} 
 				
-				default: 
+				{
+					sw: switch(templateIdx)
+					{
+						static foreach(a; niceExpressionTemplates.map!"a.drawCode".enumerate)
+						{ case a.index: { mixin(a.value); }break sw; }default: 
+					}
+				}
 			}
-			
 		} 
 		
 		override void rearrange()
 		{
-			int inverseMode = 0; 
-			if(
-				type.among(
-					Type.tenary0,
-					Type.tenary1,
-					Type.tenary2,
-					Type.tenary3,
-					Type.genericArg,
-					Type.cast0,
-					Type.cast1
-				)
-			) inverseMode = 2; 
+			const inverseMode = getTemplate.invertMode; 
 			
 			with(nodeBuilder(syntax, inverseMode))
 			{
@@ -8544,199 +8728,96 @@ version(/+$DIDE_REGION+/all)
 				void op(int i)
 				{ put(operands[i]); } 
 				
-				final switch(type)
+				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
 				{
-					case Type.divide: 	{
-						op(0); putNL; op(1); 
-						super.rearrange; 
-						foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2; 
-						
-						const h = 2; 
-						operands[1].outerPos.y += 2; outerHeight += 2; 
-					}break; 
-					case 	Type.power,
-						Type.root: 	{
-						static immutable 	superScriptShift	= 0.625f,
-							superScriptOffset	= round(DefaultFontHeight * superScriptShift); 
-						
-						//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
-						
-						const reverse = type==Type.root; 
-						auto 	left = operands[reverse ? 1 : 0],
-							right = operands[reverse ? 0 : 1],
-							lower = operands[0],
-							upper = operands[1]; 
-						
-						/+
-							Todo: HalfSize
-							if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
-							It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
-						+/
-						
-						put(left); put(right); 
-						super.rearrange; 
-						
-						lower.outerPos.y = innerHeight - lower.outerHeight; 
-						upper.outerPos.y = 0; 
-						
-						/+
-							Make sure that the superscript is higher than the lower part
-							check the upper and the lower edges too.
-							Both of them should indicate that one of the two operands is in superscript position.
-						+/
-						foreach(i; 0..2) {
-							auto getY(CodeColumn col)
-							{ return i ? col.outerTop : col.outerBottom; } 
-							const diff = getY(lower) - getY(upper); 
-							if(diff < superScriptOffset)
-							{
-								const extra = superScriptOffset - diff; 
-								lower.outerPos.y += extra; 
-								outerHeight += extra; 
-							}
-						}
-					}break; 
-					case 	Type.dot: 	{ put(operands[0]); put('\u22C5'); put(operands[1]); super.rearrange; }break; 
-					case 	Type.cross: 	{ put(operands[0]); put('\u2A2F'); put(operands[1]); super.rearrange; }break; 
-					case 	Type.mul: 	{ put(operands[0]); put(operands[1]); super.rearrange; }break; 
-					case 	Type.sqrt: 	{
-						op(0); 
-						
-						super.rearrange; 
-						
-						const adjust = vec2(
-							10/+width if the root symbol+/, 
-							2 /+Height of the horizontal root line+/
-						); ; 
-						operands[0].outerPos += adjust; outerSize += adjust; 
-					}break; 
-					case 	Type.magnitude: 	{ put("\u007C"); op(0); put("\u007C"); super.rearrange; }break; 
-					case 	Type.normalize: 	{ put("\u007C\u007C"); op(0); put("\u007C\u007C"); super.rearrange; }break; 
-					case 	Type.RGB,
-						Type.RGBA: 	{
-						put(operator); 
-						applySyntax(style, skSymbol); 
-						style.bkColor = bkColor; //preserve the bkColor
-						style.bold = true; //Todo: it's config.NodeStyleBold
-						put('('); op(0); put(')'); super.rearrange; 
-						
-						//decode the color
-						//Todo: make a good rgba decoder here!
-						RGB decodeColor()
-						{
-							//Todo: copy this RGB decoder into Colors.d
-							const parts = operands[0].shallowText.split(',').map!strip.array; 
-							if(parts.length==type.text.length)
-							{
-								return RGB(parts.map!(toInt!ubyte).take(3).array); 
-								//Todo: support float formats
-							}
-							if(parts.length==1)
-							{
-								return RGB(parts[0].toInt!uint); 
-								//Todo: support # formats
-							}
-							else raise("unknown format"); 
-							assert(0); 
-						} 
-						
-						ignoreExceptions
-						(
-							{
-								const 	c = decodeColor, 
-									bw = blackOrWhiteFor(c); 
-								//Todo: If decoding fails, the syntax highlight becomes broken
-								with(operands[0])
-								{
-									bkColor = border.color = c; 
-									rows.each!(
-										(r){
-											r.bkColor = c; 
-											r.glyphs.filter!"a".each!(
-												(g){
-													g.bkColor = c; 
-													g.fontColor = bw; 
-												}
-											); 
-										}
-									); 
-								}
-							}
-						); 
-					}break; 
-					case Type.tenary0: 	{
-						put(' '); op(0); 	put(" ? "); 	op(1); 	put(" : "); 	op(2); put(' '); 
-						super.rearrange; 
-					}break; 
-					case Type.tenary1: 	{
-						put(' '); op(0); 	put(' '); putNL; 
-						put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
-						super.rearrange; 
-					}break; 
-					case Type.tenary2: 	{
-						put(' '); op(0); 	put("\t?\t"); 	op(1); put(' '); putNL; 
-						put(' '); 	put("\t:\t"); 	op(2); put(' '); 
-						super.rearrange; 
-					}break; 
-					case Type.tenary3: 	{
-						put(' '); op(0); 		put(' '); putNL; 
-						put(" ?\t"); 	op(1); 	put(' '); putNL; 
-						put(" :\t"); 	op(2); 	put(' '); 
-						super.rearrange; 
-					}break; 
-					case Type.genericArg: 	{
-						operands[0].fillColor(darkColor, bkColor); 
-						put(operands[0]); put(':'); put(operands[1]); super.rearrange; 
-					}break; 
-					case 	Type.probe: 	{
-						style.bkColor = bkColor = operands[0].bkColor; 
-						style.fontColor = clWhite; 
-						style.bold = false; 
-						put(operands[0]); 
-						/+
-							put('▶'); 
-							put(operands[1]); 
-						+/
-						super.rearrange; 
-					}break; 
-					case Type.mixinStruct: 	{
-						const sk = skIdentifier1; 
-						style.fontColor = sk.syntaxBkColor; 
-						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("struct"), .33f); 
-						
-						operands[0].applyHalfSize(style.fontColor, bkColor); 
-						
-						op(0); putNL; put("{"); op(1); put("}"); 
-						super.rearrange; 
-					}break; 
-					case Type.mixinEnum: 	{
-						const sk = skIdentifier1; 
-						style.fontColor = sk.syntaxBkColor; 
-						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("enum"/+DIFF+/), .33f); 
-						
-						operands[0].applyHalfSize(style.fontColor, bkColor); 
-						
-						op(0); putNL; put("."); op(1); /+DIFF+/
-						super.rearrange; 
-					}break; 
-					case Type.mixinFlags: 	{
-						const sk = skIdentifier1; 
-						style.fontColor = sk.syntaxBkColor; 
-						style.bkColor = bkColor = mix(sk.syntaxFontColor, structuredColor("alias"/+DIFF+/), .33f); 
-						
-						operands[0].applyHalfSize(style.fontColor, bkColor); 
-						
-						op(0); putNL; put('('); op(1); put(')'); /+DIFF+/
-						super.rearrange; 
-					}break; 
-					case Type.cast0, Type.cast1: 	{
-						op(1); 
-						if(type==Type.cast1) { putNL; flags.hAlign = HAlign.right; }
-						put(0 ? ".cast" : "↦"); op(0); 
-						super.rearrange; 
-					}break; 
+					//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
+					static immutable 	superScriptShift	= 0.625f,
+						superScriptOffset	= round(DefaultFontHeight * superScriptShift); 
 					
-					//Todo: tenary chain: (()?():()?():())  -> should do visually only.  No border.
+					/+
+						Todo: HalfSize
+						if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
+						It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
+					+/
+					
+					put(left); put(right); 
+					super.rearrange; 
+					
+					lower.outerPos.y = innerHeight - lower.outerHeight; 
+					upper.outerPos.y = 0; 
+					
+					/+
+						Make sure that the superscript is higher than the lower part
+						check the upper and the lower edges too.
+						Both of them should indicate that one of the two operands is in superscript position.
+					+/
+					foreach(i; 0..2) {
+						auto getY(CodeColumn col)
+						{ return i ? col.outerTop : col.outerBottom; } 
+						const diff = getY(lower) - getY(upper); 
+						if(diff < superScriptOffset)
+						{
+							const extra = superScriptOffset - diff; 
+							lower.outerPos.y += extra; 
+							outerHeight += extra; 
+						}
+					}
+				} 
+				
+				void arrangeRGB()
+				{
+					put(operator); 
+					applySyntax(style, skSymbol); 
+					style.bkColor = bkColor; //preserve the bkColor
+					style.bold = true; //Todo: it's config.NodeStyleBold
+					put('('); op(0); put(')'); super.rearrange; 
+					
+					//decode the color
+					//Todo: make a good rgba decoder here!
+					RGB decodeColor()
+					{
+						//Todo: copy this RGB decoder into Colors.d
+						const parts = operands[0].shallowText.split(',').map!strip.array; 
+						switch(parts.length)
+						{
+							case 1: 	return RGB(parts[0].toInt!uint); //Todo: support # formats
+							case 3, 4: 	return RGB(parts.map!(toInt!ubyte).take(3).array); //Todo: support float formats
+							default: 	raise("unknown format"); assert(0); 
+						}
+					} 
+					
+					ignoreExceptions
+					(
+						{
+							const 	c = decodeColor, 
+								bw = blackOrWhiteFor(c); 
+							operands[0].fillColor(bw, c); 
+							//Todo: Do something if decoding fails.
+						}
+					); 
+				} 
+				
+				void arrangeMixin(RGB targetColor, string prefix, string postfix)
+				{
+					const sk = skIdentifier1; 
+					style.fontColor = sk.syntaxBkColor; 
+					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
+					
+					with(operands[0]) {
+						fillColor(style.fontColor, style.bkColor); 
+						applyHalfSize; 
+					}
+					
+					op(0); putNL; put(prefix); op(1); put(postfix); 
+					super.rearrange; 
+				} 
+				
+				{
+					sw: switch(templateIdx)
+					{
+						static foreach(a; niceExpressionTemplates.map!"a.rearrangeCode".enumerate)
+						{ case a.index: { mixin(a.value); }break sw; }default: 
+					}
 				}
 			}
 		} 
@@ -9107,8 +9188,6 @@ else
 		
 	} 
 }
-
-
 debug debug = hehehe; else version = hahaha; 
 
 static if(
@@ -9120,7 +9199,6 @@ static foreach(ch; ['a', 'b']) : //this must be the last test
 		
 //c
 //d
-
 void multilineStringText()
 {
 	//comment to makeit harder
@@ -9133,9 +9211,7 @@ void multilineStringText()
 l1
 l2
 "; 
-} 
-
-struct StylisticBugs
+} 	 struct StylisticBugs
 {
 	string infiniteTabsBug()
 	{
@@ -9157,7 +9233,8 @@ struct StylisticBugs
 		}
 		
 		return a.join; 
-	} struct divergentTabsBug()
+	} 
+	struct divergentTabsBug()
 	{
 		//CellPath ///////////////////////////////
 		
@@ -9167,7 +9244,8 @@ struct StylisticBugs
 				.b; 
 		} 
 		
-	} void userTabs()
+	} 
+	void userTabs()
 	{
 		if(lookingForWords || lookingForSpaces)
 		{
@@ -9182,7 +9260,8 @@ struct StylisticBugs
 			if(cnt>0)
 			c.moveRight(dir*cnt); 
 		}
-	} void manyTabs()
+	} 
+	void manyTabs()
 	{
 		bool again; 
 		do {
@@ -9202,9 +9281,7 @@ struct StylisticBugs
 		}
 		while(again && canRedo);     
 	} 
-} 
-
-version(/+$DIDE_REGION Comments+/all)
+} 	 version(/+$DIDE_REGION Comments+/all)
 {
 	//Slah comment
 	/*C comment*/
@@ -9237,7 +9314,7 @@ version(/+$DIDE_REGION Comments+/all)
 			writeln("Hello World");
 		}
 	+/
-	
+	
 	auto _testDirectives()
 	{
 		q{
@@ -9257,7 +9334,7 @@ version(/+$DIDE_REGION Comments+/all)
 			to turn on tokenString's statement parser.
 		+/
 	} 
-	
+	
 	//Special DIDE comments
 	
 		//Region comment is only meaningful inside version() expression.
@@ -9342,4 +9419,71 @@ version(/+$DIDE_REGION Comments+/all)
 	obj.foo(); 
 	
 	//Todo: it won't detect the 'class' because the '=' symbol.
-} 
+} version(none)
+{
+	void NiceExpression_showcase()
+	{
+		(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGB(r, g, b))
+		((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBA(r, g, b, a))
+		((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
+		
+		//Note: scalar operations
+		((2)*(x)); 	/+multiplication: ((a)*(b))+/ //Todo: more than 2 factors: ((a)*(b)*(c)*...)
+		((divident)/(divisor)); 	//divide: ((divident)/(divisor))
+		((base)^^(exponent)); 	//power: ((base)^^(exponent))
+		((radicand).root(index)); 	//root: ((radicand).root(index))
+		(sqrt(base)); 	//sqrt: (sqrt(base))
+		((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5)); 
+		//((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))
+		
+		//Todo: relational operations
+		((a).inRange(b, c)); 	//((a).inRange(b, c))
+		((a)<(b)&&(b)<(c)); 	//((a)<(b)&&(b)<(c))
+		
+		//Note: vector algebra
+		(magnitude(a)); 	//magnitude: (magnitude(a)) a: scalar or vector
+		(normalize(vector)); 	//normalize: (normalize(vector))
+		((a).dot(b)); 	//dot: ((a).dot(b))
+		((a).cross(b)); 	//cross: ((a).cross(b))
+		
+		//Note: color constants
+		RGB(68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
+		(RGB(68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+		//Todo: Should go inside enum; !!!
+		
+		
+		//Note: named parameters
+		Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); //Todo: multiline style
+		//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
+		
+		//Note: tenary operator
+		((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
+		((condition) ?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue):(exprIfFalse))
+		((condition)?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue) :(exprIfFalse))
+		((condition) ?(exprIfFalse) :(exprIfTrue)); 	//tenary: ((condition) ?(exprIfTrue) :(exprIfFalse))
+		
+		//Todo: this should be marked with different desing: bright colors and black text.
+		//Todo: Also the namedParameter's title should be plack.
+		
+			
+		((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
+		
+		auto a = (mixin(體!((RGB),q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
+		auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
+		auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
+		
+		auto a = 	(cast(shared int)(1.5f+rnd(3))) +
+			(cast (shared int)(1.5f+rnd(3)+blablabla)); /+
+			/+Code: (cast(type)(expr))+/
+			/+Code: (cast (type)(expr))+/
+		+/
+		
+		//Todo: (mixin(...)) -> File(`...`)
+		
+		auto DFT(T)(in T[] x, float k)
+		{
+			const N = (cast(int)(x.length)); 
+			return (mixin(和!(q{n=0},q{N-1},q{x[n] * ((ℯ)^^(-i*2*π*((k)/(N))*n))}))); 
+		} 
+	} 
+}
