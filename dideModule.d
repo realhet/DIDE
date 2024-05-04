@@ -292,7 +292,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 	} 
-	
+	
 	Watch[string] globalWatches; 
 	
 	struct Probe
@@ -2308,26 +2308,20 @@ class CodeRow: Row
 	
 	override void rearrange()
 	{
-		
 		assert(verifyTabIdx, "tabIdxInternal check fail"); 
 		
 		invalidateAvgColor; 
-		
 		adjustCharWidths; 
-		
 		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true; 
-		
 		super.rearrange; 
-		
 		innerSize = max(innerSize, ((halfSize)?(DefaultFontEmptyEditorSize/2) :(DefaultFontEmptyEditorSize))); 
 		
 		static if(rearrangeLOG) LOG("rearranging", this); 
-		
 		static if(rearrangeFlash) rearrangeTime = now; 
 		
 		//Opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
 	} 
-	
+	
 	protected int findRowLineIdx_min()
 	{
 		foreach(cell; subCells) {
@@ -2460,7 +2454,7 @@ class CodeRow: Row
 				refreshTabIdx; //Todo: should only be done once at the end...
 			}
 		} 
-		
+		
 		
 		struct AvgColor
 		{
@@ -2502,13 +2496,16 @@ class CodeRow: Row
 			} 
 			
 		} 
+		
 		ref avgColor()
 		{
 			if(_avgColor.valid.chkSet)
 			_avgColor.recalculate(this); 
 			
 			return _avgColor; 
-		}  void invalidateAvgColor()
+		} 
+		
+		void invalidateAvgColor()
 		{ _avgColor.valid = false; } 
 	} 
 	
@@ -3608,7 +3605,7 @@ class CodeRow: Row
 		return cast(T) r.subCells.get(0); 
 		return null; 
 	} 
-	
+	
 	TextCursor homeCursor()
 	{ return TextCursor(this, ivec2(0)); } 
 	TextCursor endCursor()
@@ -3640,7 +3637,7 @@ class CodeRow: Row
 		}
 		return ts; 
 	} 
-	
+	
 	string shallowText(dchar objectChar=compoundObjectChar)()
 	{ return rows.map!(r => r.shallowText!objectChar).join('\n'); } 
 	
@@ -3700,6 +3697,13 @@ class CodeRow: Row
 		}
 	} 
 	
+	void applyHalfSize()
+	{
+		halfSize = true; //no going back...
+		foreach(r; rows) r.applyHalfSize; 
+		rearrange; 
+	} 
+	
 	Row[][] cachedPageRowRanges; 
 	override Row[][] getPageRowRanges()
 	{ return cachedPageRowRanges; } 
@@ -3759,32 +3763,31 @@ class CodeRow: Row
 			
 		static if(rearrangeLOG) LOG("rearranging", this); 
 	} 
-	
-	void drawMultiPageGaps(Drawing dr)
-	{
-		auto pages = cachedPageRowRanges; 
-		
-		if(pages.length<2) return; 
-		
-		dr.translate(innerPos); scope(exit) dr.pop; 
-		
-		const ofs = -1; //min(DefaultFontHeight/2, innerHeight*.25f);
-		auto 	y0 = ofs,
-			y1 = innerHeight - ofs; 
-		
-		dr.lineWidth = .5f; 
-		if(auto n = cast(CodeNode) getParent)	dr.color = n.bkColor; 
-		else	dr.color = clGray; 
-		
-		foreach(x; pages.drop(1).map!(a => a.front.outerLeft - MultiPageGapWidth/2))
-		dr.vLine(x, y0, y1); 
-	} 
 	
 	override void draw(Drawing dr)
 	{
 		//draw ///////////////////////////////////
 		super.draw(dr); 
 		
+		void drawMultiPageGaps(Drawing dr)
+		{
+			auto pages = cachedPageRowRanges; 
+			
+			if(pages.length<2) return; 
+			
+			dr.translate(innerPos); scope(exit) dr.pop; 
+			
+			const ofs = -1; //min(DefaultFontHeight/2, innerHeight*.25f);
+			auto 	y0 = ofs,
+				y1 = innerHeight - ofs; 
+			
+			dr.lineWidth = .5f; 
+			if(auto n = cast(CodeNode) getParent)	dr.color = n.bkColor; 
+			else	dr.color = clGray; 
+			
+			foreach(x; pages.drop(1).map!(a => a.front.outerLeft - MultiPageGapWidth/2))
+			dr.vLine(x, y0, y1); 
+		} 
 		drawMultiPageGaps(dr); 
 		
 		//visualize changed/created/modified
@@ -3814,13 +3817,8 @@ class CodeRow: Row
 		return sum.avg(bkColor); 
 	} 
 	
-	void applyHalfSize()
-	{
-		halfSize = true; //no going back...
-		foreach(r; rows) r.applyHalfSize; 
-		rearrange; 
-	} 
 	
+	
 	static void selfTest()
 	{
 		void test_RowCount(string src, int rowCount, string dst="*")
@@ -5475,296 +5473,292 @@ version(/+$DIDE_REGION+/all)
 	class Module : CodeBlock
 	{
 		//this is any file in the project
-		version(/+$DIDE_REGION+/all)
+		File file; 
+		
+		DateTime fileLoaded, fileModified, fileSaved; //Opt: detect these times from the outside
+		size_t sizeBytes;  //Todo: update this form the outside
+		
+		StructureLevel structureLevel; 
+		static foreach(e; EnumMembers!StructureLevel)
+		mixin(
+			format!q{
+				@property is%s() const
+				{ return structureLevel == StructureLevel.%s; } 
+			}(e.text.capitalize, e.text)
+		); 
+		
+		ModuleBuildState buildState; 
+		bool isCompiling; 
+		
+		bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly; 
+		
+		UndoManager undoManager; 
+		
+		override SyntaxKind syntax() const
+		{ return skWhitespace; } 
+		override string prefix() const
+		{ return ""; } 
+		override string postfix() const
+		{ return ""; } 
+		
+		this(Container parent)
 		{
-			File file; 
+			super(parent); 
+			lineIdx = 1; //All modue starts with line 1
+			bkColor = clModuleBorder; 
+		} 
+		
+		this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{
+			this(parent); 
+			loadFile(file_, desiredStructureLevel); 
+		} 
+		
+		this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{
+			this(parent); 
+			loadContents(contents, desiredStructureLevel); 
+		} 
+		
+		void replaceContent(CodeColumn col)
+		{
+			enforce(col); 
+			if(col is content) return; 
 			
-			DateTime fileLoaded, fileModified, fileSaved; //Opt: detect these times from the outside
-			size_t sizeBytes;  //Todo: update this form the outside
+			content.setParent = null; 
 			
-			StructureLevel structureLevel; 
-			static foreach(e; EnumMembers!StructureLevel)
-			mixin(
-				format!q{
-					@property is%s() const
-					{ return structureLevel == StructureLevel.%s; } 
-				}(e.text.capitalize, e.text)
-			); 
+			content = col; 
+			content.setParent = this; //Todo: Safe parent/child reowning system.
 			
-			ModuleBuildState buildState; 
-			bool isCompiling; 
+			setChanged; 
+			measure;  //this will rebuild subCells
+		} 
+		
+		void loadFile(File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{
+			fileLoaded = now; 
+			file = file_.actualFile; 
+			reload(desiredStructureLevel); 
+		} 
+		
+		void loadContents(string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
+		{
+			fileLoaded = now; 
+			file = File("$nullFileName$"); //Bug: When filename is empty, this fuck is crashing without any errors. ($nullFileName$)
+			reload(desiredStructureLevel, nullable(contents)); 
+		} 
+		
+		override @property string identifier()
+		{
+			//Todo: process the module statement.
+			return file.nameWithoutExt; 
+		} 
+		
+		override @property string caption()
+		{ return file.name; } 
+		
+		///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
+		bool isReadOnly()
+		{
+			//return inputs["ScrollLockState"].active;
+			return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly; 
+		} 
+		
+		void resetModuleTypeFlags()
+		{ isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false; } 
+		
+		void detectModuleTypeFlags()
+		{
 			
-			bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly; 
-			
-			UndoManager undoManager; 
-			
-			override SyntaxKind syntax() const
-			{ return skWhitespace; } 
-			override string prefix() const
-			{ return ""; } 
-			override string postfix() const
-			{ return ""; } 
-			
-			this(Container parent)
+			bool isMainSomething(string ext)()
 			{
-				super(parent); 
-				lineIdx = 1; //All modue starts with line 1
-				bkColor = clModuleBorder; 
-			} 
-			
-			this(Container parent, File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
-			{
-				this(parent); 
-				loadFile(file_, desiredStructureLevel); 
-			} 
-			
-			this(Container parent, string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
-			{
-				this(parent); 
-				loadContents(contents, desiredStructureLevel); 
-			} 
-			
-			void replaceContent(CodeColumn col)
-			{
-				enforce(col); 
-				if(col is content) return; 
-				
-				content.setParent = null; 
-				
-				content = col; 
-				content.setParent = this; //Todo: Safe parent/child reowning system.
-				
-				setChanged; 
-				measure;  //this will rebuild subCells
-			} 
-			
-			void loadFile(File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
-			{
-				fileLoaded = now; 
-				file = file_.actualFile; 
-				reload(desiredStructureLevel); 
-			} 
-			
-			void loadContents(string contents, StructureLevel desiredStructureLevel = StructureLevel.plain)
-			{
-				fileLoaded = now; 
-				file = File("$nullFileName$"); //Bug: When filename is empty, this fuck is crashing without any errors. ($nullFileName$)
-				reload(desiredStructureLevel, nullable(contents)); 
-			} 
-			
-			override @property string identifier()
-			{
-				//Todo: process the module statement.
-				return file.nameWithoutExt; 
-			} 
-			
-			override @property string caption()
-			{ return file.name; } 
-			
-			///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
-			bool isReadOnly()
-			{
-				//return inputs["ScrollLockState"].active;
-				return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly; 
-			} 
-			
-			void resetModuleTypeFlags()
-			{ isMain = isMainExe = isMainDll = isMainLib = isStdModule = isFileReadOnly = false; } 
-			
-			void detectModuleTypeFlags()
-			{
-				
-				bool isMainSomething(string ext)()
+				if(content)
+				if(auto r = content.getRow(0))
 				{
-					if(content)
-					if(auto r = content.getRow(0))
+					/+
+						Todo: this detector is not so nice...
+						Need to develop more advanced source code parsing methods.
+					+/
+					
+					//structured
+					if(auto c = cast(CodeComment)(r.subCells.get(0)))
+					if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true; 
+					//highlighted/plain
+					if(sameText(r.shallowText.stripRight, "//@"~ext)) return true; 
+				}
+				
+				return false; 
+			} 
+			isMainExe = isMainSomething!"exe"; 
+			isMainDll = isMainSomething!"dll"; 
+			isMainLib = isMainSomething!"lib"; 
+			isMain = isMainExe || isMainDll || isMainLib; 
+			
+			isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); 
+			//Todo: detect compiler import path correctly
+			
+			isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); 
+			//Todo: periodically chenck if file is exists and other attributes in the IDE
+			//Note: This is just the file based input of the actual ReadOnly decision in isReadOnly().
+		} 
+		
+		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
+		{
+			fileModified = file.modified; 
+			sizeBytes = file.size; 
+			resetModuleTypeFlags; 
+			structureLevel = StructureLevel.plain; //reset to the most basic level
+			
+			auto prevSourceText = sourceText; 
+			string sourceText = !externalContents.isNull 	? externalContents.get
+				: this.file.readText; 
+			undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText)); 
+			
+			CodeColumnBuilder!true.staticLineCounter = 1; 
+			
+			void doPlain()
+			{
+				try
+				{
+					content.rebuilder.appendPlain(sourceText); 
+					structureLevel = StructureLevel.plain; 
+				}
+				catch(Exception e)
+				{ raise("Fatal error. Unable to load module even in plain mode. "~file.text~"\n"~e.simpleMsg); }
+			} 
+			
+			void doHighlighted()
+			{
+				try
+				{
+					content.rebuilder.appendHighlighted(sourceText); 
+					/+
+						Todo: this is NOT raising an exception, only draws the error with 
+						red and and display a WARN. It should revert to plain...
+					+/
+					structureLevel = StructureLevel.highlighted; 
+				}
+				catch(Exception e)
+				{
+					WARN("Unable to load module in highlighted mode. "~file.text~"\n"~e.simpleMsg); 
+					doPlain; 
+				}
+			} 
+			
+			void doStructured()
+			{
+				try
+				{
+					content.rebuilder.appendStructured(sourceText); 
+					structureLevel = StructureLevel.structured; 
+				}
+				catch(Exception e)
+				{
+					WARN("Unable to load module in structured mode. "~file.text~"\n"~e.simpleMsg); 
+					doHighlighted; 
+				}
+			} 
+			
+			void doManaged()
+			{
+				doStructured; 
+				if(isStructured)
+				{
+					try
 					{
-						/+
-							Todo: this detector is not so nice...
-							Need to develop more advanced source code parsing methods.
-						+/
+						processHighLevelPatterns_block(content); 
 						
-						//structured
-						if(auto c = cast(CodeComment)(r.subCells.get(0)))
-						if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true; 
-						//highlighted/plain
-						if(sameText(r.shallowText.stripRight, "//@"~ext)) return true; 
-					}
-					
-					return false; 
-				} 
-				isMainExe = isMainSomething!"exe"; 
-				isMainDll = isMainSomething!"dll"; 
-				isMainLib = isMainSomething!"lib"; 
-				isMain = isMainExe || isMainDll || isMainLib; 
-				
-				isStdModule = file.fullName.isWild(`c:\d\ldc2\import\*`); 
-				//Todo: detect compiler import path correctly
-				
-				isFileReadOnly = isStdModule || file.isReadOnly || file.name.sameText("compile.err"); 
-				//Todo: periodically chenck if file is exists and other attributes in the IDE
-				//Note: This is just the file based input of the actual ReadOnly decision in isReadOnly().
-			} 
-		}version(/+$DIDE_REGION+/all)
-		{
-			void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
-			{
-				fileModified = file.modified; 
-				sizeBytes = file.size; 
-				resetModuleTypeFlags; 
-				structureLevel = StructureLevel.plain; //reset to the most basic level
-				
-				auto prevSourceText = sourceText; 
-				string sourceText = !externalContents.isNull 	? externalContents.get
-					: this.file.readText; 
-				undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText)); 
-				
-				CodeColumnBuilder!true.staticLineCounter = 1; 
-				
-				void doPlain()
-				{
-					try
-					{
-						content.rebuilder.appendPlain(sourceText); 
-						structureLevel = StructureLevel.plain; 
-					}
-					catch(Exception e)
-					{ raise("Fatal error. Unable to load module even in plain mode. "~file.text~"\n"~e.simpleMsg); }
-				} 
-				
-				void doHighlighted()
-				{
-					try
-					{
-						content.rebuilder.appendHighlighted(sourceText); 
 						/+
-							Todo: this is NOT raising an exception, only draws the error with 
-							red and and display a WARN. It should revert to plain...
-						+/
-						structureLevel = StructureLevel.highlighted; 
-					}
-					catch(Exception e)
-					{
-						WARN("Unable to load module in highlighted mode. "~file.text~"\n"~e.simpleMsg); 
-						doPlain; 
-					}
-				} 
-				
-				void doStructured()
-				{
-					try
-					{
-						content.rebuilder.appendStructured(sourceText); 
-						structureLevel = StructureLevel.structured; 
-					}
-					catch(Exception e)
-					{
-						WARN("Unable to load module in structured mode. "~file.text~"\n"~e.simpleMsg); 
-						doHighlighted; 
-					}
-				} 
-				
-				void doManaged()
-				{
-					doStructured; 
-					if(isStructured)
-					{
-						try
-						{
-							processHighLevelPatterns_block(content); 
-							
-							/+
-								content.refreshLineIdx; /+
-									Todo: Why is this needed?
-									And why only at the module level?
-									processHighLevelPatterns somehow zeroes out 
-									the structured row lineIndices of the module...
-								+/
-								//note: CodeColumn.RefreshLineIdx is flawed
-								/+
-									Bug: regenerate the fucking lineIndices because processHighLevelPatterns fucks those up.
-									losing 1.5 sec because of this on dide2.startup.load.
-								+/
+							content.refreshLineIdx; /+
+								Todo: Why is this needed?
+								And why only at the module level?
+								processHighLevelPatterns somehow zeroes out 
+								the structured row lineIndices of the module...
 							+/
-							{
-								//static Time allT = 0*second; T0; 
-								refreshLineIdx; 
-								//allT += DT; print(allT.value(milli(second))); 
-							}
-							
-							structureLevel = StructureLevel.managed; 
-						}
-						catch(Exception e)
+							//note: CodeColumn.RefreshLineIdx is flawed
+							/+
+								Bug: regenerate the fucking lineIndices because processHighLevelPatterns fucks those up.
+								losing 1.5 sec because of this on dide2.startup.load.
+							+/
+						+/
 						{
-							WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg); 
-							doStructured; 
+							//static Time allT = 0*second; T0; 
+							refreshLineIdx; 
+							//allT += DT; print(allT.value(milli(second))); 
 						}
+						
+						structureLevel = StructureLevel.managed; 
 					}
-				} 
-				
-				[&doPlain, &doHighlighted, &doStructured, &doManaged][desiredStructureLevel](); 
-				
-				needMeasure; 
-			} 
-			
-			void refreshLineIdx()
-			{
-				lineIdx = 1; //first line is always 1.  ignoring the #line directive.
-				
-				SourceTextBuilder builder; 
-				with(builder)
-				{
-					updateLineIdx = true; 
-					foreach(row; content.rows) {
-						put(row); 
-						putNL; 
+					catch(Exception e)
+					{
+						WARN("Unable to load module in managed mode. "~file.text~"\n"~e.simpleMsg); 
+						doStructured; 
 					}
 				}
-				
-				//Opt: It's ineffective, because it generates text.
 			} 
 			
-			size_t linesOfCode()
-			{
-				return content.rowCount; 
-				//Todo: update this. only good for unstructured code.
-			} 
+			[&doPlain, &doHighlighted, &doStructured, &doManaged][desiredStructureLevel](); 
 			
-			override void rearrange()
-			{
-				detectModuleTypeFlags; 
-				super.rearrange; 
-			} 
+			needMeasure; 
+		} 
+		
+		void refreshLineIdx()
+		{
+			lineIdx = 1; //first line is always 1.  ignoring the #line directive.
 			
-			void save()
+			SourceTextBuilder builder; 
+			with(builder)
 			{
-				if(isReadOnly) return; 
-				sourceText.saveTo(file, Yes.onlyIfChanged); //sourceText can throw
-				clearChanged; 
-				fileModified = file.modified; //Opt: slow
-				fileSaved = now; 
-			} 
-			
-			void UI_PopupMenu()
-			{
-				with(im)
-				{
-					Column(
-						{
-							Text(
-								"Experimental
-popup menu"
-							); 
-							if(Btn("New Sticker")) beep; 
-						}
-					); 
-					popupState.cell = removeLastContainer; 
-					popupState.parent = null; 
-					
-					popupState.cell.outerPos = mainWindow.screenToClient(inputs.mouseAct); 
+				updateLineIdx = true; 
+				foreach(row; content.rows) {
+					put(row); 
+					putNL; 
 				}
-			} 
-		}
+			}
+			
+			//Opt: It's ineffective, because it generates text.
+		} 
+		
+		size_t linesOfCode()
+		{
+			return content.rowCount; 
+			//Todo: update this. only good for unstructured code.
+		} 
+		
+		override void rearrange()
+		{
+			detectModuleTypeFlags; 
+			super.rearrange; 
+		} 
+		
+		void save()
+		{
+			if(isReadOnly) return; 
+			sourceText.saveTo(file, Yes.onlyIfChanged); //sourceText can throw
+			clearChanged; 
+			fileModified = file.modified; //Opt: slow
+			fileSaved = now; 
+		} 
+		
+		void UI_PopupMenu()
+		{
+			with(im)
+			{
+				Column(
+					{
+						Text(
+							"Experimental
+	popup menu"
+						); 
+						if(Btn("New Sticker")) beep; 
+					}
+				); 
+				popupState.cell = removeLastContainer; 
+				popupState.parent = null; 
+				
+				popupState.cell.outerPos = mainWindow.screenToClient(inputs.mouseAct); 
+			}
+		} 
 	} 
 }version(/+$DIDE_REGION SCRUM+/all)
 {
@@ -5933,7 +5927,7 @@ popup menu"
 				}
 			}
 		} 
-		
+		
 		void unpackSticker()
 		{
 			if(auto col = cast(CodeColumn) this.subCells.get(0))
@@ -6247,649 +6241,641 @@ version(/+$DIDE_REGION+/all)
 	}
 }class Declaration : CodeNode
 {
-	version(/+$DIDE_REGION+/all)
+	CodeColumn attributes; 
+	string keyword; 
+	CodeColumn header, block; 
+	char ending; 
+	
+	int internalNewLineCount, internalTabCount; //Todo: this counter only needed to count up to 2.
+	
+	@property bool hasInternalNewLine() const { return internalNewLineCount>0; } 
+	@property bool hasInternalTab() const { return internalTabCount>0; } 
+	
+	bool hasJoinedNewLine, hasJoinedTab; 
+	
+	bool explicitPrepositionBlock; 
+	
+	Declaration nextJoinedPreposition; 
+	
+	bool isBlock() const
+	{ return ending=='}'; } 
+	bool isStatement() const
+	{ return ending==';'; } 
+	bool isSection() const
+	{ return ending==':'; } 
+	bool isPreposition() const
+	{ return ending==')'; } 
+	
+	bool isRegion; //detected automatically
+	bool regionDisabled; 
+	
+	Declaration lastJoinedPreposition()
 	{
-		CodeColumn attributes; 
-		string keyword; 
-		CodeColumn header, block; 
-		char ending; 
+		auto d = this; 
+		while(d.nextJoinedPreposition)
+		d = d.nextJoinedPreposition; 
+		return d; 
+	} 
+	
+	Declaration firstJoinedPreposition()
+	{
+		if(!isPreposition) return null; 
 		
-		int internalNewLineCount, internalTabCount; //Todo: this counter only needed to count up to 2.
-		
-		@property bool hasInternalNewLine() const { return internalNewLineCount>0; } 
-		@property bool hasInternalTab() const { return internalTabCount>0; } 
-		
-		bool hasJoinedNewLine, hasJoinedTab; 
-		
-		bool explicitPrepositionBlock; 
-		
-		Declaration nextJoinedPreposition; 
-		
-		bool isBlock() const
-		{ return ending=='}'; } 
-		bool isStatement() const
-		{ return ending==';'; } 
-		bool isSection() const
-		{ return ending==':'; } 
-		bool isPreposition() const
-		{ return ending==')'; } 
-		
-		bool isRegion; //detected automatically
-		bool regionDisabled; 
-		
-		Declaration lastJoinedPreposition()
+		Declaration a = this; 
+		while(1)
 		{
-			auto d = this; 
-			while(d.nextJoinedPreposition)
-			d = d.nextJoinedPreposition; 
-			return d; 
-		} 
-		
-		Declaration firstJoinedPreposition()
-		{
-			if(!isPreposition) return null; 
-			
-			Declaration a = this; 
-			while(1)
-			{
-				assert(a.isPreposition); 
-				if(auto b = cast(Declaration) a.parent)
-				a = b; 
-				else
-				break; 
-			}
-			return a; 
-		} 
-		
-		Declaration[] allJoinedPrepositionsFromThis()
-		{
-			Declaration[] res; 
-			auto act = this; 
-			while(act)
-			{
-				res ~= act; 
-				act = act.nextJoinedPreposition; 
-			}
-			return res; 
-		} 
-		
-		protected void setContentParent(Declaration p)
-		{
-			//used to set visual parents. The actual chain is stored in the linked list: nextJoinedPreposition.
-			void a(CodeColumn col) { if(col) col.setParent(p); } 
-			a(attributes); 
-			a(header); 
-			a(block); 
-		} 
-		
-		void appendJoinedPreposition(Declaration decl)
-		{
-			static bugcnt = 0; 
-			if(!bugcnt++) { beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
-			
-			assert(decl && decl.isPreposition); 
-			auto last = lastJoinedPreposition; 
-			last.nextJoinedPreposition = decl; 
-			
-			decl.setParent(last); //The declaration's parent is the previous declaration
-			auto root = firstJoinedPreposition; 
-			decl.setContentParent(root); 
-		} 
-		
-		Declaration nestedPreposition()
-		{
-			if(isPreposition)
-			if(
-				!explicitPrepositionBlock//bugfix: if(1){if(2)a;}else b;  else is wrongly moved inside blocks
-			)
-			if(auto a = cast(Declaration) block.singleCellOrNull)
-			if(a.isPreposition)
-			return a; 
-			return null; 
-		} 
-		
-		Declaration[] allNestedPrepositions()
-		{
-			Declaration[] res; 
-			auto act = this; 
-			
-			while(act && act.isPreposition)
-			{
-				res ~= act; 
-				act = act.nestedPreposition; 
-			}
-			
-			return res; 
-		} 
-		
-		bool canHaveHeader() const
-		{
-			if(keyword.among("else", "unittest", "invariant", "try", "finally", "do")) return false; 
-			return true; 
-		} 
-		
-		bool isSimpleBlock() const
-		{ return isBlock && keyword=="" && header.empty && attributes.empty; } 
-		
-		bool isFunction()
-		{ return isBlock && !isRegion && keyword=="" && identifier!=""; } 
-		
-		bool isAttributeBlock()
-		{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
-		
-		void verify()
-		{
-			if(isBlock)
-			{
-				enforce(block, "Invalid null block."); 
-				enforce(keyword=="" || keyword.isBlockKeyword, "Invalid declaration block keyword: "~keyword.quoted); 
-			}
-			else if(isStatement)
-			{ enforce(keyword=="" || keyword.isStatementKeyword, "Invalid declaration statement keyword: "~keyword.quoted); }
-			else if(isSection)
-			{ enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted); }
-			else if(isPreposition)
-			{ enforce(keyword.isPrepositionKeyword, "Invalid declaration preposition keyword: "~keyword.quoted); }
+			assert(a.isPreposition); 
+			if(auto b = cast(Declaration) a.parent)
+			a = b; 
 			else
-			enforce(0, "Invalid declaration ending: "~ending.text.quoted); 
+			break; 
+		}
+		return a; 
+	} 
+	
+	Declaration[] allJoinedPrepositionsFromThis()
+	{
+		Declaration[] res; 
+		auto act = this; 
+		while(act)
+		{
+			res ~= act; 
+			act = act.nextJoinedPreposition; 
+		}
+		return res; 
+	} 
+	
+	protected void setContentParent(Declaration p)
+	{
+		//used to set visual parents. The actual chain is stored in the linked list: nextJoinedPreposition.
+		void a(CodeColumn col) { if(col) col.setParent(p); } 
+		a(attributes); 
+		a(header); 
+		a(block); 
+	} 
+	
+	void appendJoinedPreposition(Declaration decl)
+	{
+		static bugcnt = 0; 
+		if(!bugcnt++) { beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
+		
+		assert(decl && decl.isPreposition); 
+		auto last = lastJoinedPreposition; 
+		last.nextJoinedPreposition = decl; 
+		
+		decl.setParent(last); //The declaration's parent is the previous declaration
+		auto root = firstJoinedPreposition; 
+		decl.setContentParent(root); 
+	} 
+	
+	Declaration nestedPreposition()
+	{
+		if(isPreposition)
+		if(
+			!explicitPrepositionBlock//bugfix: if(1){if(2)a;}else b;  else is wrongly moved inside blocks
+		)
+		if(auto a = cast(Declaration) block.singleCellOrNull)
+		if(a.isPreposition)
+		return a; 
+		return null; 
+	} 
+	
+	Declaration[] allNestedPrepositions()
+	{
+		Declaration[] res; 
+		auto act = this; 
+		
+		while(act && act.isPreposition)
+		{
+			res ~= act; 
+			act = act.nestedPreposition; 
+		}
+		
+		return res; 
+	} 
+	
+	bool canHaveHeader() const
+	{
+		if(keyword.among("else", "unittest", "invariant", "try", "finally", "do")) return false; 
+		return true; 
+	} 
+	
+	bool isSimpleBlock() const
+	{ return isBlock && keyword=="" && header.empty && attributes.empty; } 
+	
+	bool isFunction()
+	{ return isBlock && !isRegion && keyword=="" && identifier!=""; } 
+	
+	bool isAttributeBlock()
+	{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
+	
+	void verify()
+	{
+		if(isBlock)
+		{
+			enforce(block, "Invalid null block."); 
+			enforce(keyword=="" || keyword.isBlockKeyword, "Invalid declaration block keyword: "~keyword.quoted); 
+		}
+		else if(isStatement)
+		{ enforce(keyword=="" || keyword.isStatementKeyword, "Invalid declaration statement keyword: "~keyword.quoted); }
+		else if(isSection)
+		{ enforce(keyword.among(""), "Invalid declaration section keyword: "~keyword.quoted); }
+		else if(isPreposition)
+		{ enforce(keyword.isPrepositionKeyword, "Invalid declaration preposition keyword: "~keyword.quoted); }
+		else
+		enforce(0, "Invalid declaration ending: "~ending.text.quoted); 
+	} 
+	
+	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
+	{
+		super(parent); 
+		
+		auto detectInternalNewLine(Cell[][] a) //blabla
+		{
+			if(!isBlock) return a; 
+			if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '") {
+				a.popBack; 
+				internalNewLineCount++; 
+			}
+			return a; 
 		} 
 		
-		this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
+		this.keyword = keyword; 
+		this.ending = ending; 
+		this.block = block; if(block) block.setParent(this); 
+		this.attributes = new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace); 
+		this.header = new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace)); 
+		//Note: ⚠ detectInternalNewLine() is not a pure function. The order of the operations above is important!!!
+		
+		decodeSpecial; 
+		
+		verify; 
+		
+		//RECURSIVE!!!
+		if(isBlock)
 		{
-			super(parent); 
-			
-			auto detectInternalNewLine(Cell[][] a) //blabla
+			if(keyword=="enum")
+			processHighLevelPatterns_enum(block); 
+			else {
+				if(header) processHighLevelPatterns_goInside(header); 
+				processHighLevelPatterns_block(block); 
+			}
+		}
+		else if(isStatement)
+		{ if(keyword=="") { processHighLevelPatterns_statement(header); }}else if(isPreposition)
+		{
+			foreach(p; allJoinedPrepositionsFromThis)
 			{
-				if(!isBlock) return a; 
-				if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '") {
-					a.popBack; 
-					internalNewLineCount++; 
-				}
-				return a; 
-			} 
-			
-			this.keyword = keyword; 
-			this.ending = ending; 
-			this.block = block; if(block) block.setParent(this); 
-			this.attributes = new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace); 
-			this.header = new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace)); 
-			//Note: ⚠ detectInternalNewLine() is not a pure function. The order of the operations above is important!!!
-			
-			decodeSpecial; 
-			
-			verify; 
-			
-			//RECURSIVE!!!
+				if(p.header) processHighLevelPatterns_goInside(p.header); 
+				processHighLevelPatterns_block(p.block); 
+			}
+		}
+		
+		refreshLineIdx; 
+	} 
+	
+	this(CodeBlock b)
+	{
+		//promote the block.
+		assert(b); 
+		assert(b.parent); 
+		assert(b.content); 
+		assert(b.type == CodeBlock.Type.block); 
+		
+		super(b.parent); 
+		
+		attributes = new CodeColumn(this, []); 
+		header = new CodeColumn(this, []); 
+		block = b.content; block.setParent(this); 
+		ending = '}'; 
+		
+		verify; 
+		
+		refreshLineIdx; 
+	} 
+	
+	string type()
+	{
+		if(keyword.length) return keyword; 
+		if(isStatement	) return "statement"; 
+		if(isPreposition	) return "preposition"; 
+		if(isSection	) return "section"; 
+		if(isBlock	) return "function"; 
+		return ""; 
+	} 
+	
+	char opening() const
+	{ return ending.predSwitch('}', '{', ')', '(', ' '); } 
+	
+	bool isLabel() const
+	{
+		if(!isSection) return false; 
+		auto src = header.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" "); 
+		
+		while(!src.empty && src.front==' ') src.popFront; 
+		
+		if(src.empty || !src.front.isDLangIdentifierStart) return false; 
+		
+		string id = src.front.text; 
+		src.popFront; 
+		while(!src.empty && src.front.isDLangIdentifierCont)
+		{
+			id ~= src.front.text; 
+			src.popFront; 
+		}
+		
+		if(isAttributeKeyword(id)) return false; 
+		
+		if(!src.all!"a==' '") return false; //something els at the end
+		
+		return true; ; 
+	} 
+	
+	private bool _identifierValid; //Todo: use Nullable!string
+	private string _identifier; 
+	override @property string identifier()
+	{
+		
+		string calcIdentifier()
+		{
 			if(isBlock)
 			{
-				if(keyword=="enum")
-				processHighLevelPatterns_enum(block); 
-				else {
-					if(header) processHighLevelPatterns_goInside(header); 
-					processHighLevelPatterns_block(block); 
-				}
-			}
-			else if(isStatement)
-			{ if(keyword=="") { processHighLevelPatterns_statement(header); }}else if(isPreposition)
-			{
-				foreach(p; allJoinedPrepositionsFromThis)
+				if(keyword=="")
 				{
-					if(p.header) processHighLevelPatterns_goInside(p.header); 
-					processHighLevelPatterns_block(p.block); 
+					auto s = header.extractThisLevelDString.text; 
+					foreach(p; s.strip.split('(').retro.drop(1))
+					{
+						auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array; 
+						if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back; 
+					}
+				}
+				if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+				{
+					return header.shallowText.strip.wordAt(0); 
+					//Todo: this is nasty!!! Should use proper DLang identifier detection.
 				}
 			}
-			
-			refreshLineIdx; 
-		} 
-		
-		this(CodeBlock b)
-		{
-			//promote the block.
-			assert(b); 
-			assert(b.parent); 
-			assert(b.content); 
-			assert(b.type == CodeBlock.Type.block); 
-			
-			super(b.parent); 
-			
-			attributes = new CodeColumn(this, []); 
-			header = new CodeColumn(this, []); 
-			block = b.content; block.setParent(this); 
-			ending = '}'; 
-			
-			verify; 
-			
-			refreshLineIdx; 
-		} 
-		
-		protected void refreshLineIdx()
-		{
-			/+
-				Note: This function refreshes the line indices of this Node and all it's first level Rows.
-				It requires that the inner Nodes having their lineIndices already refreshed.
-				It is only used with CodeColumnBuilder, because SourceTextBuilder is normally regenerating all the lineIndices.
-				
-				To debug use VisualizeCodeLineIndices=1.
-				Row and Node induces should will overlap nicely with the Glyph indices,  so the first lineIndex in each row 
-				must show a proper, nonzero number and ovelrapped 'R' and 'N' letters.
-				Non clickable text inside Nodes will have 0 lineIdx.
-				
-				/+Todo: embedded bitmap advanced comment+/
-				/+
-					Todo: verify the result of this by comparing the produced Node, Row, Glyph lineIndices 
-					of CodeColumnBuilder and SourceTextBuilder(This is the reference because it is the simplest of the two)
-				+/
-			+/
-			
-			lineIdx = 0; 
-			
-			foreach_reverse(col; only(attributes, header, block))
-			if(col)
-			{
-				col.refreshLineIdx; 
-				
-				if(auto a = col.rows.front.lineIdx) lineIdx = a; 
-			}
-			
-			if(!lineIdx) { static bool a; if(a.chkSet) ERR("Declaration.lineIdx fail. ...sigh..."); }
-		} 
-		
-	}version(/+$DIDE_REGION+/all)
-	{
-		string type()
-		{
-			if(keyword.length) return keyword; 
-			if(isStatement	) return "statement"; 
-			if(isPreposition	) return "preposition"; 
-			if(isSection	) return "section"; 
-			if(isBlock	) return "function"; 
 			return ""; 
 		} 
 		
-		char opening() const
-		{ return ending.predSwitch('}', '{', ')', '(', ' '); } 
+		if(_identifierValid.chkSet) { _identifier = calcIdentifier; }
 		
-		bool isLabel() const
-		{
-			if(!isSection) return false; 
-			auto src = header.rows.map!(row => row.subCells.map!structuredCellToChar).joiner(" "); 
-			
-			while(!src.empty && src.front==' ') src.popFront; 
-			
-			if(src.empty || !src.front.isDLangIdentifierStart) return false; 
-			
-			string id = src.front.text; 
-			src.popFront; 
-			while(!src.empty && src.front.isDLangIdentifierCont)
-			{
-				id ~= src.front.text; 
-				src.popFront; 
-			}
-			
-			if(isAttributeKeyword(id)) return false; 
-			
-			if(!src.all!"a==' '") return false; //something els at the end
-			
-			return true; ; 
-		} 
-		
-		private bool _identifierValid; //Todo: use Nullable!string
-		private string _identifier; 
-		override @property string identifier()
-		{
-			
-			string calcIdentifier()
-			{
-				if(isBlock)
-				{
-					if(keyword=="")
-					{
-						auto s = header.extractThisLevelDString.text; 
-						foreach(p; s.strip.split('(').retro.drop(1))
-						{
-							auto q = p.strip.split!isDLangWhitespace.filter!"a.length".array; 
-							if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back; 
-						}
-					}
-					if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
-					{
-						return header.shallowText.strip.wordAt(0); 
-						//Todo: this is nasty!!! Should use proper DLang identifier detection.
-					}
-				}
-				return ""; 
-			} 
-			
-			if(_identifierValid.chkSet) { _identifier = calcIdentifier; }
-			
-			return _identifier; 
-		} 
-		
-		override string caption()
-		{
-			//Todo: cache this too
-			if(isRegion) return header.sourceText; 
-			return identifier; 
-		} 
-		
-		private void decodeSpecial()
-		{
-			//Note: only callable from within this(), as it does not reset flags.
-			
-			if(isPreposition && keyword=="version" && header.rowCount==1)
-			if(auto cmt = header.firstCell!CodeComment)
-			if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
-			if(cmt.isSpecialComment("REGION"))
-			{
-				//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
-				
-				/+
-					Todo: There should be a { } region too with it's own scope.  Using first "//Title: comment".
-					The {//title: } region comment makes difficulties inside preposition blocks.
-				+/
-				
-				isRegion = true; 
-				regionDisabled = optionIdx==2; 
-				keyword = "__region"; 
-				
-				header = cmt.content; 
-				header.setParent(this); 
-				
-				//remove the marker
-				with(header.rows[0])
-				{
-					subCells = subCells[specialCommentMarker.length + "REGION".length .. $]; 
-					if(!subCells.empty && chars[0]==' ') subCells.popFront; 
-					needMeasure; 
-				}
-				
-				return; 
-			}
-		} 
-		
-		bool isSpecial()
-		{ return isRegion; } 
-		
-	}version(/+$DIDE_REGION+/all)
+		return _identifier; 
+	} 
+	
+	override string caption()
 	{
+		//Todo: cache this too
+		if(isRegion) return header.sourceText; 
+		return identifier; 
+	} 
+	
+	private void decodeSpecial()
+	{
+		//Note: only callable from within this(), as it does not reset flags.
 		
-		private final void emitDeclaration(R)(ref R outputRange)
+		if(isPreposition && keyword=="version" && header.rowCount==1)
+		if(auto cmt = header.firstCell!CodeComment)
+		if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
+		if(cmt.isSpecialComment("REGION"))
 		{
-			with(outputRange)
+			//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
+			
+			/+
+				Todo: There should be a { } region too with it's own scope.  Using first "//Title: comment".
+				The {//title: } region comment makes difficulties inside preposition blocks.
+			+/
+			
+			isRegion = true; 
+			regionDisabled = optionIdx==2; 
+			keyword = "__region"; 
+			
+			header = cmt.content; 
+			header.setParent(this); 
+			
+			//remove the marker
+			with(header.rows[0])
 			{
-				
-				void putIndent()
-				{ static if(UI) put("    "); } void putNLIndent()
-				{ putNL; putIndent; } void putUi(A)(A a)
-				{ static if(UI) put(a); } 
-				
-				if(isBlock)
+				subCells = subCells[specialCommentMarker.length + "REGION".length .. $]; 
+				if(!subCells.empty && chars[0]==' ') subCells.popFront; 
+				needMeasure; 
+			}
+			
+			return; 
+		}
+	} 
+	
+	bool isSpecial()
+	{ return isRegion; } 
+	private final void emitDeclaration(R)(ref R outputRange)
+	{
+		with(outputRange)
+		{
+			
+			void putIndent()
+			{ static if(UI) put("    "); } void putNLIndent()
+			{ putNL; putIndent; } void putUi(A)(A a)
+			{ static if(UI) put(a); } 
+			
+			void emitPreposition(Declaration decl, bool closingSemicolon = false)
+			{
+				with(decl)
 				{
-					if(isSimpleBlock)
+					//Note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
+					
+					//Todo: put a space before 'else;   ->    if(1) { a; }else b;  
+					//Todo: put a space after 'else'  if it is followed by an alphaNumeric char. -> that's compilation error
+					
+					if(canHaveHeader)
 					{
-						/+
-							Todo: the transition from simpleBlock to non-simple block is not clear.
-							A boolean flag is needed to let the user write into the header.
-						+/
-						put("{", block, "}"); 
+						putUi(' '); 
+						put(keyword); 
 						
-						/+
-							Bug: Autogenerate { } after prepositions.
-							It can cause nasty bugs.
-							/+$DIDE_IMG: c:\dl\bigbug.png+/
-						+/
-					}
-					else
-					{
-						bool needSpace; 
-						if(keyword!="")
+						static bool isHeaderOmittableForKeyword(string keyword)
 						{
-							put(attributes); 
-							if(!attributes.empty) put(' '); 
-							
-							put(keyword); 
-							needSpace |= true; 
-						}
-						
-						if(canHaveHeader)
-						{
-							if(needSpace.chkClear) put(' '); 
-							put("", header, ""); 
-							needSpace |= true; 
-						}
-						
-						if(hasInternalNewLine)
-						putNLIndent; 
-						else if(needSpace.chkClear) put(' '); 
-						
-						put("{", block, "}"); 
-						
-						//putUi(' ');
-						if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); 
-					}
-				}
-				else if(isPreposition)
-				{
-					if(isRegion)
-					{
-						static if(UI)
-						{
-							if(
-								!header.empty//optional header title
-							)
-							{
-								put(header); 
-								if(hasInternalNewLine) putNL; else put(' '); 
-							}
-							put(block); 
-							//region has a thin border and no braces.
-						}
-						else
-						{
-							//verify that header is valid for a /+comment+/
-							const src = header.sourceText; 
-							enforce(isValidDLang("/+"~src~"+/"), "Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src); 
-							
-							put(
-								"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
-								header,
-								"+/"~(regionDisabled ? "none":"all")~")"
-							); 
-							if(hasInternalNewLine) putNL; else put(' '); 
-							put("{", block, "}"); 
-						}
-					}
-					else
-					{
-						void emitPreposition(Declaration decl, bool closingSemicolon = false)
-						{
-							with(decl)
-							{
-								//Note: prepositions have no attributes. 'static' and 'final' is encoded in the keyword.
-								
-								//Todo: put a space before 'else;   ->    if(1) { a; }else b;  
-								//Todo: put a space after 'else'  if it is followed by an alphaNumeric char. -> that's compilation error
-								
-								if(canHaveHeader)
-								{
-									putUi(' '); 
-									put(keyword); 
-									
-									static bool isHeaderOmittableForKeyword(string keyword)
-									{
-										enum list = 	prepositionPatterns.filter!(a => a.endsWith(" ("))
-											.map!(a => a[0..$-2])
-											.filter!(a => prepositionPatterns.canFind(a))
-											.array; 
-										/+
-											Normally in DLang, these are the keywords having
-																					optionally omittable ()blocks: "debug", "else debug"
-										+/
-										return list.canFind(keyword); 
-									} 
-									
-									const omitHeader = header.empty && isHeaderOmittableForKeyword(keyword); 
-									//debug has an optional () block
-									
-									putUi(' '); 
-									if(!omitHeader) put("(", header, ")", !UI); 
-								}
-								else
-								{
-									putUi(' '); 
-									put(keyword); 
-								}
-								
-								//Todo: detect if there is more than one statements inside. If so, it must write a { } block!
-								
-								if(closingSemicolon)
-								{ put(';'); if(autoSpaceAfterDeclarations) put(' '); }
-								else
-								{
-									
-									if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent; }
-									else put(internalTabCount > hasJoinedTab ? '\t' : ' '); 
-									
-									/+
-										Todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas 
-										ala vannak igazitva. Jelenleg az if expressionja es a blokkja kozotti 
-										senkifoldjen csak a space, newline es a comment 
-										van detektalna (a comment az lehet, hogy nincs is!).
-										Viszont legyen a tab is detektalva! Az 3 allapot.
-										A tab eseten egy fel sornyi szunetet is be lehetne iktatni. 
-										A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
-										A newline eseten eleve ott a vastag elvalaszto sor.
-										Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
-									+/
-									
-									//Todo: there should be a tab right after the if and before the (expression).
-									//Todo: I must make the rules of things that could go onto the surface of CodeNodes.
-									
-									put("{", block, "}", explicitPrepositionBlock); 
-								}
-								
-								if(nextJoinedPreposition)
-								{
-									//Todo: I think this is dead code. It does nothing.
-									if(nextJoinedPreposition.hasJoinedNewLine) { putUi(' '); putNL; }
-									else if(nextJoinedPreposition.hasJoinedTab) put('\t'); 
-									
-									//Note: It doesn't matter if the newline is bewore or	 after or on both sides
-									//Note: ...around an "else". As it is either joined horizontally or vertically.
-									
-									const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while"; 
-									
-									//Todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
-									/+
-										static if(CODE)
-										{	//this puts too much tabs
-											const canIndent = !nextClosingSemicolon 
-												&& (nextJoinedPreposition.internalNewLineCount > 
-													nextJoinedPrepositionhasJoinedNewLine);
-											if(canIndent) indentCount++;
-											scope(exit) if(canIndent) indentCount--;
-										}
-									+/
-									
-									emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
-								}
-								else
-								putUi(' '); 	
-							}
+							enum list = 	prepositionPatterns.filter!(a => a.endsWith(" ("))
+								.map!(a => a[0..$-2])
+								.filter!(a => prepositionPatterns.canFind(a))
+								.array; 
+							/+
+								Normally in DLang, these are the keywords having
+																		optionally omittable ()blocks: "debug", "else debug"
+							+/
+							return list.canFind(keyword); 
 						} 
 						
-						emitPreposition(this); 
+						const omitHeader = header.empty && isHeaderOmittableForKeyword(keyword); 
+						//debug has an optional () block
+						
+						putUi(' '); 
+						if(!omitHeader) put("(", header, ")", !UI); 
 					}
+					else
+					{
+						putUi(' '); 
+						put(keyword); 
+					}
+					
+					//Todo: detect if there is more than one statements inside. If so, it must write a { } block!
+					
+					if(closingSemicolon)
+					{ put(';'); if(autoSpaceAfterDeclarations) put(' '); }
+					else
+					{
+						
+						if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent; }
+						else put(internalTabCount > hasJoinedTab ? '\t' : ' '); 
+						
+						/+
+							Todo: ^^ ez a space lehet tab is. Ekkor az else if chain blokkjai szepen egymas 
+							ala vannak igazitva. Jelenleg az if expressionja es a blokkja kozotti 
+							senkifoldjen csak a space, newline es a comment 
+							van detektalna (a comment az lehet, hogy nincs is!).
+							Viszont legyen a tab is detektalva! Az 3 allapot.
+							A tab eseten egy fel sornyi szunetet is be lehetne iktatni. 
+							A space eseten ez nem kell, mert a blokk eleje is mashol lesz. 
+							A newline eseten eleve ott a vastag elvalaszto sor.
+							Update: Ez elvileg mar megy, de kell hozza teszteket csinalni!
+						+/
+						
+						//Todo: there should be a tab right after the if and before the (expression).
+						//Todo: I must make the rules of things that could go onto the surface of CodeNodes.
+						
+						put("{", block, "}", explicitPrepositionBlock); 
+					}
+					
+					if(nextJoinedPreposition)
+					{
+						//Todo: I think this is dead code. It does nothing.
+						if(nextJoinedPreposition.hasJoinedNewLine) { putUi(' '); putNL; }
+						else if(nextJoinedPreposition.hasJoinedTab) put('\t'); 
+						
+						//Note: It doesn't matter if the newline is bewore or	 after or on both sides
+						//Note: ...around an "else". As it is either joined horizontally or vertically.
+						
+						const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while"; 
+						
+						//Todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
+						/+
+							static if(CODE)
+							{	//this puts too much tabs
+								const canIndent = !nextClosingSemicolon 
+									&& (nextJoinedPreposition.internalNewLineCount > 
+										nextJoinedPrepositionhasJoinedNewLine);
+								if(canIndent) indentCount++;
+								scope(exit) if(canIndent) indentCount--;
+							}
+						+/
+						
+						emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
+					}
+					else
+					putUi(' '); 	
+				}
+			} 
+			
+			if(isBlock)
+			{
+				if(isSimpleBlock)
+				{
+					/+
+						Todo: the transition from simpleBlock to non-simple block is not clear.
+						A boolean flag is needed to let the user write into the header.
+					+/
+					put("{", block, "}"); 
+					
+					/+
+						Bug: Autogenerate { } after prepositions.
+						It can cause nasty bugs.
+						/+$DIDE_IMG: c:\dl\bigbug.png+/
+					+/
 				}
 				else
 				{
-					//statement or section
+					bool needSpace; 
 					if(keyword!="")
 					{
 						put(attributes); 
 						if(!attributes.empty) put(' '); 
+						
 						put(keyword); 
+						needSpace |= true; 
 					}
+					
 					if(canHaveHeader)
 					{
-						if(keyword!="") put(' '); 
-						put("", header, ending.text); 
+						if(needSpace.chkClear) put(' '); 
+						put("", header, ""); 
+						needSpace |= true; 
 					}
-					else
-					put(ending); 
 					
-					if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); //this space makes the border thicker
+					if(hasInternalNewLine)
+					putNLIndent; 
+					else if(needSpace.chkClear) put(' '); 
 					
+					put("{", block, "}"); 
+					
+					//putUi(' ');
+					if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); 
 				}
 			}
-		} 
-		
-		override void rearrange()
-		{
-			//_identifierValid = false;
-			
-			const isSimpleStatement = isStatement && keyword==""; 
-			
-			auto builder = nodeBuilder(skWhitespace, isSimpleStatement ? 0 : 2, structuredColor(type).nullable); 
-			with(builder)
+			else if(isPreposition)
 			{
-				//set subColumn bkColors
-				if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f); 
-				
-				foreach(a; only(attributes, header))
-				if(a)
-				{ a.bkColor = a.empty ? mix(darkColor, brightColor, isSimpleStatement ? 0.25f : 0.75f) : darkColor; }
-				
-				if(isPreposition && isRegion)
-				header.bkColor = syntaxBkColor(skComment); 
-				
-				emitDeclaration(builder); 
+				if(isRegion)
+				{
+					static if(UI)
+					{
+						if(
+							!header.empty//optional header title
+						)
+						{
+							put(header); 
+							if(hasInternalNewLine) putNL; else put(' '); 
+						}
+						put(block); 
+						//region has a thin border and no braces.
+					}
+					else
+					{
+						//verify that header is valid for a /+comment+/
+						const src = header.sourceText; 
+						enforce(
+							isValidDLang("/+"~src~"+/"), 
+							"Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src
+						); 
+						
+						put(
+							"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
+							header,
+							"+/"~(regionDisabled ? "none":"all")~")"
+						); 
+						if(hasInternalNewLine) putNL; else put(' '); 
+						put("{", block, "}"); 
+					}
+				}
+				else
+				{ emitPreposition(this); }
 			}
-			
-			super.rearrange; 
-		} 
-		
-		override void buildSourceText(ref SourceTextBuilder builder)
-		{ emitDeclaration(builder); } 
-		
-		override void draw(Drawing dr)
-		{
-			//draw ///////////////////////////////////
-			super.draw(dr); 
-			
-			if(isRegion && regionDisabled)
+			else
 			{
-				dr.color = syntaxBkColor(skComment); 
-				dr.alpha = .66; 
-				dr.fillRect(outerBounds); 
+				//statement or section
+				if(keyword!="")
+				{
+					put(attributes); 
+					if(!attributes.empty) put(' '); 
+					put(keyword); 
+				}
+				if(canHaveHeader)
+				{
+					if(keyword!="") put(' '); 
+					put("", header, ending.text); 
+				}
+				else
+				put(ending); 
 				
-				dr.lineWidth = 2; 
-				dr.color = syntaxFontColor(skComment); 
-				dr.alpha = .5; 
-				dr.drawX(outerBounds); 
-				dr.alpha = 1; 
+				if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); //this space makes the border thicker
+				
 			}
-		} 
+		}
+	} 
+	
+	override void rearrange()
+	{
+		//_identifierValid = false;
 		
-		override @property RGB avgColor()
+		const isSimpleStatement = isStatement && keyword==""; 
+		
+		auto builder = nodeBuilder(skWhitespace, isSimpleStatement ? 0 : 2, structuredColor(type).nullable); 
+		with(builder)
 		{
-			RGBSum sum; 
-			foreach(col; only(attributes, header, block))
-			if(col) sum.add(col.avgColor, col.outerSize.area); 
-			sum.add(bkColor, outerSize.area-sum.totalWeight); 
-			return sum.avg(bkColor); 
-		} 
+			//set subColumn bkColors
+			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f); 
+			
+			foreach(a; only(attributes, header))
+			if(a)
+			{ a.bkColor = a.empty ? mix(darkColor, brightColor, isSimpleStatement ? 0.25f : 0.75f) : darkColor; }
+			
+			if(isPreposition && isRegion)
+			header.bkColor = syntaxBkColor(skComment); 
+			
+			emitDeclaration(builder); 
+		}
 		
+		super.rearrange; 
+	} 
+	
+	override void buildSourceText(ref SourceTextBuilder builder)
+	{ emitDeclaration(builder); } 
+	
+	override void draw(Drawing dr)
+	{
+		//draw ///////////////////////////////////
+		super.draw(dr); 
+		
+		if(isRegion && regionDisabled)
+		{
+			dr.color = syntaxBkColor(skComment); 
+			dr.alpha = .66; 
+			dr.fillRect(outerBounds); 
+			
+			dr.lineWidth = 2; 
+			dr.color = syntaxFontColor(skComment); 
+			dr.alpha = .5; 
+			dr.drawX(outerBounds); 
+			dr.alpha = 1; 
+		}
+	} 
+	
+	override @property RGB avgColor()
+	{
+		RGBSum sum; 
+		foreach(col; only(attributes, header, block))
+		if(col) sum.add(col.avgColor, col.outerSize.area); 
+		sum.add(bkColor, outerSize.area-sum.totalWeight); 
+		return sum.avg(bkColor); 
+	} 
+	
+	protected void refreshLineIdx()
+	{
 		/+
-			Todo: /+
-				Code: static if(a) {a;}
-				else static if(b) {b;}
-				else {c;}
+			Note: This function refreshes the line indices of this Node and all it's first level Rows.
+			It requires that the inner Nodes having their lineIndices already refreshed.
+			It is only used with CodeColumnBuilder, because SourceTextBuilder is normally regenerating all the lineIndices.
+			
+			To debug use VisualizeCodeLineIndices=1.
+			Row and Node induces should will overlap nicely with the Glyph indices,  so the first lineIndex in each row 
+			must show a proper, nonzero number and ovelrapped 'R' and 'N' letters.
+			Non clickable text inside Nodes will have 0 lineIdx.
+			
+			/+Todo: embedded bitmap advanced comment+/
+			/+
+				Todo: verify the result of this by comparing the produced Node, Row, Glyph lineIndices 
+				of CodeColumnBuilder and SourceTextBuilder(This is the reference because it is the simplest of the two)
 			+/
-			The statements can be aligned with the TAB.
-			But the expressions can't.
 		+/
-	}
+		
+		lineIdx = 0; 
+		
+		foreach_reverse(col; only(attributes, header, block))
+		if(col)
+		{
+			col.refreshLineIdx; 
+			
+			if(auto a = col.rows.front.lineIdx) lineIdx = a; 
+		}
+		
+		if(!lineIdx) { static bool a; if(a.chkSet) ERR("Declaration.lineIdx fail. ...sigh..."); }
+	} 
+	
+	/+
+		Todo: /+
+			Code: static if(a) {a;}
+			else static if(b) {b;}
+			else {c;}
+		+/
+		The statements can be aligned with the TAB.
+		But the expressions can't.
+	+/
 } version(/+$DIDE_REGION parsing helper fun+/all)
 {
 	//parsing helper fun ////////////////////////////////////////////////
@@ -7262,7 +7248,7 @@ version(/+$DIDE_REGION+/all)
 			while(!tokens.empty && tokens.front.pos<srcIdx)
 			tokens.popFront; 
 		} 
-		
+		
 		void transferWhitespaceAndCommentsAndDirectives()
 		{
 			//Directives are specialized CodeComments.
@@ -7620,6 +7606,7 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 				} 
+				
 				void joinPrepositions()
 				{
 					//joinPrepositions //////////////////////////////////////////
@@ -7703,7 +7690,7 @@ version(/+$DIDE_REGION+/all)
 						//dstPrepositionRootDecl = rootDecl; //return this on the side
 						return recursiveSearch(rootDecl); 
 					} 
-					
+					
 					if(auto row = dst.backOrNull)
 					if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
 					if(dstPreposition.isPreposition)
@@ -7836,7 +7823,7 @@ version(/+$DIDE_REGION+/all)
 							}
 						}
 					}
-					
+					
 					
 					
 					/*
@@ -7905,71 +7892,6 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 	} 
-	void processHighLevelPatterns_enum(CodeColumn col_)
-	{
-		//Note: it's called from Declaration.this() for every highlevel enums
-		
-		if(!col_) return; 
-		
-		NOTIMPL; 
-		//print("enum block: "~col_.extractThisLevelDString.text);
-	} 
-	
-	void processHighLevelPatterns_statement(CodeColumn col_)
-	{
-		//Note: it's called from Declaration.this() for every highlevel statement
-		
-		if(!col_) return; 
-		
-		//print("statement: "~col_.extractThisLevelDString.text);
-		processHighLevelPatterns_goInside(col_); 
-	} 
-	
-	bool isHighLevelBlock(CodeColumn col)
-	{
-		bool found; 
-		foreach(cell; col.rows.map!(r => r.subCells).joiner) {
-			if(cast(Declaration) cell) { found = true; continue; }
-			if(cast(CodeComment) cell) continue; 
-			if(auto g = cast(Glyph) cell)
-			if(g.ch.isDLangWhitespace) continue; 
-			return false; 
-		}
-		return found; 
-	} 
-	
-	void processHighLevelPatterns_goInside(CodeColumn col_)
-	{
-		//Todo: bad naming.
-		
-		//Note: "goinside" means, don't threat this block as a statement block, just look recursively inside internal {} () [] q{} blocks.
-		foreach(ref cell; col_.rows.map!(r => r.subCells).joiner)
-		{
-			if(auto blk = cast(CodeBlock) cell)
-			{
-				final switch(blk.type)
-				{
-					case CodeBlock.Type.block: 	{
-						blk.content.processHighLevelPatterns_optionalBlock; 
-						if(blk.content.isHighLevelBlock)
-						{ cell = new Declaration(blk); }
-					}	break; 
-					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
-					case CodeBlock.Type.list: 	{
-						blk.content.processHighLevelPatterns_goInside; 
-						processNiceExpression(cell); 
-					}	break; 
-				}
-			}
-			else if(auto str = cast(CodeString) cell)
-			{
-				if(str.type == CodeString.Type.tokenString)
-				str.content.processHighLevelPatterns_optionalBlock; 
-			}
-		}
-	} 
-	
-	
 	enum CurlyBlockKind { empty, declarationsOrStatements, list} 
 	
 	auto detectCurlyBlock(CodeColumn col_)
@@ -8039,7 +7961,70 @@ version(/+$DIDE_REGION+/all)
 		
 		//Todo: Can't detect structure initializer here: VkClearValue clearColor = { color: { float32: [ 0.8f, 0.2f, 0.6f, 1.0f ]}}; 
 	} 
+	
+	void processHighLevelPatterns_enum(CodeColumn col_)
+	{
+		//Note: it's called from Declaration.this() for every highlevel enums
+		
+		if(!col_) return; 
+		
+		NOTIMPL; 
+		//print("enum block: "~col_.extractThisLevelDString.text);
+	} 
 	
+	void processHighLevelPatterns_statement(CodeColumn col_)
+	{
+		//Note: it's called from Declaration.this() for every highlevel statement
+		
+		if(!col_) return; 
+		
+		//print("statement: "~col_.extractThisLevelDString.text);
+		processHighLevelPatterns_goInside(col_); 
+	} 
+	
+	bool isHighLevelBlock(CodeColumn col)
+	{
+		bool found; 
+		foreach(cell; col.rows.map!(r => r.subCells).joiner) {
+			if(cast(Declaration) cell) { found = true; continue; }
+			if(cast(CodeComment) cell) continue; 
+			if(auto g = cast(Glyph) cell)
+			if(g.ch.isDLangWhitespace) continue; 
+			return false; 
+		}
+		return found; 
+	} 
+	
+	void processHighLevelPatterns_goInside(CodeColumn col_)
+	{
+		//Todo: bad naming.
+		
+		//Note: "goinside" means, don't threat this block as a statement block, just look recursively inside internal {} () [] q{} blocks.
+		foreach(ref cell; col_.rows.map!(r => r.subCells).joiner)
+		{
+			if(auto blk = cast(CodeBlock) cell)
+			{
+				final switch(blk.type)
+				{
+					case CodeBlock.Type.block: 	{
+						blk.content.processHighLevelPatterns_optionalBlock; 
+						if(blk.content.isHighLevelBlock)
+						{ cell = new Declaration(blk); }
+					}	break; 
+					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
+					case CodeBlock.Type.list: 	{
+						blk.content.processHighLevelPatterns_goInside; 
+						processNiceExpression(cell); 
+					}	break; 
+				}
+			}
+			else if(auto str = cast(CodeString) cell)
+			{
+				if(str.type == CodeString.Type.tokenString)
+				str.content.processHighLevelPatterns_optionalBlock; 
+			}
+		}
+	} 
 	
 	void processHighLevelPatterns_optionalBlock(CodeColumn col_)
 	{
@@ -8107,7 +8092,10 @@ version(/+$DIDE_REGION+/all)
 			體
 			genericArg
 		+/
-	} private alias NET = NiceExpressionType; int getOperandCount(NiceExpressionType t)
+	} 
+	private alias NET = NiceExpressionType; 
+	
+	int getOperandCount(NiceExpressionType t)
 	{
 		with(NiceExpressionType)
 		final switch(t)
@@ -8116,7 +8104,9 @@ version(/+$DIDE_REGION+/all)
 			case binaryOp, castOp, mixinOp, namedUnaryOp: 	return 2; 
 			case tenaryOp: 	return 3; 
 		}
-	} struct NiceExpressionTemplate
+	} 
+	
+	struct NiceExpressionTemplate
 	{
 		string name; 
 		NiceExpressionType type; 
@@ -8293,7 +8283,6 @@ version(/+$DIDE_REGION+/all)
 				put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); 
 				super.rearrange; //Todo: make the final super.rearrange automatic!
 			}
-			
 		},
 		
 		{
@@ -8309,7 +8298,6 @@ version(/+$DIDE_REGION+/all)
 				put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
 				super.rearrange; 
 			}
-			
 		},
 		
 		{
@@ -8326,7 +8314,6 @@ version(/+$DIDE_REGION+/all)
 				super.rearrange; 
 				//Todo: align the condition centered
 			}
-			
 		},
 		
 		{
@@ -8379,7 +8366,6 @@ version(/+$DIDE_REGION+/all)
 			"舉",
 			q{buildMixinText(operator); },
 			q{arrangeMixin(structuredColor("enum"), ".", ""); }
-			
 		},
 		
 		{
@@ -8642,7 +8628,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		} 
-		
+		
 		override void buildSourceText(ref SourceTextBuilder builder)
 		{
 			with(builder) {
@@ -9485,6 +9471,48 @@ l2
 		{
 			const N = (cast(int)(x.length)); 
 			return (mixin(和!(q{n=0},q{N-1},q{x[n] * ((ℯ)^^(-i*2*π*((k)/(N))*n))}))); 
-		} 
+		} 
+		(
+			mixin(
+				格!(
+					(unused),q{
+						(expr+1)	"string"	q{
+							/+code+/	write("a"); 
+								writeln; 
+						}
+						
+						`hónap`	`hét`	`hétfô`	`kedd`	`szerda`	`csutortok`	`pentek`	`szombat`	`VASáRNAP`
+						"május"	"9. hét"	(22)	(23)	(24)	(25)	(26)	(27)	(28)
+						"május"	"10. hét"	(29)	(30)	(31)	(32)	(32)	(34)	(35)
+					}
+				)
+			)
+		); 
+		
+		(
+			mixin(
+				格!(
+					(unused),q{
+						(expr+1)	"string"	q{
+							/+code+/	write("a"); 
+								writeln; 
+						}
+						۱۲۳۴۵۶۷۸۹
+						
+						ўџѠѡѢѣѤѥѦѧѨѩѪѫѬѭѮѯѰѱѲѳѴѵѶѷѸѹѺѻѼѽѾѿҀҁ
+						
+						ʰʱʲʳʴʵʶʷʸ
+						
+						`hónap`	`hét`	`hétfô`	`kedd`	`szerda`	`csutortok`	`pentek`	`szombat`	`VASáRNAP`
+						"május"	"9. hét"	(22)	(23)	(24)	(25)	(26)	(27)	(28)
+						"május"	"10. hét"	(29)	(30)	(31)	(32)	(32)	(34)	(35)
+					}
+				)
+			)
+		); 
+		
+		
+		
+		
 	} 
 }
