@@ -9501,21 +9501,7 @@ l2
 						}
 						ʰ`hónap`	ʰ`hét`	ʰ`hétfô`	ʰ`kedd`	ʰ`szerda`	ʰ`csutortok`	ʰ`pentek`	ʰ`szombat`	ʰ`VASáRNAP`
 						ʰ"május"	ʰ"9. hét"	ʰ(22)	ʰ(23)	ʰ(24)	ʰ(25)	ʰ(26)	ʰ(27)	ʰ(28)
-						ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(
-							mixin(
-								格!(
-									(unused),q{
-										ʰ(expr+1)	ʰ"string"	ʰq{
-											/+code+/	write("a"); 
-												writeln; 
-										}
-										ʰ`hónap`	ʰ`hét`	ʰ`hétfô`	ʰ`kedd`	ʰ`szerda`	ʰ`csutortok`	ʰ`pentek`	ʰ`szombat`	ʰ`VASáRNAP`
-										ʰ"május"	ʰ"9. hét"	ʰ(22)	ʰ(23)	ʰ(24)	ʰ(25)	ʰ(26)	ʰ(27)	ʰ(28)
-										ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(32)	ʰ(32)	ʰ(34)	ʰ(35)
-									}
-								)
-							)
-						)	ʰ(32)	ʰ(34)	ʰ(35)
+						ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(32)	ʰ(32)	ʰ(34)	ʰ(35)
 					}
 				)
 			)
@@ -9523,6 +9509,137 @@ l2
 		
 		
 		
-		
+		{
+			import std; 
+			
+			enum tableStr = q{
+				ʰ(expr+1)	ʰ"string"	ʰq{
+					/+code+/	write("a"); 
+						writeln; 
+				}	ʰ/+this is a D comment+/
+				ʰ"hónap"	ʰ`hét`	ʰ`hétfô`	ʰ`kedd`	ʰ`szerda`	ʰ`csutortok`	ʰ`pentek`	ʰ`szombat`	ʰ`VASáRNAP`
+				ʰ"május"	ʰ"9. hét"	ʰ(22)	ʰ(23)	ʰ(24)	ʰ(25)	ʰ(26)	ʰ(27)	ʰ(28)
+				ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(32)	ʰ(32)	ʰ(34)	ʰ(35)
+				
+				ʰʰʰʰʰ    "end május"
+			}; 
+			
+			enum tableStr2 = q{
+				ʰ"Field"	ʰ"Type"	ʰ"Default"
+				ʰ(piros)	ʰ(ubyte)
+				ʰ(zold)	ʰ(ubyte)
+				ʰ(kek)	ʰ(ubyte)
+				ʰ(alpha)	ʰ(ubyte)	ʰ(255)
+			}; 
+			
+			struct MixinGridCell
+			{
+				enum Type { nothing, error, dComment, dString, cString, expr, code } 
+				enum typeFormats = ["", "$Error:`%s`", "/+%s+/", "`%s`", "\"%s\"", "(%s)", "q{%s}"]; 
+				
+				Type type; 
+				int endingNewLineCount; 
+				string content; 
+				
+				this(string src)
+				{
+					//strip on both sides, count the newlines.
+					src = src.stripLeft; 
+					while(src.length) {
+						if(const idx = src[$-1].among('\n', ' ', '\t','\r', '\v','\f'))
+						{
+							if(idx==1) endingNewLineCount++; 
+							src = src[0..$-1]; 
+							continue; 
+						}
+						break; 
+					}
+					
+					if(src.empty)
+					{ type = Type.nothing; }
+					else
+					{
+						switch(src[0])
+						{
+							void extract(string st, string en, Type t)
+							{
+								if(src.startsWith(st) && src[st.length..$].endsWith(en))
+								{
+									type = t; 
+									content = src[st.length .. $-en.length]; 
+								}
+								else
+								{
+									type = Type.error; 
+									content = "Bad cell format ("~t.text~")"; 
+								}
+							} 
+							
+							case '/': extract("/+", "+/", Type.dComment); 	break; 
+							case '`': extract("`", "`", Type.dString); 	break; 
+							case '"': extract(`"`, `"`, Type.cString); 	break; 
+							case '(': extract("(", ")", Type.expr); 	break; 
+							case 'q': extract("q{", "}", Type.code); 	break; 
+							default: type = Type.error; content = format!"Unknown cell format. (%s)"(src.take(10).text); 
+						}
+					}
+				} 
+				
+				string outer() const
+				{
+					//this is for debugging:  Take all these strings, prepend each with the special char 0x02B0 and join.
+					const fmt = typeFormats[type]; 
+					return (type==Type.nothing ? fmt : format(fmt, content)); 
+				} 
+				
+				string inner() const
+				{ return content; } 
+				
+				string toString() const
+				{ return inner; } 
+				
+			} 
+			
+			struct MixinGrid
+			{
+				MixinGridCell[][] cells; 
+				
+				this(string src)
+				{
+					foreach(c; src.splitter('ʰ').drop(1).map!MixinGridCell)
+					{
+						if(cells.empty) cells.length=1; 
+						cells.back ~= c; 
+						cells.length += c.endingNewLineCount; 
+					}
+					
+					if(cells.length && cells.back.empty) cells.length--; 
+				} 
+				
+				string toString() const
+				{ return cells.map!(row => row.map!(cell => `ʰ`~cell.outer).join('\t')).join('\n')~'\n'; } 
+			} 
+			
+			enum grid = tableStr.MixinGrid.text.MixinGrid.text.MixinGrid; 
+			
+			void main()
+			{
+				grid.writeln; 
+				
+				enum code = 	"struct MyStruct{ " ~ 
+						tableStr2.MixinGrid.cells[1..$].map!(
+					r=>	format!"%s %s%s;"
+						(r[1], r[0], r.length>2 ? "="~r[2].inner : "")
+				).join ~ 
+					" }\n"; 
+				
+				writeln(code); 
+				
+				mixin(code); 
+				
+				MyStruct().writeln; 
+				
+			} 
+		}
 	} 
 }
