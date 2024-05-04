@@ -9489,23 +9489,33 @@ l2
 			)
 		); 
 		
+		/+Specual chars for tgrid mixin: 0x2B0: ʰʱʲʳʴʵʶʷʸ+/
+		
 		(
 			mixin(
 				格!(
 					(unused),q{
-						(expr+1)	"string"	q{
+						ʰ(expr+1)	ʰ"string"	ʰq{
 							/+code+/	write("a"); 
 								writeln; 
 						}
-						۱۲۳۴۵۶۷۸۹
-						
-						ўџѠѡѢѣѤѥѦѧѨѩѪѫѬѭѮѯѰѱѲѳѴѵѶѷѸѹѺѻѼѽѾѿҀҁ
-						
-						ʰʱʲʳʴʵʶʷʸ
-						
-						`hónap`	`hét`	`hétfô`	`kedd`	`szerda`	`csutortok`	`pentek`	`szombat`	`VASáRNAP`
-						"május"	"9. hét"	(22)	(23)	(24)	(25)	(26)	(27)	(28)
-						"május"	"10. hét"	(29)	(30)	(31)	(32)	(32)	(34)	(35)
+						ʰ`hónap`	ʰ`hét`	ʰ`hétfô`	ʰ`kedd`	ʰ`szerda`	ʰ`csutortok`	ʰ`pentek`	ʰ`szombat`	ʰ`VASáRNAP`
+						ʰ"május"	ʰ"9. hét"	ʰ(22)	ʰ(23)	ʰ(24)	ʰ(25)	ʰ(26)	ʰ(27)	ʰ(28)
+						ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(
+							mixin(
+								格!(
+									(unused),q{
+										ʰ(expr+1)	ʰ"string"	ʰq{
+											/+code+/	write("a"); 
+												writeln; 
+										}
+										ʰ`hónap`	ʰ`hét`	ʰ`hétfô`	ʰ`kedd`	ʰ`szerda`	ʰ`csutortok`	ʰ`pentek`	ʰ`szombat`	ʰ`VASáRNAP`
+										ʰ"május"	ʰ"9. hét"	ʰ(22)	ʰ(23)	ʰ(24)	ʰ(25)	ʰ(26)	ʰ(27)	ʰ(28)
+										ʰ"május"	ʰ"10. hét"	ʰ(29)	ʰ(30)	ʰ(31)	ʰ(32)	ʰ(32)	ʰ(34)	ʰ(35)
+									}
+								)
+							)
+						)	ʰ(32)	ʰ(34)	ʰ(35)
 					}
 				)
 			)
