@@ -8014,7 +8014,7 @@ version(/+$DIDE_REGION+/all)
 					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
 					case CodeBlock.Type.list: 	{
 						blk.content.processHighLevelPatterns_goInside; 
-						processNiceExpression(cell); 
+						processNiceExpression(cell); /+Note: depth first recursion+/
 					}	break; 
 				}
 			}
@@ -8065,14 +8065,15 @@ version(/+$DIDE_REGION+/all)
 {
 	enum NiceExpressionType : ubyte
 	{
-		//Todo: no need to type 'Op' all the time
+		
 		
 		unaryOp,
 		binaryOp,
 		tenaryOp,
 		castOp,
+		namedUnaryOp,
 		mixinOp,
-		namedUnaryOp
+		binaryTokenStringOp
 		/+
 			Code: Source form:
 			
@@ -8080,17 +8081,19 @@ version(/+$DIDE_REGION+/all)
 			((expr)op(expr))
 			((expr)op(expr)op(expr))
 			(op(expr)(expr))
-			(mixin(op!((expr),q{code})))
 			((expr)opq{code})
+			(mixin(op!((expr),q{code})))
+			(op(q{},q{}))
 		+//+
 			Note: Example:
 			
-			sqrt normalize RGB
+			sqrt RGB
 			^^  .pow
 			?:
 			cast
-			體
 			genericArg
+			體 (EnumFields, StructInitializer)
+			表! (MixinTable)
 		+/
 	} 
 	private alias NET = NiceExpressionType; 
@@ -8101,7 +8104,7 @@ version(/+$DIDE_REGION+/all)
 		final switch(t)
 		{
 			case unaryOp: 	return 1; 
-			case binaryOp, castOp, mixinOp, namedUnaryOp: 	return 2; 
+			case binaryOp, castOp, mixinOp, namedUnaryOp, binaryTokenStringOp: 	return 2; 
 			case tenaryOp: 	return 3; 
 		}
 	} 
@@ -8176,6 +8179,48 @@ version(/+$DIDE_REGION+/all)
 			"RGBA",
 			q{put(operator); op(0); },
 			q{arrangeRGB; }
+		},
+		
+		
+		{
+			"mixinTable", 
+			NET.binaryTokenStringOp, 
+			skIdentifier1, 2,
+			q{
+				(
+					表!(
+						q{
+							ʰ"Field"	ʰ`Type`	ʰ"Default"	ʰ/+dComment+/
+							ʰ(piros)	ʰ(ubyte)	ʰ	ʰ(expr+1)
+							ʰ(zold)	ʰ(ubyte)	ʰ	ʰq{code(); }
+							ʰ(kek)	ʰ(ubyte)	ʰ	ʰ"cString\n"
+							ʰ(alpha)	ʰ(ubyte)	ʰ(255)	ʰ`dString\`
+						},q{
+							return cells[1..$]
+							.map!(
+								r=>format!"%s %s%s;"
+								(
+									r[1], r[0], 
+									r.length>2 	? "="~r[2].inner 
+										: ""
+								)
+							)
+							.join; 
+						}
+					)
+				)
+			},
+			"表!",
+			q{
+				//Todo: error handling for both operands! They must be in D syntax!
+				put(operator); put('('); 
+				put("q{", operands[0], "}"); 
+				put(','); 
+				put("q{", operands[1], "}"); 
+				put(')'); 
+			},
+			q{arrangeMixinTable; },
+			q{}
 		},
 		
 		{
@@ -8541,11 +8586,29 @@ version(/+$DIDE_REGION+/all)
 				else
 				{
 					{
-						/+Note: unaryOp: (op(expr))+/
+						//Note: unaryOp (op(expr))
 						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op))
 						{
 							outerCell = new NiceExpression(blk.parent, tIdx, right.content); 
 							return; 
+						}
+					}
+					{
+						//Note: binaryTokenStringOp (op(q{},q{}))
+						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
+						{
+							if(
+								right.content.rowCount==1 &&
+								right.content.rows[0].cellCount==3
+							)
+							if(auto innerLeft = cast(CodeString)right.content.rows[0].subCells[0])
+							if(right.content.rows[0].chars[1]==',')
+							if(auto innerRight = cast(CodeString)right.content.rows[0].subCells[2])
+							if(innerLeft.isTokenString && innerRight.isTokenString)
+							{
+								outerCell = new NiceExpression(blk.parent, tIdx, innerLeft.content, innerRight.content); 
+								return; 
+							}
 						}
 					}
 				}
@@ -8796,6 +8859,47 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
+					super.rearrange; 
+				} 
+				
+				void arrangeMixinTable()
+				{
+					put("Experimental Table Mixin"); 	putNL; 
+					
+					static isSeparator(Cell c)
+					{
+						const g = cast(Glyph)c; 
+						return g && g.ch=='ʰ'; 
+					} 
+					static isValidContainer(Cell c)
+					{
+						auto cntr = cast(CodeContainer)c; 
+						return cntr && cntr.prefix.among("(", "q{", "\"", "`", "/+"); 
+					} 
+					
+					auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
+					foreach(row; operands[0].rows)
+					{
+						if(row.subCells.canFind!isSeparator)
+						{
+							auto old = row.subCells; 
+							row.clearSubCells; //it clears tabIdx too.
+							foreach(a; old.splitter!isSeparator.drop(1))
+							{
+								auto c = a.frontOrNull; 
+								if(isValidContainer(c))	row.appendCell(c); 
+								else	row.appendCodeChar(' ', ts, sk); 
+							}
+						}
+						else
+						{}
+					}
+					
+					
+					put("\tTable"); 	putNL; 
+					put("\t"); op(0); 	putNL; 
+					put("\tScript"); 	putNL; 
+					put("\t"); op(1); 
 					super.rearrange; 
 				} 
 				
@@ -9507,6 +9611,20 @@ l2
 			)
 		); 
 		
+		mixin(
+			(
+				XXX!(
+					q{
+						ʰ"Field"	ʰ"Type"	ʰ"Default"
+						ʰ(piros)	ʰ(ubyte)
+						ʰ(zold)	ʰ(ubyte)
+						ʰ(kek)	ʰ(ubyte)
+						ʰ(alpha)	ʰ(ubyte)	ʰ(255)
+					},q{return cells[1..$]	.map!(r=>format!"%s %s%s;"(r[1], r[0], r.length>2 ? "="~r[2].inner : "")).join; }
+				)
+			)
+		); 
+		
 		
 		
 		{
@@ -9532,114 +9650,9 @@ l2
 				ʰ(alpha)	ʰ(ubyte)	ʰ(255)
 			}; 
 			
-			struct MixinGridCell
-			{
-				enum Type { nothing, error, dComment, dString, cString, expr, code } 
-				enum typeFormats = ["", "$Error:`%s`", "/+%s+/", "`%s`", "\"%s\"", "(%s)", "q{%s}"]; 
-				
-				Type type; 
-				int endingNewLineCount; 
-				string content; 
-				
-				this(string src)
-				{
-					//strip on both sides, count the newlines.
-					src = src.stripLeft; 
-					while(src.length) {
-						if(const idx = src[$-1].among('\n', ' ', '\t','\r', '\v','\f'))
-						{
-							if(idx==1) endingNewLineCount++; 
-							src = src[0..$-1]; 
-							continue; 
-						}
-						break; 
-					}
-					
-					if(src.empty)
-					{ type = Type.nothing; }
-					else
-					{
-						switch(src[0])
-						{
-							void extract(string st, string en, Type t)
-							{
-								if(src.startsWith(st) && src[st.length..$].endsWith(en))
-								{
-									type = t; 
-									content = src[st.length .. $-en.length]; 
-								}
-								else
-								{
-									type = Type.error; 
-									content = "Bad cell format ("~t.text~")"; 
-								}
-							} 
-							
-							case '/': extract("/+", "+/", Type.dComment); 	break; 
-							case '`': extract("`", "`", Type.dString); 	break; 
-							case '"': extract(`"`, `"`, Type.cString); 	break; 
-							case '(': extract("(", ")", Type.expr); 	break; 
-							case 'q': extract("q{", "}", Type.code); 	break; 
-							default: type = Type.error; content = format!"Unknown cell format. (%s)"(src.take(10).text); 
-						}
-					}
-				} 
-				
-				string outer() const
-				{
-					//this is for debugging:  Take all these strings, prepend each with the special char 0x02B0 and join.
-					const fmt = typeFormats[type]; 
-					return (type==Type.nothing ? fmt : format(fmt, content)); 
-				} 
-				
-				string inner() const
-				{ return content; } 
-				
-				string toString() const
-				{ return inner; } 
-				
-			} 
+			
 			
-			struct MixinGrid
-			{
-				MixinGridCell[][] cells; 
-				
-				this(string src)
-				{
-					foreach(c; src.splitter('ʰ').drop(1).map!MixinGridCell)
-					{
-						if(cells.empty) cells.length=1; 
-						cells.back ~= c; 
-						cells.length += c.endingNewLineCount; 
-					}
-					
-					if(cells.length && cells.back.empty) cells.length--; 
-				} 
-				
-				string toString() const
-				{ return cells.map!(row => row.map!(cell => `ʰ`~cell.outer).join('\t')).join('\n')~'\n'; } 
-			} 
 			
-			enum grid = tableStr.MixinGrid.text.MixinGrid.text.MixinGrid; 
-			
-			void main()
-			{
-				grid.writeln; 
-				
-				enum code = 	"struct MyStruct{ " ~ 
-						tableStr2.MixinGrid.cells[1..$].map!(
-					r=>	format!"%s %s%s;"
-						(r[1], r[0], r.length>2 ? "="~r[2].inner : "")
-				).join ~ 
-					" }\n"; 
-				
-				writeln(code); 
-				
-				mixin(code); 
-				
-				MyStruct().writeln; 
-				
-			} 
 		}
 	} 
 }
