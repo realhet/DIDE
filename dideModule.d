@@ -2372,7 +2372,6 @@ class CodeRow: Row
 		
 		void adjustCharWidths()
 		{
-			
 			bool isLeading = true; 
 			foreach(g; glyphs)
 			if(g)
@@ -2385,7 +2384,7 @@ class CodeRow: Row
 				{
 					setWidth(
 						isLeading 	? LeadingSpaceWidth
-												: NormalSpaceWidth
+							: NormalSpaceWidth
 					); 
 				}
 				else
@@ -2394,7 +2393,7 @@ class CodeRow: Row
 					
 					//non-leading char width modifications
 					if(
-						g.syntax==5 && g.ch!='.'	//number except '.'
+						g.syntax==skNumber && g.ch!='.'	//number except '.'
 						|| g.ch.among('+', '-', '_')	//symbols next to numbers
 						/*|| g.syntax==6/+string+/*/
 						/+Bug: Write a number in front of an identifier! It turns all the identifier to monospace.+/
@@ -2403,8 +2402,6 @@ class CodeRow: Row
 			}
 			else
 			{ isLeading = false; }
-			
-			//foreach(g; glyphs) g.outerWidth = NormalSpaceWidth; //monospace everything
 		} 
 		
 		private void spaceToTab(long i)
@@ -2494,7 +2491,6 @@ class CodeRow: Row
 				
 				xRange = bounds1.init; //nothing to fill
 			} 
-			
 		} 
 		
 		ref avgColor()
@@ -3041,7 +3037,8 @@ class CodeRow: Row
 	
 	bool edited; //this column is marked, so it can be syntax checked before saving.
 	
-	bool halfSize; 
+	bool 	halfSize, 
+		isTable /+Todo: This should be placed inside het.ui.Column -> more reusability+/; 
 	
 	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
@@ -3250,21 +3247,151 @@ class CodeRow: Row
 	
 	void convertSpacesToTabs(Flag!"outdent" outdent)
 	{
+		void createElasticTabs()
+		{
+			//const t0=QPS; scope(exit) print(QPS-t0);
+			
+			bool detectTab(int x, int y)
+			{
+				if(cast(uint)y >= rowCount) return false; 
+				with(rows[y])
+				{
+					if(cast(uint)x >= cellCount) return false; 
+					return isCodeSpaces[x] && (x+1 >= cellCount || !isCodeSpaces[x+1]); 
+				}
+			} 
+			
+			bool[long] visited; 
+			
+			static struct TabInfo { int y, xStart, xTab; } 
+			TabInfo[] newTabs; 
+			
+			void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount)
+			{
+				if(!canGoDown && !canGoUp) return; 
+				
+				//assume: x, y is a valid tab position
+				if(visited.get(x+(long(y)<<32))) return; 
+				
+				int y0 = y; 	 if(canGoUp) while(y0 > 0	&& detectTab(x, y0-1)) y0--; 
+				int y1 = y; 	 if(canGoDown) while(y1 < rowCount-1	&& detectTab(x, y1+1)) y1++; 
+				
+				int maxLen = 0, minLen = int.max; 
+				if(y0<y1)
+				foreach(yy; y0..y1+1)
+				with(rows[yy]) {
+					visited[x+(long(yy)<<32)] = true; 
+					
+					int x0 = x; while(x0 > 0 && isCodeSpaces[x0-1]) x0--; 
+					int x1 = x; 
+					
+					int len = x1-x0+1; 
+					maxLen.maximize(len); 
+					minLen.minimize(len); 
+				}
+				
+				if(maxLen>1)
+				{
+					
+					int xStartMin = 0; 
+					if(!canGoUp) xStartMin = leadingSpaceCount.to!int; 
+					//ez egy behuzas. Nem mehet balrabb a tab, mint a legfelso sor indent-je.
+					
+					//if(xStartMin>0) "------------------".print;
+					
+					foreach(yy; y0..y1+1)
+					with(rows[yy]) {
+						int xStart	= x; while(xStart > xStartMin && isCodeSpaces[xStart-1]) xStart--; 
+						int xTab	= x+1-minLen; 
+						
+						newTabs ~= TabInfo(yy, xStart, xTab); 
+						
+						//if(xStartMin>0) print(lines[yy].text, "         ", newTabs.back);
+					}
+				}
+			} 
+			
+			//scan through all the rows and initiate floodFills
+			foreach(y, row; rows)
+			with(row) {
+				int st = 0; 
+				foreach(isSpace, len; isCodeSpaces.group)
+				{
+					const en = st + cast(int)len; 
+					
+					if(isSpace && st>0)
+					{
+						bool canGoUp, canGoDown; 
+						
+						if(len==1 && st>0 && chars[st-1].among('[', '('))
+						{
+							canGoDown = true; 
+							//Todo: the tabs below this one should inherit the indent of this first line
+						}
+						else
+						{ canGoUp = canGoDown = canGoDown = len>=2; }
+						
+						/+
+							const leftChar = st>0 ? chars[st-1] : '\0';
+							const rightChar = en+1<len ? chars[en+1] : '\0';
+							if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;
+						+/
+						
+						flood(en-1, cast(int)y, canGoUp, canGoDown, leadingCodeSpaceCount); 
+					}
+					
+					st = en; 
+				}
+			}
+			
+			//replace spaces with tabs
+			auto sortedTabs = newTabs.sort!((a, b) => cmpChain(cmp(a.y, b.y), cmp(b.xTab, a.xTab))<0); //x is descending!!
+			
+			int idx; 
+			foreach(const tabInfo; sortedTabs)
+			with(rows[tabInfo.y]) {
+				
+				//tabs on the previous line will split this tab if it is long enough
+				auto tabsOnPrevLine = sortedTabs[0..idx]	.retro
+					.until!(t => t.y< tabInfo.y-1)
+					.filter!(t => t.y==tabInfo.y-1); 
+				auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1)); 
+				const tabCount = 1 + splitThisTabAt.walkLength; 
+				//print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
+				replaceSpacesWithTabs(tabInfo.xStart, tabInfo.xTab, tabCount); 
+				
+				idx++; 
+			}
+			
+			//Todo: bug with labels: c:\D\ldc2\import\std\internal\math\biguintcore.d search-> div3by2correction
+			
+		} 
+		
 		//remove the 2 stylistic spaces at the front and back, in a single row block. { a; }
 		if(outdent && rows.length==1)
 		with(rows.front)
-		if(isCodeSpaces.length >= 3)
-		if(
-			isCodeSpaces[0] && !isCodeSpaces[1] && 
-			isCodeSpaces[$-1] && !isCodeSpaces[$-2] &&
-			chars[$-2].among(';', ':', compoundObjectChar)
-			/+This tries to detect single line codes.+/
-		) {
-			subCells = subCells[1..$-1]; 
-			refreshTabIdx; 
-			//LOG("#############", chars); 
+		{
+			if(isCodeSpaces.length>=3 && isCodeSpaces[0] && !isCodeSpaces[1])
+			{
+				if((cast(CodeComment)(subCells.back)))	{
+					//remove only the front space
+					subCells = subCells[1..$]; 
+					refreshTabIdx; 
+				}
+				else if(
+					isCodeSpaces[$-1]
+					&& !isCodeSpaces[$-2]
+					&& chars[$-2].among(
+						';', ':', 
+						compoundObjectChar
+					)
+				)	{
+					//remove both spaces at front and back
+					subCells = subCells[1..$-1]; 
+					refreshTabIdx; 
+				}
+			}
 		}
-		
 		
 		//Todo: this can only be called after the rows were created. Because it doesn't call needMeasure_elastic()
 		createElasticTabs; 
@@ -3281,33 +3408,44 @@ class CodeRow: Row
 			if(outdent)
 			{
 				
-				//Todo: refactor it into CodeRow
-				static bool isWhitespaceRow(CodeRow r)
+				static isCodeWhitespaceGlyph(Glyph g)
 				{
-					return r.subCells.empty || r.subCells.all!(
-						(c){
-							if(auto g = cast(Glyph)c)
-							if(g.ch.isDLangWhitespace && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return true; 
-							return false; 
-						}
+					return g.ch.isDLangWhitespace && g.syntax.among(
+						0/+whitespace+/,
+						9/+comment+/
 					); 
+				} 
+				
+				static isCodeWhitespaceCell(Cell c)
+				{
+					if(auto g = cast(Glyph)c)
+					if(isCodeWhitespaceGlyph(g)) return true; 
+					return false; 
+				} 
+				
+				//Todo: refactor it into CodeRow
+				static bool isCodeWhitespaceRow(CodeRow r)
+				{
+					return r.subCells.empty || r.subCells.all!isCodeWhitespaceCell; 
 					//return r.leadingCodeTabCount<r.cellCount; 
 				} 
 				
 				//remove first and last whitespace row
-				const firstRowRemoved = subCells.length>1 && isWhitespaceRow(rows.front); 	if(firstRowRemoved) subCells.popFront; 
-				const lastRowRemoved = subCells.length>1 && isWhitespaceRow(rows.back); 	if(lastRowRemoved) subCells.popBack; 
+				const firstRowRemoved = 	subCells.length>1 && 
+					isCodeWhitespaceRow(rows.front); 	if(firstRowRemoved)
+				subCells.popFront; 
+				const lastRowRemoved = 	subCells.length>1 && 
+					isCodeWhitespaceRow(rows.back); 	if(lastRowRemoved)
+				subCells.popBack; 
 				
 				//only rows that not only tabs are relevant
-				bool relevant(CodeRow r)
+				static bool isRelevantRow(CodeRow r)
 				{
-					return r.subCells.any!(
+					return r.subCells.any!
+					(
 						(c){
 							//non-stringLiteral whitespace is irrelevant
-							if(auto g = cast(Glyph)c) {
-								if(g.ch.among(' ', '\t') && g.syntax.among(0/+whitespace+/, 9/+comment+/)) return false; 
-								return true; 
-							}
+							if(auto g = cast(Glyph)c) { return !isCodeWhitespaceGlyph(g); }
 							
 							enum commentsAreRelevant = true; 
 							if(!commentsAreRelevant && cast(CodeComment)c) return false; 
@@ -3339,20 +3477,30 @@ class CodeRow: Row
 				{ return row.leadingCodeTabCount > row.codeTabCount; } 
 				
 				//find minimum amount of tabs
-				const canIgnoreFirstRow = !firstRowRemoved && (canBeStatement(rows.front) || rows.front.isWhitespaceOrComment || hasNonLeadingTab(rows.front)) && rows.drop(1).any!relevant; 
-				auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!relevant; 
+				const canIgnoreFirstRow = 	!firstRowRemoved
+					&& (
+					canBeStatement(rows.front) || 
+					rows.front.isWhitespaceOrComment || 
+					hasNonLeadingTab(rows.front)
+				)
+					&& rows.drop(1).any!isRelevantRow; 
+				
+				auto relevantRows = rows.drop(int(canIgnoreFirstRow)).filter!isRelevantRow; 
 				if(!relevantRows.empty)
 				{
 					const numTabs = relevantRows.map!"a.leadingCodeTabCount".minElement; 
 					
 					/+
-						Todo: If there is an unsure situation, the an earlier numTabs value should be used to cut off tabs depending on the outer successful block.
-						<- these tabse are a good example. The numTabs values must be stored in an stack outside.
+						Todo: If there is an unsure situation, the an earlier numTabs value should be 
+						used to cut off tabs depending on the outer successful block.
+						<- these tabse are a good example. The numTabs values must be 
+						stored in an stack outside.
 					+/
 					
 					if(numTabs)
 					foreach(r; rows)
-					if(r.leadingCodeTabCount>=numTabs) {
+					if(r.leadingCodeTabCount>=numTabs)
+					{
 						r.subCells = r.subCells[numTabs..$]; 
 						r.refreshTabIdx; 
 						/+
@@ -3360,6 +3508,7 @@ class CodeRow: Row
 							It's in convertSpacesToTabs which only kicks right after row creation.
 						+/
 					}
+					
 				}
 				else
 				{
@@ -3376,127 +3525,6 @@ class CodeRow: Row
 		}
 		
 		needMeasure; 
-	} 
-	
-	
-	void createElasticTabs()
-	{
-		//const t0=QPS; scope(exit) print(QPS-t0);
-		
-		bool detectTab(int x, int y)
-		{
-			if(cast(uint)y >= rowCount) return false; 
-			with(rows[y])
-			{
-				if(cast(uint)x >= cellCount) return false; 
-				return isCodeSpaces[x] && (x+1 >= cellCount || !isCodeSpaces[x+1]); 
-			}
-		} 
-		
-		bool[long] visited; 
-		
-		static struct TabInfo { int y, xStart, xTab; } 
-		TabInfo[] newTabs; 
-		
-		void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount)
-		{
-			if(!canGoDown && !canGoUp) return; 
-			
-			//assume: x, y is a valid tab position
-			if(visited.get(x+(long(y)<<32))) return; 
-			
-			int y0 = y; 	 if(canGoUp) while(y0 > 0	&& detectTab(x, y0-1)) y0--; 
-			int y1 = y; 	 if(canGoDown) while(y1 < rowCount-1	&& detectTab(x, y1+1)) y1++; 
-			
-			int maxLen = 0, minLen = int.max; 
-			if(y0<y1)
-			foreach(yy; y0..y1+1)
-			with(rows[yy]) {
-				visited[x+(long(yy)<<32)] = true; 
-				
-				int x0 = x; while(x0 > 0 && isCodeSpaces[x0-1]) x0--; 
-				int x1 = x; 
-				
-				int len = x1-x0+1; 
-				maxLen.maximize(len); 
-				minLen.minimize(len); 
-			}
-			
-			if(maxLen>1)
-			{
-				
-				int xStartMin = 0; 
-				if(!canGoUp) xStartMin = leadingSpaceCount.to!int; 
-				//ez egy behuzas. Nem mehet balrabb a tab, mint a legfelso sor indent-je.
-				
-				//if(xStartMin>0) "------------------".print;
-				
-				foreach(yy; y0..y1+1)
-				with(rows[yy]) {
-					int xStart	= x; while(xStart > xStartMin && isCodeSpaces[xStart-1]) xStart--; 
-					int xTab	= x+1-minLen; 
-					
-					newTabs ~= TabInfo(yy, xStart, xTab); 
-					
-					//if(xStartMin>0) print(lines[yy].text, "         ", newTabs.back);
-				}
-			}
-		} 
-		
-		//scan through all the rows and initiate floodFills
-		foreach(y, row; rows)
-		with(row) {
-			int st = 0; 
-			foreach(isSpace, len; isCodeSpaces.group)
-			{
-				const en = st + cast(int)len; 
-				
-				if(isSpace && st>0)
-				{
-					bool canGoUp, canGoDown; 
-					
-					if(len==1 && st>0 && chars[st-1].among('[', '('))
-					{
-						canGoDown = true; 
-						//Todo: the tabs below this one should inherit the indent of this first line
-					}
-					else
-					{ canGoUp = canGoDown = canGoDown = len>=2; }
-					
-					/+
-						const leftChar = st>0 ? chars[st-1] : '\0';
-						const rightChar = en+1<len ? chars[en+1] : '\0';
-						if(!(leftChar.isSymbol || rightChar.isSymbol)) canGoUp = canGoDown = false;
-					+/
-					
-					flood(en-1, cast(int)y, canGoUp, canGoDown, leadingCodeSpaceCount); 
-				}
-				
-				st = en; 
-			}
-		}
-		
-		//replace spaces with tabs
-		auto sortedTabs = newTabs.sort!((a, b) => cmpChain(cmp(a.y, b.y), cmp(b.xTab, a.xTab))<0); //x is descending!!
-		
-		int idx; 
-		foreach(const tabInfo; sortedTabs)
-		with(rows[tabInfo.y]) {
-			
-			//tabs on the previous line will split this tab if it is long enough
-			auto tabsOnPrevLine = sortedTabs[0..idx]	.retro
-				.until!(t => t.y< tabInfo.y-1)
-				.filter!(t => t.y==tabInfo.y-1); 
-			auto splitThisTabAt = tabsOnPrevLine.map!"a.xTab".filter!(a => a.inRange(tabInfo.xStart, tabInfo.xTab-1)); 
-			const tabCount = 1 + splitThisTabAt.walkLength; 
-			//print("act", tabInfo, "splitAt", splitAt, "extra tabs", splitAt.walkLength);
-			replaceSpacesWithTabs(tabInfo.xStart, tabInfo.xTab, tabCount); 
-			
-			idx++; 
-		}
-		
-		//Todo: bug with labels: c:\D\ldc2\import\std\internal\math\biguintcore.d search-> div3by2correction
-		
 	} 
 	
 	void resyntax()
@@ -3731,7 +3759,10 @@ class CodeRow: Row
 				y += r.innerHeight+totalGap.y; 
 			}
 			
-			processElasticTabs(cast(Cell[])rows); //Opt: apply this to a subset that has been remeasured
+			if(isTable)
+			{ LOG("TABLE"); }
+			else
+			{ processElasticTabs(cast(Cell[])rows); /+Opt: apply this to a subset that has been remeasured+/}
 			
 			const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement; 
 			innerSize = vec2(maxInnerWidth + totalGap.x, y); 
@@ -3740,7 +3771,7 @@ class CodeRow: Row
 				information is lost. And there is no functions to return the required content size.
 				The container should have a current size, a minimal required size and separate autoWidth flags.
 			+/
-				
+			
 			if(!flags.dontStretchSubCells)
 			foreach(r; rows) r.innerWidth = maxInnerWidth; 
 			
@@ -3749,7 +3780,7 @@ class CodeRow: Row
 			{
 				if(getStructureLevel >= StructureLevel.structured)
 				{
-						static bool isBreakRow(Row r)
+					static bool isBreakRow(Row r)
 					{
 						//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
 						if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/; 
@@ -3760,7 +3791,7 @@ class CodeRow: Row
 				}
 			}
 		}
-			
+		
 		static if(rearrangeLOG) LOG("rearranging", this); 
 	} 
 	
@@ -4373,7 +4404,11 @@ version(/+$DIDE_REGION+/all)
 	Container parent; 
 	
 	int lineIdx; 
-	bool alwaysOnBottom; 
+	bool 	alwaysOnBottom, 
+		nodeRearrangeWasCalled/+
+		This can used to track if rearrange was called or not.
+		NiceExpression uses it.
+	+/; 
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
@@ -4408,11 +4443,11 @@ version(/+$DIDE_REGION+/all)
 		id = this.identityStr; 
 		
 		needMeasure; //enables on-demand measure
-		flags.wordWrap	= false; 
-		flags.clipSubCells	= true; 
-		flags.cullSubCells	= true; 
-		flags.rowElasticTabs	= true; 
-		flags.dontHideSpaces	= true; 
+		flags.wordWrap	= false,
+		flags.clipSubCells	= true,
+		flags.cullSubCells	= true,
+		flags.rowElasticTabs	= true,
+		flags.dontHideSpaces 	= true; 
 		
 		this.setRoundBorder(8); 
 		margin = "0.5"; 
@@ -4511,6 +4546,8 @@ version(/+$DIDE_REGION+/all)
 		
 		super.rearrange; 
 		static if(rearrangeLOG) LOG("rearranging", this); 
+		
+		nodeRearrangeWasCalled = true; //signal rearrange() completion
 	} 
 	
 	override void draw(Drawing dr)
@@ -4660,7 +4697,10 @@ version(/+$DIDE_REGION+/all)
 		return res; 
 	} 
 	
-	final void rearrange_node() { super.rearrange; } 
+	
+	protected final void rearrange_node()
+	{ super.rearrange; } 
+	
 	
 	override void rearrange()
 	{
@@ -6585,6 +6625,8 @@ version(/+$DIDE_REGION+/all)
 					
 					//Todo: put a space before 'else;   ->    if(1) { a; }else b;  
 					//Todo: put a space after 'else'  if it is followed by an alphaNumeric char. -> that's compilation error
+					//Todo: if(a//comment){}  <- this comment fails.
+					
 					
 					if(canHaveHeader)
 					{
@@ -8067,12 +8109,12 @@ version(/+$DIDE_REGION+/all)
 	{
 		
 		
-		unaryOp,
-		binaryOp,
-		tenaryOp,
-		castOp,
-		namedUnaryOp,
-		mixinOp,
+		unaryOp, 
+		binaryOp, 
+		tenaryOp, 
+		castOp, 
+		namedUnaryOp, 
+		mixinOp, 
 		binaryTokenStringOp
 		/+
 			Code: Source form:
@@ -8148,7 +8190,7 @@ version(/+$DIDE_REGION+/all)
 			q{(magnitude(a))},
 			"magnitude",
 			q{put(operator); op(0); },
-			q{put("\u007C"); op(0); put("\u007C"); super.rearrange; }
+			q{put("\u007C"); op(0); put("\u007C"); }
 		},
 		
 		{
@@ -8158,7 +8200,7 @@ version(/+$DIDE_REGION+/all)
 			q{(normalize(a))},
 			"normalize",
 			q{put(operator); op(0); },
-			q{put("\u007C\u007C"); op(0); put("\u007C\u007C"); super.rearrange; }
+			q{put("\u007C\u007C"); op(0); put("\u007C\u007C"); }
 		},
 		
 		{
@@ -8190,19 +8232,18 @@ version(/+$DIDE_REGION+/all)
 				(
 					表!(
 						q{
-							ʰ"Field"	ʰ`Type`	ʰ"Default"	ʰ/+dComment+/
-							ʰ(piros)	ʰ(ubyte)	ʰ	ʰ(expr+1)
-							ʰ(zold)	ʰ(ubyte)	ʰ	ʰq{code(); }
-							ʰ(kek)	ʰ(ubyte)	ʰ	ʰ"cString\n"
-							ʰ(alpha)	ʰ(ubyte)	ʰ(255)	ʰ`dString\`
+							/+Error: "Field"`Type`"Default"/ +dComment+ /+/Unclosed structure: [structuredBlock, dComment, unstructured]+/+/
+							/+Error: / +Error: r"💩"+ /(piros)(ubyte)/ +Error: 1+1='💩'+ /(expr+1)+/
+							/+Error: (zold)(ubyte) q{code(); }+/
+							/+Error: (kek)(ubyte) "cString\n"+/
+							/+Error: (alpha)(ubyte)(255)/ +Error: `dString\`//💩+ /+/Unclosed structure: [structuredBlock, dComment, unstructured]+/+/
 						},q{
 							return cells[1..$]
 							.map!(
 								r=>format!"%s %s%s;"
 								(
 									r[1], r[0], 
-									r.length>2 	? "="~r[2].inner 
-										: ""
+									((r.length>2)?("="~r[2].inner):(""))
 								)
 							)
 							.join; 
@@ -8222,6 +8263,25 @@ version(/+$DIDE_REGION+/all)
 			q{arrangeMixinTable; },
 			q{}
 		},
+		
+		//Todo: HalfSize or other components.  Index and blocks, strings and indices are the most important ones.  HalfSize is only works for glyphs now.
+		
+		/+
+			Todo: For transforming all items by a function or program, you can use the ∃ symbol, 
+			which represents "there exists." While traditionally used to denote existence, 
+			it can also be interpreted as "there exists a function or program such that 
+			it transforms each item."
+			
+			So, you can use:
+			∀ to execute a function or program for all items.
+			∃ to transform all items by a function or program.
+			
+			∀(expr)
+			∀{code}
+			
+			∃(expr)
+			∃{code}
+		+/
 		
 		{
 			"divide", 
@@ -8270,7 +8330,7 @@ version(/+$DIDE_REGION+/all)
 			q{((a)*(b))},
 			"*", /+Todo: more than 2 factors+/
 			q{op(0); put(operator); op(1); },
-			q{op(0); op(1); super.rearrange; }
+			q{op(0); op(1); }
 		},
 		
 		{
@@ -8280,7 +8340,7 @@ version(/+$DIDE_REGION+/all)
 			q{((a).dot(b))},
 			".dot",
 			q{op(0); put(operator); op(1); },
-			q{op(0); put('\u22C5'); op(1); super.rearrange; }
+			q{op(0); put('\u22C5'); op(1); }
 		},
 		
 		{
@@ -8290,7 +8350,7 @@ version(/+$DIDE_REGION+/all)
 			q{((a).cross(b))},
 			".cross",
 			q{op(0); put(operator); op(1); },
-			q{op(0); put('\u2A2F'); op(1); super.rearrange; }
+			q{op(0); put('\u2A2F'); op(1); }
 		},
 		
 		
@@ -8310,7 +8370,6 @@ version(/+$DIDE_REGION+/all)
 					put('▶'); 
 					put(operands[1]); 
 				+/
-				super.rearrange; 
 			},
 			q{addGlobalProbe(dr, this); }
 		},
@@ -8324,10 +8383,7 @@ version(/+$DIDE_REGION+/all)
 			
 			"?￼:",
 			q{op(0); put('?'); op(1); put(':'); op(2); },
-			q{
-				put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); 
-				super.rearrange; //Todo: make the final super.rearrange automatic!
-			}
+			q{put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); }
 		},
 		
 		{
@@ -8341,7 +8397,6 @@ version(/+$DIDE_REGION+/all)
 			q{
 				put(' '); op(0); 	put(' '); putNL; 
 				put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
-				super.rearrange; 
 			}
 		},
 		
@@ -8373,7 +8428,6 @@ version(/+$DIDE_REGION+/all)
 				put(' '); op(0); 		put(' '); putNL; 
 				put(" ?\t"); 	op(1); 	put(' '); putNL; 
 				put(" :\t"); 	op(2); 	put(' '); 
-				super.rearrange; 
 			}
 		},
 		
@@ -8388,7 +8442,7 @@ version(/+$DIDE_REGION+/all)
 			q{op(0); put(operator); put("q{"); put(opAsIdentifier(1)); put('}'); },
 			q{
 				operands[1].fillColor(darkColor, bkColor); 
-				put(operands[1]); put(':'); put(operands[0]); super.rearrange; 
+				put(operands[1]); put(':'); put(operands[0]); 
 			}
 		},
 		
@@ -8428,25 +8482,40 @@ version(/+$DIDE_REGION+/all)
 			"cast_0", 
 			NET.castOp, 
 			skAttribute, 2, 
-			q{(cast(a)(b))},
+			q{(cast(Type)(expt))},
 			
 			"cast",
 			q{put("cast"); op(0); op(1); }, 
-			q{op(1); put(0 ? ".cast" : "↦"); op(0); super.rearrange; }
+			q{op(1); put(0 ? ".cast" : "↦"); op(0); }
 		},
 		
 		{
 			"cast_1", 
 			NET.castOp, 
 			skAttribute, 2, 
-			q{(cast (a)(b))},
+			q{(cast (Type)(expr))},
 			
 			"cast ", 
 			q{put("cast "); op(0); op(1); }, 
 			q{
 				op(1); 
 				putNL; flags.hAlign = HAlign.right; 
-				put(0 ? ".cast" : "↦"); op(0); super.rearrange; 
+				put(0 ? ".cast" : "↦"); op(0); 
+			}
+		},
+		
+		{
+			"map", 
+			NET.binaryOp, 
+			skSymbol, 2, 
+			q{((expr).map!(fun))},
+			
+			".map!", 
+			q{op(0); put(operator); op(1); }, 
+			q{
+				put("∃"); putNL; 
+				op(0); putNL; 
+				op(1); 
 			}
 		},
 	]; 
@@ -8636,6 +8705,8 @@ version(/+$DIDE_REGION+/all)
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
+		bool notYetRearranged = true; //In rearrange script, it can be used for special initialization purposes.
+		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
 		const @property validTemplate()
@@ -8763,20 +8834,22 @@ version(/+$DIDE_REGION+/all)
 		override void rearrange()
 		{
 			const inverseMode = getTemplate.invertMode; 
+			nodeRearrangeWasCalled = false; //This will track super.rearrange() calls.
 			
 			with(nodeBuilder(syntax, inverseMode))
 			{
-				//make it half as bright as the ()[] symbols
-				
-				if(!inverseMode) style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
-				
-				//style.bold = syntax!=skSymbol; 
-				//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
-				
-				foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
-				
-				void op(int i)
-				{ put(operands[i]); } 
+				version(/+$DIDE_REGION initialize stuff+/all)
+				{
+					if(!inverseMode) style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
+					
+					//style.bold = syntax!=skSymbol; 
+					//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
+					
+					foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
+					
+					void op(int i)
+					{ put(operands[i]); } 
+				}
 				
 				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
 				{
@@ -8791,7 +8864,10 @@ version(/+$DIDE_REGION+/all)
 					+/
 					
 					put(left); put(right); 
-					super.rearrange; 
+					super.rearrange;  /+
+						Note: It's in the middle, called manually. 
+						At the end int's automatic.
+					+/
 					
 					lower.outerPos.y = innerHeight - lower.outerHeight; 
 					upper.outerPos.y = 0; 
@@ -8859,14 +8935,16 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
-					super.rearrange; 
 				} 
-				
+				
 				void arrangeMixinTable()
 				{
-					put("Experimental Table Mixin"); 	putNL; 
-					
-					static isSeparator(Cell c)
+					static isFiller(Cell c)
+					{
+						const g = cast(Glyph)c; 
+						return g && g.ch.among(' ', '\t'); 
+					} 
+					static isMarker(Cell c)
 					{
 						const g = cast(Glyph)c; 
 						return g && g.ch=='ʰ'; 
@@ -8877,25 +8955,82 @@ version(/+$DIDE_REGION+/all)
 						return cntr && cntr.prefix.among("(", "q{", "\"", "`", "/+"); 
 					} 
 					
-					auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
-					foreach(row; operands[0].rows)
+					if(notYetRearranged)
 					{
-						if(row.subCells.canFind!isSeparator)
+						/+
+							Note: Preprocess rows: 
+							 •	Only keep valid blocks right after the  marker chars.
+							 •	Remove all marker chars.
+							 •	Insert a single space for empty cells.
+							 •	Error handling: Putting all unknown things into an /+Error:+/ comment. 
+								That is a valid cell, so later it can be reloaded without recursion problems.
+						+/
+						
+						auto tbl = operands[0]; 
+						tbl.flags.columnIsTable	= true,
+						tbl.flags.columnElasticTabs 	= false; 
+						
+						float[] maxSizes; 
+						
+						auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
+						foreach(row; tbl.rows)
 						{
-							auto old = row.subCells; 
+							row.flags.rowElasticTabs = false; 
+							
+							auto old = row.subCells, isFirst = true; 
 							row.clearSubCells; //it clears tabIdx too.
-							foreach(a; old.splitter!isSeparator.drop(1))
+							foreach(a; old.splitter!isMarker)
 							{
-								auto c = a.frontOrNull; 
-								if(isValidContainer(c))	row.appendCell(c); 
-								else	row.appendCodeChar(' ', ts, sk); 
+								//strip whitespace from both sides.
+								while(a.length && isFiller(a.front)) a.popFront; 
+								while(a.length && isFiller(a.back)) a.popBack; 
+								
+								void emitError(Cell[] cells)
+								{
+									//Generate sourceText from problematic cells
+									SourceTextBuilder builder; 
+									builder.put(cells); 
+									auto str = builder.result; 
+									
+									//Create and append am Error Comment Node
+									auto scanner = DLangScanner
+										(
+										format!"/+Error:%s+/"(
+											str	.replace("/+", "/ +")
+												.replace("+/", "+ /")
+										)
+										/+
+											This comment is valid, so it can be reloaded later 
+											as a valid cell that shows the exact same error.
+										+/
+									); 
+									auto cmt = new CodeComment(row); 
+									cmt.rebuild(scanner); 
+									row.appendCell(cmt); 
+								} 
+								
+								if(isFirst.chkClear)
+								{
+									//Before the first market, only whitespace is allowed
+									if(a.length) { emitError(a); }
+								}
+								else
+								{
+									if(a.length==1 && isValidContainer(a.front))
+									{ row.appendCell(a.front); }
+									else if(a.empty)
+									{
+										row.appendCodeChar(' ', ts, sk); 
+										/+empty cell is valid.  Represented as a space Glyph.+/
+									}
+									else
+									{ emitError(a); }
+								}
 							}
 						}
-						else
-						{}
 					}
 					
-					
+					put("Experimental Table Mixin"); 	putNL; 
 					put("\tTable"); 	putNL; 
 					put("\t"); op(0); 	putNL; 
 					put("\tScript"); 	putNL; 
@@ -8903,12 +9038,23 @@ version(/+$DIDE_REGION+/all)
 					super.rearrange; 
 				} 
 				
+				version(/+$DIDE_REGION Call the plugin function, finalize+/all)
 				{
-					sw: switch(templateIdx)
 					{
-						static foreach(a; niceExpressionTemplates.map!"a.rearrangeCode".enumerate)
-						{ case a.index: { mixin(a.value); }break sw; }default: 
+						sw: switch(templateIdx)
+						{
+							static foreach(a; niceExpressionTemplates.map!"a.rearrangeCode".enumerate)
+							{ case a.index: { mixin(a.value); }break sw; }default: 
+						}
 					}
+					
+					if(!nodeRearrangeWasCalled)
+					{
+						//If super.rearrange() is not called in the plugins, this will call now.
+						super.rearrange; 
+					}
+					
+					notYetRearranged = false; 
 				}
 			}
 		} 
