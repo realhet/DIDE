@@ -3091,8 +3091,8 @@ class CodeRow: Row
 	auto byCell()
 	{ return rows.map!(r => r.subCells).joiner(only(null)); } 
 	
-	auto byNode()
-	{ return byCell.map!(a=>cast(CodeNode)a).filter!"a"; } 
+	auto byNode(T : CodeNode = CodeNode)()
+	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
 	
 	Cell singleCellOrNull()
 	{ return rows.length==1 ? rows[0].singleCellOrNull : null; } 
@@ -8228,7 +8228,15 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryTokenStringOp, 
 			skIdentifier1, 2,
 			q{
-				(表!(q{},q{
+				(表!(q{
+					[
+						["Field"	, "Type"	, "Default"],
+						[q{piros}	, q{ubyte}	],
+						[q{zold}	, q{ubyte}	],
+						[q{kek}	, q{ubyte}	],
+						[q{alpha}	, q{ubyte}	, q{255}]
+					]
+				},q{
 					return cells[1..$]
 					.map!(
 						r=>format!"%s %s%s;"
@@ -8507,6 +8515,9 @@ version(/+$DIDE_REGION+/all)
 				op(1); 
 			}
 		},
+		
+		
+		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
 	]; 
 	
 	static assert(niceExpressionTemplates[0].name=="null"); 
@@ -8956,88 +8967,186 @@ version(/+$DIDE_REGION+/all)
 						+/
 						
 						auto tbl = operands[0]; 
-						tbl.flags.columnIsTable	= true,
-						tbl.flags.columnElasticTabs 	= false; 
 						
-						auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
-						foreach(row; tbl.rows)
+						static if(0)
 						{
-							row.flags.rowElasticTabs = false; 
+							tbl.flags.columnIsTable	= true,
+							tbl.flags.columnElasticTabs 	= false; 
 							
-							auto old = row.subCells, idx_1based=0; 
-							row.clearSubCells; //it clears tabIdx too.
-							foreach(a; old.splitter!isMarker)
+							auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
+							foreach(row; tbl.rows)
 							{
-								//strip whitespace from both sides.
-								while(a.length && isFiller(a.front)) a.popFront; 
-								while(a.length && isFiller(a.back)) a.popBack; 
+								row.flags.rowElasticTabs = false; 
 								
-								void emitError(Cell[] cells)
+								auto old = row.subCells, idx_1based=0; 
+								row.clearSubCells; //it clears tabIdx too.
+								foreach(a; old.splitter!isMarker)
 								{
-									//Generate sourceText from problematic cells
-									SourceTextBuilder builder; 
-									builder.put(cells); 
-									auto str = builder.result; 
+									//strip whitespace from both sides.
+									while(a.length && isFiller(a.front)) a.popFront; 
+									while(a.length && isFiller(a.back)) a.popBack; 
 									
-									//Create and append am Error Comment Node
-									auto scanner = DLangScanner
-										(
-										format!"/+Error:%s+/"(
-											str	.replace("/+", "/ +")
-												.replace("+/", "+ /")
-										)
-										/+
-											This comment is valid, so it can be reloaded later 
-											as a valid cell that shows the exact same error.
-										+/
-									); 
-									auto cmt = new CodeComment(row); 
-									cmt.rebuild(scanner); 
-									row.appendCell(cmt); 
-								} 
-								
-								if(idx_1based==0)
-								{
-									//Before the first market, only whitespace is allowed
-									if(a.length) { emitError(a); }
-								}
-								else
-								{
-									if(a.length==1 && isValidContainer(a.front))
-									{ row.appendCell(a.front); }
-									else if(a.empty)
+									void emitError(Cell[] cells)
 									{
-										row.appendCodeChar(' ', ts, sk); 
-										/+empty cell is valid.  Represented as a space Glyph.+/
+										//Generate sourceText from problematic cells
+										SourceTextBuilder builder; 
+										builder.put(cells); 
+										auto str = builder.result; 
+										
+										//Create and append am Error Comment Node
+										auto scanner = DLangScanner
+											(
+											format!"/+Error:%s+/"(
+												str	.replace("/+", "/ +")
+													.replace("+/", "+ /")
+											)
+											/+
+												This comment is valid, so it can be reloaded later 
+												as a valid cell that shows the exact same error.
+											+/
+										); 
+										auto cmt = new CodeComment(row); 
+										cmt.rebuild(scanner); 
+										row.appendCell(cmt); 
+									} 
+									
+									if(idx_1based==0)
+									{
+										//Before the first market, only whitespace is allowed
+										if(a.length) { emitError(a); }
 									}
 									else
-									{ emitError(a); }
+									{
+										if(a.length==1 && isValidContainer(a.front))
+										{ row.appendCell(a.front); }
+										else if(a.empty)
+										{
+											row.appendCodeChar(' ', ts, sk); 
+											/+empty cell is valid.  Represented as a space Glyph.+/
+										}
+										else
+										{ emitError(a); }
+									}
+									
+									//advance to next cell
+									idx_1based++; 
 								}
-								
-								//advance to next cell
-								idx_1based++; 
+							}
+							
+							//aggregate col sizes
+							const DefaultColWidth = DefaultFontHeight; 
+							float[] colWidths; 
+							foreach(row; tbl.rows)
+							{
+								while(colWidths.length<row.subCells.length)
+								colWidths ~= DefaultColWidth; 
+								foreach(i, cell; row.subCells)
+								colWidths[i].maximize(cell.outerWidth); 
+							}
+							
+							print!colWidths; 
+						}
+						
+						static if(1)
+						{
+							static CodeBlock detectOuterBlock(CodeColumn col)
+							{
+								const dstr = col.extractThisLevelDString; 
+								if(dstr.strip=="[")
+								{
+									const idx = dstr.countUntil('['); 
+									if(idx>=0)
+									return (cast(CodeBlock)(col.byCell.drop(idx).front)); 
+								}
+								return null; 
+							} 
+							
+							if(auto outerBlock = detectOuterBlock(operands[0]))
+							{
+								if(outerBlock.content.extractThisLevelDString.all!(a=>a.among('[', ' ', '\n', ',')))
+								{
+									auto innerBlocks = outerBlock.content.byNode!CodeBlock.array; 
+									if(innerBlocks.all!(blk=>blk.content.extractThisLevelDString.all!(a=>a.among('"', ' ', '\n', ','))))
+									{
+										auto rows = innerBlocks.map!
+											(
+											(blk){
+												auto row = blk.content.rows[0]; //keep lineIdx
+												row.setParent(tbl); 
+												row.subCells = (cast(Cell[])(blk.content.byNode!CodeString.array)); 
+												row.subCells.each!((c){ c.setParent(row); }); 
+												row.clearTabIdx; //no tabs, only tableCells
+												row.needMeasure; //Todo: Spread the cells
+												return row; 
+											}
+										).array; 
+										
+										tbl.flags.columnIsTable	= true,
+										tbl.flags.columnElasticTabs 	= false; 
+										//Todo: empty the multiPageCache
+										if(rows.length)
+										{
+											tbl.subCells = (cast(Cell[])(rows)); 
+											//Todo: spread the rows
+										}
+										else
+										{
+											tbl.subCells.length = 1; 
+											tbl.rows[0].clearSubCells; 
+										}
+										//tbl.needMeasure; 
+										LOG("VALID TABLE"); 
+									}
+								}
 							}
 						}
-						
-						//aggregate col sizes
-						const DefaultColWidth = DefaultFontHeight; 
-						float[] colWidths; 
-						foreach(row; tbl.rows)
-						{
-							while(colWidths.length<row.subCells.length)
-							colWidths ~= DefaultColWidth; 
-							foreach(i, cell; row.subCells)
-							colWidths[i].maximize(cell.outerWidth); 
-						}
-						
-						print!colWidths; 
 					}
+					
 					
 					put("Experimental Table Mixin"); 	putNL; 
 					put("\tTable"); 	putNL; 
 					put("\t"); op(0); 	putNL; 
 					put("\tScript"); 	putNL; 
 					put("\t"); op(1); 
+					
+					{
+						auto 	tbl	= operands[0], 
+							rows 	= tbl.rows; 
+						
+						if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
+						{
+							//measure colWidths
+							auto colWidths = [float(DefaultFontHeight/2)].replicate(numCols); 
+							foreach(row; rows)
+							row.subCells.enumerate.each!(
+								(a){
+									if(auto cntr = (cast(Container)(a.value)))
+									cntr.measure; 
+									colWidths[a.index].maximize(a.value.outerWidth); 
+								}
+							); 
+							
+							//spread colWidths
+							foreach(row; rows)
+							{
+								float maxHeight = DefaultFontHeight; //Todo: halfsize?
+								foreach(idx, cell; row.subCells)
+								{
+									cell.outerSize.x = colWidths[idx]; 
+									maxHeight.maximize(cell.outerHeight); 
+								}
+								row.subCells.spreadH; 
+								foreach(idx, cell; row.subCells)
+								{
+									cell.outerPos.y = 0; 
+									cell.outerSize.y = maxHeight; 
+								}
+							}
+							
+							tbl.innerWidth = colWidths.sum; 
+						}
+					}
+					
 					super.rearrange; 
 				} 
 				
@@ -9810,11 +9919,8 @@ Multiline"
 					[q{kek}	, q{ubyte}	],
 					[
 						q{alpha}	, q{ubyte}	, q{255}, q{
-							RECURSION:[
-								[
-									"Field"	, "Type"	, "Default
-Multiline"
-								],
+							[
+								["Field"	, "Type"	, "Default"],
 								[q{piros}	, q{ubyte}	],
 								[q{zold}	, q{ubyte}	],
 								[q{kek}	, q{ubyte}	],
