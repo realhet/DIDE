@@ -9808,7 +9808,20 @@ Multiline"
 					[q{piros}	, q{ubyte}	],
 					[q{zold}	, q{ubyte}	],
 					[q{kek}	, q{ubyte}	],
-					[q{alpha}	, q{ubyte}	, q{255}]
+					[
+						q{alpha}	, q{ubyte}	, q{255}, q{
+							RECURSION:[
+								[
+									"Field"	, "Type"	, "Default
+Multiline"
+								],
+								[q{piros}	, q{ubyte}	],
+								[q{zold}	, q{ubyte}	],
+								[q{kek}	, q{ubyte}	],
+								[q{alpha}	, q{ubyte}	, q{255}]
+							]
+						}
+					]
 				]
 			}; 
 			
