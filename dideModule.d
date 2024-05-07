@@ -9801,7 +9801,10 @@ l2
 			
 			enum tableStr3 = q{
 				[
-					["Field"	, "Type"	, "Default"],
+					[
+						"Field"	, "Type"	, "Default
+Multiline"
+					],
 					[q{piros}	, q{ubyte}	],
 					[q{zold}	, q{ubyte}	],
 					[q{kek}	, q{ubyte}	],
