@@ -1736,8 +1736,7 @@ version(/+$DIDE_REGION+/all)
 		
 		void putStatementBody(CodeColumn col)
 		{
-			foreach(i, row; col.rows)
-			{
+			foreach(i, row; col.rows) {
 				if(i) putNL; 
 				put(row); 
 			}
@@ -8229,27 +8228,17 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryTokenStringOp, 
 			skIdentifier1, 2,
 			q{
-				(
-					表!(
-						q{
-							/+Error: "Field"`Type`"Default"/ +dComment+ /+/Unclosed structure: [structuredBlock, dComment, unstructured]+/+/
-							/+Error: / +Error: r"💩"+ /(piros)(ubyte)/ +Error: 1+1='💩'+ /(expr+1)+/
-							/+Error: (zold)(ubyte) q{code(); }+/
-							/+Error: (kek)(ubyte) "cString\n"+/
-							/+Error: (alpha)(ubyte)(255)/ +Error: `dString\`//💩+ /+/Unclosed structure: [structuredBlock, dComment, unstructured]+/+/
-						},q{
-							return cells[1..$]
-							.map!(
-								r=>format!"%s %s%s;"
-								(
-									r[1], r[0], 
-									((r.length>2)?("="~r[2].inner):(""))
-								)
-							)
-							.join; 
-						}
+				(表!(q{},q{
+					return cells[1..$]
+					.map!(
+						r=>format!"%s %s%s;"
+						(
+							r[1], r[0], 
+							((r.length>2)?("="~r[2].inner):(""))
+						)
 					)
-				)
+					.join
+				}))
 			},
 			"表!",
 			q{
@@ -8970,14 +8959,12 @@ version(/+$DIDE_REGION+/all)
 						tbl.flags.columnIsTable	= true,
 						tbl.flags.columnElasticTabs 	= false; 
 						
-						float[] maxSizes; 
-						
 						auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
 						foreach(row; tbl.rows)
 						{
 							row.flags.rowElasticTabs = false; 
 							
-							auto old = row.subCells, isFirst = true; 
+							auto old = row.subCells, idx_1based=0; 
 							row.clearSubCells; //it clears tabIdx too.
 							foreach(a; old.splitter!isMarker)
 							{
@@ -9009,7 +8996,7 @@ version(/+$DIDE_REGION+/all)
 									row.appendCell(cmt); 
 								} 
 								
-								if(isFirst.chkClear)
+								if(idx_1based==0)
 								{
 									//Before the first market, only whitespace is allowed
 									if(a.length) { emitError(a); }
@@ -9026,8 +9013,24 @@ version(/+$DIDE_REGION+/all)
 									else
 									{ emitError(a); }
 								}
+								
+								//advance to next cell
+								idx_1based++; 
 							}
 						}
+						
+						//aggregate col sizes
+						const DefaultColWidth = DefaultFontHeight; 
+						float[] colWidths; 
+						foreach(row; tbl.rows)
+						{
+							while(colWidths.length<row.subCells.length)
+							colWidths ~= DefaultColWidth; 
+							foreach(i, cell; row.subCells)
+							colWidths[i].maximize(cell.outerWidth); 
+						}
+						
+						print!colWidths; 
 					}
 					
 					put("Experimental Table Mixin"); 	putNL; 
@@ -9794,6 +9797,16 @@ l2
 				ʰ(zold)	ʰ(ubyte)
 				ʰ(kek)	ʰ(ubyte)
 				ʰ(alpha)	ʰ(ubyte)	ʰ(255)
+			}; 
+			
+			enum tableStr3 = q{
+				[
+					["Field"	, "Type"	, "Default"],
+					[q{piros}	, q{ubyte}	],
+					[q{zold}	, q{ubyte}	],
+					[q{kek}	, q{ubyte}	],
+					[q{alpha}	, q{ubyte}	, q{255}]
+				]
 			}; 
 			
 			
