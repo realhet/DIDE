@@ -3739,6 +3739,16 @@ class CodeRow: Row
 		//margin is ok
 		needMeasure; 
 	} 
+	
+	void adjustWidth(float Δw)
+	{
+		if(Δw)
+		{
+			outerSize.x += Δw; 
+			auto lastPage = ((cachedPageRowRanges.length) ?((cast(CodeRow[])(cachedPageRowRanges.back))):(rows)); 
+			foreach(row; lastPage) { row.outerSize.x += Δw; }
+		}
+	} 
 	
 	Row[][] cachedPageRowRanges; 
 	override Row[][] getPageRowRanges()
@@ -3930,11 +3940,19 @@ class CodeRow: Row
 				{
 					if(isMixinTableCell(rng.front))
 					{
-						with(rng.front)
+						auto cntr = (cast(CodeContainer)(rng.front)); 
+						with(cntr)
 						{
 							outerPos.x = actX; 
+							
 							const w = colWidths[idx]; 
-							rng.front.outerSize.x = w; 
+							if(const Δw = w - outerSize.x)
+							{
+								outerSize.x = w; 
+								if(auto col = (cast(CodeColumn)(cntr.subCells.frontOrNull)))
+								{ col.adjustWidth(Δw); }
+							}
+							
 							actX += w; 
 						}
 					}
@@ -3958,6 +3976,7 @@ class CodeRow: Row
 				foreach(cntr; row.byNode!MixinTableContainerClass)
 				{
 					cntr.outerSize.y = maxHeight; 
+					//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
 					//Todo: stretch out inner surface
 				}
 				
@@ -4749,7 +4768,8 @@ version(/+$DIDE_REGION+/all)
 	//CodeContainer /////////////////////////////
 	CodeColumn content; 
 	
-	bool noBorder; //omits the texts on the surface of the Node and uses square edges.
+	bool 	noBorder, //omits the texts on the surface of the Node and uses square edges.
+		singleBkColor; 
 	
 	//base properties
 	abstract SyntaxKind syntax() const; 
@@ -4801,6 +4821,7 @@ version(/+$DIDE_REGION+/all)
 		with(nodeBuilder(syntax, prefix.among("[", "(", "{") ? 0 : 1))
 		{
 			content.bkColor = darkColor; 
+			if(singleBkColor) bkColor = darkColor; //Minimalistic table look
 			
 			if(!noBorder) put(prefix); 
 			put(content); 
@@ -5347,14 +5368,22 @@ version(/+$DIDE_REGION+/all)
 	
 	Type type; 
 	CharSize charSize; 
+	bool isTableCell; /+
+		Used with MixinTables. 
+		The tokenstring should have normal background, not string-like background.
+	+/
 	
 	string sizePostfix() const
 	{ return charSize!=CharSize.default_ ? charSize.text : ""; } 
 	
 	override SyntaxKind syntax() const
 	{
+		if(isTableCell && type==Type.tokenString) return skIdentifier1; 
 		return skString; 
-		//Note: For tokenStrings this must be skString too. So all string's border be the same color.
+		/+
+			Note: For tokenStrings this must be skString too. So all string's border be the same color.
+			(Different behavior  -> isTableCell)
+		+/
 	} 
 	override string prefix() const
 	{ return TypePrefix[type]; } 
@@ -8304,15 +8333,23 @@ version(/+$DIDE_REGION+/all)
 						r=>format!"%s %s%s;"
 						(
 							r[1], r[0], 
-							((r.length>2)?("="~r[2].inner):(""))
+							((r.length>2) ?("="~r[2].inner):(""))
 						)
 					)
 					.join
 				}))
-			},
+			},
+			
 			"表!",
 			q{buildMixinTable; },
-			q{arrangeMixinTable; },
+			q{
+				arrangeMixinTable(2)
+				/+
+					gridStyle: 	0 simple grid
+						1 +darker background
+						2 double line grid
+				+/; 
+			},
 			q{}
 		},
 		
@@ -9072,7 +9109,7 @@ version(/+$DIDE_REGION+/all)
 					op(0); putNL; put(prefix); op(1); put(postfix); 
 				} 
 				
-				void arrangeMixinTable()
+				void arrangeMixinTable(int doubleGridStyle)
 				{
 					static isFiller(Cell c)
 					{
@@ -9179,7 +9216,7 @@ version(/+$DIDE_REGION+/all)
 								colWidths[i].maximize(cell.outerWidth); 
 							}
 						}
-						
+						
 						static CodeBlock detectOuterBlock(CodeColumn col)
 						{
 							const dstr = col.extractThisLevelDString; 
@@ -9210,9 +9247,13 @@ version(/+$DIDE_REGION+/all)
 												(c){
 													c.setParent(row); 
 													c.applyNoBorder; 
+													c.isTableCell = true; 
+													if(doubleGridStyle<=1)	c.singleBkColor=true; 
+													else if(doubleGridStyle==2)	{ c.padding.set(.5); }
 												}
 											); 
-											row.clearTabIdx; //no tabs, only tableCells
+											row.clearTabIdx; //Freshly loaded MixinTable: It has no TABs
+											row.flags.yAlign = YAlign.top; 
 											row.needMeasure; //Todo: Spread the cells
 											return row; 
 										}
@@ -9222,7 +9263,7 @@ version(/+$DIDE_REGION+/all)
 									tbl.flags.columnElasticTabs 	= false; 
 									tbl.applyNoBorder; 
 									
-									//Todo: Test with multiple pages (vertical Tab)
+									//Todo: Make tables compatible with multiple pages (vertical Tab)  (Storage too!!!)
 									if(rows.length)
 									{
 										tbl.subCells = (cast(Cell[])(rows)); 
@@ -9233,6 +9274,8 @@ version(/+$DIDE_REGION+/all)
 										tbl.subCells.length = 1; 
 										tbl.rows[0].clearSubCells; 
 									}
+									
+									if(doubleGridStyle==1) tbl.padding.set(1); 
 									
 									tbl.needMeasure; 
 								}
@@ -9248,6 +9291,19 @@ version(/+$DIDE_REGION+/all)
 					put("\t"); op(1); 
 					
 					super.rearrange; 
+					
+					if(doubleGridStyle==0)
+					{
+						operands[0].bkColor = bkColor; 
+						/+
+							Minimalistic table look: The color of the table grid is
+							inherited from the Node's surface.
+						+/
+					}
+					else if(doubleGridStyle==1)
+					{ operands[0].bkColor = mix(style.fontColor, bkColor, .33f); }
+					
+					
 				} 
 				
 				version(/+$DIDE_REGION Call the plugin function, finalize+/all)
