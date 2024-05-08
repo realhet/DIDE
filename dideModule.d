@@ -8322,7 +8322,8 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryTokenStringOp, 
 			skIdentifier1, 2,
 			q{
-				(表!(q{[["Field","Type","Default",],
+				(表!(q{[
+				["Field","Type","Default",],
 				[q{piros},q{ubyte},],
 				[q{zold},q{ubyte},],
 				[q{kek},q{ubyte},],
@@ -8343,7 +8344,7 @@ version(/+$DIDE_REGION+/all)
 			"表!",
 			q{buildMixinTable; },
 			q{
-				arrangeMixinTable(2)
+				arrangeMixinTable(1)
 				/+
 					gridStyle: 	0 simple grid
 						1 +darker background
@@ -8890,7 +8891,7 @@ version(/+$DIDE_REGION+/all)
 					if(tbl.flags.columnIsTable)
 					{
 						put("q{"); 
-							put("["); 
+							put("["); putNL; 
 								tbl.rows.each
 						!(
 							(r){
