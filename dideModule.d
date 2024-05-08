@@ -214,7 +214,7 @@ version(/+$DIDE_REGION+/all)
 							style.applySyntax(skConsole); bkColor = style.bkColor; 
 							border = Border(1, BorderStyle.normal, style.fontColor); 
 							Text(value); 
-						}
+						}  
 					); 
 					_container = removeLastContainer; 
 					_container.measure; 
@@ -678,7 +678,7 @@ version(/+$DIDE_REGION+/all)
 					flags.yAlign = YAlign.top; 
 					RoundBorder(8); 
 					if(contents) contents(); 
-				}
+				}  
 			); 
 		} 
 		
@@ -694,7 +694,7 @@ version(/+$DIDE_REGION+/all)
 					flags.yAlign = YAlign.top; 
 					RoundBorder(8); 
 					if(contents) contents(); 
-				}
+				}  
 			); 
 		} 
 		
@@ -710,7 +710,7 @@ version(/+$DIDE_REGION+/all)
 					actContainer.id = "CodeLocation:"~s; 
 					FileIcon_small(file.ext); 
 					Text(s); 
-				}
+				}  
 			); 
 		} 
 		
@@ -725,7 +725,7 @@ version(/+$DIDE_REGION+/all)
 							{
 								if(building) style.fontColor = mix(style.fontColor, style.bkColor, blink); 
 								Text(cancelling ? "Cancelling" : building ? "Building" : "BuildSys Ready"); 
-							}
+							}  
 						); 
 						Row(
 							{
@@ -733,9 +733,9 @@ version(/+$DIDE_REGION+/all)
 								if(building && !cancelling && totalModules)
 								Text(format!"%d(%d)/%d"(compiledModules, inFlight, totalModules)); 
 								else if(building && cancelling) { Text(format!"\u2026%d"(inFlight)); }
-							}
+							}  
 						); 
-					}
+					}  
 				); 
 			}
 		} 
@@ -1610,7 +1610,7 @@ version(/+$DIDE_REGION+/all)
 			(ref s){
 				if(s.valid && s.isZeroLength)
 				s.move(ivec2(dir, 0), true); 
-			}
+			}  
 		); 
 		
 		return merge(a); 
@@ -1801,7 +1801,6 @@ version(/+$DIDE_REGION+/all)
 					assert(col.rows.length == 1); 
 					auto row = col.rows.front; 
 					
-					//Todo: Transform {x} => { x }   to look nice
 					const stylisticSpaces = result.endsWith('{') && !result.endsWith("q{") && row.chars.length>0; 
 					
 					version(/+$DIDE_REGION Save the state of the output stream+/all)
@@ -2168,7 +2167,7 @@ class CodeRow: Row
 		
 		static TextStyle style; //it is needed by appendCode/applySyntax
 		this.appendCode(
-			line, syntax, (ubyte s){ applySyntax(style, s); },
+			line, syntax, (ubyte s){ applySyntax(style, s); }  ,
 			style/+, must paste tabs!!! DefaultIndentSize+/
 		); 
 		
@@ -2267,7 +2266,7 @@ class CodeRow: Row
 				CodeColumn col = parent.enforce("CodeRow must have a CodeColumn parent."); 
 				const syntax = col.getSyntax(str.empty ? ' ' : str.front); 
 				this.appendCodeStr(str, syntax); 
-			}
+			}  
 		); 
 		
 		return res; 
@@ -3375,25 +3374,25 @@ class CodeRow: Row
 		if(outdent && rows.length==1)
 		with(rows.front)
 		{
-			if(isCodeSpaces.length>=3 && isCodeSpaces[0] && !isCodeSpaces[1])
+			if(
+				isCodeSpaces.length>=2 && isCodeSpaces[0] && !isCodeSpaces[1] &&
+				((cast(CodeComment)(subCells.back)) || (cast(CodeBlock)(subCells.back)))
+			)
 			{
-				if((cast(CodeComment)(subCells.back)))	{
-					//remove only the front space
-					subCells = subCells[1..$]; 
-					refreshTabIdx; 
-				}
-				else if(
-					isCodeSpaces[$-1]
-					&& !isCodeSpaces[$-2]
-					&& chars[$-2].among(
-						';', ':', 
-						compoundObjectChar
-					)
-				)	{
-					//remove both spaces at front and back
-					subCells = subCells[1..$-1]; 
-					refreshTabIdx; 
-				}
+				//remove only the front space
+				subCells = subCells[1..$]; refreshTabIdx; 
+			}
+			else if(
+				isCodeSpaces.length>=3 && isCodeSpaces[0] && !isCodeSpaces[1]
+				&& isCodeSpaces[$-1] && !isCodeSpaces[$-2]
+				&& chars[$-2].among(
+					';', ':', 
+					compoundObjectChar
+				)
+			)
+			{
+				//remove both spaces at front and back
+				subCells = subCells[1..$-1]; refreshTabIdx; 
 			}
 		}
 		
@@ -3456,7 +3455,7 @@ class CodeRow: Row
 							
 							//everything else is relevant
 							return true; 
-						}
+						}  
 					); 
 				} 
 				
@@ -3559,7 +3558,7 @@ class CodeRow: Row
 				g.bkColor = ts.bkColor; 
 				g.fontColor = ts.fontColor; 
 				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
-			}
+			}  
 		); 
 		//Todo: fill row.bkColor
 	} 
@@ -4701,7 +4700,7 @@ version(/+$DIDE_REGION+/all)
 				g.fontColor = ts.fontColor; 
 				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
 				g.syntax = cast(ubyte) sk; 
-			}
+			}  
 		); 
 		bkColor = ts.bkColor; 
 	} 
@@ -5150,7 +5149,7 @@ version(/+$DIDE_REGION+/all)
 		{ return content.rows.map!(r => r.glyphs).joiner(only(null)); } 
 		
 		void checkInvalid(dchar ch)
-		{ byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); } 
+		{ byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }  ); } 
 		
 		void checkInvalid2(dchar ch0, dchar ch1)
 		{
@@ -5182,7 +5181,7 @@ version(/+$DIDE_REGION+/all)
 							
 							if(anyErrors || cnt<0) mark(g); 
 						}
-					}
+					}  
 				); 
 				
 				if(
@@ -5471,7 +5470,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			content.fillSyntax(skString); 
 			
-			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }); 
+			byGlyph.each!((g){ if(anyErrors || g && g.ch==ch) mark(g); }  ); 
 		} 
 		
 		void checkInvalid_escape(dchar ch, dchar escape)
@@ -5505,7 +5504,7 @@ version(/+$DIDE_REGION+/all)
 							
 							if(anyErrors || cnt<0) mark(g); 
 						}
-					}
+					}  
 				); 
 				
 				if(
@@ -5871,7 +5870,7 @@ version(/+$DIDE_REGION+/all)
 	popup menu"
 						); 
 						if(Btn("New Sticker")) beep; 
-					}
+					}  
 				); 
 				popupState.cell = removeLastContainer; 
 				popupState.parent = null; 
@@ -5933,7 +5932,7 @@ version(/+$DIDE_REGION+/all)
 			
 			/+Note: .scrum file format: -> ScrumTable.Props.toJson+/
 			
-			ignoreExceptions({ props.fromJson(sourceText); }); 
+			ignoreExceptions({ props.fromJson(sourceText); }  ); 
 			
 			bkColor = clWhite; 
 		} 
@@ -6039,7 +6038,7 @@ version(/+$DIDE_REGION+/all)
 							+/
 							
 							props_hash = hashOf(props); 
-						}
+						}  
 					); 
 					
 					//only keep the first row with the sticky note comment
@@ -6068,10 +6067,10 @@ version(/+$DIDE_REGION+/all)
 						a.padding = Padding.init; 
 						a.outerSize = a.calcContentSize; 
 					} 
-					only(cmt, row, col, this).each!((a){ removeBorder(a); }); 
+					only(cmt, row, col, this).each!((a){ removeBorder(a); }  ); 
 					
 					ignoreExceptions
-					({ cmt.fillBkColor(props.color.toRGB(true)); }); 
+					({ cmt.fillBkColor(props.color.toRGB(true)); }  ); 
 					
 					innerSize = cmt.outerSize; 
 				}
@@ -6542,7 +6541,8 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		else if(isStatement)
-		{ if(keyword=="") { processHighLevelPatterns_statement(header); }}else if(isPreposition)
+		{ if(keyword=="") { processHighLevelPatterns_statement(header); }}
+		else if(isPreposition)
 		{
 			foreach(p; allJoinedPrepositionsFromThis)
 			{
@@ -6806,6 +6806,17 @@ version(/+$DIDE_REGION+/all)
 					+/
 					put("{", block, "}"); 
 					
+					
+					static if(false && CODE)
+					{
+						/+
+							Note: This space can't emited in () and [] blocks, only in {} blocks,
+							because it will produce endless spaces.
+							But it's difficult to detect, so I rather produce { {}} and later remove the first space.
+						+/
+						if(autoSpaceAfterDeclarations) put(' '); 
+					}
+					
 					/+
 						Bug: Autogenerate { } after prepositions.
 						It can cause nasty bugs.
@@ -6836,8 +6847,6 @@ version(/+$DIDE_REGION+/all)
 					else if(needSpace.chkClear) put(' '); 
 					
 					put("{", block, "}"); 
-					
-					//putUi(' ');
 					if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); 
 				}
 			}
@@ -7499,7 +7508,7 @@ version(/+$DIDE_REGION+/all)
 					(cell){
 						//if(auto cmt = cast(CodeComment) cell) res.comments ~= cmt; //collect comments
 						return cell.structuredCellToChar; 
-					}
+					}  
 				)
 			)
 			.joiner([dchar('\n')]); 
@@ -8323,13 +8332,13 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, 2,
 			q{
 				(表!(q{[
-				["Field","Type","Default",],
-				[q{piros},q{ubyte},],
-				[q{zold},q{ubyte},],
-				[q{kek},q{ubyte},],
-				[q{alpha},q{ubyte},q{255},],
+					["Field","Type","Default",],
+					[q{piros},q{ubyte},],
+					[q{zold},q{ubyte},],
+					[q{kek},q{ubyte},],
+					[q{alpha},q{ubyte},q{255},],
 				]},q{
-					return cells[1..$]
+					cells[1..$]
 					.map!(
 						r=>format!"%s %s%s;"
 						(
@@ -8891,11 +8900,11 @@ version(/+$DIDE_REGION+/all)
 					if(tbl.flags.columnIsTable)
 					{
 						put("q{"); 
-							put("["); putNL; 
+							put("["); indentCount++; 
 								tbl.rows.each
 						!(
 							(r){
-								put("["); 
+								putNL; put("["); 
 								r.subCells.splitWhen!mixinTableSplitFun.each
 								!(
 									(rng){
@@ -8938,12 +8947,12 @@ version(/+$DIDE_REGION+/all)
 											{ putAsStringLiteral(rng); }
 										}
 										
-									}
+									}  
 								); 
-								put("]"); put(","); /+Todo: don't emit last comma+/putNL; 
-							}
+								put("]"); put(","); /+Todo: don't emit last comma+/
+							}  
 						); 
-							put("]"); 
+							indentCount--; putNL; put("]"); 
 						put("}"); 
 					}
 					else
@@ -9091,7 +9100,7 @@ version(/+$DIDE_REGION+/all)
 								bw = blackOrWhiteFor(c); 
 							operands[0].fillColor(bw, c); 
 							//Todo: Do something if decoding fails.
-						}
+						}  
 					); 
 				} 
 				
@@ -9251,13 +9260,13 @@ version(/+$DIDE_REGION+/all)
 													c.isTableCell = true; 
 													if(doubleGridStyle<=1)	c.singleBkColor=true; 
 													else if(doubleGridStyle==2)	{ c.padding.set(.5); }
-												}
+												}  
 											); 
 											row.clearTabIdx; //Freshly loaded MixinTable: It has no TABs
 											row.flags.yAlign = YAlign.top; 
 											row.needMeasure; //Todo: Spread the cells
 											return row; 
-										}
+										}  
 									).array; 
 									
 									tbl.flags.columnIsTable	= true,
@@ -9601,13 +9610,13 @@ else
 	//static initializer vs labmda
 	
 	auto l1 = { lambda1; }; 
-	auto l2 = [{ lambda2; }]; 
-	auto l3 = ({ lambda3; }); 
-	auto l4 = b({ lambda4; }); 
-	auto l5 = { lambda5; }(); 
-	auto l5 = (){ lambda6; }(); 
-	auto l6 = ()=>{ lambda7; }(); 
-	auto l7 = a=>{ lambda7; }.b; 
+	auto l2 = [{ lambda2; }  ]; 
+	auto l3 = ({ lambda3; }  ); 
+	auto l4 = b({ lambda4; }  ); 
+	auto l5 = { lambda5; }  (); 
+	auto l5 = (){ lambda6; }  (); 
+	auto l6 = ()=>{ lambda7; }	 (); 
+	auto l7 = a=>{ lambda7; }	 .b; 
 	
 	struct S { int i; } /+Extra semicolon+/; 
 	S s1 = {}; 
@@ -9615,14 +9624,14 @@ else
 	S[] s1 = [4, { 5}]; 
 	S[] s1 = [{ 5}]; 
 	S[] s1 = [{ 5}, { 6}]; 
-	S[] s2 = b({ lambda4; }); 
+	S[] s2 = b({ lambda4; }  ); 
 	struct T { S s; } 
-	T[] t1 = [{ { 5}}]; /+
+	T[] t1 = [{ { 5}}  ]; /+
 		Todo: this is clear that the innermost block is not 
 		a statement/declaration block. 
 		It should use normal CodeBlock instead of Declaration.
 	+/
-	T[] t1 = [{ { 5,6}}]; 
+	T[] t1 = [{ { 5,6}}  ]; 
 	
 	struct S { int a, b, c, d = 7; } 
 	S s = { a:1, b:2}; 
@@ -9667,9 +9676,9 @@ else
 	in(true)
 	out(; true)
 	out(a; true)
-	in{ x; }
-	out{ y; }in{ x; }//c1
-	/+c7+/out(aaa)/+c2+/{ y; }//c3
+	in{ x; }  
+	out{ y; }  in{ x; }  //c1
+	/+c7+/out(aaa)/+c2+/{ y; }  //c3
 	do/+c4+/
 	{ z; } 
 	
