@@ -2072,6 +2072,12 @@ class CodeRow: Row
 	Cell singleCellOrNull()
 	{ return subCells.length==1 ? subCells[0] : null; } 
 	
+	auto byCell()
+	{ return subCells.map!"a"; } 
+	
+	auto byNode(T : CodeNode = CodeNode)()
+	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
+	
 	auto glyphs()
 	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	
@@ -2332,8 +2338,7 @@ class CodeRow: Row
 	
 	void applyHalfSize()
 	{
-		//this is used from NiceExpression
-		halfSize = true; 
+		halfSize = true; //no going back
 		
 		enum targetHeight 	= DefaultFontHeight/2,
 		triggerHeight 	= DefaultFontHeight-1; 
@@ -3025,7 +3030,6 @@ class CodeRow: Row
 	}
 } class CodeColumn: Column
 {
-	//CodeColumn ////////////////////////////////////////////
 	Container parent; 
 	//CodeContext context;
 	
@@ -3036,8 +3040,7 @@ class CodeRow: Row
 	
 	bool edited; //this column is marked, so it can be syntax checked before saving.
 	
-	bool 	halfSize, 
-		isTable /+Todo: This should be placed inside het.ui.Column -> more reusability+/; 
+	bool 	halfSize; 
 	
 	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
@@ -3046,6 +3049,8 @@ class CodeRow: Row
 		this.parent = parent; 
 		//this.context = context;
 		//id.value = this.identityStr;  //id is not used anymore for this
+		
+		initializeBorder; 
 		
 		needMeasure; //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
 		flags.wordWrap = false; 
@@ -3707,28 +3712,32 @@ class CodeRow: Row
 		return rows[0..p.y].map!(r => r.cellCount+1).sum + clamp(p.x, 0, rows[p.y].cellCount); 
 	} 
 	
-	void setupBorder()
+	void initializeBorder()
 	{
-		if(halfSize)
-		{
-			//This is used in Niceexpression
-			margin.set(0); 
-			border = Border.init; 
-			padding.set(0, 2); 
-		}
-		else
-		{
-			this.setRoundBorder(8); 
-			margin.set(.5); 
-			padding.set(.5, 4); 
-		}
+		this.setRoundBorder(8); 
+		margin = Margin(.5, .5, .5, .5); //Todo: need more clever constructors for Margion
+		padding = Padding(.5, 4, .5, 4); 
 	} 
 	
 	void applyHalfSize()
 	{
 		halfSize = true; //no going back...
+		
+		margin.set(0); 
+		border = Border.init; 
+		padding.set(0, 2); 
+		
 		foreach(r; rows) r.applyHalfSize; 
-		rearrange; 
+		needMeasure; 
+	} 
+	
+	void applyNoBorder()
+	{
+		border = Border.init; 
+		padding.right = 2; 
+		padding.left = 2; 
+		//margin is ok
+		needMeasure; 
 	} 
 	
 	Row[][] cachedPageRowRanges; 
@@ -3738,8 +3747,6 @@ class CodeRow: Row
 	override void rearrange()
 	{
 		cachedPageRowRanges = []; 
-		
-		setupBorder; 
 		
 		//Note: Can't cast to CodeRow because "compiler.err" has Rows. Also CodeNode is a Row.
 		auto rows = cast(Row[])subCells; 
@@ -3758,10 +3765,13 @@ class CodeRow: Row
 				y += r.innerHeight+totalGap.y; 
 			}
 			
-			if(isTable)
-			{ LOG("TABLE"); }
-			else
-			{ processElasticTabs(cast(Cell[])rows); /+Opt: apply this to a subset that has been remeasured+/}
+			if(flags.columnElasticTabs)
+			{
+				processElasticTabs(cast(Cell[])(rows)); 
+				/+Opt: apply this to a subset that has been remeasured+/
+			}
+			if(flags.columnIsTable)
+			{ processTableRows(cast(CodeRow[])(subCells)); }
 			
 			const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement; 
 			innerSize = vec2(maxInnerWidth + totalGap.x, y); 
@@ -3875,6 +3885,84 @@ class CodeRow: Row
 		test_RowCount("\r\n", 2, "\n"); 
 		test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //Todo: a tabokat visszaalakitani space-ra
 		test_RowCount(" \n \n \r\n ", 4, " \n \n \n "); //Todo: a tabokat visszaalakitani space-ra
+	} 
+	
+	static processTableRows(CodeRow[] rows)
+	{
+		if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
+		{
+			//measure colWidths
+			float[] colWidths; 
+			foreach(row; rows)
+			{
+				int idx=0; 
+				foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+				{
+					float calcWidth()
+					{
+						if(isMixinTableCell(rng.front))
+						{
+							with((cast(MixinTableContainerClass)(rng.front)))
+							{
+								measure; 
+								return outerWidth; 
+							}
+						}
+						else
+						{ return rng.map!"a.outerWidth".sum; }
+					} 
+					
+					if(colWidths.length<=idx)
+					{
+						colWidths ~= 0; 
+						//only igrows by one, no while() needed
+					}
+					
+					colWidths[idx++/+advance loop+/].maximize(calcWidth); 
+				}
+			}
+			
+			//spread colWidths
+			foreach(row; rows)
+			{
+				int idx=0; float actX=0; 
+				foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+				{
+					if(isMixinTableCell(rng.front))
+					{
+						with(rng.front)
+						{
+							outerPos.x = actX; 
+							const w = colWidths[idx]; 
+							rng.front.outerSize.x = w; 
+							actX += w; 
+						}
+					}
+					else
+					{
+						const nextX = actX + colWidths[idx]; 
+						foreach(cell; rng)
+						{
+							cell.outerPos.x = actX; 
+							actX += cell.outerSize.x; 
+						}
+						
+						//Todo: Handle extra gap after the text when clicking with mouse
+						actX = nextX; 
+					}
+					idx++/+advance loop+/; 
+				}
+				
+				//spread container heights
+				const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
+				foreach(cntr; row.byNode!MixinTableContainerClass)
+				{
+					cntr.outerSize.y = maxHeight; 
+					//Todo: stretch out inner surface
+				}
+				
+			}
+		}
 	} 
 } 
 version(/+$DIDE_REGION+/all)
@@ -4441,16 +4529,14 @@ version(/+$DIDE_REGION+/all)
 		this.parent = parent; 
 		id = this.identityStr; 
 		
+		initializeBorder; 
+		
 		needMeasure; //enables on-demand measure
 		flags.wordWrap	= false,
 		flags.clipSubCells	= true,
 		flags.cullSubCells	= true,
 		flags.rowElasticTabs	= true,
 		flags.dontHideSpaces 	= true; 
-		
-		this.setRoundBorder(8); 
-		margin = "0.5"; 
-		padding = "1 1.5"; 
 	} 
 	
 	~this()
@@ -4511,6 +4597,13 @@ version(/+$DIDE_REGION+/all)
 		i = n.identifier ~ '.' ~ i; 
 		
 		return i; 
+	} 
+	
+	void initializeBorder()
+	{
+		this.setRoundBorder(8); 
+		margin = Margin(.5, .5, .5, .5); 
+		padding = Padding(1, 1.5, 1, 1.5); 
 	} 
 	
 	auto nodeBuilder(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
@@ -4656,6 +4749,8 @@ version(/+$DIDE_REGION+/all)
 	//CodeContainer /////////////////////////////
 	CodeColumn content; 
 	
+	bool noBorder; //omits the texts on the surface of the Node and uses square edges.
+	
 	//base properties
 	abstract SyntaxKind syntax() const; 
 	abstract string prefix() const; 
@@ -4707,22 +4802,22 @@ version(/+$DIDE_REGION+/all)
 		{
 			content.bkColor = darkColor; 
 			
-			put(prefix); 	const i0 = subCells.length; 
-			put(content); 	const i2 = subCells.length; 
-			put(postfix); //Todo: //slashComment must ensure that after it there is a newLine
+			if(!noBorder) put(prefix); 
+			put(content); 
+			if(!noBorder) put(postfix); 
 			
 			rearrange_node; 
 			
-			//yAlign prefix to top and postfix to bottom
-			//Todo: 4 modes to align: center, top/bottom, stretch, stretch-repeat
-			if(0)
-			if(content.rowCount>1)
-			{
-				foreach(c; subCells[0..i0]) c.outerPos.y = 0; 
-				foreach(c; subCells[i2..$]) c.outerPos.y = innerHeight-c.outerHeight; 
-			}
-			
+			//Todo: //slashComment must ensure that after it there is a newLine
 		}
+	} 
+	
+	void applyNoBorder()
+	{
+		noBorder = true; 
+		border = Border.init; 
+		content.applyNoBorder; 
+		needMeasure; 
 	} 
 } class CodeComment : CodeContainer
 {
@@ -5449,54 +5544,11 @@ version(/+$DIDE_REGION+/all)
 		rebuilder.appendStructured(scanner); //this will stop at the closing token
 		if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix)
 		{
-			//analize patterns
-			//Note: -> processHighLevel
-			/*
-				if(scanner.front.src=="}"){
-								auto crsr = content.endCursor;
-								print(crsr);
-								while(!isnull(crsr.pos)){
-									crsr.moveRight(-1);
-									print(2, crsr);
-									auto c = content.rows[crsr.pos.y].subCells[crsr.pos.x];
-									print(3, crsr);
-									if(auto g = cast(Glyph)c){
-										print(4, crsr);
-										if(g.syntax==skWhitespace){
-											write(" ");
-										}else if(g.syntax==skKeyword){
-											write(EgaColor.ltGreen(g.ch.text));
-										}else{
-											write(g.ch);
-										}
-									}else if(auto s = cast(CodeString)c){
-										write(`"`);
-									}else if(auto s = cast(CodeComment)c){
-										write("/");
-									}else if(auto b = cast(CodeBlock)c){
-										write(b.prefix[0]);
-									}else write("?");
-								}
-							}
-			*/
-			
-			//closing token
+			//Note: -> processHighLevel will deal with this later.
 			scanner.popFront; 
 		}
 		else
 		enforce(0, "Invalid block closing token"); 
-		
-		/+
-			if(type!=Type.block){
-						content.setRoundBorder(2);
-						content.margin = "0.25";
-						content.padding = "0.25 4";
-						
-						this.setRoundBorder(2);
-						this.margin = "0.25";
-						this.padding = ".6 .75";
-					}
-		+/
 		
 		needMeasure; 
 	} 
@@ -6953,16 +7005,17 @@ version(/+$DIDE_REGION+/all)
 	bool isWhitespaceOrComment(CodeRow row)
 	{ return !row || row.subCells.all!isWhitespaceOrComment; } 
 	
-	dstring extractThisLevelDString(CodeRow row)
-	{ return row.subCells.map!structuredCellToChar.dtext; } 
 	
+	dstring extractThisLevelDString(R)(R rng)
+	{ return rng.map!structuredCellToChar.dtext; } 
+	
+	dstring extractThisLevelDString(CodeRow row)
+	{ return row.subCells.extractThisLevelDString; } 
 	
 	dstring extractThisLevelDString(CodeColumn col)
 	{
-		
 		//every chacacter or node maps to exactly one character (including newline)
-		const str = col.rows.map!extractThisLevelDString.join("\n"); 
-		return str; 
+		return col.rows.map!extractThisLevelDString.join("\n"); 
 	} 
 	
 	
@@ -8159,6 +8212,18 @@ version(/+$DIDE_REGION+/all)
 		string example, operator, textCode, rearrangeCode, drawCode; 
 	} 
 	
+	version(/+$DIDE_REGION Mixin Table helpers+/all)
+	{
+		alias MixinTableContainerClass = CodeContainer
+		/+The root class of all type of table cells.+/; 
+		
+		static bool isMixinTableCell(Cell a)
+		{ return !!(cast(MixinTableContainerClass)(a)); } 
+		
+		static bool mixinTableSplitFun(Cell a, Cell b)
+		{ return isMixinTableCell(a) || isMixinTableCell(b); } 
+	}
+	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
 	[
 		{"null" /+This will be rerturned when no template was found.+/},
@@ -8228,15 +8293,12 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryTokenStringOp, 
 			skIdentifier1, 2,
 			q{
-				(表!(q{
-					[
-						["Field"	, "Type"	, "Default"],
-						[q{piros}	, q{ubyte}	],
-						[q{zold}	, q{ubyte}	],
-						[q{kek}	, q{ubyte}	],
-						[q{alpha}	, q{ubyte}	, q{255}]
-					]
-				},q{
+				(表!(q{[["Field","Type","Default",],
+				[q{piros},q{ubyte},],
+				[q{zold},q{ubyte},],
+				[q{kek},q{ubyte},],
+				[q{alpha},q{ubyte},q{255},],
+				]},q{
 					return cells[1..$]
 					.map!(
 						r=>format!"%s %s%s;"
@@ -8249,14 +8311,7 @@ version(/+$DIDE_REGION+/all)
 				}))
 			},
 			"表!",
-			q{
-				//Todo: error handling for both operands! They must be in D syntax!
-				put(operator); put('('); 
-				put("q{", operands[0], "}"); 
-				put(','); 
-				put("q{", operands[1], "}"); 
-				put(')'); 
-			},
+			q{buildMixinTable; },
 			q{arrangeMixinTable; },
 			q{}
 		},
@@ -8705,7 +8760,8 @@ version(/+$DIDE_REGION+/all)
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
-		bool notYetRearranged = true; //In rearrange script, it can be used for special initialization purposes.
+		bool notYetRearranged = true; 
+		//In rearrange script, it can be used for special initialization purposes.
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
@@ -8744,7 +8800,10 @@ version(/+$DIDE_REGION+/all)
 			return sum.avg(bkColor); 
 		} 
 		
-		this(Container parent, int templateIdx_, CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null)
+		this(
+			Container parent, int templateIdx_, 
+			CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null
+		)
 		{
 			super(parent); 
 			
@@ -8784,6 +8843,81 @@ version(/+$DIDE_REGION+/all)
 							op(0); put(','); put("q{", operands[1], "}"); 
 						put(')'); 
 					put(')'); 
+				} 
+				
+				void buildMixinTable()
+				{
+					//Todo: error handling for both operands! They must be in D syntax!
+					put(operator); put('('); 
+					auto tbl = operands[0]; 
+					if(tbl.flags.columnIsTable)
+					{
+						put("q{"); 
+							put("["); 
+								tbl.rows.each
+						!(
+							(r){
+								put("["); 
+								r.subCells.splitWhen!mixinTableSplitFun.each
+								!(
+									(rng){
+										if(rng.front.isMixinTableCell)
+										{ put(rng.front); put(','); /+Todo: don't emit last comma+/}
+										else
+										{
+											void putAsStringLiteral(R)(R rng)
+											{
+												SourceTextBuilder builder; 
+												builder.put(rng); 
+												auto src = builder.result; 
+												if(src.isValidDLang)
+												{
+													put("q{"); 
+														put(src); 
+														if(
+														src.canFind("//") || 
+														src.canFind('#')
+													) putNL; 
+													put("}"); put(','); /+Todo: don't emit last comma+/
+												}
+												else
+												put(src.quoted); 
+												//2 celltypes for the moment: q{} and ""
+											} 
+											
+											enum SplitAtTabs = true; 
+											static if(SplitAtTabs)
+											{
+												foreach(
+													tabRng; rng.splitter!(
+														a=>	(cast(Glyph)(a)) && 
+															(cast(Glyph)(a)).ch=='\t'
+													)
+												)
+												{ putAsStringLiteral(tabRng); }
+											}
+											else
+											{ putAsStringLiteral(rng); }
+										}
+										
+									}
+								); 
+								put("]"); put(","); /+Todo: don't emit last comma+/putNL; 
+							}
+						); 
+							put("]"); 
+						put("}"); 
+					}
+					else
+					{
+						put("q{", operands[0], "}");  
+						//D compiler will fail on it, but it keeps the unknown content.
+					}
+					
+					put(','); 
+					put("q{", operands[1], "}"); 
+					put(')'); 
+					
 				} 
 				
 				put("("); 
@@ -8930,6 +9064,7 @@ version(/+$DIDE_REGION+/all)
 					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
 					
 					with(operands[0]) {
+						/+Todo: Make this CodeColumn stand out when it's empty+/
 						fillColor(style.fontColor, style.bkColor); 
 						applyHalfSize; 
 					}
@@ -8968,7 +9103,7 @@ version(/+$DIDE_REGION+/all)
 						
 						auto tbl = operands[0]; 
 						
-						static if(0)
+						version(/+$DIDE_REGION+/none)
 						{
 							tbl.flags.columnIsTable	= true,
 							tbl.flags.columnElasticTabs 	= false; 
@@ -9043,60 +9178,63 @@ version(/+$DIDE_REGION+/all)
 								foreach(i, cell; row.subCells)
 								colWidths[i].maximize(cell.outerWidth); 
 							}
-							
-							print!colWidths; 
 						}
 						
-						static if(1)
+						static CodeBlock detectOuterBlock(CodeColumn col)
 						{
-							static CodeBlock detectOuterBlock(CodeColumn col)
+							const dstr = col.extractThisLevelDString; 
+							if(dstr.strip=="[")
 							{
-								const dstr = col.extractThisLevelDString; 
-								if(dstr.strip=="[")
-								{
-									const idx = dstr.countUntil('['); 
-									if(idx>=0)
-									return (cast(CodeBlock)(col.byCell.drop(idx).front)); 
-								}
-								return null; 
-							} 
-							
-							if(auto outerBlock = detectOuterBlock(operands[0]))
+								const idx = dstr.countUntil('['); 
+								if(idx>=0)
+								return (cast(CodeBlock)(col.byCell.drop(idx).front)); 
+							}
+							return null; 
+						} 
+						
+						if(auto outerBlock = detectOuterBlock(operands[0]))
+						{
+							if(outerBlock.content.extractThisLevelDString.all!(a=>a.among('[', ' ', '\n', ',')))
 							{
-								if(outerBlock.content.extractThisLevelDString.all!(a=>a.among('[', ' ', '\n', ',')))
+								auto innerBlocks = outerBlock.content.byNode!CodeBlock.array; 
+								if(innerBlocks.all!(blk=>blk.content.extractThisLevelDString.all!(a=>a.among('"', ' ', '\n', ','))))
 								{
-									auto innerBlocks = outerBlock.content.byNode!CodeBlock.array; 
-									if(innerBlocks.all!(blk=>blk.content.extractThisLevelDString.all!(a=>a.among('"', ' ', '\n', ','))))
+									auto rows = innerBlocks.map!
+										(
+										(blk){
+											auto row = blk.content.rows[0]; //keep lineIdx
+											row.setParent(tbl); 
+											auto tableCells = blk.content.byNode!CodeString.array; 
+											row.subCells = (cast(Cell[])(tableCells)); 
+											tableCells.each!(
+												(c){
+													c.setParent(row); 
+													c.applyNoBorder; 
+												}
+											); 
+											row.clearTabIdx; //no tabs, only tableCells
+											row.needMeasure; //Todo: Spread the cells
+											return row; 
+										}
+									).array; 
+									
+									tbl.flags.columnIsTable	= true,
+									tbl.flags.columnElasticTabs 	= false; 
+									tbl.applyNoBorder; 
+									
+									//Todo: Test with multiple pages (vertical Tab)
+									if(rows.length)
 									{
-										auto rows = innerBlocks.map!
-											(
-											(blk){
-												auto row = blk.content.rows[0]; //keep lineIdx
-												row.setParent(tbl); 
-												row.subCells = (cast(Cell[])(blk.content.byNode!CodeString.array)); 
-												row.subCells.each!((c){ c.setParent(row); }); 
-												row.clearTabIdx; //no tabs, only tableCells
-												row.needMeasure; //Todo: Spread the cells
-												return row; 
-											}
-										).array; 
-										
-										tbl.flags.columnIsTable	= true,
-										tbl.flags.columnElasticTabs 	= false; 
-										//Todo: empty the multiPageCache
-										if(rows.length)
-										{
-											tbl.subCells = (cast(Cell[])(rows)); 
-											//Todo: spread the rows
-										}
-										else
-										{
-											tbl.subCells.length = 1; 
-											tbl.rows[0].clearSubCells; 
-										}
-										//tbl.needMeasure; 
-										LOG("VALID TABLE"); 
+										tbl.subCells = (cast(Cell[])(rows)); 
+										//Todo: spread the rows
 									}
+									else
+									{
+										tbl.subCells.length = 1; 
+										tbl.rows[0].clearSubCells; 
+									}
+									
+									tbl.needMeasure; 
 								}
 							}
 						}
@@ -9108,44 +9246,6 @@ version(/+$DIDE_REGION+/all)
 					put("\t"); op(0); 	putNL; 
 					put("\tScript"); 	putNL; 
 					put("\t"); op(1); 
-					
-					{
-						auto 	tbl	= operands[0], 
-							rows 	= tbl.rows; 
-						
-						if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
-						{
-							//measure colWidths
-							auto colWidths = [float(DefaultFontHeight/2)].replicate(numCols); 
-							foreach(row; rows)
-							row.subCells.enumerate.each!(
-								(a){
-									if(auto cntr = (cast(Container)(a.value)))
-									cntr.measure; 
-									colWidths[a.index].maximize(a.value.outerWidth); 
-								}
-							); 
-							
-							//spread colWidths
-							foreach(row; rows)
-							{
-								float maxHeight = DefaultFontHeight; //Todo: halfsize?
-								foreach(idx, cell; row.subCells)
-								{
-									cell.outerSize.x = colWidths[idx]; 
-									maxHeight.maximize(cell.outerHeight); 
-								}
-								row.subCells.spreadH; 
-								foreach(idx, cell; row.subCells)
-								{
-									cell.outerPos.y = 0; 
-									cell.outerSize.y = maxHeight; 
-								}
-							}
-							
-							tbl.innerWidth = colWidths.sum; 
-						}
-					}
 					
 					super.rearrange; 
 				} 

@@ -1725,7 +1725,7 @@ version(/+$DIDE_REGION main+/all)
 				return []; 
 			}
 		} 
-		
+		
 		
 		CodeRow[string] messageUICache;  //why a row??????
 		string[string] messageSourceTextByLocation; 
@@ -1769,7 +1769,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			visit([&rootMessage]); 
 		} 
-		
+		
 		void convertBuildMessagesToSearchResults(ref BuildResult br)
 		{
 			T0; 
@@ -3934,34 +3934,37 @@ version(/+$DIDE_REGION main+/all)
 			} 
 		} version(/+$DIDE_REGION Resyntax+/all)
 		{
-			//Resyntax queue ////////////////////////////////////////////////////////
-			
-			void needResyntax(Cell cell)
+			void needResyntax(CodeColumn col)
 			{
-				//LOG(cell.text);
-				
 				static DateTime uniqueTime; 
-				if(auto col = cell.thisAndAllParents!CodeColumn.frontOrNull)
+				uniqueTime.actualize; 
+				scope(exit) col.lastResyntaxTime = uniqueTime; 
+				
+				const doItRightNow = (col.flags.columnIsTable && col.rowCount<1000); 
+				if(doItRightNow)
 				{
-					uniqueTime.actualize; 
-					
-					//fast update last item if possible
-					if(resyntaxQueue.map!"a.what".backOrNull is col)
-					{
-						resyntaxQueue.back.when = uniqueTime; 
-						col.lastResyntaxTime = uniqueTime; 
-						return; 
-					}
-					
-					//remove if alreay exists
-					resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
-					
-					resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
-					col.lastResyntaxTime = uniqueTime; 
-					
+					/+
+						Note: Immediate resyntax for smaller tables.
+						It's annoying when the arrangement of the table cells are shifting.
+					+/
+					resyntaxNow(col); 
 				}
 				else
-				assert(0, "Unhandled type"); 
+				{
+					//Note: Delayed resyntax.  It's needed for large highlighted texts.
+					if(
+						//fast-update last item if possible
+						resyntaxQueue.map!"a.what".backOrNull is col
+					)
+					{ resyntaxQueue.back.when = uniqueTime; }
+					else
+					{
+						//remove if alreay exists
+						resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
+						//add
+						resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
+					}
+				}
 			} 
 			
 			void UI_ResyntaxQueue()
