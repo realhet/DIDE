@@ -4768,7 +4768,11 @@ version(/+$DIDE_REGION+/all)
 	CodeColumn content; 
 	
 	bool 	noBorder, //omits the texts on the surface of the Node and uses square edges.
-		singleBkColor; 
+		singleBkColor,
+		isTableCell /+
+		Used with MixinTables. 
+		The tokenstring should have normal background, not string-like background.
+	+/; 
 	
 	//base properties
 	abstract SyntaxKind syntax() const; 
@@ -5367,10 +5371,6 @@ version(/+$DIDE_REGION+/all)
 	
 	Type type; 
 	CharSize charSize; 
-	bool isTableCell; /+
-		Used with MixinTables. 
-		The tokenstring should have normal background, not string-like background.
-	+/
 	
 	string sizePostfix() const
 	{ return charSize!=CharSize.default_ ? charSize.text : ""; } 
@@ -8335,8 +8335,13 @@ version(/+$DIDE_REGION+/all)
 					["Field","Type","Default",],
 					[q{piros},q{ubyte},],
 					[q{zold},q{ubyte},],
+					[],
 					[q{kek},q{ubyte},],
 					[q{alpha},q{ubyte},q{255},],
+					[],
+					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/},],
+					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar18.jpg+/},q{},q{},q{},],
+					[],
 				]},q{
 					cells[1..$]
 					.map!(
@@ -8348,6 +8353,29 @@ version(/+$DIDE_REGION+/all)
 					)
 					.join
 				}))
+				(表!(q{[
+					["Field","Type","Default",],
+					[q{piros},q{ubyte},],
+					[q{zold},q{ubyte},],
+					[],
+					[q{kek},q{ubyte},],
+					[q{alpha},q{ubyte},q{255},],
+					[],
+					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt/+nesting+/+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "unterminated cString+/},],
+					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar18.jpg+/},q{},q{},q{},],
+					[],
+				]},q{
+					cells[1..$]
+					.map!(
+						r=>format!"%s %s%s;"
+						(
+							r[1], r[0], 
+							((r.length>2) ?("="~r[2].inner):(""))
+						)
+					)
+					.join
+				}))
+				
 			},
 			
 			"表!",
@@ -8894,6 +8922,15 @@ version(/+$DIDE_REGION+/all)
 				
 				void buildMixinTable()
 				{
+					/+
+						Note: Cell type  	Manual entry  	Stored on disk	Internal CodeContainer
+						cString	/+Code: "blabla\t"+/	/+Code: "blabla\t"+/	/+Code: "blabla\t"+/	//escaped string, only if entered as single token
+						dString	/+Code: `blabla\t`+/	/+Code: `blabla\t`+/	/+Code: `blabla	`+/	//WYSIWYG string, only if entered as single token
+						code	/+Code: fun*1+2+/	/+Code: q{fun*1+2}+/	/+Code: q{fun*1+2}+/	//when unable to detect a single string
+						dComment	/+Code: /+cmt+/+/	/+Code: q{/+cmt+/}+/ 	/+Code: /+cmt+/+/	//The comment must be extracted from the tokenString.
+						last resolt		/+Code: q{/+Error: cmt+/}+/	/+Code: /+Error: cmt+/+/	//Displayed without the `Error:` title
+					+/
+					
 					//Todo: error handling for both operands! They must be in D syntax!
 					put(operator); put('('); 
 					auto tbl = operands[0]; 
@@ -8901,57 +8938,75 @@ version(/+$DIDE_REGION+/all)
 					{
 						put("q{"); 
 							put("["); indentCount++; 
-								tbl.rows.each
-						!(
-							(r){
-								putNL; put("["); 
-								r.subCells.splitWhen!mixinTableSplitFun.each
-								!(
-									(rng){
-										if(rng.front.isMixinTableCell)
-										{ put(rng.front); put(','); /+Todo: don't emit last comma+/}
-										else
+								foreach(r; tbl.rows)
+						{
+							putNL; put("["); 
+							foreach(entry; r.subCells.splitWhen!mixinTableSplitFun)
+							{
+								if(auto cmt = (cast(CodeComment)(entry.front)))
+								{
+									print("structured dComment:", cmt.sourceText); 
+									put("q{"); put(cmt); put("}"); 
+									put(','); /+Todo: don't emit last comma+/
+								}
+								else if(entry.front.isMixinTableCell)
+								{
+									put(entry.front); 
+									put(','); /+Todo: don't emit last comma+/
+								}
+								else
+								{
+									void putAsStringLiteral(R)(R entry)
+									{
+										SourceTextBuilder builder; 
+										builder.put(entry); 
+										auto src = builder.result; 
+										if(src.isValidDLang)
 										{
-											void putAsStringLiteral(R)(R rng)
-											{
-												SourceTextBuilder builder; 
-												builder.put(rng); 
-												auto src = builder.result; 
-												if(src.isValidDLang)
-												{
-													put("q{"); 
-														put(src); 
-														if(
-														src.canFind("//") || 
-														src.canFind('#')
-													) putNL; 
-													put("}"); put(','); /+Todo: don't emit last comma+/
-												}
-												else
-												put(src.quoted); 
-												//2 celltypes for the moment: q{} and ""
-											} 
-											
-											enum SplitAtTabs = true; 
-											static if(SplitAtTabs)
-											{
-												foreach(
-													tabRng; rng.splitter!(
-														a=>	(cast(Glyph)(a)) && 
-															(cast(Glyph)(a)).ch=='\t'
-													)
-												)
-												{ putAsStringLiteral(tabRng); }
-											}
+											if(isSingleDString(src))
+											{ put(src); }
+											else if(isSingleCString(src))
+											{ put(src); }
+											else if(isSingleDComment(src))
+											{ put("q{"~src~"}"); }
 											else
-											{ putAsStringLiteral(rng); }
+											{
+												put("q{"); 
+												put(src); if(
+													src.canFind("//") || 
+													src.canFind('#')
+												) putNL; 
+												put("}"); 
+											}
 										}
-										
-									}  
-								); 
-								put("]"); put(","); /+Todo: don't emit last comma+/
-							}  
-						); 
+										else
+										put(
+											"q{/+Error:" ~ (
+												src	.replace("/+", "/ +")
+													.replace("+/", "+ /")
+											) ~ "+/}"
+										); 
+										put(','); /+Todo: don't emit last comma+/
+									} 
+									
+									enum SplitAtTabs = true; 
+									static if(SplitAtTabs)
+									{
+										foreach(
+											tabSeparatedEntry; entry.splitter!(
+												a=>	(cast(Glyph)(a)) && 
+													(cast(Glyph)(a)).ch=='\t'
+											)
+										)
+										{ putAsStringLiteral(tabSeparatedEntry); }
+									}
+									else
+									{ putAsStringLiteral(entry); }
+								}
+							}
+							
+							put("]"); put(","); /+Todo: don't emit last comma+/
+						}
 							indentCount--; putNL; put("]"); 
 						put("}"); 
 					}
@@ -9249,9 +9304,15 @@ version(/+$DIDE_REGION+/all)
 									auto rows = innerBlocks.map!
 										(
 										(blk){
-											auto row = blk.content.rows[0]; //keep lineIdx
+											auto row = blk.content.rows[0]; //reuse row instance to keep lineIdx
 											row.setParent(tbl); 
-											auto tableCells = blk.content.byNode!CodeString.array; 
+											auto tableCells = (cast(CodeContainer[])(blk.content.byNode!CodeString.array)); 
+											
+											//unpack single Comments from tokenStrings
+											foreach(ref c; tableCells)
+											if(auto cmt = (cast(CodeComment)(c.content.singleCellOrNull)))
+											c = cmt; 
+											
 											row.subCells = (cast(Cell[])(tableCells)); 
 											tableCells.each!(
 												(c){
@@ -9381,7 +9442,7 @@ else debug
 	
 	int testStatements()
 	{
-		ivec2 v2 = { [1, 2]}; 
+		ivec2 v2 = {[1, 2]}; 
 		with(TestClass2) static int i=5; 
 		with(TestClass1)
 		{
@@ -9493,7 +9554,7 @@ else debug
 			{}
 			
 			if(0) {}else
-			{ /*comment23*/}
+			{/*comment23*/}
 			
 			if(0) {}else if(0) {}else {}
 		}with("if else newLine combinations")
@@ -9638,9 +9699,9 @@ else
 	S u = { 1, 2}; 
 	S v = { 1, d:3}; 
 	S w = { b:1, 3}; 
-	S w = { b:1, {}}; 
-	S w = { { /+nothing+/}}; 
-	void a() { static if(5) { { /+nothing+/}}} 
+	S w = {b:1, {}}; 
+	S w = { {/+nothing+/}}; 
+	void a() { static if(5) { {/+nothing+/}}} 
 	
 }version(none) {
 	//test do/while
@@ -9699,7 +9760,7 @@ else
 			1//a
 			//b
 		)
-		{ /+c+/}
+		{/+c+/}
 		
 	} 
 }

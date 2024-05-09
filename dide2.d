@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+///@release
 //@debug
 
 
@@ -2647,11 +2647,6 @@ version(/+$DIDE_REGION main+/all)
 			bool requestInsertPermission_prepare(TextSelection ts, string str)
 			{
 				auto res = requestModifyPermission(ts.codeColumn); 
-				
-				//Todo: there could be additional checks based on the input text
-				
-				if(str.isValidDLang)
-				WARN("Invalid DLang source code inserted.\n"~str); 
 				
 				if(res) {
 					auto m = moduleOf(ts).enforce; 
