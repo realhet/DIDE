@@ -3776,11 +3776,11 @@ class CodeRow: Row
 			
 			if(flags.columnElasticTabs)
 			{
-				processElasticTabs(cast(Cell[])(rows)); 
+				processElasticTabs (cast(Cell[])(rows)); 
 				/+Opt: apply this to a subset that has been remeasured+/
 			}
 			if(flags.columnIsTable)
-			{ processTableRows(cast(CodeRow[])(subCells)); }
+			{ processTableRows (cast(CodeRow[])(subCells)); }
 			
 			const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement; 
 			innerSize = vec2(maxInnerWidth + totalGap.x, y); 
@@ -3898,87 +3898,118 @@ class CodeRow: Row
 	
 	static processTableRows(CodeRow[] rows)
 	{
+		static void adjustCodeContainerWidth(CodeContainer cntr, float w)
+		{
+			with(cntr)
+			if(const Δw = w - outerSize.x)
+			{
+				outerSize.x = w; 
+				if(auto col = (cast(CodeColumn)(cntr.subCells.backOrNull)))
+				{ col.adjustWidth(Δw); }
+			}
+		} 
+		
 		if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
 		{
 			//measure colWidths
 			float[] colWidths; 
+			float fullWidth=0; //column widths and full length comment rows
 			foreach(row; rows)
 			{
-				int idx=0; 
-				foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+				if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
+				{ fullWidth.maximize(cmt.outerWidth); }
+				else
 				{
-					float calcWidth()
+					int idx=0; 
+					foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
 					{
-						if(isMixinTableCell(rng.front))
+						float calcWidth()
 						{
-							with((cast(MixinTableContainerClass)(rng.front)))
+							if(isMixinTableCell(rng.front))
 							{
-								measure; 
-								return outerWidth; 
+								with((cast(MixinTableContainerClass)(rng.front)))
+								{
+									measure; 
+									return outerWidth; 
+								}
 							}
+							else
+							{ return rng.map!"a.outerWidth".sum; }
+						} 
+						
+						if(colWidths.length<=idx)
+						{
+							colWidths ~= 0; 
+							//only igrows by one, no while() needed
 						}
-						else
-						{ return rng.map!"a.outerWidth".sum; }
-					} 
-					
-					if(colWidths.length<=idx)
-					{
-						colWidths ~= 0; 
-						//only igrows by one, no while() needed
+						
+						colWidths[idx++/+advance loop+/].maximize(calcWidth); 
 					}
-					
-					colWidths[idx++/+advance loop+/].maximize(calcWidth); 
+				}
+			}
+			
+			//synch the right edge of the last cell with the commentRowWidth
+			{
+				const cwSum =  colWidths.sum; 
+				if(fullWidth>cwSum)
+				{
+					//extend rightmost column (if there is one)
+					if(colWidths.length) colWidths.back += fullWidth - cwSum; 
+				}
+				else
+				{
+					//extend fullWidth up to the columns
+					fullWidth = cwSum; 
 				}
 			}
 			
 			//spread colWidths
 			foreach(row; rows)
 			{
-				int idx=0; float actX=0; 
-				foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+				if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
 				{
-					if(isMixinTableCell(rng.front))
+					cmt.outerPos.x = 0; 
+					adjustCodeContainerWidth(cmt, fullWidth); 
+				}
+				else
+				{
+					int idx=0; float actX=0; 
+					foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
 					{
-						auto cntr = (cast(CodeContainer)(rng.front)); 
-						with(cntr)
+						if(isMixinTableCell(rng.front))
 						{
-							outerPos.x = actX; 
-							
 							const w = colWidths[idx]; 
-							if(const Δw = w - outerSize.x)
-							{
-								outerSize.x = w; 
-								if(auto col = (cast(CodeColumn)(cntr.subCells.frontOrNull)))
-								{ col.adjustWidth(Δw); }
-							}
+							auto cntr = (cast(CodeContainer)(rng.front)); 
+							
+							cntr.outerPos.x = actX; 
+							adjustCodeContainerWidth(cntr, w); 
 							
 							actX += w; 
 						}
-					}
-					else
-					{
-						const nextX = actX + colWidths[idx]; 
-						foreach(cell; rng)
+						else
 						{
-							cell.outerPos.x = actX; 
-							actX += cell.outerSize.x; 
+							const nextX = actX + colWidths[idx]; 
+							foreach(cell; rng)
+							{
+								cell.outerPos.x = actX; 
+								actX += cell.outerSize.x; 
+							}
+							
+							//Todo: Handle extra gap after the text when clicking with mouse
+							actX = nextX; 
 						}
-						
-						//Todo: Handle extra gap after the text when clicking with mouse
-						actX = nextX; 
+						idx++/+advance loop+/; 
 					}
-					idx++/+advance loop+/; 
+					
+					//spread container heights
+					const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
+					foreach(cntr; row.byNode!MixinTableContainerClass)
+					{
+						cntr.outerSize.y = maxHeight; 
+						//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
+						//Todo: stretch out inner surface
+					}
 				}
-				
-				//spread container heights
-				const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
-				foreach(cntr; row.byNode!MixinTableContainerClass)
-				{
-					cntr.outerSize.y = maxHeight; 
-					//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
-					//Todo: stretch out inner surface
-				}
-				
 			}
 		}
 	} 
@@ -8332,37 +8363,22 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, 2,
 			q{
 				(表!(q{[
-					["Field","Type","Default",],
-					[q{piros},q{ubyte},],
-					[q{zold},q{ubyte},],
+					["Field","Type","Default"],
+					[q{piros},q{ubyte}],
+					[q{zold},q{ubyte}],
+					[q{//cmtfewqfewqfe
+					}],
+					[q{kek},q{ubyte}],
+					[q{alpha},q{ubyte},q{255}],
+					[q{/+gewqgewggwq+/},q{/+gewqggggg+/}],
 					[],
-					[q{kek},q{ubyte},],
-					[q{alpha},q{ubyte},q{255},],
+					[q{((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))}],
 					[],
-					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/},],
-					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar18.jpg+/},q{},q{},q{},],
-					[],
-				]},q{
-					cells[1..$]
-					.map!(
-						r=>format!"%s %s%s;"
-						(
-							r[1], r[0], 
-							((r.length>2) ?("="~r[2].inner):(""))
-						)
-					)
-					.join
-				}))
-				(表!(q{[
-					["Field","Type","Default",],
-					[q{piros},q{ubyte},],
-					[q{zold},q{ubyte},],
-					[],
-					[q{kek},q{ubyte},],
-					[q{alpha},q{ubyte},q{255},],
-					[],
-					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt/+nesting+/+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "unterminated cString+/},],
-					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar18.jpg+/},q{},q{},q{},],
+					[q{/+Warning: warnggfdsgfds /+Code: 1+2=3+/+/}],
+					[q{/+Todo: blabla+/}],
+					[q{/+chewhrewhrewhrewhrewgfsgfdsmt ----------------+/}],
+					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/}],
+					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar134.jpg maxHeight=128+/},q{},q{},q{}],
 					[],
 				]},q{
 					cells[1..$]
@@ -8375,7 +8391,6 @@ version(/+$DIDE_REGION+/all)
 					)
 					.join
 				}))
-				
 			},
 			
 			"表!",
@@ -8923,12 +8938,18 @@ version(/+$DIDE_REGION+/all)
 				void buildMixinTable()
 				{
 					/+
-						Note: Cell type  	Manual entry  	Stored on disk	Internal CodeContainer
+						Note: Mixin Table format
+						
+						Rows are /+Code: string[]+/ arrays.  And the whole table is an array of those rows:  /+Code: string[][]+/
+						
+						Cell type  	Manual entry  	Stored on disk	Internal CodeContainer
 						cString	/+Code: "blabla\t"+/	/+Code: "blabla\t"+/	/+Code: "blabla\t"+/	//escaped string, only if entered as single token
 						dString	/+Code: `blabla\t`+/	/+Code: `blabla\t`+/	/+Code: `blabla	`+/	//WYSIWYG string, only if entered as single token
 						code	/+Code: fun*1+2+/	/+Code: q{fun*1+2}+/	/+Code: q{fun*1+2}+/	//when unable to detect a single string
 						dComment	/+Code: /+cmt+/+/	/+Code: q{/+cmt+/}+/ 	/+Code: /+cmt+/+/	//The comment must be extracted from the tokenString.
 						last resolt		/+Code: q{/+Error: cmt+/}+/	/+Code: /+Error: cmt+/+/	//Displayed without the `Error:` title
+						
+						If a row only has a single /+Code: [q{/+comment+/}]+/, thats a grouping row. That must be stretched horizontally.
 					+/
 					
 					//Todo: error handling for both operands! They must be in D syntax!
@@ -8938,21 +8959,27 @@ version(/+$DIDE_REGION+/all)
 					{
 						put("q{"); 
 							put("["); indentCount++; 
-								foreach(r; tbl.rows)
+								foreach(rowIdx, row; tbl.rows)
 						{
 							putNL; put("["); 
-							foreach(entry; r.subCells.splitWhen!mixinTableSplitFun)
+							
+							bool anyItems = false; void beforeItem()
+							{
+								if(anyItems) put(','); 
+								anyItems = true; 
+							} 
+							
+							foreach(entry; row.subCells.splitWhen!mixinTableSplitFun.array)
 							{
 								if(auto cmt = (cast(CodeComment)(entry.front)))
 								{
-									print("structured dComment:", cmt.sourceText); 
+									beforeItem; 
 									put("q{"); put(cmt); put("}"); 
-									put(','); /+Todo: don't emit last comma+/
 								}
 								else if(entry.front.isMixinTableCell)
 								{
+									beforeItem; 
 									put(entry.front); 
-									put(','); /+Todo: don't emit last comma+/
 								}
 								else
 								{
@@ -8980,32 +9007,30 @@ version(/+$DIDE_REGION+/all)
 											}
 										}
 										else
-										put(
-											"q{/+Error:" ~ (
-												src	.replace("/+", "/ +")
-													.replace("+/", "+ /")
-											) ~ "+/}"
-										); 
-										put(','); /+Todo: don't emit last comma+/
+										{
+											put(
+												"q{/+Error:" ~ (
+													src	.replace("/+", "/ +")
+														.replace("+/", "+ /")
+												) ~ "+/}"
+											); 
+										}
 									} 
 									
-									enum SplitAtTabs = true; 
-									static if(SplitAtTabs)
-									{
-										foreach(
-											tabSeparatedEntry; entry.splitter!(
-												a=>	(cast(Glyph)(a)) && 
-													(cast(Glyph)(a)).ch=='\t'
-											)
+									foreach(
+										tabSeparatedEntry; entry.splitter!(
+											a=>	(cast(Glyph)(a)) &&
+												(cast(Glyph)(a)).ch=='\t'
 										)
-										{ putAsStringLiteral(tabSeparatedEntry); }
+									)
+									{
+										beforeItem; 
+										putAsStringLiteral(tabSeparatedEntry); 
 									}
-									else
-									{ putAsStringLiteral(entry); }
 								}
 							}
 							
-							put("]"); put(","); /+Todo: don't emit last comma+/
+							put("]"); put(","); /+Extra comma at end, but IDC...+/
 						}
 							indentCount--; putNL; put("]"); 
 						put("}"); 
