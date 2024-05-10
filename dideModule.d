@@ -2367,6 +2367,62 @@ class CodeRow: Row
 		foreach(g; glyphs.filter!"a") g.bkColor = bkc; 
 	} 
 	
+	
+	///Transfer cells and form an error comment from them. Append it into this row.
+	void appendError(Cell[] cells)
+	{
+		//Generate sourceText from problematic cells
+		SourceTextBuilder builder; 
+		builder.put(cells); 
+		auto str = builder.result; 
+		
+		//Create and append am Error Comment Node
+		auto scanner = DLangScanner
+			(
+			format!"/+Error:%s+/"(
+				str	.replace("/+", "/ +")
+					.replace("+/", "+ /")
+			)
+			/+
+				This comment is valid, so it can be reloaded later 
+				as a valid cell that shows the exact same error.
+			+/
+		); 
+		auto cmt = new CodeComment(this); 
+		cmt.rebuild(scanner); 
+		this.appendCell(cmt); 
+	} 
+	
+	override float contentInnerWidth() const
+	{
+		if(subCells.empty) return DefaultFontEmptyEditorSize.x; 
+		
+		//This is compatible with the MixinTable cells.
+		static if(0)
+		{
+			/+
+				Todo: megcsinalni rendesen ezt a helykitolteses realign szopást.
+				Olyan egyenletmegoldosnak kene lenni, mint a CAD-ban.  Nem utolag pofozgatasosnak.  
+				Ezekkel a cache-olt poziciokkal mindig baj van, de qrvasok az adat cacheolni kell.
+			+/
+			if(auto cntrNode = (cast(CodeContainer)(subCells.backOrNull)))
+			{
+				if(auto col = cntrNode.content)
+				{
+					//this is the last column in the node.
+					auto rows = col.cachedPageRowRanges.backOr (cast(Row[])(col.subCells)); 
+					const extraSpaceOnTheRight = rows.map!(r=>r.innerWidth - r.contentInnerWidth/+recursion!+/).minElement; 
+					return cntrNode.outerRight - extraSpaceOnTheRight/+ + (cntrNode.innerSize.x - col.outerRight) + cntrNode.bottomRightGapSize.x+/; 
+					//Bug: Last pew pixels are lost on the /+Note:blabla+/ comments. The rightmost frame becomes hidden...
+				}
+			}
+		}
+		
+		//original behavior
+		return subCells.back.outerRight; 
+	} 
+	
+	
 	
 	protected
 	{
@@ -3788,6 +3844,9 @@ class CodeRow: Row
 				Todo: this is not possible with the immediate UI because the autoWidth/autoHeigh 
 				information is lost. And there is no functions to return the required content size.
 				The container should have a current size, a minimal required size and separate autoWidth flags.
+				
+				row.contentInnerWidth() is NOT compatible with adjustCodeContainerWidth()!!!
+				adjustCodeContainerWidth extends
 			+/
 			
 			if(!flags.dontStretchSubCells)
@@ -3797,16 +3856,12 @@ class CodeRow: Row
 			static if(enableColumnBreaks)
 			{
 				if(getStructureLevel >= StructureLevel.structured)
-				{
-					static bool isBreakRow(Row r)
-					{
-						//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
-						if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == 0xb /+Vertical Tab+/; 
-						return false; 
-					} 
-					
-					cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth); 
-				}
+				{ cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth); }
+				/+
+					Todo: Must revisit MultiPage support in Columns!!!
+					This should'nt be a post process thing! 
+					This mess is only used here anyways.
+				+/
 			}
 		}
 		
@@ -3904,114 +3959,129 @@ class CodeRow: Row
 			if(const Δw = w - outerSize.x)
 			{
 				outerSize.x = w; 
-				if(auto col = (cast(CodeColumn)(cntr.subCells.backOrNull)))
-				{ col.adjustWidth(Δw); }
+				content.adjustWidth(Δw); 
 			}
 		} 
 		
-		if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
+		/+
+			Todo: Make this fully compatibe with multiple pages (Vertical Tabs).
+			Must revisit MultiPage support in Columns!!!
+		+/
+		
+		/+
+			Bug: A tablazat jobb szelere kell extra betuket beirni, aztan visszatorolni -> 
+				-> A tablazat jobb szelen a kurzor ki fog repulni a visszatorles 
+					utan oda, mintha a Row hosszu maradt volna.
+		+/
+		
+		void processRows(CodeRow[] rows)
 		{
-			//measure colWidths
-			float[] colWidths; 
-			float fullWidth=0; //column widths and full length comment rows
-			foreach(row; rows)
+			if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
 			{
-				if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
-				{ fullWidth.maximize(cmt.outerWidth); }
-				else
+				//measure colWidths
+				float[] colWidths; 
+				float fullWidth=0; //column widths and full length comment rows
+				foreach(row; rows)
 				{
-					int idx=0; 
-					foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+					if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
+					{ fullWidth.maximize(cmt.outerWidth); }
+					else
 					{
-						float calcWidth()
+						int idx=0; 
+						foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
+						{
+							float calcWidth()
+							{
+								if(isMixinTableCell(rng.front))
+								{
+									with((cast(MixinTableContainerClass)(rng.front)))
+									{
+										measure; 
+										return outerWidth; 
+									}
+								}
+								else
+								{ return rng.map!"a.outerWidth".sum; }
+							} 
+							
+							if(colWidths.length<=idx)
+							{
+								colWidths ~= 0; 
+								//only igrows by one, no while() needed
+							}
+							
+							colWidths[idx++/+advance loop+/].maximize(calcWidth); 
+						}
+					}
+				}
+				
+				//synch the right edge of the last cell with the commentRowWidth
+				{
+					const cwSum =  colWidths.sum; 
+					if(fullWidth>cwSum)
+					{
+						//extend rightmost column (if there is one)
+						if(colWidths.length) colWidths.back += fullWidth - cwSum; 
+					}
+					else
+					{
+						//extend fullWidth up to the columns
+						fullWidth = cwSum; 
+					}
+				}
+				
+				//spread colWidths
+				foreach(row; rows)
+				{
+					if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
+					{
+						cmt.outerPos.x = 0; 
+						adjustCodeContainerWidth(cmt, fullWidth); 
+					}
+					else
+					{
+						int idx=0; float actX=0; 
+						foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
 						{
 							if(isMixinTableCell(rng.front))
 							{
-								with((cast(MixinTableContainerClass)(rng.front)))
-								{
-									measure; 
-									return outerWidth; 
-								}
+								const w = colWidths[idx]; 
+								auto cntr = (cast(CodeContainer)(rng.front)); 
+								
+								cntr.outerPos.x = actX; 
+								adjustCodeContainerWidth(cntr, w); 
+								
+								actX += w; 
 							}
 							else
-							{ return rng.map!"a.outerWidth".sum; }
-						} 
-						
-						if(colWidths.length<=idx)
-						{
-							colWidths ~= 0; 
-							//only igrows by one, no while() needed
-						}
-						
-						colWidths[idx++/+advance loop+/].maximize(calcWidth); 
-					}
-				}
-			}
-			
-			//synch the right edge of the last cell with the commentRowWidth
-			{
-				const cwSum =  colWidths.sum; 
-				if(fullWidth>cwSum)
-				{
-					//extend rightmost column (if there is one)
-					if(colWidths.length) colWidths.back += fullWidth - cwSum; 
-				}
-				else
-				{
-					//extend fullWidth up to the columns
-					fullWidth = cwSum; 
-				}
-			}
-			
-			//spread colWidths
-			foreach(row; rows)
-			{
-				if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
-				{
-					cmt.outerPos.x = 0; 
-					adjustCodeContainerWidth(cmt, fullWidth); 
-				}
-				else
-				{
-					int idx=0; float actX=0; 
-					foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
-					{
-						if(isMixinTableCell(rng.front))
-						{
-							const w = colWidths[idx]; 
-							auto cntr = (cast(CodeContainer)(rng.front)); 
-							
-							cntr.outerPos.x = actX; 
-							adjustCodeContainerWidth(cntr, w); 
-							
-							actX += w; 
-						}
-						else
-						{
-							const nextX = actX + colWidths[idx]; 
-							foreach(cell; rng)
 							{
-								cell.outerPos.x = actX; 
-								actX += cell.outerSize.x; 
+								const nextX = actX + colWidths[idx]; 
+								foreach(cell; rng)
+								{
+									cell.outerPos.x = actX; 
+									actX += cell.outerSize.x; 
+								}
+								
+								//Todo: Handle extra gap after the text when clicking with mouse
+								actX = nextX; 
 							}
-							
-							//Todo: Handle extra gap after the text when clicking with mouse
-							actX = nextX; 
+							idx++/+advance loop+/; 
 						}
-						idx++/+advance loop+/; 
-					}
-					
-					//spread container heights
-					const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
-					foreach(cntr; row.byNode!MixinTableContainerClass)
-					{
-						cntr.outerSize.y = maxHeight; 
-						//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
-						//Todo: stretch out inner surface
+						
+						//spread container heights
+						const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
+						foreach(cntr; row.byNode!MixinTableContainerClass)
+						{
+							cntr.outerSize.y = maxHeight; 
+							//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
+							//Todo: stretch out inner surface
+						}
 					}
 				}
 			}
-		}
+		} 
+		
+		processRows(rows); 
 	} 
 } 
 version(/+$DIDE_REGION+/all)
@@ -5007,6 +5077,7 @@ version(/+$DIDE_REGION+/all)
 	
 	this(CodeRow parent)
 	{ super(parent); } 
+	
 	
 	void rebuild(R)(R scanner) if(isScannerRange!R)
 	{
@@ -7042,6 +7113,13 @@ version(/+$DIDE_REGION+/all)
 {
 	//parsing helper fun ////////////////////////////////////////////////
 	
+	bool isBreakRow(Row r)
+	{
+		//if(auto cmt = cast(CodeComment) r.subCells.backOrNull) return cmt.isSpecialComment("BR");
+		if(auto g = cast(Glyph) r.subCells.backOrNull) return g.ch == '\v' /+Vertical Tab+/; 
+		return false; 
+	} 
+	
 	dchar structuredCellToChar(Cell c)
 	{
 		return c.castSwitch!(
@@ -8363,22 +8441,23 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, 2,
 			q{
 				(表!(q{[
-					["Field","Type","Default"],
-					[q{piros},q{ubyte}],
-					[q{zold},q{ubyte}],
-					[q{//cmtfewqfewqfe
-					}],
-					[q{kek},q{ubyte}],
-					[q{alpha},q{ubyte},q{255}],
-					[q{/+gewqgewggwq+/},q{/+gewqggggg+/}],
+					["Field","Type","Default",],
+					[q{piros},q{ubyte},],
+					[q{zold},q{ubyte},],
+					[q{
+						//cmtfewqfewqfe
+					},],
+					[q{kek},q{ubyte},],
+					[q{alpha},q{ubyte},q{255},],
+					[q{/+gewqgewggwq+/},q{/+gewqggggg+/},],
 					[],
-					[q{((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))}],
+					[q{((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))},],
 					[],
-					[q{/+Warning: warnggfdsgfds /+Code: 1+2=3+/+/}],
-					[q{/+Todo: blabla+/}],
-					[q{/+chewhrewhrewhrewhrewgfsgfds2mt ----------------+/}],
-					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/}],
-					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar134.jpg maxHeight=128+/},q{},q{},q{}],
+					[q{/+Warning: warnggfdsgfds /+Code: 1+2=3+/+/},],
+					[q{/+Todo: blabla+/},],
+					[q{/+chewhrewhrewhrewhrewgfsgfds2mt ----------------+/},],
+					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/},],
+					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar134.jpg maxHeight=128+/},q{},q{},q{},],
 					[],
 				]},q{
 					cells[1..$]
@@ -8959,8 +9038,10 @@ version(/+$DIDE_REGION+/all)
 					{
 						put("q{"); 
 							put("["); indentCount++; 
-								foreach(rowIdx, row; tbl.rows)
+								foreach(row; tbl.rows)
 						{
+							const hasVerticalTab = row.isBreakRow; //ignore ending VT, but append it at the end of the [] line.
+							
 							putNL; put("["); 
 							
 							bool anyItems = false; void beforeItem()
@@ -8969,7 +9050,7 @@ version(/+$DIDE_REGION+/all)
 								anyItems = true; 
 							} 
 							
-							foreach(entry; row.subCells.splitWhen!mixinTableSplitFun.array)
+							foreach(entry; row.subCells[0 .. $-hasVerticalTab].splitWhen!mixinTableSplitFun.array)
 							{
 								if(auto cmt = (cast(CodeComment)(entry.front)))
 								{
@@ -8990,20 +9071,71 @@ version(/+$DIDE_REGION+/all)
 										auto src = builder.result; 
 										if(src.isValidDLang)
 										{
+											/+Note: First, it tries to detect complete string literals or comments.+/
 											if(isSingleDString(src))
-											{ put(src); }
+											{
+												beforeItem; 
+												put(src); 
+											}
 											else if(isSingleCString(src))
-											{ put(src); }
+											{
+												beforeItem; 
+												put(src); 
+											}
 											else if(isSingleDComment(src))
-											{ put("q{"~src~"}"); }
+											{
+												beforeItem; 
+												put("q{"~src~"}"); 
+											}
 											else
 											{
-												put("q{"); 
-												put(src); if(
-													src.canFind("//") || 
-													src.canFind('#')
-												) putNL; 
-												put("}"); 
+												/+
+													Note: Then it tries a complete re-parse, to detect 
+													multiple composite parts, without any text in between them.
+												+/
+												auto mod = scoped!Module(null, src, StructureLevel.managed); 
+												if(mod && mod.content.byCell.all!isMixinTableCell)
+												{
+													/+
+														Note: All the cells in the src text are composite objects.
+														No tabs are handled here. because the 
+														copy operation can't produce them.
+													+/
+													foreach(node; mod.content.byNode)
+													{
+														if(auto str = (cast(CodeString)(node)))
+														{
+															beforeItem; 
+															put(str); 
+														}
+														else if(auto cmt = (cast(CodeComment)(node)))
+														{
+															beforeItem; 
+															put("q{"); 
+															put(cmt); 
+															if(cmt.prefix.among("//","#")) putNL; 
+															put("}"); 
+														}
+														else if(auto cntr = (cast(CodeContainer)(node)))
+														{
+															beforeItem; 
+															put("q{"); 
+															put(cntr); //akarmi lehet ez...
+															put("}"); 
+														}
+													}
+												}
+												else
+												{
+													//Note: Text only solution.  Last resort.  LDC2 will verify this anyways.
+													beforeItem; 
+													put("q{"); 
+													put(src); if(
+														src.canFind("//") || 
+														src.canFind('#')
+													) putNL; 
+													put("}"); 
+												}
 											}
 										}
 										else
@@ -9023,14 +9155,13 @@ version(/+$DIDE_REGION+/all)
 												(cast(Glyph)(a)).ch=='\t'
 										)
 									)
-									{
-										beforeItem; 
-										putAsStringLiteral(tabSeparatedEntry); 
-									}
+									{ putAsStringLiteral(tabSeparatedEntry); }
 								}
 							}
 							
-							put("]"); put(","); /+Extra comma at end, but IDC...+/
+							put("]"); 
+							put(","); /+Extra comma at end, but IDC...+/
+							if(hasVerticalTab) put('\v'); 
 						}
 							indentCount--; putNL; put("]"); 
 						put("}"); 
@@ -9230,83 +9361,6 @@ version(/+$DIDE_REGION+/all)
 						
 						auto tbl = operands[0]; 
 						
-						version(/+$DIDE_REGION+/none)
-						{
-							tbl.flags.columnIsTable	= true,
-							tbl.flags.columnElasticTabs 	= false; 
-							
-							auto ts = tsNormal; const sk = skWhitespace; applySyntax(ts, sk); 
-							foreach(row; tbl.rows)
-							{
-								row.flags.rowElasticTabs = false; 
-								
-								auto old = row.subCells, idx_1based=0; 
-								row.clearSubCells; //it clears tabIdx too.
-								foreach(a; old.splitter!isMarker)
-								{
-									//strip whitespace from both sides.
-									while(a.length && isFiller(a.front)) a.popFront; 
-									while(a.length && isFiller(a.back)) a.popBack; 
-									
-									void emitError(Cell[] cells)
-									{
-										//Generate sourceText from problematic cells
-										SourceTextBuilder builder; 
-										builder.put(cells); 
-										auto str = builder.result; 
-										
-										//Create and append am Error Comment Node
-										auto scanner = DLangScanner
-											(
-											format!"/+Error:%s+/"(
-												str	.replace("/+", "/ +")
-													.replace("+/", "+ /")
-											)
-											/+
-												This comment is valid, so it can be reloaded later 
-												as a valid cell that shows the exact same error.
-											+/
-										); 
-										auto cmt = new CodeComment(row); 
-										cmt.rebuild(scanner); 
-										row.appendCell(cmt); 
-									} 
-									
-									if(idx_1based==0)
-									{
-										//Before the first market, only whitespace is allowed
-										if(a.length) { emitError(a); }
-									}
-									else
-									{
-										if(a.length==1 && isValidContainer(a.front))
-										{ row.appendCell(a.front); }
-										else if(a.empty)
-										{
-											row.appendCodeChar(' ', ts, sk); 
-											/+empty cell is valid.  Represented as a space Glyph.+/
-										}
-										else
-										{ emitError(a); }
-									}
-									
-									//advance to next cell
-									idx_1based++; 
-								}
-							}
-							
-							//aggregate col sizes
-							const DefaultColWidth = DefaultFontHeight; 
-							float[] colWidths; 
-							foreach(row; tbl.rows)
-							{
-								while(colWidths.length<row.subCells.length)
-								colWidths ~= DefaultColWidth; 
-								foreach(i, cell; row.subCells)
-								colWidths[i].maximize(cell.outerWidth); 
-							}
-						}
-						
 						static CodeBlock detectOuterBlock(CodeColumn col)
 						{
 							const dstr = col.extractThisLevelDString; 
@@ -9330,13 +9384,41 @@ version(/+$DIDE_REGION+/all)
 										(
 										(blk){
 											auto row = blk.content.rows[0]; //reuse row instance to keep lineIdx
+											
+											//vertical tab detection   blk = CodeBlock: [a, b, c, ....]
+											const hasVerticalTab = (){
+												if(auto blkParentRow = (cast(CodeRow)(blk.parent)))
+												return blkParentRow.isBreakRow; 
+												return false; 
+											}(); 
+											
 											row.setParent(tbl); 
 											auto tableCells = (cast(CodeContainer[])(blk.content.byNode!CodeString.array)); 
 											
-											//unpack single Comments from tokenStrings
+											/+
+												Note: Unpacking.
+												
+												
+												NEm IDE!!!!
+												
+												Copying some cells looks like this:
+												/+Code: q{expr+1}q{/*comment*/}"str"`str`+/
+												This CAN'T be changed. And it is possible to mix with manual entry.
+												
+												Manual input looks like:
+												/+Code: expr+1	/*comment*/	"str"	`str`+/
+												 single Comments from tokenStrings
+											+/
+											
+											//unpack single composite cells
 											foreach(ref c; tableCells)
-											if(auto cmt = (cast(CodeComment)(c.content.singleCellOrNull)))
-											c = cmt; 
+											{
+												if(auto sc = (cast(CodeContainer)(c.content.singleCellOrNull)))
+												{
+													if((cast(CodeComment)(sc)) || (cast(CodeString)(sc)))
+													c = sc; 
+												}
+											}
 											
 											row.subCells = (cast(Cell[])(tableCells)); 
 											tableCells.each!(
@@ -9350,6 +9432,12 @@ version(/+$DIDE_REGION+/all)
 											); 
 											row.clearTabIdx; //Freshly loaded MixinTable: It has no TABs
 											row.flags.yAlign = YAlign.top; 
+											
+											if(hasVerticalTab) {
+												auto ts = tsNormal; ts.applySyntax(skIdentifier1); 
+												row.appendChar('\v', ts); 
+											}
+											
 											row.needMeasure; //Todo: Spread the cells
 											return row; 
 										}  
@@ -9382,8 +9470,8 @@ version(/+$DIDE_REGION+/all)
 					
 					put("Experimental Table Mixin"); 	putNL; 
 					put("\tTable"); 	putNL; 
-					put("\t"); op(0); 	putNL; 
-					put("\tScript"); 	putNL; 
+					put("\t"); op(0); 	put(' '); putNL; 
+					put("\tScript"); 	put(' '); putNL; 
 					put("\t"); op(1); 
 					
 					super.rearrange; 
