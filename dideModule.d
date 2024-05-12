@@ -56,6 +56,7 @@ version(/+$DIDE_REGION+/all)
 	//Todo: Calculate avgColor for all	things. -> CodeRow, CodeColumn(what	about	short rows), CodeNode(diffocult))
 	//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
 	//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
+	//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
 	
 	import het, het.ui, het.parser ,buildsys; 
 	
@@ -2412,8 +2413,14 @@ class CodeRow: Row
 					//this is the last column in the node.
 					auto rows = col.cachedPageRowRanges.backOr (cast(Row[])(col.subCells)); 
 					const extraSpaceOnTheRight = rows.map!(r=>r.innerWidth - r.contentInnerWidth/+recursion!+/).minElement; 
-					return cntrNode.outerRight - extraSpaceOnTheRight/+ + (cntrNode.innerSize.x - col.outerRight) + cntrNode.bottomRightGapSize.x+/; 
+					return cntrNode.outerRight - extraSpaceOnTheRight
+						/+ + (cntrNode.innerSize.x - col.outerRight) + cntrNode.bottomRightGapSize.x+/; 
 					//Bug: Last pew pixels are lost on the /+Note:blabla+/ comments. The rightmost frame becomes hidden...
+					/+
+						Bug: A tablazat jobb szelere kell extra betuket beirni, aztan visszatorolni -> 
+							-> A tablazat jobb szelen a kurzor ki fog repulni a visszatorles 
+								utan oda, mintha a Row hosszu maradt volna.
+					+/
 				}
 			}
 		}
@@ -3955,11 +3962,12 @@ class CodeRow: Row
 	{
 		static void adjustCodeContainerWidth(CodeContainer cntr, float w)
 		{
-			with(cntr)
-			if(const Δw = w - outerSize.x)
+			if(const Δw = w - cntr.outerSize.x)
 			{
-				outerSize.x = w; 
-				content.adjustWidth(Δw); 
+				cntr.outerSize.x = w; 
+				cntr.content.adjustWidth(Δw); //adjust the actual CodeColumn
+				//Adjust the postfix inside the CodeContainer too
+				cntr.subCells.map!(a=>(cast(Glyph)(a))).retro.until!(g=>g is null).each!((g){ g.outerPos.x += Δw; }); 
 			}
 		} 
 		
@@ -3967,7 +3975,7 @@ class CodeRow: Row
 			Todo: Make this fully compatibe with multiple pages (Vertical Tabs).
 			Must revisit MultiPage support in Columns!!!
 		+/
-		
+		//Todo: adjustWidth should be universal amongst all classes...
 		/+
 			Bug: A tablazat jobb szelere kell extra betuket beirni, aztan visszatorolni -> 
 				-> A tablazat jobb szelen a kurzor ki fog repulni a visszatorles 
@@ -8314,7 +8322,8 @@ version(/+$DIDE_REGION+/all)
 		castOp, 
 		namedUnaryOp, 
 		mixinOp, 
-		binaryTokenStringOp
+		binaryTokenStringOp,
+		mixinTableInjectorOp
 		/+
 			Code: Source form:
 			
@@ -8325,6 +8334,7 @@ version(/+$DIDE_REGION+/all)
 			((expr)opq{code})
 			(mixin(op!((expr),q{code})))
 			(op(q{},q{}))
+			((){with(op(expr)){expr}}())
 		+//+
 			Note: Example:
 			
@@ -8334,7 +8344,8 @@ version(/+$DIDE_REGION+/all)
 			cast
 			genericArg
 			體 (EnumFields, StructInitializer)
-			表! (MixinTable)
+			表! (old MixinTable)
+			表 new MixinTable
 		+/
 	} 
 	private alias NET = NiceExpressionType; 
@@ -8345,10 +8356,13 @@ version(/+$DIDE_REGION+/all)
 		final switch(t)
 		{
 			case unaryOp: 	return 1; 
-			case binaryOp, castOp, mixinOp, namedUnaryOp, binaryTokenStringOp: 	return 2; 
+			case binaryOp, castOp, mixinOp, namedUnaryOp, binaryTokenStringOp, mixinTableInjectorOp: 	return 2; 
 			case tenaryOp: 	return 3; 
 		}
 	} 
+	
+	static if(0)
+	auto aaaa = ((){ with(op(expr1)) { expr2; }}()); 
 	
 	struct NiceExpressionTemplate
 	{
@@ -8434,45 +8448,41 @@ version(/+$DIDE_REGION+/all)
 			q{arrangeRGB; }
 		},
 		
-		
 		{
 			"mixinTable", 
-			NET.binaryTokenStringOp, 
+			NET.mixinTableInjectorOp, 
 			skIdentifier1, 2,
 			q{
-				(表!(q{[
-					["Field","Type","Default",],
-					[q{piros},q{ubyte},],
-					[q{zold},q{ubyte},],
-					[q{
-						//cmtfewqfewqfe
-					},],
-					[q{kek},q{ubyte},],
-					[q{alpha},q{ubyte},q{255},],
-					[q{/+gewqgewggwq+/},q{/+gewqggggg+/},],
+				((){with(表([
+					[q{/+Note: Cell type+/},q{/+Note: Format+/},q{/+Note: Example+/}],
+					[q{expression, code},"(1+2)*3",q{(1+2)*3}],
+					[q{dString},"`str`",`str`],
+					[q{cString},`"str"`,"str"],
+					[q{dComment},"/+comment+/",q{/+comment+/}],
+					[q{cComment},"/*comment*/",q{/*comment*/}],
+					[q{slashComment},"//comment",q{//comment
+					}],
+					[q{image},`/+$DIDE_IMG "icon:\.exe"+/`,q{/+$DIDE_IMG "icon:\.exe"+/}],
+					[q{bad syntax},"1+(2",q{/+Error: 1+(2+/}],
 					[],
-					[q{((-b - (sqrt(((b)^^(2)) - 4*((a)*(c)))))/(((2)*(a)))) + ((1)/(((x)^^(2)))) + ((125).root(5))},],
-					[],
-					[q{/+Warning: warnggfdsgfds /+Code: 1+2=3+/+/},],
-					[q{/+Todo: blabla+/},],
-					[q{/+chewhrewhrewhrewhrewgfsgfds2mt ----------------+/},],
-					[q{1+2},"cStr\n\"",`dStr\v`,q{/+cmt+/},q{/+Link: cmt+/},q{/+cmtBlock+/},q{/+Error: "untgrewgreerminated cString+/},],
-					[q{},q{},q{},q{/+$DIDE_IMG c:\dl\avatar134.jpg maxHeight=128+/},q{},q{},q{},],
-					[],
-				]},q{
-					cells[1..$]
-					.map!(
+					[q{/+^^ Empty line     Also this is a single line comment.+/}],
+					[q{/+Warning: Advanced comments /+Code: (1+2)=3+/+/}],
+				])){
+					return rows.map!(
 						r=>format!"%s %s%s;"
 						(
 							r[1], r[0], 
 							((r.length>2) ?("="~r[2].inner):(""))
 						)
-					)
-					.join
-				}))
+					).join; 
+				}}())
+				/+
+					Bug: If this mixin table is inside 12x ((())), the loading 
+					is fucking slow!!!
+				+/
 			},
 			
-			"表!",
+			"表",
 			q{buildMixinTable; },
 			q{
 				arrangeMixinTable(1)
@@ -8725,6 +8735,8 @@ version(/+$DIDE_REGION+/all)
 			}
 		},
 		
+		//Todo: anonym method: ((a){ outerPos.x += Δw; })
+		
 		{
 			"map", 
 			NET.binaryOp, 
@@ -8776,6 +8788,8 @@ version(/+$DIDE_REGION+/all)
 		{ if(auto blk = cast(CodeBlock) cell) if(blk.type==CodeBlock.Type.list) return blk; return null; } 
 		static auto asTokenString(Cell cell)
 		{ if(auto str = cast(CodeString) cell) if(str.type==CodeString.Type.tokenString) return str; return null; } 
+		static auto asStatementBlock(Cell cell)
+		{ if(auto dcl = cast(Declaration) cell) if(dcl.isBlock && dcl.keyword=="" && dcl.attributes.empty) return dcl; return null; } 
 		
 		//Todo: NiceExpressions not working inside   enum ;
 		
@@ -8828,6 +8842,26 @@ version(/+$DIDE_REGION+/all)
 								outerCell = new NiceExpression(blk.parent, tIdx, left.content, middle.content, right.content); 
 								return; 
 							}
+						}
+					}
+				}
+				{
+					/+Note: mixinTableInjectorOp: ((){with(op(expr)){expr}}())+/
+					if(row.length==3 && left.content.empty && right.content.empty)
+					if(auto mid = asStatementBlock(row.subCells[1]))
+					if(mid.block)
+					if(auto with_ = (cast(Declaration)(mid.block.singleCellOrNull)))
+					if(with_.isPreposition && with_.keyword=="with" && with_.header && with_.block)
+					if(with_.header.rowCount==1)
+					{
+						auto headerRow = with_.header.rows[0]; 
+						if(headerRow.subCells.length.inRange(2, 16))
+						if(auto expr1 = asListBlock(headerRow.subCells.back))
+						if(expr1.content)
+						{
+							const innerOp = headerRow.chars[0..$-1].text; 
+							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinTableInjectorOp, innerOp))
+							{ outerCell = new NiceExpression(blk.parent, tIdx, expr1.content, with_.block); return; }
 						}
 					}
 				}
@@ -9030,15 +9064,17 @@ version(/+$DIDE_REGION+/all)
 						
 						If a row only has a single /+Code: [q{/+comment+/}]+/, thats a grouping row. That must be stretched horizontally.
 					+/
+					auto tbl = operands[0], scr = operands[1]; 
 					
-					//Todo: error handling for both operands! They must be in D syntax!
-					put(operator); put('('); 
-					auto tbl = operands[0]; 
-					if(tbl.flags.columnIsTable)
+					void putTable()
 					{
-						put("q{"); 
-							put("["); indentCount++; 
-								foreach(row; tbl.rows)
+						if(!tbl.flags.columnIsTable)
+						{
+							put(tbl); return; //D compiler will fail on it, but it keeps the unknown content.
+						}
+						
+						put("["); indentCount++; 
+						foreach(row; tbl.rows)
 						{
 							const hasVerticalTab = row.isBreakRow; //ignore ending VT, but append it at the end of the [] line.
 							
@@ -9163,19 +9199,19 @@ version(/+$DIDE_REGION+/all)
 							put(","); /+Extra comma at end, but IDC...+/
 							if(hasVerticalTab) put('\v'); 
 						}
-							indentCount--; putNL; put("]"); 
-						put("}"); 
-					}
-					else
-					{
-						put("q{", operands[0], "}");  
-						//D compiler will fail on it, but it keeps the unknown content.
-					}
+						indentCount--; putNL; put("]"); 
+					} 
 					
-					put(','); 
-					put("q{", operands[1], "}"); 
-					put(')'); 
-					
+					//Todo: error handling for both operands! They must be in D syntax!
+					//((){with(op(expr)){expr}}())
+					put("()"); 
+					put("{"); 
+						put("with"); put("("); 
+							put(operator); put("("); putTable; put(")"); 
+						put(")"); 
+						put("{", scr, "}"); 
+					put("}"); 
+					put("()"); 
 				} 
 				
 				put("("); 
