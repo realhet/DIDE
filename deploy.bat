@@ -26,5 +26,7 @@ echo Creating backup: RARFILE
 
 copy dide2.exe dide2_dev.exe
 copy dide2.map dide2_dev.map
+copy dide2.pdb dide2_dev.pdb
 copy dide2.exe dide2_2.exe
 copy dide2.map dide2_2.map
+copy dide2.pdb dide2_2.pdb
