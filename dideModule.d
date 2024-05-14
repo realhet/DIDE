@@ -4128,12 +4128,17 @@ class CodeRow: Row
 				if(
 					tableColumn(cIdx).all!(
 						(c){
+							if(auto nt = extractNestedTable(c))
+							{ tables~=nt; return true; }
+							
+							//these cells are just valid in a column with nested tables
 							if(
 								!c /+nonExistent table cell+/
 								|| (cast(CodeComment)(c))
+								|| (cast(CodeString)(c))
 							) return true; 
-							if(auto nt = extractNestedTable(c))
-							{ tables~=nt; return true; }
+							
+							//the rest is invalid
 							return false; 
 						}
 					)
@@ -8608,8 +8613,7 @@ version(/+$DIDE_REGION+/all)
 						[q{ubyte},q{2},q{"red"},q{3}],
 						[q{ubyte},q{3},q{"green"},q{}],
 						[q{ubyte},q{2},q{`blue`},q{3}],
-						[q{bool},q{1},q{"al"~"pha"},q{1}],
-						[q{/+Default color: Fuchsia+/}],
+						[q{bool},q{1},q{"alpha"},q{1}],
 					]))
 					.GEN_bitfields
 				); 
@@ -8633,32 +8637,45 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, 2,
 			q{
 				((){with(表2([
-					[q{/+Note: Cell type+/},q{/+Note: Format+/},q{/+Note: Example+/}],
-					[q{expression, code},q{"(1+2)*3"},q{(1+2)*3}],
-					[q{dString},q{"`str`"},q{`str`}],
-					[q{cString},q{`"str"`},q{"str"}],
-					[q{dComment},q{"/+comment+/"},q{/+comment+/}],
-					[q{cComment},q{"/*comment*/"},q{/*comment*/}],
-					[q{slashComment},q{"//comment"},q{//comment
+					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
+					[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
+					[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
+					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
+					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
+					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
+						(表1([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{ubyte},q{2},q{"red"},q{3}],
+							[q{ubyte},q{3},q{"green"},q{}],
+							[q{ubyte},q{2},q{`blue`},q{3}],
+						]))
 					}],
-					[q{image},q{`/+$DIDE_IMG "icon:\.exe"+/`},q{/+$DIDE_IMG "icon:\.exe"+/}],
-					[q{bad syntax},q{"1+(2"},q{/+Error: 1+(2+/}],
+					[q{
+						Second Nested Table
+						aligned to the first one
+					},q{"more complicated..."},q{"..."},q{
+						(表1([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{bool},q{1},q{"al"~"pha"},q{1}],
+							[q{/+Default color: Fuchsia+/}],
+						]))
+					}],
+					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
 					[],
 					[q{/+^^ Empty line     Also this is a single line comment.+/}],
-					[q{/+Warning: Advanced comments /+Code: (1+2)=3+/+/}],
+					[q{/+
+						Warning: Use /+Code: TAB+/ to enter more than one entries.
+						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
+					+/}],
 				])){
+					/+Here comes the program that generates a string from the table.+/
 					return rows.map!(
-						r=>format!"%s %s%s;"
-						(
+						r=>format!"%s %s%s;"(
 							r.get(0), r.get(1), 
 							((r.length>2) ?("="~r[2].inner):(""))
 						)
 					).join; 
 				}}())
-				/+
-					Bug: If this mixin table is inside 12x ((())), the loading 
-					is fucking slow!!!
-				+/
 			},
 			
 			"表2",
@@ -8853,6 +8870,7 @@ version(/+$DIDE_REGION+/all)
 			q{
 				operands[1].fillColor(darkColor, bkColor); 
 				put(operands[1]); put(':'); put(operands[0]); 
+				//Todo: Use chinese symbol for genericArg!
 			}
 		},
 		
@@ -8936,7 +8954,177 @@ version(/+$DIDE_REGION+/all)
 		
 		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
 		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
+		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
 	]; 
+	
+	static immutable TBL_ToolPalette = 
+		((){with(表2([
+		[q{/+Note: Description+/},q{/+Note: Construct+/}],
+		[q{"expression blocks"},q{{}()[] ""r""``' 'q{}}],
+		[q{"math letters"},q{π ℯ ℂ α β γ µ Δ δ ϕ ϑ}],
+		[q{"symbols"},q{"° ϵ ⍵ ℃"}],
+		[],
+		[q{"magnitude, abs, 
+normalize"},q{(magnitude(a)) (normalize(a))}],
+		[q{"multiply, divide, 
+dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
+		[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
+		[q{"color literals"},q{(RGB( , , )) (RGBA( , , , ))}],
+		[q{"table blocks"},q{
+			(表1([
+				[q{/+Note: Header+/}],
+				[q{Cell}],
+			])) ((){with(表2([
+				[q{/+Note: Header+/},q{Cell}],
+			])){ return script; }}())
+		}],
+		[q{"tenary operator"},q{
+			((a)?(b):(c))
+			((a)?(b) :(c)) ((a) ?(b):(c))
+			((a) ?(b) :(c))
+		}],
+		[q{"named parameter, 
+structure initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: value, ...})))}],
+		[q{"enum member 
+blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
+		[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
+		[],
+		[q{"declaration blocks"},q{
+			auto f()
+			{} 
+			import ; 
+			alias ; 
+			enum ; 
+			enum 
+			{} 
+			struct 
+			{} 
+			union 
+			{} 
+			class 
+			{} 
+			interface 
+			{} 
+			@()
+			{} 
+			private
+			{} 
+			public
+			{} 
+			protected
+			{} 
+			unittest
+			{} 
+			invariant
+			{} 
+			template 
+			{} 
+			
+		}],
+		[],
+		[q{"comments"},q{
+			/++/ /**/ //
+			/+Note: note+/ /+Code: code+/ /+$DIDE_IMG+/ /+Link:+/
+			/+Todo:+/ /+Opt:+/ /+Bug:+/
+			/+Error:+/ /+Warning:+/ //$DIDE_LOC file.d
+			/+Deprecation:+/ /+Console:+/
+		}],
+		[q{"regions"},q{
+			version(/+$DIDE_REGION rgn+/all)
+			{}version(/+$DIDE_REGION rgn+/all) {}version(/+$DIDE_REGION+/all) {}version(/+$DIDE_REGION rgn+/none)
+			{}version(/+$DIDE_REGION rgn+/none) {}version(/+$DIDE_REGION+/none) {}
+		}],
+		[q{"directives"},q{
+			#
+			#!
+			
+			#line 5
+			#define
+			
+			#ifdef
+			#else
+			; 
+		}],
+		[],
+		[q{"if blocks"},q{
+			if() {}if() {}else {}
+			if()
+			{}if()	{}
+			else	{}if()	{}
+			else if()	{}
+			else	{}
+			else {}else	{}else
+			{}
+		}],
+		[q{"swicth case block"},q{
+			switch() {
+				case: break; 
+				default: 
+			}
+		}],
+		[],
+		[q{"with block"},q{
+			with()
+			{}with() {}
+		}],
+		[],
+		[q{"while blocks"},q{
+			while()
+			{}while() {}
+		}],
+		[q{"do while blocks"},q{
+			do {}
+			while(); do {}while(); 
+		}],
+		[q{"for loops"},q{
+			for(; ;)
+			{}for(; ;) {}
+			foreach(;)
+			{}foreach(;) {}
+			foreach_reverse(;)
+			{}
+			foreach_reverse(;) {}
+		}],
+		[],
+		[q{"static foreach"},q{
+			static foreach(;)
+			{}
+			static foreach(;) {}
+			static foreach_reverse(;)
+			{}
+			static foreach_reverse(;) {}
+		}],
+		[q{"static if blocks"},q{
+			static if() {}
+			static if() {}else {}
+			static if()
+			{}static if()	{}
+			else	{}
+			static if()	{}
+			else static if()	{}
+			else static assert(0, ""); 
+		}],
+		[q{"version blocks"},q{
+			version() {}
+			version() {}else {}
+			version()
+			{}version()	{}
+			else	{}
+			version()	{}
+			else version()	{}
+			else	{}
+		}],
+		[q{"debug blocks"},q{
+			debug {}
+			debug {}else {}
+			debug
+			{}debug	{}
+			else	{}
+			debug	{}
+			else debug	{}
+			else	{}
+		}],
+	])){ return ""; }}()); 
 	
 	static assert(niceExpressionTemplates[0].name=="null"); 
 	int[Tuple!(immutable(NiceExpressionType), string)] niceExpressionTemplateIdxByTypeOperator; 
@@ -8996,6 +9184,8 @@ version(/+$DIDE_REGION+/all)
 		//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
 		
 		//Todo: Symbol for foreach: ∀
+		
+		/+Bug: If a mixin table is inside 12x ((())) listblocks, the loading is exponentially fucking slow!!!+/
 		
 		if(auto blk = asListBlock(outerCell))
 		if(blk.content.rows.length==1)
@@ -10269,6 +10459,7 @@ l2
 			/+$DIDE_LOC filename.d-mixin-96(123,456)+/
 		
 		//Compiler messages   $DIDE_MSG
+			//$DIDE_MSG text  Compiler message comment
 			//$DIDE_MSG text  Compiler message comment
 			/+
 		$DIDE_MSG /+$DIDE_LOC c:\d\work.d(15,3)+/ Error blalba
