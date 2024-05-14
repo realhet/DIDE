@@ -3942,7 +3942,7 @@ class CodeRow: Row
 			expect(cc.rows.length, rowCount); 
 			expect(cast(ubyte[])dst, cast(ubyte[])(cc.shallowText)); 
 		} 
-				
+		
 		test_RowCount("", 1); 
 		test_RowCount(" ", 1); 
 		test_RowCount("\n", 2); 
@@ -3957,12 +3957,14 @@ class CodeRow: Row
 		test_RowCount(" \n \n \r\n", 4, " \n \n \n"); //Todo: a tabokat visszaalakitani space-ra
 		test_RowCount(" \n \n \r\n ", 4, " \n \n \n "); //Todo: a tabokat visszaalakitani space-ra
 	} 
-	
+	
 	static processTableRows(CodeRow[] rows)
 	{
 		static void adjustCodeContainerWidth(CodeContainer cntr, float w)
 		{
+			enum epsylon = .01f; 
 			if(const Δw = w - cntr.outerSize.x)
+			if((magnitude(Δw))>=epsylon)
 			{
 				cntr.outerSize.x = w; 
 				cntr.content.adjustWidth(Δw); //adjust the actual CodeColumn
@@ -3971,42 +3973,43 @@ class CodeRow: Row
 			}
 		} 
 		
+		static auto asFullRowComment(CodeRow row)
+		{ return (cast(CodeComment)(row.singleCellOrNull)); } 
+		
 		/+
 			Todo: Make this fully compatibe with multiple pages (Vertical Tabs).
 			Must revisit MultiPage support in Columns!!!
 		+/
 		//Todo: adjustWidth should be universal amongst all classes...
-		/+
-			Bug: A tablazat jobb szelere kell extra betuket beirni, aztan visszatorolni -> 
-				-> A tablazat jobb szelen a kurzor ki fog repulni a visszatorles 
-					utan oda, mintha a Row hosszu maradt volna.
-		+/
 		
-		void processRows(CodeRow[] rows)
+		static struct ColWidths
 		{
-			if(const numCols = rows.map!(r=>r.subCells.length).maxElement)
+			float[] colWidths; 
+			float fullWidth = 0; 
+			alias colWidths this; 
+			@property opCast(B : bool)() const
+			{ return !colWidths.empty; } 
+			
+			this(CodeRow[] rows)
 			{
-				//measure colWidths
-				float[] colWidths; 
-				float fullWidth=0; //column widths and full length comment rows
 				foreach(row; rows)
 				{
-					if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
-					{ fullWidth.maximize(cmt.outerWidth); }
+					if(auto cmt = asFullRowComment(row))
+					{
+						//Note: Handle full-length comment rows
+						fullWidth.maximize(cmt.outerWidth); 
+					}
 					else
 					{
 						int idx=0; 
 						foreach(rng; row.subCells.splitWhen!mixinTableSplitFun)
 						{
-							float calcWidth()
+							float calcCellWidth()
 							{
 								if(isMixinTableCell(rng.front))
 								{
 									with((cast(MixinTableContainerClass)(rng.front)))
-									{
-										measure; 
-										return outerWidth; 
-									}
+									{ return outerWidth; }
 								}
 								else
 								{ return rng.map!"a.outerWidth".sum; }
@@ -4018,30 +4021,34 @@ class CodeRow: Row
 								//only igrows by one, no while() needed
 							}
 							
-							colWidths[idx++/+advance loop+/].maximize(calcWidth); 
+							colWidths[idx++/+advance loop+/].maximize(calcCellWidth); 
 						}
 					}
 				}
-				
+			} 
+			
+			void alignCommentRowsWithLastColumns()
+			{
 				//synch the right edge of the last cell with the commentRowWidth
+				const cwSum =  colWidths.sum; 
+				if(fullWidth>cwSum)
 				{
-					const cwSum =  colWidths.sum; 
-					if(fullWidth>cwSum)
-					{
-						//extend rightmost column (if there is one)
-						if(colWidths.length) colWidths.back += fullWidth - cwSum; 
-					}
-					else
-					{
-						//extend fullWidth up to the columns
-						fullWidth = cwSum; 
-					}
+					//extend rightmost column (if there is one)
+					if(colWidths.length) colWidths.back += fullWidth - cwSum; 
 				}
-				
+				else
+				{
+					//extend fullWidth up to the columns
+					fullWidth = cwSum; 
+				}
+			} 
+			
+			void applyTo(CodeRow[] rows)
+			{
 				//spread colWidths
 				foreach(row; rows)
 				{
-					if(auto cmt = (cast(CodeComment)(row.singleCellOrNull)))
+					if(auto cmt = asFullRowComment(row))
 					{
 						cmt.outerPos.x = 0; 
 						adjustCodeContainerWidth(cmt, fullWidth); 
@@ -4070,26 +4077,165 @@ class CodeRow: Row
 									actX += cell.outerSize.x; 
 								}
 								
-								//Todo: Handle extra gap after the text when clicking with mouse
+								/+
+									Todo: Handle extra gap after the text 
+									when clicking with mouse
+								+/
 								actX = nextX; 
 							}
 							idx++/+advance loop+/; 
 						}
 						
 						//spread container heights
-						const maxHeight = row.subCells.map!"a.outerHeight".maxElement(0); 
+						const maxHeight = row	.subCells.map!"a.outerHeight"
+							.maxElement(0); 
 						foreach(cntr; row.byNode!MixinTableContainerClass)
 						{
 							cntr.outerSize.y = maxHeight; 
-							//Todo: Implement column.adjustHeight() too!!!!  Danged: There will be deadzone there!!!
-							//Todo: stretch out inner surface
+							/+
+								Todo: Implement column.adjustHeight() too!!!!  
+								Danger: There will be deadzone there!!!
+							+/
 						}
+					}
+					
+					row.outerWidth = fullWidth; /+
+						Must extend the rows to 
+						the width of their contents!
+					+/
+				}
+			} 
+		} 
+		
+		void alignNestedTables(CodeRow[] rows, in ColWidths colWidths)
+		{
+			auto tableColumn(size_t idx)
+			{ return rows.map!(r=>r.subCells.get(idx)); } 
+			
+			static NiceExpression extractNestedTable(Cell cell)
+			{
+				if(auto tstr = (cast(CodeString)(cell)))
+				if(tstr.type==CodeString.Type.tokenString)
+				if(auto ne = (cast(NiceExpression)(tstr.content.singleCellOrNull)))
+				if(ne.operator.among(`表1`, `表2`)) return ne; 
+				return null; 
+			} 
+			
+			bool anyTablesRealigned = false; 
+			foreach(cIdx; 0..colWidths.length)
+			{
+				NiceExpression[] tables; 
+				if(
+					tableColumn(cIdx).all!(
+						(c){
+							if(
+								!c /+nonExistent table cell+/
+								|| (cast(CodeComment)(c))
+							) return true; 
+							if(auto nt = extractNestedTable(c))
+							{ tables~=nt; return true; }
+							return false; 
+						}
+					)
+					&& tables.length>=2
+				)
+				{
+					//check if all the table headers are compatible
+					//Todo: null check!!
+					static getHdr(NiceExpression ne)
+					{
+						if(auto col = ne.operands[0])
+						if(auto row = col.rows.frontOrNull)
+						if(row.subCells.all!(c=>(cast(CodeComment)(c))))
+						return row.sourceText; 
+						return ""; 
+					} 
+					
+					float maxTableContainerOuterWidth = 0; 
+					
+					foreach(tableGroup; tables.chunkBy!((a,b)=>getHdr(a)==getHdr(b)).map!array)
+					if(
+						tableGroup.length>=2 
+						&& getHdr(tableGroup.front)!="" /+NestedTables must have headers+/
+					)
+					{
+						auto nestedRows = tableGroup.map!(grp=>grp.operands[0].rows).join; 
+						
+						//realign all nested rows
+						if(auto nestedColWidths = ColWidths(nestedRows))
+						{
+							nestedColWidths.alignCommentRowsWithLastColumns; 
+							nestedColWidths.applyTo(nestedRows); 
+							
+							//Enlarge the nested tables.
+							foreach(tbl; tableGroup)
+							{
+								auto col = tbl.operands[0]; 
+								//At this point: all the outerWidth of the rows are extended to the full table
+								if(const Δw = nestedColWidths.fullWidth - col.innerWidth)
+								{
+									anyTablesRealigned = true; 
+									col.outerWidth += Δw; 
+									tbl.outerWidth += Δw; 
+									tbl.subCells	.retro.until!(a=>!(cast(CodeNode)(a)))
+										.each!((c){ c.outerPos.x += Δw; }); 
+									//Todo: refactor this:  This enlarges the operands[0] of a NiceExpression.
+									//Adjust the 'cell' that contains the table too.
+									if(auto rowOfTbl = (cast(CodeRow)(tbl.parent)))
+									{
+										if(const Δr = tbl.outerWidth - rowOfTbl.outerWidth)
+										{
+											rowOfTbl.outerWidth += Δr; 
+											if(auto colOfTbl = rowOfTbl.parent)
+											{
+												colOfTbl.outerWidth += Δr; 
+												if(auto cntrOfTbl = (cast(CodeContainer)(colOfTbl.parent)))
+												{
+													cntrOfTbl.outerWidth += Δr; 
+													maxTableContainerOuterWidth.maximize(cntrOfTbl.outerWidth); 
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+					
+					/+extend the width comments, which are in the column of the nested tables as well.+/
+					if(maxTableContainerOuterWidth)
+					{
+						print("maxWidth", maxTableContainerOuterWidth); 
+						foreach(cntr; tableColumn(cIdx).map!(a=>(cast(CodeContainer)(a))).filter!"a")
+						{ adjustCodeContainerWidth(cntr, maxTableContainerOuterWidth); }
 					}
 				}
 			}
+			
+			if(anyTablesRealigned)
+			{
+				//spread the tableCells in the TableRows properly.
+				foreach(r; rows)
+				{
+					r.subCells.spreadH; 
+					r.outerWidth = r.subCells.map!(c=>c.outerRight).backOr(0.0f); 
+				}
+				
+				//extent the full line comments too
+				const totalTableWidth = rows.map!(r=>r.outerWidth).maxElement; 
+				foreach(cmt; rows.map!(r=>(cast(CodeComment)(r.singleCellOrNull))).filter!"a")
+				{ adjustCodeContainerWidth(cmt, totalTableWidth); }
+			}
 		} 
 		
-		processRows(rows); 
+		//Main processing -----------------------------------------------------------------------------
+		if(auto colWidths = ColWidths(rows))
+		{
+			colWidths.alignCommentRowsWithLastColumns; 
+			colWidths.applyTo(rows); 
+			
+			alignNestedTables(rows, colWidths); 
+		}
 	} 
 } 
 version(/+$DIDE_REGION+/all)
@@ -8457,18 +8603,14 @@ version(/+$DIDE_REGION+/all)
 			q{
 				mixin
 				(
-					(
-						表1(
-							[
-								[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-								[q{ubyte},q{2},q{"red"},q{3}],
-								[q{ubyte},q{3},q{"green"},q{}],
-								[q{ubyte},q{2},q{`blue`},q{3}],
-								[q{bool},q{1},q{"al"~"pha"},q{1}],
-								[q{/+Default color: Fuchsia+/}],
-							]
-						)
-					)
+					(表1([
+						[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+						[q{ubyte},q{2},q{"red"},q{3}],
+						[q{ubyte},q{3},q{"green"},q{}],
+						[q{ubyte},q{2},q{`blue`},q{3}],
+						[q{bool},q{1},q{"al"~"pha"},q{1}],
+						[q{/+Default color: Fuchsia+/}],
+					]))
 					.GEN_bitfields
 				); 
 			},
@@ -8490,40 +8632,29 @@ version(/+$DIDE_REGION+/all)
 			NET.mixinTableInjectorOp, 
 			skIdentifier1, 2,
 			q{
-				(
-					(){
-						with(
-							表2(
-								[
-									[q{/+Note: Cell type+/},q{/+Note: Format+/},q{/+Note: Example+/}],
-									[q{expression, code},"(1+2)*3",q{(1+2)*3}],
-									[q{dString},"`str`",`str`],
-									[q{cString},`"str"`,"str"],
-									[q{dComment},"/+comment+/",q{/+comment+/}],
-									[q{cComment},"/*comment*/",q{/*comment*/}],
-									[
-										q{slashComment},"//comment",q{
-											//comment
-										}
-									],
-									[q{image},`/+$DIDE_IMG "icon:\.exe"+/`,q{/+$DIDE_IMG "icon:\.exe"+/}],
-									[q{bad syntax},"1+(2",q{/+Error: 1+(2+/}],
-									[],
-									[q{/+^^ Empty line     Also this is a single line comment.+/}],
-									[q{/+Warning: Advanced comments /+Code: (1+2)=3+/+/}],
-								]
-							)
-						) {
-							return rows.map!(
-								r=>format!"%s %s%s;"
-								(
-									r.get(0), r.get(1), 
-									((r.length>2) ?("="~r[2].inner):(""))
-								)
-							).join; 
-						}
-					}()
-				)
+				((){with(表2([
+					[q{/+Note: Cell type+/},q{/+Note: Format+/},q{/+Note: Example+/}],
+					[q{expression, code},q{"(1+2)*3"},q{(1+2)*3}],
+					[q{dString},q{"`str`"},q{`str`}],
+					[q{cString},q{`"str"`},q{"str"}],
+					[q{dComment},q{"/+comment+/"},q{/+comment+/}],
+					[q{cComment},q{"/*comment*/"},q{/*comment*/}],
+					[q{slashComment},q{"//comment"},q{//comment
+					}],
+					[q{image},q{`/+$DIDE_IMG "icon:\.exe"+/`},q{/+$DIDE_IMG "icon:\.exe"+/}],
+					[q{bad syntax},q{"1+(2"},q{/+Error: 1+(2+/}],
+					[],
+					[q{/+^^ Empty line     Also this is a single line comment.+/}],
+					[q{/+Warning: Advanced comments /+Code: (1+2)=3+/+/}],
+				])){
+					return rows.map!(
+						r=>format!"%s %s%s;"
+						(
+							r.get(0), r.get(1), 
+							((r.length>2) ?("="~r[2].inner):(""))
+						)
+					).join; 
+				}}())
 				/+
 					Bug: If this mixin table is inside 12x ((())), the loading 
 					is fucking slow!!!
@@ -8804,6 +8935,7 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
+		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
 	]; 
 	
 	static assert(niceExpressionTemplates[0].name=="null"); 
