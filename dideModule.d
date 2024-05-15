@@ -74,6 +74,8 @@ version(/+$DIDE_REGION+/all)
 	
 	enum MultiPageGapWidth = DefaultFontHeight; 
 	
+	enum DefaultSubScriptFontHeight = iround(DefaultFontHeight * .6); 
+	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
 	
@@ -84,12 +86,16 @@ version(/+$DIDE_REGION+/all)
 	enum compoundObjectChar = '￼'; 
 	
 	
-	enum TextFormat {
+	enum TextFormat : ubyte
+	{
 		plain, highlighted, cChar, cString, dString, comment, 
 		
 		managed, managed_block, managed_enum, managed_statement, managed_goInside, managed_optionalBlock,
 		managed_first = managed, managed_last = managed_optionalBlock
 	} 
+	
+	enum NodeStyle : ubyte 
+	{ dim, normal, bright } 
 	
 	bool isManaged(TextFormat tf)
 	{ return tf.inRange(TextFormat.managed_first, TextFormat.managed_last); } 
@@ -1913,7 +1919,6 @@ version(/+$DIDE_REGION+/all)
 		
 		CodeNode node; 
 		TextStyle style; 
-		int inverse; //0, 1, 2
 		RGB darkColor, brightColor, halfColor; 
 		
 		void putNL()
@@ -2340,7 +2345,7 @@ class CodeRow: Row
 	{
 		halfSize = true; //no going back
 		
-		enum targetHeight 	= DefaultFontHeight/2,
+		enum targetHeight 	= DefaultSubScriptFontHeight,
 		triggerHeight 	= DefaultFontHeight-1; 
 		
 		foreach(glyph; glyphs.filter!"a")
@@ -3981,6 +3986,7 @@ class CodeRow: Row
 			Must revisit MultiPage support in Columns!!!
 		+/
 		//Todo: adjustWidth should be universal amongst all classes...
+		//Todo: cells are only expanding, not shrinking when edited...
 		
 		static struct ColWidths
 		{
@@ -4769,6 +4775,7 @@ version(/+$DIDE_REGION+/all)
 	Container parent; 
 	
 	int lineIdx; 
+	NodeStyle nodeStyle; 
 	bool 	alwaysOnBottom, 
 		nodeRearrangeWasCalled/+
 		This can used to track if rearrange was called or not.
@@ -4884,21 +4891,28 @@ version(/+$DIDE_REGION+/all)
 		padding = Padding(1, 1.5, 1, 1.5); 
 	} 
 	
-	auto nodeBuilder(SyntaxKind syntax, int inverse_, Nullable!RGB customColor = Nullable!RGB.init)
+	auto nodeBuilder(SyntaxKind syntax, NodeStyle nodeStyle_, Nullable!RGB customColor = Nullable!RGB.init)
 	{
+		nodeStyle = nodeStyle_; 
 		
 		CodeNodeBuilder res; 
 		with(res) {
 			node 	= this; 
 			style 	= tsSyntax(syntax); 	if(!customColor.isNull) style.fontColor = customColor.get; 
-			inverse 	= inverse_; 	
+			
 			darkColor	= style.bkColor,
 			brightColor 	= style.fontColor,
-			halfColor	= mix(darkColor, brightColor, inverse.predSwitch(0, .15f, 1, .5f, 1)); 
+			halfColor	= mix(
+				darkColor, brightColor, nodeStyle.predSwitch(
+					NodeStyle.dim	, .15f, 
+					NodeStyle.normal	, .50f, 
+					NodeStyle.bright	, 1
+				)
+			); 
 			
 			style.bkColor = border.color = bkColor	= halfColor; 
-			style.fontColor	= inverse ? darkColor : brightColor; 
-			style.bold 	= true; 
+			style.fontColor = nodeStyle!=NodeStyle.dim ? darkColor : brightColor; 
+			style.bold = true; 
 		}
 		
 		//initialize node
@@ -4916,6 +4930,23 @@ version(/+$DIDE_REGION+/all)
 		
 		super.rearrange; 
 		static if(rearrangeLOG) LOG("rearranging", this); 
+		
+		enum enableStretchGlyphs = true; 
+		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
+		{
+			foreach(i, c; subCells)
+			if(auto col = (cast(CodeColumn)(c)))
+			{
+				//to the left
+				if(auto g = (cast(Glyph)(subCells.get(i-1))))
+				if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+				//to the right
+				if(auto g = (cast(Glyph)(subCells.get(i+1))))
+				if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+			}
+		}
 		
 		nodeRearrangeWasCalled = true; //signal rearrange() completion
 	} 
@@ -5081,7 +5112,7 @@ version(/+$DIDE_REGION+/all)
 	
 	override void rearrange()
 	{
-		with(nodeBuilder(syntax, prefix.among("[", "(", "{") ? 0 : 1))
+		with(nodeBuilder(syntax, ((prefix.among("[", "(", "{"))?(NodeStyle.dim) :(NodeStyle.normal))))
 		{
 			content.bkColor = darkColor; 
 			if(singleBkColor) bkColor = darkColor; //Minimalistic table look
@@ -5502,7 +5533,7 @@ version(/+$DIDE_REGION+/all)
 			switch(keyword)
 			{
 				case "IMG": 
-					with(nodeBuilder(syntax, 0))
+					with(nodeBuilder(syntax, NodeStyle.dim))
 				{
 					auto cmd = scmt.CommandLine; 
 					auto f = cmd.files.get(1);  //first file is command.
@@ -5537,7 +5568,7 @@ version(/+$DIDE_REGION+/all)
 				}
 					return; 
 				case "LOC": 
-					with(nodeBuilder(skIdentifier1, 2))
+					with(nodeBuilder(skIdentifier1, NodeStyle.bright))
 				{
 					with(style) italic = false, bold = false; 
 					auto 	locStr 	= scmt[keyword.length..$].stripLeft,
@@ -5558,7 +5589,7 @@ version(/+$DIDE_REGION+/all)
 					return; 
 				case "MSG": 
 					{
-					with(nodeBuilder(skIdentifier1, 2))
+					with(nodeBuilder(skIdentifier1, NodeStyle.bright))
 					{
 						bkColor = clBlue; 
 						style.bkColor = clBlue; 
@@ -5587,7 +5618,7 @@ version(/+$DIDE_REGION+/all)
 	
 	private void rearrangeCustom()
 	{
-		with(nodeBuilder(syntax, isDirective ? 2 : 0))
+		with(nodeBuilder(syntax, isDirective ? NodeStyle.bright : NodeStyle.dim))
 		{
 			content.bkColor = darkColor; 
 			
@@ -6984,7 +7015,7 @@ version(/+$DIDE_REGION+/all)
 								.array; 
 							/+
 								Normally in DLang, these are the keywords having
-																		optionally omittable ()blocks: "debug", "else debug"
+								optionally omittable ()blocks: "debug", "else debug"
 							+/
 							return list.canFind(keyword); 
 						} 
@@ -7179,7 +7210,7 @@ version(/+$DIDE_REGION+/all)
 		
 		const isSimpleStatement = isStatement && keyword==""; 
 		
-		auto builder = nodeBuilder(skWhitespace, isSimpleStatement ? 0 : 2, structuredColor(type).nullable); 
+		auto builder = nodeBuilder(skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), structuredColor(type).nullable); 
 		with(builder)
 		{
 			//set subColumn bkColors
@@ -8522,7 +8553,7 @@ version(/+$DIDE_REGION+/all)
 		string name; 
 		NiceExpressionType type; 
 		SyntaxKind syntax; 
-		ubyte invertMode; 
+		NodeStyle invertMode; 
 		string example, operator, textCode, rearrangeCode, drawCode; 
 	} 
 	
@@ -8538,6 +8569,9 @@ version(/+$DIDE_REGION+/all)
 		{ return isMixinTableCell(a) || isMixinTableCell(b); } 
 	}
 	
+	/+Note: ｢｣⎦⎣「」｢｣+/
+	
+	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
 	[
 		{"null" /+This will be rerturned when no template was found.+/},
@@ -8546,7 +8580,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"sqrt", 
 			NET.unaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{(sqrt(a))},
 			"sqrt",
 			q{put(operator); op(0); },
@@ -8564,27 +8599,64 @@ version(/+$DIDE_REGION+/all)
 		{
 			"magnitude", 
 			NET.unaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{(magnitude(a))},
 			"magnitude",
 			q{put(operator); op(0); },
-			q{put("\u007C"); op(0); put("\u007C"); }
+			q{put('|'); op(0); put('|'); }
 		},
 		
 		{
 			"normalize", 
 			NET.unaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{(normalize(a))},
 			"normalize",
 			q{put(operator); op(0); },
-			q{put("\u007C\u007C"); op(0); put("\u007C\u007C"); }
+			q{put('‖'); op(0); put('‖'); }
 		},
+		
+		{
+			"float", 
+			NET.unaryOp, 
+			skNumber, 
+			NodeStyle.bright,
+			q{(float(a))},
+			"float",
+			q{put(operator); op(0); },
+			q{op(0); setSubscript; put("F"); }
+		},
+		
+		{
+			"double", 
+			NET.unaryOp, 
+			skNumber, 
+			NodeStyle.bright,
+			q{(double(a))},
+			"double",
+			q{put(operator); op(0); },
+			q{op(0); setSubscript; put("D"); }
+		},
+		
+		{
+			"real", 
+			NET.unaryOp, 
+			skNumber, 
+			NodeStyle.bright,
+			q{(real(a))},
+			"real",
+			q{put(operator); op(0); },
+			q{op(0); setSubscript; put("real"); }
+		},
+		
 		
 		{
 			"RGB", 
 			NET.unaryOp, 
-			skBasicType, 0,
+			skBasicType, 
+			NodeStyle.dim,
 			q{(RGB(64, 128, 255))},
 			"RGB",
 			q{put(operator); op(0); },
@@ -8594,17 +8666,157 @@ version(/+$DIDE_REGION+/all)
 		{
 			"RGBA", 
 			NET.unaryOp, 
-			skBasicType, 0,
+			skBasicType, 
+			NodeStyle.dim,
 			q{(RGBA(64, 32, 255, 128))},
 			"RGBA",
 			q{put(operator); op(0); },
 			q{arrangeRGB; }
 		},
 		
+		
+		{
+			"floor", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(floor(a))},
+			"floor",
+			q{put(operator); op(0); },
+			q{put('⎣'); op(0); put('⎦'); }
+		},
+		
+		{
+			"ceil", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(ceil(a))},
+			"ceil",
+			q{put(operator); op(0); },
+			q{put('⎡'); op(0); put('⎤'); }
+		},
+		
+		{
+			"round", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(round(a))},
+			"round",
+			q{put(operator); op(0); },
+			q{put('⁅'); op(0); put('⁆'); }
+		},
+		
+		{
+			"trunc", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(trunc(a))},
+			"trunc",
+			q{put(operator); op(0); },
+			q{put('⎡'); op(0); put('⎦'); }
+		},
+		
+		{
+			"ifloor", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(ifloor(a))},
+			"ifloor",
+			q{put(operator); op(0); },
+			q{put('⎣'); op(0); put('⎦'); putTypeSubscript("int"); }
+		},
+		
+		{
+			"iceil", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(iceil(a))},
+			"iceil",
+			q{put(operator); op(0); },
+			q{put('⎡'); op(0); put('⎤'); putTypeSubscript("int"); }
+		},
+		
+		{
+			"iround", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(iround(a))},
+			"iround",
+			q{put(operator); op(0); },
+			q{put('⁅'); op(0); put('⁆'); putTypeSubscript("int"); }
+		},
+		
+		{
+			"itrunc", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(itrunc(a))},
+			"itrunc",
+			q{put(operator); op(0); },
+			q{put('⎡'); op(0); put('⎦'); putTypeSubscript("int"); }
+		},
+		
+		{
+			"lfloor", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(lfloor(a))},
+			"lfloor",
+			q{put(operator); op(0); },
+			q{put('⎣'); op(0); put('⎦'); putTypeSubscript("long"); }
+		},
+		
+		{
+			"lceil", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(lceil(a))},
+			"lceil",
+			q{put(operator); op(0); },
+			q{put('⎡'); op(0); put('⎤'); putTypeSubscript("long"); }
+		},
+		
+		{
+			"lround", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(lround(a))},
+			"lround",
+			q{put(operator); op(0); },
+			q{
+				put('⁅'); op(0); put('⁆'); putTypeSubscript("long"); 
+				super.rearrange; stretchGlyphs(0, 2); 
+			}
+		},
+		
+		{
+			"ltrunc", 
+			NET.unaryOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(ltrunc(a))},
+			"ltrunc",
+			q{put(operator); op(0); },
+			q{
+				put('⎡'); op(0); put('⎦'); putTypeSubscript("long"); 
+				super.rearrange; stretchGlyphs(0, 2); 
+			}
+		},
+		
 		{
 			"mixinTable1", 
 			NET.unaryOp, 
-			skIdentifier1, 2,
+			skIdentifier1, NodeStyle.bright,
 			q{
 				mixin
 				(
@@ -8634,7 +8846,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			"mixinTable2", 
 			NET.mixinTableInjectorOp, 
-			skIdentifier1, 2,
+			skIdentifier1, NodeStyle.bright,
 			q{
 				((){with(表2([
 					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
@@ -8664,7 +8876,7 @@ version(/+$DIDE_REGION+/all)
 					[],
 					[q{/+^^ Empty line     Also this is a single line comment.+/}],
 					[q{/+
-						Warning: Use /+Code: TAB+/ to enter more than one entries.
+						Warning: Use /+Code: Tab+/ to enter more than one entries.
 						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
 					+/}],
 				])){
@@ -8713,7 +8925,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"divide", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a)/(b))},
 			
 			"/"	,
@@ -8732,7 +8945,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"power", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a)^^(b))},
 			"^^",
 			q{op(0); put(operator); op(1); },
@@ -8742,7 +8956,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"root", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a).root(b))},
 			".root",
 			q{op(0); put(operator); op(1); },
@@ -8753,7 +8968,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"mul", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a)*(b))},
 			"*", /+Todo: more than 2 factors+/
 			q{op(0); put(operator); op(1); },
@@ -8763,7 +8979,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"dot", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a).dot(b))},
 			".dot",
 			q{op(0); put(operator); op(1); },
@@ -8773,7 +8990,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"cross", 
 			NET.binaryOp, 
-			skSymbol, 0,
+			skSymbol, 
+			NodeStyle.dim,
 			q{((a).cross(b))},
 			".cross",
 			q{op(0); put(operator); op(1); },
@@ -8784,7 +9002,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"probe", 
 			NET.binaryOp, 
-			skIdentifier1, 0,
+			skIdentifier1, 
+			NodeStyle.dim,
 			q{((a).PR!(b))},
 			".PR!",
 			q{op(0); put(operator); op(1); },
@@ -8805,7 +9024,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"tenary_0", 
 			NET.tenaryOp, 
-			skSymbol, 2, 
+			skSymbol, 
+			NodeStyle.bright, 
 			q{((a)?(b):(c))},
 			
 			"?￼:",
@@ -8816,7 +9036,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"tenary_1", 
 			NET.tenaryOp, 
-			skSymbol, 2, 
+			skSymbol, 
+			NodeStyle.bright, 
 			q{((a) ?(b):(c))},
 			
 			" ?￼:",
@@ -8830,7 +9051,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"tenary_2", 
 			NET.tenaryOp, 
-			skSymbol, 2, 
+			skSymbol, 
+			NodeStyle.bright, 
 			q{((a)?(b) :(c))},
 			
 			"?￼ :",
@@ -8846,7 +9068,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"tenary_3", 
 			NET.tenaryOp, 
-			skSymbol, 2, 
+			skSymbol, 
+			NodeStyle.bright, 
 			q{((a) ?(b) :(c))},
 			
 			" ?￼ :",
@@ -8862,7 +9085,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"genericArg", 
 			NET.namedUnaryOp, 
-			skIdentifier1, 2,
+			skIdentifier1, 
+			NodeStyle.bright,
 			q{((value).genericArg!q{name})},
 			
 			".genericArg!",
@@ -8878,7 +9102,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"mixinStruct", 
 			NET.mixinOp, 
-			skIdentifier1, 0, 
+			skIdentifier1, 
+			NodeStyle.bright, 
 			q{(mixin(體!((Type),q{field: value, ...})))},
 			"體",
 			q{buildMixinText(operator); },
@@ -8888,7 +9113,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"mixinEnum", 
 			NET.mixinOp, 
-			skIdentifier1, 0, 
+			skIdentifier1, 
+			NodeStyle.bright, 
 			q{(mixin(舉!((Enum),q{member})))},      
 			"舉",
 			q{buildMixinText(operator); },
@@ -8898,18 +9124,19 @@ version(/+$DIDE_REGION+/all)
 		{
 			"mixinFlags", 
 			NET.mixinOp, 
-			skIdentifier1, 0, 
+			skIdentifier1, 
+			NodeStyle.bright, 
 			q{(mixin(幟!((Enum),q{member1 | ...})))},
 			"幟",
 			q{buildMixinText(operator); },
 			q{arrangeMixin(structuredColor("enum"), "(", ")"); }
 		},
 		
-		
 		{
 			"cast_0", 
 			NET.castOp, 
-			skAttribute, 2, 
+			skAttribute, 
+			NodeStyle.bright, 
 			q{(cast(Type)(expr))},
 			
 			"cast",
@@ -8920,7 +9147,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"cast_1", 
 			NET.castOp, 
-			skAttribute, 2, 
+			skAttribute, 
+			NodeStyle.bright, 
 			q{(cast (Type)(expr))},
 			
 			"cast ", 
@@ -8939,7 +9167,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			"map", 
 			NET.binaryOp, 
-			skSymbol, 2, 
+			skSymbol, 
+			NodeStyle.bright, 
 			q{((expr).map!(fun))},
 			
 			".map!", 
@@ -8960,12 +9189,25 @@ version(/+$DIDE_REGION+/all)
 	static immutable TBL_ToolPalette = 
 		((){with(表2([
 		[q{/+Note: Description+/},q{/+Note: Construct+/}],
-		[q{"expression blocks"},q{{}()[] ""r""``' 'q{}}],
+		[q{"expression blocks"},q{
+			{}()[] 
+			""r""`` ' ' q{}
+		}],
 		[q{"math letters"},q{π ℯ ℂ α β γ µ Δ δ ϕ ϑ}],
-		[q{"symbols"},q{"° ϵ ⍵ ℃"}],
+		[q{"symbols"},q{"° ϵ ⍵ ℃ ± ∞ ↔ →"}],
 		[],
-		[q{"magnitude, abs, 
-normalize"},q{(magnitude(a)) (normalize(a))}],
+		[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
+		[q{"floor, 
+ceil, 
+round, 
+trunc"},q{
+			(floor(x)) (ifloor(x)) (lfloor(x))
+			(ceil(x)) (iceil(x)) (lceil(x))
+			(round(x)) (iround(x)) (lround(x))
+			(trunc(x)) (itrunc(x)) (ltrunc(x))
+		}],
+		[],
+		[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
 		[q{"multiply, divide, 
 dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
 		[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
@@ -8976,7 +9218,7 @@ dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
 				[q{Cell}],
 			])) ((){with(表2([
 				[q{/+Note: Header+/},q{Cell}],
-			])){ return script; }}())
+			])){ return scr; }}())
 		}],
 		[q{"tenary operator"},q{
 			((a)?(b):(c))
@@ -8984,7 +9226,7 @@ dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
 			((a) ?(b) :(c))
 		}],
 		[q{"named parameter, 
-structure initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: value, ...})))}],
+structure initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
 		[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 		[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
@@ -9026,13 +9268,15 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			/++/ /**/ //
 			/+Note: note+/ /+Code: code+/ /+$DIDE_IMG+/ /+Link:+/
 			/+Todo:+/ /+Opt:+/ /+Bug:+/
-			/+Error:+/ /+Warning:+/ //$DIDE_LOC file.d
+			/+Error:+/ /+Warning:+/ 
 			/+Deprecation:+/ /+Console:+/
+			//$DIDE_LOC file.d(1,2)
 		}],
 		[q{"regions"},q{
-			version(/+$DIDE_REGION rgn+/all)
-			{}version(/+$DIDE_REGION rgn+/all) {}version(/+$DIDE_REGION+/all) {}version(/+$DIDE_REGION rgn+/none)
-			{}version(/+$DIDE_REGION rgn+/none) {}version(/+$DIDE_REGION+/none) {}
+			version(/+$DIDE_REGION RGN+/all)
+			{}version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
+			version(/+$DIDE_REGION RGN+/none)
+			{}version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
 		}],
 		[q{"directives"},q{
 			#
@@ -9102,7 +9346,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			else	{}
 			static if()	{}
 			else static if()	{}
-			else static assert(0, ""); 
+			else static assert(0, ); 
 		}],
 		[q{"version blocks"},q{
 			version() {}
@@ -9662,6 +9906,26 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					
 					void op(int i)
 					{ put(operands[i]); } 
+					
+					void setSubscript()
+					{ style.fontHeight = DefaultSubScriptFontHeight; flags.yAlign = YAlign.bottom; } 
+					
+					void setFontColor(SyntaxKind sk)
+					{ style.fontColor = syntaxFontColor(sk); } 
+					
+					void putNumberSubscript(string s)
+					{
+						setSubscript; 
+						setFontColor(skNumber); 
+						style.bold = false; 
+						put(s); 
+					}  void putTypeSubscript(string s)
+					{
+						setSubscript; 
+						setFontColor(skBasicType); 
+						style.bold = false; //nit much room
+						put(s); 
+					} 
 				}
 				
 				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
