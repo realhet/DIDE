@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+//@/release
 //@debug
 
 
