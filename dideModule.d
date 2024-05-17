@@ -8531,8 +8531,11 @@ version(/+$DIDE_REGION+/all)
 		tenaryOp, 
 		castOp, 
 		namedUnaryOp, 
-		mixinOp, 
+		binaryMixinEQOp, 
+		binaryMixinTokenStringOp,
+		tenaryMixinTokenStringOp,
 		binaryTokenStringOp,
+		tenaryTokenStringOp,
 		mixinTableInjectorOp,
 		anonymMethod
 		
@@ -8545,7 +8548,10 @@ version(/+$DIDE_REGION+/all)
 			(op(expr)(expr))
 			((expr)opq{code})
 			(mixin(op!((expr),q{code})))
+			(mixin(op(q{},q{})))
+			(mixin(op(q{},q{},q{})))
 			(op(q{},q{}))
+			(op(q{},q{},q{}))
 			((){with(op(expr)){expr}}())
 			((expr)or{code})
 		+//+
@@ -8557,7 +8563,10 @@ version(/+$DIDE_REGION+/all)
 			cast
 			genericArg
 			體 (EnumFields, StructInitializer)
+			
+			
 			表! (old MixinTable)
+			Sigma operations
 			表 new MixinTable
 			anonym method (without attrs)
 		+/
@@ -8570,10 +8579,10 @@ version(/+$DIDE_REGION+/all)
 		final switch(t)
 		{
 			case unaryOp: 	return 1; 
-			case 	binaryOp, castOp, mixinOp, 
-				namedUnaryOp, 	binaryTokenStringOp, 
+			case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
+				binaryTokenStringOp, 	binaryMixinTokenStringOp,	
 				mixinTableInjectorOp, anonymMethod: 	return 2; 
-			case tenaryOp: 	return 3; 
+			case tenaryOp, tenaryTokenStringOp, tenaryMixinTokenStringOp: 	return 3; 
 		}
 	} 
 	
@@ -8935,22 +8944,6 @@ version(/+$DIDE_REGION+/all)
 		
 		//Todo: HalfSize or other components.  Index and blocks, strings and indices are the most important ones.  HalfSize is only works for glyphs now.
 		
-		/+
-			Todo: For transforming all items by a function or program, you can use the ∃ symbol, 
-			which represents "there exists." While traditionally used to denote existence, 
-			it can also be interpreted as "there exists a function or program such that 
-			it transforms each item."
-			
-			So, you can use:
-			∀ to execute a function or program for all items.
-			∃ to transform all items by a function or program.
-			
-			∀(expr)
-			∀{code}
-			
-			∃(expr)
-			∃{code}
-		+/
 		
 		{
 			"divide", 
@@ -9187,7 +9180,7 @@ version(/+$DIDE_REGION+/all)
 		
 		{
 			"mixinStruct", 
-			NET.mixinOp, 
+			NET.binaryMixinEQOp, 
 			skIdentifier1, 
 			NodeStyle.bright, 
 			q{(mixin(體!((Type),q{field: value, ...})))},
@@ -9198,7 +9191,7 @@ version(/+$DIDE_REGION+/all)
 		
 		{
 			"mixinEnum", 
-			NET.mixinOp, 
+			NET.binaryMixinEQOp, 
 			skIdentifier1, 
 			NodeStyle.bright, 
 			q{(mixin(舉!((Enum),q{member})))},      
@@ -9209,7 +9202,7 @@ version(/+$DIDE_REGION+/all)
 		
 		{
 			"mixinFlags", 
-			NET.mixinOp, 
+			NET.binaryMixinEQOp, 
 			skIdentifier1, 
 			NodeStyle.bright, 
 			q{(mixin(幟!((Enum),q{member1 | ...})))},
@@ -9270,6 +9263,94 @@ version(/+$DIDE_REGION+/all)
 		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
 		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
 		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
+		
+		
+		/+
+			Todo: For transforming all items by a function or program, you can use the ∃ symbol, 
+			which represents "there exists." While traditionally used to denote existence, 
+			it can also be interpreted as "there exists a function or program such that 
+			it transforms each item."
+			
+			So, you can use:
+			∀ to execute a function or program for all items.
+			∃ to transform all items by a function or program.
+			
+			∀(expr)
+			∀{code}
+			
+			∃(expr)
+			∃{code}
+			
+			
+			求和" (qiú hé), which means "to find the sum" or "summation."
+			求 (qiú): Seek, request, or demand.
+			和 (hé): Sum, harmony, or peace.
+			
+			
+			5
+			sum 
+			i=0, step
+			
+			<=5
+			sum 
+			0<=i, step
+			
+			<5
+			sum 
+			0<i, step
+			
+			sum 
+			0<i<5, step
+			
+			i∈[1, 2, 3, 4]
+			
+			
+			vector ⟨ ⟩
+			
+			∑
+			⎲
+			⎳
+			
+			∑𝛴Σ𝚺
+			
+			https://en.wikipedia.org/wiki/Summation
+			
+		+/
+		{
+			"iteration_sum", 
+			NET.tenaryMixinTokenStringOp, 
+			skSymbol, 
+			NodeStyle.dim, 
+			q{(mixin(求sum!(q{i=0},q{N-1},q{(mixin(求sum!(q{j=0},q{M-1},q{((i*j)^^(2))})))})))},
+			"求sum!",
+			q{
+				put("mixin("~operator~"("); 
+				foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
+				put("))"); 
+			},
+			q{
+				style.bold = false; withScaledFontHeight(2, { put("∑"); }); 
+				operands[0].applyHalfSize; op(0); 
+				operands[1].applyHalfSize; op(1); 
+				op(2); 
+				super.rearrange; strictLeftToRight = false; 
+				auto 	cOp 	= subCells[0],
+					cLow 	= subCells[1],
+					cHigh 	= subCells[2],
+					cExpr	= subCells[3],
+					cLeft	= [cLow, cHigh, cOp]; 
+				enum adjust = 5; 
+				const siz = vec2(
+					cLeft.map!"a.outerWidth".maxElement, 
+					cLeft.map!"a.outerHeight".sum - adjust
+				); 
+				cHigh	.outerPos = vec2((siz.x-cHigh.outerWidth)/2, max(0, cExpr.outerHeight-siz.y)/2),
+				cOp	.outerPos = vec2((siz.x-cOp.outerWidth)/2, cHigh.outerBottom - adjust),
+				cLow	.outerPos = vec2((siz.x-cLow.outerWidth)/2, cOp.outerBottom),
+				cExpr	.outerPos = vec2(siz.x, max(0, siz.y-cExpr.outerHeight)/2); 
+				innerSize = vec2(cExpr.outerRight, max(siz.y, cExpr.outerHeight)); 
+			}
+		},
 	]; 
 	
 	static immutable TBL_ToolPalette = 
@@ -9502,6 +9583,26 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			return null; 
 		} 
 		
+		static CodeColumn[] extractTokenStringParams(CodeColumn col)
+		{
+			//unpacks (q{},q{},...)
+			if(col.rowCount==1)
+			{
+				auto row = col.rows[0]; 
+				const cc = row.cellCount; 
+				if((cc&1) /+cellCount must be odd+/)
+				{
+					if(iota(1, cc, 2).all!(i=>row.chars[i]==',')/+must be separated by commas+/)
+					{
+						auto params = iota(0, cc, 2).map!(i=>(cast(CodeString)(row.subCells[i]))).array; 
+						if(params.all!(s=>(s && s.type==CodeString.Type.tokenString)))
+						{ return params.map!(p=>p.content).array; }
+					}
+				}
+			}
+			return []; 
+		} 
+		
 		//Todo: NiceExpressions not working inside   enum ;
 		
 		/+
@@ -9527,7 +9628,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		//Todo: Symbol for foreach: ∀
 		
 		/+Bug: If a mixin table is inside 12x ((())) listblocks, the loading is exponentially fucking slow!!!+/
-		
+		
 		if(auto blk = asListBlock(outerCell))
 		if(blk.content.rows.length==1)
 		if(auto row = blk.content.getRow(0))
@@ -9589,22 +9690,51 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					{
 						if(right.content.rows.length==1)
 						if(auto row2 = right.content.getRow(0))
-						if(row2.subCells.length==3)
-						if(row2.chars[1]=='!')
 						{
-							string mixinOp = row2.chars[0].text; 
+							if(row2.subCells.length==3)
+							if(row2.chars[1]=='!')
 							{
-								/+Note: mixinOp: (mixin(op!((expr),q{code})))+/
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinOp, mixinOp))
-								if(auto right2 = asListBlock(row2.subCells.back))
-								if(right2.content.rowCount==1)
-								if(auto row3 = right2.content.rows[0])
-								if(row3.cellCount==3 && row3.chars[1]==',')
-								if(auto left3 = asListBlock(row3.subCells[0]))
-								if(auto right3 = asTokenString(row3.subCells[2]))
+								string mixinOp = row2.chars[0].text; 
 								{
-									outerCell = new NiceExpression(blk.parent, tIdx, left3.content, right3.content); 
-									return; 
+									/+Note: binaryMixinEQOp: (mixin(op!((expr),q{code})))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinEQOp, mixinOp))
+									if(auto right2 = asListBlock(row2.subCells.back))
+									if(right2.content.rowCount==1)
+									if(auto row3 = right2.content.rows[0])
+									if(row3.cellCount==3 && row3.chars[1]==',')
+									if(auto left3 = asListBlock(row3.subCells[0]))
+									if(auto right3 = asTokenString(row3.subCells[2]))
+									{
+										outerCell = new NiceExpression(blk.parent, tIdx, left3.content, right3.content); 
+										return; 
+									}
+								}
+							}
+							const mixinOp = row2.chars[0..$-1].text; 
+							{
+								/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
+								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinTokenStringOp, mixinOp))
+								if(auto right2 = asListBlock(row2.subCells.back))
+								{
+									auto params = extractTokenStringParams(right2.content); 
+									if(params.length==2)
+									{
+										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
+										return; 
+									}
+								}
+							}
+							{
+								/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
+								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp))
+								if(auto right2 = asListBlock(row2.subCells.back))
+								{
+									auto params = extractTokenStringParams(right2.content); 
+									if(params.length==3)
+									{
+										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
+										return; 
+									}
 								}
 							}
 						}
@@ -9636,19 +9766,25 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 								}
 							}
 							{
-								//Note: binaryTokenStringOp (op(q{},q{}))
+								/+Note: binaryTokenStringOp (op(q{},q{}))+/
 								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
 								{
-									if(
-										right.content.rowCount==1 &&
-										right.content.rows[0].cellCount==3
-									)
-									if(auto innerLeft = cast(CodeString)right.content.rows[0].subCells[0])
-									if(right.content.rows[0].chars[1]==',')
-									if(auto innerRight = cast(CodeString)right.content.rows[0].subCells[2])
-									if(innerLeft.isTokenString && innerRight.isTokenString)
+									auto params = extractTokenStringParams(right.content); 
+									if(params.length==2)
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, innerLeft.content, innerRight.content); 
+										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
+										return; 
+									}
+								}
+							}
+							{
+								/+Note: tenaryTokenStringOp (op(q{},q{},q{}))+/
+								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
+								{
+									auto params = extractTokenStringParams(right.content); 
+									if(params.length==3)
+									{
+										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
 										return; 
 									}
 								}
@@ -10028,6 +10164,13 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					
 					void setFontColor(SyntaxKind sk)
 					{ style.fontColor = syntaxFontColor(sk); } 
+					
+					void withScaledFontHeight(float sc, void delegate() fun)
+					{
+						const oldFontHeight = style.fontHeight; scope(exit) style.fontHeight = oldFontHeight; 
+						style.fontHeight = (cast(ubyte)((iround(DefaultFontHeight * sc)))); 
+						fun(); 
+					} 
 					
 					void putNumberSubscript(string s)
 					{
