@@ -374,7 +374,7 @@ version(/+$DIDE_REGION main+/all)
 			{ if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); } 
 			
 			@property canKillCompilers()
-			{ return !!globalPidList[].length; } 
+			{ return !globalPidList.empty; } 
 			
 			void killCompilers()
 			{ globalPidList.killAll; } 

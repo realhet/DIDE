@@ -231,22 +231,40 @@ class GlobalPidList
 	private bool[Pid] list; 
 	
 	void add(Pid pid)
-	{ list[pid] = true; } 
+	{ synchronized(this) list[pid] = true; } 
 	
 	void remove(Pid pid)
-	{ if(pid in list) list.remove(pid); } 
+	{ synchronized(this) if(pid in list) list.remove(pid); } 
 	
 	void killAll()
 	{
-		list.keys.each!kill; 
-		list.clear; 
+		synchronized(this)
+		{
+			list.keys.each!kill; 
+			list.clear; 
+		} 
 	} 
 	
 	auto opSlice()
-	{ return list.values; } 
+	{
+		Pid[] res; 
+		synchronized(this) res = list.keys; 
+		return res; 
+	} 
 	
 	auto opCall()
-	{ return list.keys.sort.array; } 
+	{
+		Pid[] res; 
+		synchronized(this) res = list.keys.sort.array; 
+		return res; 
+	} 
+	
+	bool empty() const
+	{
+		bool res; 
+		synchronized(this) res = list.empty; 
+		return res; 
+	} 
 } 
 
 alias globalPidList = Singleton!GlobalPidList; 

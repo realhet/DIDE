@@ -6493,6 +6493,8 @@ version(/+$DIDE_REGION+/all)
 					case "function", "invariant": 	return clSilver; 
 					case "__region": 	return clGray; 
 						
+					case "try": 	return (RGB(200, 250, 189)); 
+						
 					case "auto": 	return clAqua; 
 					
 					default: 	return def; 
@@ -6737,9 +6739,6 @@ version(/+$DIDE_REGION+/all)
 	
 	void appendJoinedPreposition(Declaration decl)
 	{
-		static bugcnt = 0; 
-		if(!bugcnt++) { beep; ERR("//todo: set the parents and bkcolors of the joinedPrepositions. A 2. else if feltetel hattere is rossz."); }
-		
 		assert(decl && decl.isPreposition); 
 		auto last = lastJoinedPreposition; 
 		last.nextJoinedPreposition = decl; 
@@ -6753,7 +6752,8 @@ version(/+$DIDE_REGION+/all)
 	{
 		if(isPreposition)
 		if(
-			!explicitPrepositionBlock//bugfix: if(1){if(2)a;}else b;  else is wrongly moved inside blocks
+			!explicitPrepositionBlock
+			//bugfix: if(1){if(2)a;}else b;  else is wrongly moved inside blocks
 		)
 		if(auto a = cast(Declaration) block.singleCellOrNull)
 		if(a.isPreposition)
@@ -6765,13 +6765,10 @@ version(/+$DIDE_REGION+/all)
 	{
 		Declaration[] res; 
 		auto act = this; 
-		
-		while(act && act.isPreposition)
-		{
+		while(act && act.isPreposition) {
 			res ~= act; 
 			act = act.nestedPreposition; 
 		}
-		
 		return res; 
 	} 
 	
@@ -6829,7 +6826,6 @@ version(/+$DIDE_REGION+/all)
 		//Note: ⚠ detectInternalNewLine() is not a pure function. The order of the operations above is important!!!
 		
 		decodeSpecial; 
-		
 		verify; 
 		
 		//RECURSIVE!!!
@@ -7070,27 +7066,17 @@ version(/+$DIDE_REGION+/all)
 					
 					if(nextJoinedPreposition)
 					{
-						//Todo: I think this is dead code. It does nothing.
 						if(nextJoinedPreposition.hasJoinedNewLine) { putUi(' '); putNL; }
 						else if(nextJoinedPreposition.hasJoinedTab) put('\t'); 
 						
 						//Note: It doesn't matter if the newline is bewore or	 after or on both sides
 						//Note: ...around an "else". As it is either joined horizontally or vertically.
 						
+						//Propagate bkColor through else chain
+						nextJoinedPreposition.block.bkColor = block.bkColor,
+						nextJoinedPreposition.header.bkColor = block.bkColor; 
+						
 						const nextClosingSemicolon = keyword=="do" && nextJoinedPreposition.keyword=="while"; 
-						
-						//Todo: A preposition novelje az indent-et!  Ezen az if else-n lehet is ellenorizni.
-						/+
-							static if(CODE)
-							{	//this puts too much tabs
-								const canIndent = !nextClosingSemicolon 
-									&& (nextJoinedPreposition.internalNewLineCount > 
-										nextJoinedPrepositionhasJoinedNewLine);
-								if(canIndent) indentCount++;
-								scope(exit) if(canIndent) indentCount--;
-							}
-						+/
-						
 						emitPreposition(nextJoinedPreposition, nextClosingSemicolon); //RECURSIVE!!!
 					}
 					else
@@ -7218,15 +7204,20 @@ version(/+$DIDE_REGION+/all)
 		
 		const isSimpleStatement = isStatement && keyword==""; 
 		
-		auto builder = nodeBuilder(skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), structuredColor(type).nullable); 
+		auto builder = nodeBuilder(
+			skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), 
+			structuredColor(type).nullable
+		); 
 		with(builder)
 		{
 			//set subColumn bkColors
 			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f); 
 			
+			
+			const canBeEmpty = !isPreposition; 
 			foreach(a; only(attributes, header))
 			if(a)
-			{ a.bkColor = a.empty ? mix(darkColor, brightColor, isSimpleStatement ? 0.25f : 0.75f) : darkColor; }
+			{ a.bkColor = ((canBeEmpty && a.empty) ?(mix(darkColor, brightColor, ((isSimpleStatement)?(0.25f):(0.75f)))) :(darkColor)); }
 			
 			if(isPreposition && isRegion)
 			header.bkColor = syntaxBkColor(skComment); 
@@ -7247,14 +7238,11 @@ version(/+$DIDE_REGION+/all)
 		
 		if(isRegion && regionDisabled)
 		{
-			dr.color = syntaxBkColor(skComment); 
-			dr.alpha = .66; 
-			dr.fillRect(outerBounds); 
+			dr.color = syntaxBkColor(skComment); dr.alpha = .66; dr.fillRect(outerBounds); 
 			
 			dr.lineWidth = 2; 
-			dr.color = syntaxFontColor(skComment); 
-			dr.alpha = .5; 
-			dr.drawX(outerBounds); 
+			dr.color = syntaxFontColor(skComment); dr.alpha = .5; dr.drawX(outerBounds); 
+			
 			dr.alpha = 1; 
 		}
 	} 
@@ -7980,19 +7968,6 @@ version(/+$DIDE_REGION+/all)
 {
 	void processHighLevelPatterns_block(CodeColumn col_)
 	{
-		/+
-			const initialFirstRowLineIdx = col_.rows[0].lineIdx; 
-			scope(exit) if(!col_.rows[0].lineIdx) {
-				SourceTextBuilder builder; 
-				builder.lineCounter = initialFirstRowLineIdx; 
-				builder.updateLineIdx = true; 
-				builder.put(col_); 
-				LOG("LineIdx rebuilt for:\n"~builder.result); 
-			} 
-		+/
-		
-		//from here, process statements and declarations
-		
 		//generate Token enum from sentence detection rules.
 		mixin(format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", "))); 
 		
@@ -8009,7 +7984,10 @@ version(/+$DIDE_REGION+/all)
 					if(receiver)
 					{
 						
-						if(!receiver.explicitPrepositionBlock && receiver.block.empty && decl.isSimpleBlock && receiver.isPreposition)
+						if(
+							!receiver.explicitPrepositionBlock && receiver.block.empty 
+							&& decl.isSimpleBlock && receiver.isPreposition
+						)
 						{
 							//unpack the declaration block
 							receiver.explicitPrepositionBlock = true; 
@@ -8023,8 +8001,9 @@ version(/+$DIDE_REGION+/all)
 							decl.setParent(row); 
 							
 							/+
-								Note: The receiver has an empty block, therefore that rowIdx is 0.
-															Now that is has a nonEmpty block, the row's line indices could be refreshed.
+								Note: The receiver has an empty block, therefore that 
+								rowIdx is 0.  Now that is has a nonEmpty block, 
+								the row's line indices could be refreshed.
 							+/
 							receiver.refreshLineIdx; 
 						}
@@ -8036,7 +8015,10 @@ version(/+$DIDE_REGION+/all)
 						else if(decl.isSection)
 						{
 							if(!decl.isLabel) receiver = null; 
-							/+Note: A preposition can receive any number of labels, but only one attribute section. +/
+							/+
+								Note: A preposition can receive any number of labels, 
+								but only one attribute section. 
+							+/
 						}
 						else
 						assert(0, "Unidentified declaration type"); 
@@ -8079,8 +8061,9 @@ version(/+$DIDE_REGION+/all)
 										if(!res) res = d; 
 										else return null; //multiple opportinities means: dangling
 										/*
-											Todo: to handle dangling warnings, else dstPrepositions should be marked as dangling, 
-											and ensure that no other propositions could join to them. 
+											Todo: to handle dangling warnings, else dstPrepositions 
+											should be marked as dangling, and ensure that 
+											no other propositions could join to them. 
 										*/
 									}
 									
@@ -8094,14 +8077,19 @@ version(/+$DIDE_REGION+/all)
 						//precedingComments = [];
 						hasJoinedNewLine = false; 
 						hasJoinedTab = false; 
-						auto a = dst.retro.map!(r => r.subCells.retro).joiner(only(null)/+newLine is null+/).drop(1); 
+						auto a = dst	.retro.map!(r => r.subCells.retro)
+							.joiner(only(null)/+newLine is null+/).drop(1); 
 						while(!a.empty)
 						{
 							if(a.front is null)
 							{
 								//Note: this newline is in front of the else.
-								//Currently the trigger to put the else on a new line is the newline after the else.
-								//In text there are 4 combinations. In structured view there are only 2. (same line or new line)
+								/+
+									Currently the trigger to put the else on a new line is the 
+									newline after the else.
+									In text there are 4 combinations. 
+									In structured view there are only 2. (same line or new line)
+								+/
 								hasJoinedNewLine = true; 
 							}
 							else if(a.front.isWhitespaceOrComment)
@@ -8142,8 +8130,6 @@ version(/+$DIDE_REGION+/all)
 					{
 						if(auto srcPreposition = findSrcPreposition(rule[0]))
 						{
-							//{ static cnt = 0; print(cnt++, srcPreposition.keyword, "-", dstPreposition.keyword); }
-							
 							//backTrack until the receiver
 							assert(backTrackCount>0); 
 							auto removed = dst.removeBack(backTrackCount); 
@@ -8163,7 +8149,10 @@ version(/+$DIDE_REGION+/all)
 							dstPreposition.hasJoinedNewLine = hasJoinedNewLine; 
 							dstPreposition.hasJoinedTab = hasJoinedTab; 
 							
-							//Todo: tab detection is bad: opengl.shaders.attrib is a good example.
+							/+
+								Todo: tab detection is bad here. 
+								opengl.shaders.attrib is a good example.
+							+/
 							
 							srcPreposition.appendJoinedPreposition(dstPreposition); 
 						}
@@ -8174,74 +8163,42 @@ version(/+$DIDE_REGION+/all)
 			{
 				while(tokens.length)
 				{
-					transferWhitespaceAndCommentsAndDirectives; //these comments are going into the body of the block
+					transferWhitespaceAndCommentsAndDirectives; 
+					//these comments are going into the body of the block
 					
 					const main = tokens.front; 
 					auto mainIsKeyword()
 					{ return main.token.functionSwitch!"a.text.startsWith('_')"; } 
 					
-					sw: switch(main.token)
+					sw: 
+					switch(main.token)
 					{
 						static foreach(a; sentenceDetectionRules)
-						mixin(format!q{case %s: fetchTokens!([%s]); break sw; }(a[0].toSymbolEnumList, a[1].toSymbolEnumList)); 
+						mixin(
+							format!	q{case %s: fetchTokens!([%s]); break sw; }
+								(a[0].toSymbolEnumList, a[1].toSymbolEnumList)
+						); 
 						default: 	fetchSingleToken; 
 					}
 					
 					auto ending = sentence.back; 
-					const endingChar = ending.token.predSwitch(semicolon, ';', colon, ':', block, '}', ' '); 
-					const keyword = endingChar.among(';', '}') && mainIsKeyword ? main.token.text[1..$] : ""; 
+					const endingChar = ending.token.predSwitch(
+						semicolon, 	';', 
+						colon,	':', 
+						block,	'}', ' '
+					); 
+					const keyword = ((endingChar.among(';', '}')&& mainIsKeyword) ?(main.token.text[1..$]):("")); 
 					
 					version(/+$DIDE_REGION Handle DLang Function Contracts+/all)
 					{
 						if(sentence.length==1 && sentence.back.token == DeclToken.block)
 						{
-							/+
-								//step back on whitespace and zero or one () param block
-								int stepBackOnParamsAndWhitespace(int i0)
-								{
-									bool paramsFound;
-									int j=-1;
-									foreach_reverse(i; 0..i0)
-									{
-										const ch = srcDStr[i];
-										if(ch.isDLangWhitespace) continue;
-										else if(ch=='(' && !paramsFound) paramsFound = true;
-										else { j = i; break; }
-									}
-									return j;
-								}
-								
-								int checkContractKeyword(int endPos)
-								{//checks if there is an 'in' or an 'out' keyword is written backwards from endPos
-									if(endPos>=0)
-									{
-										auto A(int i){ return srcDStr.get(endPos-i); }
-										bool isEnd(dchar ch){ return !isDLangIdentifierCont(ch); }
-										
-										if(A(0).among('n', 't', 'o') && A(1).among('i', 'u', 'd'))
-											print(A(3), A(2), A(1), A(0));
-										
-										//todo: it's so ugly, but it works
-										if(A(0)=='n' && A(1)=='i' && isEnd(A(2))) return 1;
-										if(A(0)=='t' && A(1)=='u' && A(2)=='o' && isEnd(A(3))) return 2;
-										if(A(0)=='o' && A(1)=='d' && isEnd(A(2))) return -1;
-									}
-									return 0;
-								}
-								
-								while(tokens.length){
-									const t = checkContractKeyword(stepBackOnParamsAndWhitespace(first-1));
-									if(t==0) break;
-									LOG(t);
-									first = tokens.front;
-									fetchTokens!([DeclToken.block]);
-									if(t<0) break;
-								}
-							+/
-							
 							static auto isSkippableContractBlock(dstring s)
 							{
-								//Opt: would be faster to check for invalid chars first. "dinotu({ \n"   Or check the number of letters first.
+								/+
+									Opt: would be faster	to check for invalid chars first. 
+									"dinotu({ \n"	Or check the number of letters first.
+								+/
 								
 								//{ whitespace in/out/do whitespace opt( whitespace {
 								assert(s.length>=2); 
@@ -8257,7 +8214,10 @@ version(/+$DIDE_REGION+/all)
 							} 
 							
 							int i = main.pos; 
-							while(!tokens.empty && tokens.front.token == DeclToken.block && isSkippableContractBlock(srcDStr[i .. tokens.front.end]))
+							while(
+								!tokens.empty && tokens.front.token == DeclToken.block 
+								&& isSkippableContractBlock(srcDStr[i .. tokens.front.end])
+							)
 							{
 								ending = tokens.front; 
 								sentence ~= ending; 
@@ -8312,11 +8272,14 @@ version(/+$DIDE_REGION+/all)
 						//collect statistics
 						static if(0)
 						foreach(decl; declarationChain)
-						dDeclarationRecords ~= DDeclarationRecord(
-							only(keyword, decl.isStatement ? ";" : decl.isSection ? ":" : decl.isBlock ? "}" : "").join,
-							(decl.attributes.empty ? decl.header : decl.attributes).extractThisLevelDString.text
+						with(decl)
+						dDeclarationRecords ~= DDeclarationRecord
+						(
+							only(keyword, ((isStatement)?(";") : (((isSection)?(":") : (((isBlock)?("}") :(""))))))).join,
+							((attributes.empty)?(header) :(attributes)).extractThisLevelDString.text
 						); 
-							
+						
+						
 						
 						
 						joinPrepositions; 
@@ -8853,99 +8816,6 @@ version(/+$DIDE_REGION+/all)
 		},
 		
 		{
-			"mixinTable1", 
-			NET.unaryOp, 
-			skIdentifier1, NodeStyle.bright,
-			q{
-				mixin
-				(
-					(表1([
-						[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-						[q{ubyte},q{2},q{"red"},q{3}],
-						[q{ubyte},q{3},q{"green"},q{}],
-						[q{ubyte},q{2},q{`blue`},q{3}],
-						[q{bool},q{1},q{"alpha"},q{1}],
-					]))
-					.GEN_bitfields
-				); 
-			},
-			
-			"表1",
-			q{buildMixinTable; },
-			q{
-				arrangeMixinTable(1)
-				/+
-					gridStyle: 	0 simple grid
-						1 +darker background
-						2 double line grid
-				+/; 
-			},
-			q{}
-		},
-		{
-			"mixinTable2", 
-			NET.mixinTableInjectorOp, 
-			skIdentifier1, NodeStyle.bright,
-			q{
-				((){with(表2([
-					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
-					[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
-					[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
-					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
-					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
-					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
-						(表1([
-							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-							[q{ubyte},q{2},q{"red"},q{3}],
-							[q{ubyte},q{3},q{"green"},q{}],
-							[q{ubyte},q{2},q{`blue`},q{3}],
-						]))
-					}],
-					[q{
-						Second Nested Table
-						aligned to the first one
-					},q{"more complicated..."},q{"..."},q{
-						(表1([
-							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-							[q{bool},q{1},q{"al"~"pha"},q{1}],
-							[q{/+Default color: Fuchsia+/}],
-						]))
-					}],
-					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
-					[],
-					[q{/+^^ Empty line     Also this is a single line comment.+/}],
-					[q{/+
-						Warning: Use /+Code: Tab+/ to enter more than one entries.
-						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
-					+/}],
-				])){
-					/+Here comes the program that generates a string from the table.+/
-					return rows.map!(
-						r=>format!"%s %s%s;"(
-							r.get(0), r.get(1), 
-							((r.length>2) ?("="~r[2].inner):(""))
-						)
-					).join; 
-				}}())
-			},
-			
-			"表2",
-			q{buildMixinTable; },
-			q{
-				arrangeMixinTable(1)
-				/+
-					gridStyle: 	0 simple grid
-						1 +darker background
-						2 double line grid
-				+/; 
-			},
-			q{}
-		},
-		
-		//Todo: HalfSize or other components.  Index and blocks, strings and indices are the most important ones.  HalfSize is only works for glyphs now.
-		
-		
-		{
 			"divide", 
 			NET.binaryOp, 
 			skSymbol, 
@@ -9085,6 +8955,21 @@ version(/+$DIDE_REGION+/all)
 				put(' '); 	put("\t:\t"); 	op(2); put(' '); 
 				super.rearrange; 
 				//Todo: align the condition centered
+			}
+		},
+		
+		{
+			"tenary_2b", 
+			NET.tenaryOp, 
+			skSymbol, 
+			NodeStyle.bright, 
+			q{((a)?(b) : (c))},
+			
+			"?￼ : ",
+			q{op(0); put('?'); op(1); put(" : "); op(2); },
+			q{
+				put(' '); op(0); put(" ? "); op(1); put(' '); putNL; 
+				put(" : "); op(2); put(' '); 
 			}
 		},
 		
@@ -9241,31 +9126,103 @@ version(/+$DIDE_REGION+/all)
 			}
 		},
 		
-		//Todo: anonym method: ((a){ outerPos.x += Δw; })
-		
+		
 		{
-			"map", 
-			NET.binaryOp, 
-			skSymbol, 
-			NodeStyle.bright, 
-			q{((expr).map!(fun))},
-			
-			".map!", 
-			q{op(0); put(operator); op(1); }, 
+			"mixinTable1", 
+			NET.unaryOp, 
+			skIdentifier1, NodeStyle.bright,
 			q{
-				put("∃"); putNL; 
-				op(0); putNL; 
-				op(1); 
-			}
+				mixin
+				(
+					(表1([
+						[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+						[q{ubyte},q{2},q{"red"},q{3}],
+						[q{ubyte},q{3},q{"green"},q{}],
+						[q{ubyte},q{2},q{`blue`},q{3}],
+						[q{bool},q{1},q{"alpha"},q{1}],
+					]))
+					.GEN_bitfields
+				); 
+			},
+			
+			"表1",
+			q{buildMixinTable; },
+			q{
+				arrangeMixinTable(1)
+				/+
+					gridStyle: 	0 simple grid
+						1 +darker background
+						2 double line grid
+				+/; 
+			},
+			q{}
 		},
-		
-		
-		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
-		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
-		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
-		
+		{
+			"mixinTable2", 
+			NET.mixinTableInjectorOp, 
+			skIdentifier1, NodeStyle.bright,
+			q{
+				((){with(表2([
+					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
+					[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
+					[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
+					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
+					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
+					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
+						(表1([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{ubyte},q{2},q{"red"},q{3}],
+							[q{ubyte},q{3},q{"green"},q{}],
+							[q{ubyte},q{2},q{`blue`},q{3}],
+						]))
+					}],
+					[q{
+						Second Nested Table
+						aligned to the first one
+					},q{"more complicated..."},q{"..."},q{
+						(表1([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{bool},q{1},q{"al"~"pha"},q{1}],
+							[q{/+Default color: Fuchsia+/}],
+						]))
+					}],
+					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
+					[],
+					[q{/+^^ Empty line     Also this is a single line comment.+/}],
+					[q{/+
+						Warning: Use /+Code: Tab+/ to enter more than one entries.
+						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
+					+/}],
+				])){
+					/+Here comes the program that generates a string from the table.+/
+					return rows.map!(
+						r=>format!"%s %s%s;"(
+							r.get(0), r.get(1), 
+							((r.length>2) ?("="~r[2].inner):(""))
+						)
+					).join; 
+				}}())
+			},
+			
+			"表2",
+			q{buildMixinTable; },
+			q{
+				arrangeMixinTable(1)
+				/+
+					gridStyle: 	0 simple grid
+						1 +darker background
+						2 double line grid
+				+/; 
+			},
+			q{}
+		},
 		
 		/+
+			Todo: HalfSize or other components.  Index and blocks, strings and indices 
+			are the most important ones.  HalfSize is only works for glyphs now.
+		+/
+		
+		/+
 			Todo: For transforming all items by a function or program, you can use the ∃ symbol, 
 			which represents "there exists." While traditionally used to denote existence, 
 			it can also be interpreted as "there exists a function or program such that 
@@ -9316,12 +9273,37 @@ version(/+$DIDE_REGION+/all)
 			https://en.wikipedia.org/wiki/Summation
 			
 		+/
+		
+		
+		//Todo: anonym method: ((a){ outerPos.x += Δw; })
+		
+		{
+			"map", 
+			NET.binaryOp, 
+			skSymbol, 
+			NodeStyle.bright, 
+			q{((expr).map!(fun))},
+			
+			".map!", 
+			q{op(0); put(operator); op(1); }, 
+			q{
+				put("∃"); putNL; 
+				op(0); putNL; 
+				op(1); 
+			}
+		},
+		
+		
+		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
+		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
+		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
+		
 		{
 			"iteration_sum", 
 			NET.tenaryMixinTokenStringOp, 
 			skSymbol, 
 			NodeStyle.dim, 
-			q{(mixin(求sum!(q{i=0},q{N-1},q{(mixin(求sum!(q{j=0},q{M-1},q{((i*j)^^(2))})))})))},
+			q{(mixin(求sum!(q{i=0},q{N-1},q{(mixin(求sum!(q{j=0},q{M-1},q{((i*j)^^(2))})))})))},
 			"求sum!",
 			q{
 				put("mixin("~operator~"("); 
@@ -9333,7 +9315,8 @@ version(/+$DIDE_REGION+/all)
 				operands[0].applyHalfSize; op(0); 
 				operands[1].applyHalfSize; op(1); 
 				op(2); 
-				super.rearrange; strictLeftToRight = false; 
+				super.rearrange; 
+				strictCellOrder = false/+Disable binary search among glyphs+/; 
 				auto 	cOp 	= subCells[0],
 					cLow 	= subCells[1],
 					cHigh 	= subCells[2],
@@ -9389,7 +9372,9 @@ dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
 		}],
 		[q{"tenary operator"},q{
 			((a)?(b):(c))
-			((a)?(b) :(c)) ((a) ?(b):(c))
+			((a)?(b) :(c)) 
+			((a) ?(b):(c))
+			((a)?(b) : (c))
 			((a) ?(b) :(c))
 		}],
 		[q{"lambda, 
@@ -9536,8 +9521,14 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			debug
 			{}debug	{}
 			else	{}
-			debug	{}
-			else debug	{}
+			
+			debug(a) {}
+			debug(a) {}else {}
+			debug(a)
+			{}debug(a)	{}
+			else	{}
+			debug(a)	{}
+			else debug(a)	{}
 			else	{}
 		}],
 	])){ return ""; }}()); 
@@ -11050,6 +11041,8 @@ l2
 {
 	void NiceExpression_showcase()
 	{
+		//Note: this is deprecated. There is a new Table based showcase.
+		
 		(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGB(r, g, b))
 		((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBA(r, g, b, a))
 		((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
