@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@/release
+//@release
 //@debug
 
 
@@ -1758,12 +1758,10 @@ version(/+$DIDE_REGION main+/all)
 					} 
 					
 					auto p = path.map!(a => conv(*a)).filter!"a".array; 
-					p.slide!(No.withPartial)(2).each!(
-						(a){
-							auto mca = MessageConnectionArrow(a[0], a[1], msgColor); 
-							messageConnectionArrows[mca] = true; 
-						}
-					); 
+					p.slide!(No.withPartial)(2).each!((a){
+						auto mca = MessageConnectionArrow(a[0], a[1], msgColor); 
+						messageConnectionArrows[mca] = true; 
+					}); 
 				}
 			} 
 			
@@ -2354,14 +2352,12 @@ version(/+$DIDE_REGION main+/all)
 					.map!(y => TextCursor(sel.codeColumn, ivec2(0, y)))
 			)
 				.joiner
-				.map!(
-				(c){
-					//move the cursor to the end or home of the line
-					if(toTheEnd) c.moveToLineEnd; 
-					else c.moveToLineStart; //Todo: it's not functional yet
-					return TextSelection(c, c, false); //make a selection out of them
-				}
-			)
+				.map!((c){
+				//move the cursor to the end or home of the line
+				if(toTheEnd) c.moveToLineEnd; 
+				else c.moveToLineStart; //Todo: it's not functional yet
+				return TextSelection(c, c, false); //make a selection out of them
+			})
 				.merge /+merge it, because there can be duplicates+/; 
 			
 			if(res.length) res[0].primary = true; //Todo: primary selection is inconsistent when multiselect
@@ -5988,12 +5984,10 @@ Note:
 		{
 			dr.lineWidth = -1; 
 			dr.lineStyle = LineStyle.dash; 
-			messageConnectionArrows.keys.each!(
-				(a){
-					dr.color = a.color; 
-					dr.line(a.p1, a.p2); 
-				}
-			); 
+			messageConnectionArrows.keys.each!((a){
+				dr.color = a.color; 
+				dr.line(a.p1, a.p2); 
+			}); 
 			dr.lineStyle = LineStyle.normal; 
 		} 
 		
