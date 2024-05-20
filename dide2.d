@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+///@release
 //@debug
 
 
@@ -252,6 +252,8 @@ version(/+$DIDE_REGION main+/all)
 			string baseCaption; 
 			bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
 			
+			MSQueue!string dbgRerouteQueue; 
+			
 			@VERB("Alt+F4") void closeApp()
 			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
 			
@@ -443,6 +445,9 @@ version(/+$DIDE_REGION main+/all)
 				workspace = new Workspace; 
 				workspaceFile = appFile.otherExt(Workspace.defaultExt); 
 				overlay = new MainOverlayContainer; 
+				
+				dbgRerouteQueue = new MSQueue!string; 
+				globalDbgRerouteQueue = dbgRerouteQueue; 
 			} 
 			
 			override void onDestroy()
@@ -604,6 +609,9 @@ version(/+$DIDE_REGION main+/all)
 					CodeColumn.selfTest; 
 					if(workspaceFile.exists) { workspace.loadWorkspace(workspaceFile); }
 				}
+				
+				if(dbgRerouteQueue)
+				dbgRerouteQueue.fetchAll.each!((msg){ print("Local debug mgs:", msg); }); 
 				
 				invalidate; //Todo: low power usage
 				caption = format!"%s - [%s]%s %s %s %s"(
@@ -2444,17 +2452,15 @@ version(/+$DIDE_REGION main+/all)
 			if(ts.length>1)
 			{
 				if(auto pts = primaryTextSelection)
-				textSelections = [pts]; 
-				else
-				selectPrimaryModule; //just for safety
-				return; 
+				{ textSelections = [pts]; return; }
 			}
 			
 			if(ts.length>0)
-			{
-				selectPrimaryModule; 
-				return; 
-			}
+			{ textSelections = []; return; }
+			
+			//Todo: primary module selection is annoying
+			if(false)
+			{ selectPrimaryModule; return; }
 			
 			//deselect everything, zoom all
 			textSelections = []; 

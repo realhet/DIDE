@@ -4141,22 +4141,20 @@ class CodeRow: Row
 			{
 				NiceExpression[] tables; 
 				if(
-					tableColumn(cIdx).all!(
-						(c){
-							if(auto nt = extractNestedTable(c))
-							{ tables~=nt; return true; }
-							
-							//these cells are just valid in a column with nested tables
-							if(
-								!c /+nonExistent table cell+/
-								|| (cast(CodeComment)(c))
-								|| (cast(CodeString)(c))
-							) return true; 
-							
-							//the rest is invalid
-							return false; 
-						}
-					)
+					tableColumn(cIdx).all!((c){
+						if(auto nt = extractNestedTable(c))
+						{ tables~=nt; return true; }
+						
+						//these cells are just valid in a column with nested tables
+						if(
+							!c /+nonExistent table cell+/
+							|| (cast(CodeComment)(c))
+							|| (cast(CodeString)(c))
+						) return true; 
+						
+						//the rest is invalid
+						return false; 
+					})
 					&& tables.length>=2
 				)
 				{
@@ -9032,12 +9030,10 @@ version(/+$DIDE_REGION+/all)
 			skSymbol, 
 			NodeStyle.bright, 
 			q{
-				(() {}) (
-					(x) {
-						a; 
-						b; 
-					}
-				)
+				(() {}) ((x) {
+					a; 
+					b; 
+				})
 			},
 			
 			" ",
@@ -9270,6 +9266,8 @@ version(/+$DIDE_REGION+/all)
 			
 			∑𝛴Σ𝚺
 			
+			∈ eleme
+			
 			https://en.wikipedia.org/wiki/Summation
 			
 		+/
@@ -9303,36 +9301,21 @@ version(/+$DIDE_REGION+/all)
 			NET.tenaryMixinTokenStringOp, 
 			skSymbol, 
 			NodeStyle.dim, 
-			q{(mixin(求sum!(q{i=0},q{N-1},q{(mixin(求sum!(q{j=0},q{M-1},q{((i*j)^^(2))})))})))},
-			"求sum!",
-			q{
-				put("mixin("~operator~"("); 
-				foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
-				put("))"); 
-			},
-			q{
-				style.bold = false; withScaledFontHeight(2, { put("∑"); }); 
-				operands[0].applyHalfSize; op(0); 
-				operands[1].applyHalfSize; op(1); 
-				op(2); 
-				super.rearrange; 
-				strictCellOrder = false/+Disable binary search among glyphs+/; 
-				auto 	cOp 	= subCells[0],
-					cLow 	= subCells[1],
-					cHigh 	= subCells[2],
-					cExpr	= subCells[3],
-					cLeft	= [cLow, cHigh, cOp]; 
-				enum adjust = 5; 
-				const siz = vec2(
-					cLeft.map!"a.outerWidth".maxElement, 
-					cLeft.map!"a.outerHeight".sum - adjust
-				); 
-				cHigh	.outerPos = vec2((siz.x-cHigh.outerWidth)/2, max(0, cExpr.outerHeight-siz.y)/2),
-				cOp	.outerPos = vec2((siz.x-cOp.outerWidth)/2, cHigh.outerBottom - adjust),
-				cLow	.outerPos = vec2((siz.x-cLow.outerWidth)/2, cOp.outerBottom),
-				cExpr	.outerPos = vec2(siz.x, max(0, siz.y-cExpr.outerHeight)/2); 
-				innerSize = vec2(cExpr.outerRight, max(siz.y, cExpr.outerHeight)); 
-			}
+			q{(mixin(求sum(q{i=0},q{N-1},q{expr})))},
+			"求sum",
+			q{buildSigmaOp; },
+			q{arrangeSigmaOp('∑'); }
+		},
+		
+		{
+			"iteration_product", 
+			NET.tenaryMixinTokenStringOp, 
+			skSymbol, 
+			NodeStyle.dim, 
+			q{(mixin(求prod(q{i=0},q{N-1},q{expr})))},
+			"求prod",
+			q{buildSigmaOp; },
+			q{arrangeSigmaOp('∏'); }
 		},
 	]; 
 	
@@ -9942,6 +9925,13 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					put(')'); 
 				} 
 				
+				void buildSigmaOp()
+				{
+					put("mixin("~operator~"("); 
+					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
+					put("))"); 
+				} 
+				
 				void buildMixinTable()
 				{
 					/+
@@ -10263,6 +10253,31 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					}
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
+				} 
+				
+				void arrangeSigmaOp(dchar symbol)
+				{
+					style.bold = false; withScaledFontHeight(2, { put(symbol); }); 
+					operands[0].applyHalfSize; op(0); 
+					operands[1].applyHalfSize; op(1); 
+					op(2); 
+					super.rearrange; 
+					strictCellOrder = false/+Disable binary search among glyphs+/; 
+					auto 	cOp 	= subCells[0],
+						cLow 	= subCells[1],
+						cHigh 	= subCells[2],
+						cExpr	= subCells[3],
+						cLeft	= [cLow, cHigh, cOp]; 
+					enum adjust = 5; 
+					const siz = vec2(
+						cLeft.map!"a.outerWidth".maxElement, 
+						cLeft.map!"a.outerHeight".sum - adjust
+					); 
+					cHigh	.outerPos = vec2((siz.x-cHigh.outerWidth)/2, max(0, cExpr.outerHeight-siz.y)/2),
+					cOp	.outerPos = vec2((siz.x-cOp.outerWidth)/2, cHigh.outerBottom - adjust),
+					cLow	.outerPos = vec2((siz.x-cLow.outerWidth)/2, cOp.outerBottom),
+					cExpr	.outerPos = vec2(siz.x, max(0, siz.y-cExpr.outerHeight)/2); 
+					innerSize = vec2(cExpr.outerRight, max(siz.y, cExpr.outerHeight)); 
 				} 
 				
 				void arrangeMixinTable(int doubleGridStyle)

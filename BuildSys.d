@@ -2454,12 +2454,10 @@ struct DMDMessages
 	{
 		void bar() { "-".replicate(80).print; } 
 		messages.each!((m){ m.print; bar; }); 
-		pragmas.keys.sort.each!(
-			(k){
-				print(k.fullName, ": Pragma messages:"); 
-				pragmas[k].each!((a){ print(a); }); bar; 
-			}
-		); 
+		pragmas.keys.sort.each!((k){
+			print(k.fullName, ": Pragma messages:"); 
+			pragmas[k].each!((a){ print(a); }); bar; 
+		}); 
 	} 
 	
 	string sourceText() const
@@ -2486,7 +2484,7 @@ struct DMDMessages
 			return (
 				s.endsWith('^') &&(
 					s.length==1 || 
-					s[0..$-1].map!"a==' '".all
+					s[0..$-1].all!"a.among(' ', '\t')"
 				)
 			) ? s.length.to!int : 0; 
 		} 
@@ -2719,12 +2717,10 @@ class BuildResult
 					filesInCache = msg.filesInCache.dup; 
 					
 					allFiles = (filesToCompile~filesInCache); 
-					allFiles.each!(
-						(f){
-							filesInProject[f] = true; 
-							//Todo: initialize fileNameFixer with these correct names
-						}
-					); 
+					allFiles.each!((f){
+						filesInProject[f] = true; 
+						//Todo: initialize fileNameFixer with these correct names
+					}); 
 					
 					messages.processDMDOutput(cast(string[]) msg.todos); 
 					
