@@ -2460,6 +2460,15 @@ struct DMDMessages
 		}); 
 	} 
 	
+	void createFileNameFixerIfNeeded()
+	{ if(!fileNameFixer) fileNameFixer = new FileNameFixer; } 
+	
+	@property void defaultPath(Path path)
+	{
+		createFileNameFixerIfNeeded; 
+		fileNameFixer.defaultPath = path; 
+	} 
+	
 	string sourceText() const
 	{ return messages.map!"a.sourceText".join("\n"); } 
 	
@@ -2477,7 +2486,7 @@ struct DMDMessages
 	{
 		if(lines.empty) return; 
 		
-		if(!fileNameFixer) fileNameFixer = new FileNameFixer; 
+		createFileNameFixerIfNeeded; 
 		
 		static decodeColumnMarker(string s)
 		{
@@ -2491,7 +2500,10 @@ struct DMDMessages
 		
 		DMDMessage decodeDMDMessage(string s)
 		{
-			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`; 
+			enum rx = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
+				/+1:fn 2:drive       3      4        5      6       7+/; 
+			//drive:\ is optional.
+			
 			DMDMessage res; 
 			auto m = matchFirst(s, rx); 
 			if(!m.empty)
@@ -2500,14 +2512,15 @@ struct DMDMessages
 				{
 					location = CodeLocation(
 						fileNameFixer(m[1]).fullName, 
-						m[4].to!int.ifThrown(0), 
 						m[5].to!int.ifThrown(0), 
-						m[3].to!int.ifThrown(0)
+						m[6].to!int.ifThrown(0), 
+						m[4].to!int.ifThrown(0)
 					); 
-					content = m[6]; 
+					content = m[7]; 
 					detectType; 
 				}
 			}
+			
 			return res; 
 		} 
 		
@@ -2713,6 +2726,7 @@ class BuildResult
 					sourceStats = msg.sourceStats; 
 					
 					mainFile = msg.mainFile; 
+					
 					filesToCompile = msg.filesToCompile.dup; 
 					filesInCache = msg.filesInCache.dup; 
 					
@@ -2722,6 +2736,7 @@ class BuildResult
 						//Todo: initialize fileNameFixer with these correct names
 					}); 
 					
+					messages.defaultPath = mainFile.path; //fixed: Some filesnames has no paths
 					messages.processDMDOutput(cast(string[]) msg.todos); 
 					
 					foreach(f; filesInCache)
