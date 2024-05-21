@@ -9285,8 +9285,8 @@ version(/+$DIDE_REGION+/all)
 			NET.tenaryMixinTokenStringOp, 
 			skSymbol, 
 			NodeStyle.dim,
-			q{(mixin(求prod(q{i=0},q{N-1},q{expr})))},
-			"求prod",
+			q{(mixin(求product(q{i=0},q{N-1},q{expr})))},
+			"求product",
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('∏'); }
 		},
@@ -9299,8 +9299,8 @@ version(/+$DIDE_REGION+/all)
 			{}()[] 
 			""r""`` ' ' q{}
 		}],
-		[q{"math letters"},q{π ℯ ℂ α β γ µ Δ δ ϕ ϑ}],
-		[q{"symbols"},q{"° ϵ ⍵ ℃ ± ∞ ↔ →"}],
+		[q{"math letters"},q{π ℯ ℂ α β γ µ Δ δ ϕ ϑ ε}],
+		[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
 		[],
 		[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 		[q{"floor, 
