@@ -3700,7 +3700,7 @@ version(/+$DIDE_REGION main+/all)
 				if(selectionAtMouse.valid && frmMain.isForeground && inputs[mouseMappings.main])
 				{
 					auto bnd = worldInnerBounds(selectionAtMouse.codeColumn); 
-					bnd.high -= 1; //make sure it's inside
+					bnd.high = nextDown(bnd.high); //make sure it's inside
 					
 					const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos.vec2, bnd) //normal clamping for columnSelect
 						: restrictPos_editor(view.mousePos.vec2, bnd) /+text editor clamping for normal select+/; 

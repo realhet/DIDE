@@ -18,6 +18,10 @@ void main()
 			1+
 			1+
 			1
-		})))	, (mixin(求product(q{i},q{2, 4, 5},q{i    })))
+		})))	, (mixin(求map(q{i},q{2, 4, 5},q{i<<4})))
 	); 
+	
+	(mixin(求each(q{i},q{1, 2, 5, 6, 14},q{print("\33"~cast(char)i~"color")}))); 
+	
+	//⇶∀∃
 } 

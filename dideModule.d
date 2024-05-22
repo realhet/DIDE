@@ -9247,35 +9247,37 @@ version(/+$DIDE_REGION+/all)
 		+/
 		
 		
-		//Todo: anonym method: ((a){ outerPos.x += Δw; })
-		
-		{
-			"map", 
-			NET.binaryOp, 
-			skSymbol, 
-			NodeStyle.bright, 
-			q{((expr).map!(fun))},
-			
-			".map!", 
-			q{op(0); put(operator); op(1); }, 
-			q{
-				put("∃"); putNL; 
-				op(0); putNL; 
-				op(1); 
-			}
-		},
-		
-		
-		//Todo: anonym methods: ((a){ fun })  ((a)=>(b))
 		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
 		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
+		
+		{
+			"iteration_map", 
+			NET.tenaryMixinTokenStringOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(mixin(求map(q{i=0},q{N-1},q{expr})))},
+			"求map",
+			q{buildSigmaOp; },
+			q{arrangeSigmaOp('⇶'); }
+		},
+		
+		{
+			"iteration_eachExpr", 
+			NET.tenaryMixinTokenStringOp, 
+			skSymbol, 
+			NodeStyle.dim,
+			q{(mixin(求each(q{i=0},q{N-1},q{expr})))},
+			"求each",
+			q{buildSigmaOp; },
+			q{arrangeSigmaOp('∀'); }
+		},
 		
 		{
 			"iteration_sum", 
 			NET.tenaryMixinTokenStringOp, 
 			skSymbol, 
 			NodeStyle.dim, 
-			q{(mixin(求sum(q{i=0},q{N-1},q{expr})))},
+			q{(mixin(求sum(q{i},q{1, 2, 3},q{expr})))},
 			"求sum",
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('∑'); }
@@ -10162,11 +10164,13 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					with(flags) { hAlign = HAlign.center; yAlign = YAlign.center; }
 					style.fontHeight = DefaultSubScriptFontHeight; 
 					
-					enum reduceSymbolHeight = 5; 
+					enum symbolScale = 2; 
+					const reduceSymbolHeight = ((symbol.among('∑', '∏'))?(2.5f):(0)) * symbolScale; 
+					
 					Cell cSymbol; 
 					void putSymbol()
 					{
-						withScaledFontHeight(2, { put(symbol); }); 
+						withScaledFontHeight(symbolScale, { put(symbol); }); 
 						cSymbol = subCells.back; 
 						cSymbol.outerHeight -= reduceSymbolHeight; 
 					} 
@@ -10209,7 +10213,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					
 					if(layout==Layout.B && subCells.canFind(cHigh)/+hide op(1) which is normally empty+/)
 					{
-						cHigh.outerPos = vec2(0); 
+						cHigh.outerPos = vec2(0, (cSymbol.outerBottom - cHigh.outerHeight)/2); 
 						this.outerHeight -= cHigh.outerHeight; 
 					}
 					
@@ -10236,6 +10240,22 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 							if(amount>0)
 							{
 								cExpr.outerPos.x -= amount; 
+								
+								if(layout.among(Layout.B, Layout.C))
+								{
+									//shring it more to the left.
+									const extraSpaceLeft = min(
+										cSymbol.outerLeft, 
+										cExpr.outerRight-cLow.outerRight, 
+										cExpr.outerRight-cHigh.outerRight
+									); 
+									if(extraSpaceLeft>0)
+									{
+										cSymbol.outerPos.x -= extraSpaceLeft; 
+										cExpr.outerPos.x -= extraSpaceLeft; 
+									}
+								}
+								
 								innerSize = calcContentSize; 
 							}
 						}
