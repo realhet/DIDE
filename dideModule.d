@@ -74,7 +74,8 @@ version(/+$DIDE_REGION+/all)
 	
 	enum MultiPageGapWidth = DefaultFontHeight; 
 	
-	enum DefaultSubScriptFontHeight = iround(DefaultFontHeight * .6); 
+	enum DefaultSubScriptFontScale 	= .6f,
+	DefaultSubScriptFontHeight 	= iround(DefaultFontHeight * DefaultSubScriptFontScale); 
 	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
@@ -8480,7 +8481,7 @@ version(/+$DIDE_REGION+/all)
 			(op(q{},q{}))
 			(op(q{},q{},q{}))
 			((){with(op(expr)){expr}}())
-			((expr)or{code})
+			((expr)op{code})
 		+//+
 			Note: Example:
 			
@@ -8988,6 +8989,7 @@ version(/+$DIDE_REGION+/all)
 			"",
 			q{op(0); put("{", operands[1], "}"); },
 			q{op(0); put("{", operands[1], "}"); }
+			/+Todo: ((){}())+/
 		},
 		
 		{
@@ -9006,7 +9008,6 @@ version(/+$DIDE_REGION+/all)
 			q{op(0); put(" "); put("{", operands[1], "}"); },
 			q{op(0); putNL; put("{", operands[1], "}"); }
 		},
-		
 		
 		{
 			"genericArg", 
@@ -10134,32 +10135,129 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
 				} 
-				
+				
 				void arrangeSigmaOp(dchar symbol)
 				{
-					style.bold = false; withScaledFontHeight(2, { put(symbol); }); 
-					operands[0].applyHalfSize; op(0); 
-					operands[1].applyHalfSize; op(1); 
-					op(2); 
-					super.rearrange; 
-					strictCellOrder = false/+Disable binary search among glyphs+/; 
-					auto 	cOp 	= subCells[0],
-						cLow 	= subCells[1],
-						cHigh 	= subCells[2],
-						cExpr	= subCells[3],
-						cLeft	= [cLow, cHigh, cOp]; 
-					enum adjust = 5; 
-					const siz = vec2(
-						cLeft.map!"a.outerWidth".maxElement, 
-						cLeft.map!"a.outerHeight".sum - adjust
-					); 
-					cHigh	.outerPos = vec2((siz.x-cHigh.outerWidth)/2, max(0, cExpr.outerHeight-siz.y)/2),
-					cOp	.outerPos = vec2((siz.x-cOp.outerWidth)/2, cHigh.outerBottom - adjust),
-					cLow	.outerPos = vec2((siz.x-cLow.outerWidth)/2, cOp.outerBottom),
-					cExpr	.outerPos = vec2(siz.x, max(0, siz.y-cExpr.outerHeight)/2); 
-					innerSize = vec2(cExpr.outerRight, max(siz.y, cExpr.outerHeight)); 
+					version(/+$DIDE_REGION prepare and measure operands+/all)
+					{
+						assert(operands[0..3].all); 
+						auto 	cLow 	= operands[0], 
+							cHigh 	= operands[1], 
+							cExpr 	= operands[2]; 
+						operands[0..2].each!((a){ a.applyHalfSize; }); 
+						operands[0..3].each!((a){ a.measure; }); 
+					}
+					
+					enum Layout { A, B, C } 
+					const layout = ((){
+						bool check(dstring s, char separ, int len)
+						{ return s.splitter(separ).take(len+1).walkLength==len; } 
+						const low = cLow.extractThisLevelDString; 
+						if(check(low, '<', 3)) return cHigh.empty ? Layout.B : Layout.A; 
+						if(check(low, '=', 2)) return Layout.A; 
+						return Layout.C; 
+					})(); 
+					
+					style.bold = false; 
+					with(flags) { hAlign = HAlign.center; yAlign = YAlign.center; }
+					style.fontHeight = DefaultSubScriptFontHeight; 
+					
+					enum reduceSymbolHeight = 5; 
+					Cell cSymbol; 
+					void putSymbol()
+					{
+						withScaledFontHeight(2, { put(symbol); }); 
+						cSymbol = subCells.back; 
+						cSymbol.outerHeight -= reduceSymbolHeight; 
+					} 
+					
+					final switch(layout)
+					{
+						case Layout.A
+						/+
+							Note: [high]
+							sigma [expr]
+							[low]
+						+/: 	{
+							put(cHigh); putNL; 
+							putSymbol; putNL; 
+							put(cLow); 
+						}	break; 
+						case Layout.B
+						/+
+							Note: sigma [expr]
+							[low] hidden([high])
+						+/: 	{
+							putSymbol; putNL; 
+							put(cLow); putNL; 
+							put(cHigh); //later will be hidden
+						}	break; 
+						case Layout.C
+						/+
+							Note: sigma [expr]
+							[low] ∈ [high]
+						+/: 	{
+							putSymbol; putNL; 
+							put(cLow); put('∈'); put(cHigh); 
+						}	break; 
+					}
+					assert(cSymbol); 
+					
+					super.rearrange; strictCellOrder = false/+Disable binary search among glyphs+/; 
+					
+					subCells = subCells.remove!cellIsNewLine; //remove all newlines.
+					
+					if(layout==Layout.B && subCells.canFind(cHigh)/+hide op(1) which is normally empty+/)
+					{
+						cHigh.outerPos = vec2(0); 
+						this.outerHeight -= cHigh.outerHeight; 
+					}
+					
+					version(/+$DIDE_REGION Align the expression to the centerline of the symbol.+/all)
+					{
+						const 	blk 	= innerSize, 
+							symbolCenterY 	= cSymbol.outerTop + cSymbol.outerHeight/2; 
+						subCells ~= cExpr; 
+						cExpr.outerPos = vec2(blk.x, symbolCenterY - cExpr.outerHeight/2); 
+						if(cExpr.outerTop<0)
+						{ subCells.each!((a){ a.outerPos.y -= cExpr.outerTop; }); }
+						//innerSize = vec2(cExpr.outerRight, max(blk.y, cExpr.outerBottom)); 
+						innerSize = calcContentSize; 
+					}
+					
+					version(/+$DIDE_REGION Try to shrink horizontally if the expression is small enough.+/all)
+					{
+						if(
+							cExpr.outerTop	>=cSymbol.outerTop &&
+							cExpr.outerBottom	<=cSymbol.outerBottom
+						)
+						{
+							const amount = cExpr.outerLeft - cSymbol.outerRight; 
+							if(amount>0)
+							{
+								cExpr.outerPos.x -= amount; 
+								innerSize = calcContentSize; 
+							}
+						}
+					}
+					
+					if(reduceSymbolHeight && cSymbol)
+					{
+						cSymbol.outerSize.y += reduceSymbolHeight; 
+						cSymbol.outerPos.y -= reduceSymbolHeight; 
+						
+						//put the symbol to the back in zOrder
+						subCells = cSymbol ~ subCells.filter!(a=>a !is cSymbol).array; 
+					}
+					
+					{
+						//fix tab order of low and high limits.
+						const 	a = subCells.countUntil(operands[0]),
+							b = subCells.countUntil(operands[1]); 
+						if(a>=0 && b>=0 && a>b) swap(subCells[a], subCells[b]); 
+					}
 				} 
-				
+				
 				void arrangeMixinTable(int doubleGridStyle)
 				{
 					if(operands[1])
