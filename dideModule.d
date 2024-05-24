@@ -74,8 +74,8 @@ version(/+$DIDE_REGION+/all)
 	
 	enum MultiPageGapWidth = DefaultFontHeight; 
 	
-	enum DefaultSubScriptFontScale 	= .6f,
-	DefaultSubScriptFontHeight 	= iround(DefaultFontHeight * DefaultSubScriptFontScale); 
+	enum SubScriptFontScale 	= .6f,
+	DefaultSubScriptFontHeight 	= iround(DefaultFontHeight * SubScriptFontScale); 
 	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
@@ -2326,7 +2326,7 @@ class CodeRow: Row
 		adjustCharWidths; 
 		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true; 
 		super.rearrange; 
-		innerSize = max(innerSize, ((halfSize)?(DefaultFontEmptyEditorSize/2) :(DefaultFontEmptyEditorSize))); 
+		innerSize = max(innerSize, DefaultFontEmptyEditorSize * ((halfSize)?(SubScriptFontScale):(1))); 
 		
 		static if(rearrangeLOG) LOG("rearranging", this); 
 		static if(rearrangeFlash) rearrangeTime = now; 
@@ -2451,7 +2451,7 @@ class CodeRow: Row
 			{
 				//Todo: make this nicer
 				void setWidth(float w)
-				{ g.outerWidth = halfSize ? w*.5f : w; } 
+				{ g.outerWidth = halfSize ? w*SubScriptFontScale : w; } 
 				
 				if(isCodeSpace(g))
 				{
@@ -3893,8 +3893,27 @@ class CodeRow: Row
 	
 	override void draw(Drawing dr)
 	{
-		//draw ///////////////////////////////////
-		super.draw(dr); 
+		enum enableNestedNodeSmoothing = true; 
+		static if(enableNestedNodeSmoothing)
+		{
+			const savedBkColor = bkColor; 
+			
+			/+
+				Note: This effect softens the contours of nested codeNodes. 
+				It uses a dimmer average color.
+			+/
+			/+Opt: Calculate this effect only once.+/
+			
+			if(auto singleNode = (cast(CodeNode)(singleCellOrNull)))
+			if(auto parentNode = (cast(CodeNode)(parent)))
+			bkColor = mix(parentNode.bkColor, singleNode.bkColor, .5f).mix(bkColor, .18f); 
+			
+			super.draw(dr); 
+			
+			bkColor = savedBkColor; 
+		}
+		else
+		{ super.draw(dr); }
 		
 		void drawMultiPageGaps(Drawing dr)
 		{
@@ -4024,10 +4043,7 @@ class CodeRow: Row
 							float calcCellWidth()
 							{
 								if(isMixinTableCell(rng.front))
-								{
-									with((cast(MixinTableContainerClass)(rng.front)))
-									{ return outerWidth; }
-								}
+								{ return rng.front.outerWidth; }
 								else
 								{ return rng.map!"a.outerWidth".sum; }
 							} 
@@ -6057,7 +6073,23 @@ version(/+$DIDE_REGION+/all)
 				{
 					try
 					{
-						processHighLevelPatterns_block(content); 
+						
+						//simple expression detection: Last node must be a () block
+						bool isExpr()
+						{
+							foreach(r; content.rows.retro)
+							foreach(c; r.subCells.retro)
+							{
+								if((cast(CodeComment)(c))) continue; 
+								if(auto blk = (cast(CodeBlock)(c)))
+								if(blk.type==CodeBlock.Type.list) return true; 
+								return false; 
+							}
+							return false; 
+						} 
+						
+						if(isExpr)	processHighLevelPatterns_goInside(content); 
+						else	processHighLevelPatterns_block(content); 
 						
 						/+
 							content.refreshLineIdx; /+
@@ -8275,8 +8307,8 @@ version(/+$DIDE_REGION+/all)
 		p = p.replace("\n", " "); 
 		p = p.replace("  ", " "); 
 		p = p.replace(" {", "{"); 
-		p = p.replace(" [", "]"); 
-		p = p.replace(" (", ")"); 
+		//p = p.replace(" [", "["); 
+		//p = p.replace(" (", "("); 
 		p = p.strip; 
 		
 		//Todo: A a={a:{b:c}};  <- it thinks this is a function body
@@ -8514,8 +8546,11 @@ version(/+$DIDE_REGION+/all)
 		}
 	} 
 	
-	static if(0)
+	static if(
+		0//Todo: tenary lambda.  (a lambdra which is evaluated)
+	)
 	auto aaaa = ((){ with(op(expr1)) { expr2; }}()); 
+	
 	
 	struct NiceExpressionTemplate
 	{
@@ -8537,7 +8572,7 @@ version(/+$DIDE_REGION+/all)
 		static bool mixinTableSplitFun(Cell a, Cell b)
 		{ return isMixinTableCell(a) || isMixinTableCell(b); } 
 	}
-	
+	
 	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
 	[
@@ -9191,62 +9226,6 @@ version(/+$DIDE_REGION+/all)
 			Todo: HalfSize or other components.  Index and blocks, strings and indices 
 			are the most important ones.  HalfSize is only works for glyphs now.
 		+/
-		
-		/+
-			Todo: For transforming all items by a function or program, you can use the ∃ symbol, 
-			which represents "there exists." While traditionally used to denote existence, 
-			it can also be interpreted as "there exists a function or program such that 
-			it transforms each item."
-			
-			So, you can use:
-			∀ to execute a function or program for all items.
-			∃ to transform all items by a function or program.
-			
-			∀(expr)
-			∀{code}
-			
-			∃(expr)
-			∃{code}
-			
-			
-			求和" (qiú hé), which means "to find the sum" or "summation."
-			求 (qiú): Seek, request, or demand.
-			和 (hé): Sum, harmony, or peace.
-			
-			
-			5
-			sum 
-			i=0, step
-			
-			<=5
-			sum 
-			0<=i, step
-			
-			<5
-			sum 
-			0<i, step
-			
-			sum 
-			0<i<5, step
-			
-			i∈[1, 2, 3, 4]
-			
-			
-			vector ⟨ ⟩
-			
-			∑
-			⎲
-			⎳
-			
-			∑𝛴Σ𝚺
-			
-			∈ eleme
-			
-			https://en.wikipedia.org/wiki/Summation
-			
-		+/
-		
-		
 		//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
 		//Todo: Exponential function ℯ e  <- also an invalid identifier char...
 		
@@ -9270,6 +9249,8 @@ version(/+$DIDE_REGION+/all)
 			"求each",
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('∀'); }
+			
+			/+Todo: test 'ref variable'  'foreach ref'+/
 		},
 		
 		{
@@ -9295,203 +9276,330 @@ version(/+$DIDE_REGION+/all)
 		},
 	]; 
 	
-	static immutable TBL_ToolPalette = 
-		((){with(表2([
-		[q{/+Note: Description+/},q{/+Note: Construct+/}],
-		[q{"expression blocks"},q{
-			{}()[] 
-			""r""`` ' ' q{}
-		}],
-		[q{"math letters"},q{π ℯ ℂ α β γ µ Δ δ ϕ ϑ ε}],
-		[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
-		[],
-		[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
-		[q{"floor, 
+	class ToolPalette : Column
+	{
+		Page[] pages = /+Todo: Indentation is a problem here.  Ineffective and for multiline strings it's unreliable.+/
+		[
+			{
+				"Symbols, math", "SYM",
+				q{
+					(表1([
+						[q{"expression blocks"},q{
+							{}() [] 
+							"" r"" `` 
+							' ' q{}
+						}],
+						[q{"math letters"},q{
+							π ℯ ℂ α β γ µ 
+							Δ δ ϕ ϑ ε
+						}],
+						[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
+						[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
+						[q{"floor, 
 ceil, 
 round, 
 trunc"},q{
-			(floor(x)) (ifloor(x)) (lfloor(x))
-			(ceil(x)) (iceil(x)) (lceil(x))
-			(round(x)) (iround(x)) (lround(x))
-			(trunc(x)) (itrunc(x)) (ltrunc(x))
-		}],
-		[],
-		[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
-		[q{"multiply, divide, 
-dot, cross"},q{((a)*(b)) ((a)/(b)) ((a).dot(b)) ((a).cross(b))}],
-		[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
-		[q{"color literals"},q{(RGB( , , )) (RGBA( , , , ))}],
-		[q{"table blocks"},q{
-			(表1([
-				[q{/+Note: Header+/}],
-				[q{Cell}],
-			])) ((){with(表2([[q{/+Note: Header+/},q{Cell}],])){ return scr; }}())
-		}],
-		[q{"tenary operator"},q{
-			((a)?(b):(c))
-			((a)?(b) :(c)) 
-			((a) ?(b):(c))
-			((a)?(b) : (c))
-			((a) ?(b) :(c))
-		}],
-		[q{"lambda, 
+							(floor(x)) (ifloor(x)) (lfloor(x))
+							(ceil(x)) (iceil(x)) (lceil(x))
+							(round(x)) (iround(x)) (lround(x))
+							(trunc(x)) (itrunc(x)) (ltrunc(x))
+						}],
+						[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
+						[q{"multiply, divide, 
+dot, cross"},q{
+							((a).dot(b)) ((a).cross(b))
+							((a)*(b)) ((a)/(b))
+						}],
+						[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
+						[q{"color literals"},q{
+							(RGB( , , )) 
+							(RGBA( , , , ))
+						}],
+					]))
+				}
+			},
+			{
+				"Blocks", "BLK",
+				q{
+					(表1([[q{`declaration blocks`},q{
+						; 
+						auto f()
+						{} 
+						import ; 
+						alias ; 
+						enum ; 
+						enum 
+						{} 
+						struct 
+						{} 
+						union 
+						{} 
+						class 
+						{} 
+						interface 
+						{} 
+						@()
+						{} 
+						private
+						{} 
+						public
+						{} 
+						protected
+						{} 
+						unittest
+						{} 
+						invariant
+						{} 
+						template 
+						{} 
+					}],]))
+				}
+			},
+			{
+				"Expressions", "EXPR", 
+				q{
+					(表1([
+						[q{"table blocks"},q{
+							(表1([
+								[q{/+Note: Header+/}],
+								[q{Cell}],
+							])) ((){with(表2([[q{/+Note: Header+/},q{Cell}],])){ return scr; }}())
+						}],
+						[q{"tenary operator"},q{
+							((a)?(b):(c))
+							((a)?(b) :(c)) 
+							((a) ?(b):(c))
+							((a)?(b) : (c))
+							((a) ?(b) :(c))
+						}],
+						[q{"lambda, 
 anonym method"},q{
-			((a)=>(a+1)) 	((a){ f; })
-			((a) =>(a+1))	((a) { f; })
-		}],
-		[q{"named param, 
-struct initializer"},q{
-			((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))
-			/+Bug: ^^^ lineIdx is fucked up!+/
-		}],
-		[q{"enum member 
+							((a)=>(a+1)) 	((a){ f; })
+							((a) =>(a+1))	((a) { f; })
+						}],
+						[q{"named param, 
+struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
+						[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
-		[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-		[],
-		[q{"declaration blocks"},q{
-			auto f()
-			{} 
-			import ; 
-			alias ; 
-			enum ; 
-			enum 
-			{} 
-			struct 
-			{} 
-			union 
-			{} 
-			class 
-			{} 
-			interface 
-			{} 
-			@()
-			{} 
-			private
-			{} 
-			public
-			{} 
-			protected
-			{} 
-			unittest
-			{} 
-			invariant
-			{} 
-			template 
-			{} 
-			
-		}],
-		[],
-		[q{"comments"},q{
-			/++/ /**/ //
-			/+Note: note+/ /+Code: code+/ /+$DIDE_IMG+/ /+Link:+/
-			/+Todo:+/ /+Opt:+/ /+Bug:+/
-			/+Error:+/ /+Warning:+/ 
-			/+Deprecation:+/ /+Console:+/
-			//$DIDE_LOC file.d(1,2)
-		}],
-		[q{"regions"},q{
-			version(/+$DIDE_REGION RGN+/all)
-			{}version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
-			version(/+$DIDE_REGION RGN+/none)
-			{}version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
-		}],
-		[q{"directives"},q{
-			#
-			#!
-			
-			#line 5
-			#define
-			
-			#ifdef
-			#else
-			; 
-		}],
-		[],
-		[q{"if blocks"},q{
-			if() {}if() {}else {}
-			if()
-			{}if()	{}
-			else	{}if()	{}
-			else if()	{}
-			else	{}
-			else {}else	{}else
-			{}
-		}],
-		[q{"swicth case block"},q{
-			switch() {
-				case: break; 
-				default: 
+						[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
+						[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
+						[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
+						[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
+						[q{`product`},q{(mixin(求product(q{i=0},q{N},q{expr})))(mixin(求product(q{0<i<N},q{},q{expr})))(mixin(求product(q{i},q{1, 2, 3},q{expr})))}],
+					]))
+				}
+			},
+			{
+				"Comments", "CMT",
+				q{
+					(表1([
+						[q{"comments"},q{
+							/++/ 
+							/**/ //
+							/+Note: note+/ /+Code: code+/ 
+							/+Link:+/ /+$DIDE_IMG+/
+							/+Todo:+/ 
+							/+Opt:+/ /+Bug:+/
+							/+Error:+/ 
+							/+Warning:+/ 
+							/+Deprecation:+/
+							/+Console:+/
+							//$DIDE_LOC file.d(1,2)
+						}],
+						[q{"regions"},q{
+							version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
+							version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
+							version(/+$DIDE_REGION RGN+/all)
+							{}version(/+$DIDE_REGION RGN+/none)
+							{}
+						}],
+						[q{"directives"},q{
+							#
+							#!
+							#line 5
+							#define
+							#ifdef
+							#else
+							; 
+						}],
+					]))
+				}
+			},
+			{
+				"Statement blocks", "STM",
+				q{
+					(表1([
+						[q{"if blocks"},q{
+							if() {}
+							if() {}else {}
+							if()
+							{}if()	{}
+							else	{}
+							if()	{}
+							else if()	{}
+							else	{}
+							else {}else
+							{}
+						}],
+						[q{"swicth case block"},q{
+							switch()
+							{
+								case: 
+								break; 
+								default: 
+							}
+						}],
+						[q{"with block"},q{
+							with()
+							{}with() {}
+						}],
+						[q{"while blocks"},q{
+							while()
+							{}while() {}
+						}],
+						[q{"do while blocks"},q{
+							do {}
+							while(); 
+							do {}while(); 
+						}],
+						[q{"for loops"},q{
+							for(; ;)
+							{}for(; ;) {}
+							foreach(;)
+							{}
+							foreach(;) {}
+							foreach_reverse(;)
+							{}
+							foreach_reverse(;) {}
+						}],
+					]))
+				}
+			},
+			{
+				"Compile time blocks", "CT",
+				q{
+					(表1([
+						[q{"static foreach"},q{
+							static foreach(;)
+							{}
+							static foreach(;) {}
+							static foreach_reverse(;)
+							{}
+							static foreach_reverse(;) {}
+						}],
+						[q{"static if blocks"},q{
+							static if() {}
+							static if() {}else {}
+							static if()
+							{}static if()	{}
+							else	{}
+							static if()	{}
+							else static if()	{}
+							else static assert(0, ); 
+						}],
+						[q{"version blocks"},q{
+							version() {}
+							version() {}else {}
+							version()
+							{}version()	{}
+							else	{}
+							version()	{}
+							else version()	{}
+							else	{}
+						}],
+						[q{"debug blocks"},q{
+							debug {}
+							debug {}else {}
+							debug
+							{}debug	{}
+							else	{}
+							debug(a) {}
+							debug(a) {}else {}
+							debug(a)
+							{}debug(a)	{}
+							else	{}
+							debug(a)	{}
+							else debug(a)	{}
+							else	{}
+						}],
+					]))
+				}
 			}
-		}],
-		[],
-		[q{"with block"},q{
-			with()
-			{}with() {}
-		}],
-		[],
-		[q{"while blocks"},q{
-			while()
-			{}while() {}
-		}],
-		[q{"do while blocks"},q{
-			do {}
-			while(); do {}while(); 
-		}],
-		[q{"for loops"},q{
-			for(; ;)
-			{}for(; ;) {}
-			foreach(;)
-			{}foreach(;) {}
-			foreach_reverse(;)
-			{}
-			foreach_reverse(;) {}
-		}],
-		[],
-		[q{"static foreach"},q{
-			static foreach(;)
-			{}
-			static foreach(;) {}
-			static foreach_reverse(;)
-			{}
-			static foreach_reverse(;) {}
-		}],
-		[q{"static if blocks"},q{
-			static if() {}
-			static if() {}else {}
-			static if()
-			{}static if()	{}
-			else	{}
-			static if()	{}
-			else static if()	{}
-			else static assert(0, ); 
-		}],
-		[q{"version blocks"},q{
-			version() {}
-			version() {}else {}
-			version()
-			{}version()	{}
-			else	{}
-			version()	{}
-			else version()	{}
-			else	{}
-		}],
-		[q{"debug blocks"},q{
-			debug {}
-			debug {}else {}
-			debug
-			{}debug	{}
-			else	{}
+		]; version(/+$DIDE_REGION+/all) {
+			struct Page
+			{
+				string title, caption, source; 
+				
+				Module _module; 
+				static struct Entry { Cell cell; string comment; } 
+				Entry[] entries; 
+				
+				void initialize()
+				{
+					_module = new Module(null, source, StructureLevel.managed); 
+					if(_module)
+					if(auto mCol = _module.content)
+					if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
+					if(auto tCol = table.operands[0])
+					foreach(tRow; tCol.rows)
+					if(auto cell = tRow.subCells.get(1))
+					{
+						string comment; 
+						if(auto cntr = cast(CodeContainer)(tRow.subCells.get(0)))
+						comment = cntr.content.sourceText; 
+						//Todo: implement ?. null coalescing NiceExpression from C#
+						entries ~= Entry(cell, comment); 
+					}
+				} 
+			} 
+			
+			string[] captions; 
 			
-			debug(a) {}
-			debug(a) {}else {}
-			debug(a)
-			{}debug(a)	{}
-			else	{}
-			debug(a)	{}
-			else debug(a)	{}
-			else	{}
-		}],
-	])){ return ""; }}()); 
+			this()
+			{
+				(mixin(求each(q{ref a},q{pages},q{a.initialize}))); 
+				captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; 
+			} 
+			
+			Page* actPage, lastPage; //cached
+			
+			void UI(ref string actPageCaption)
+			{
+				im.BtnRow(actPageCaption, captions); 
+				const actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
+				if(actPageIdx<0)
+				{
+					actPage = null; 
+					if(pages.length)
+					{
+						//select first page if anything...
+						actPageCaption = pages[0].caption; 
+					}
+				}
+				else {
+					auto actPage = &pages[actPageIdx]; 
+					
+					if(lastPage.chkSet(actPage))
+					{
+						subCells = actPage.entries.map!"a.cell".array; 
+						if(subCells.length)
+						innerWidth = subCells[0].outerWidth; 
+						rearrange; 
+						/+Todo: Column aligning is totally fucked up...+/
+					}
+					
+					
+					id = "$ToolPalette$"; //it will be on the hitStack
+					im.actContainer.appendCell(this); 
+				}
+			} 
+		}
+		
+		
+	} 
+	
+	
+	
 	
 	static assert(niceExpressionTemplates[0].name=="null"); 
 	int[Tuple!(immutable(NiceExpressionType), string)] niceExpressionTemplateIdxByTypeOperator; 
@@ -10222,7 +10330,20 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						const 	blk 	= innerSize, 
 							symbolCenterY 	= cSymbol.outerTop + cSymbol.outerHeight/2; 
 						subCells ~= cExpr; 
-						cExpr.outerPos = vec2(blk.x, symbolCenterY - cExpr.outerHeight/2); 
+						
+						auto cExprCenterY()
+						{
+							/+Note: If the content is a single sigma op, then its' symbol's center is the center.+/
+							if(auto n = (cast(NiceExpression)(cExpr.singleCellOrNull)))
+							if(auto g = (cast(Glyph)(n.subCells.get(0))))
+							if(g.ch.among('∏', '∑', '∀', '⇶')/+Todo: centralize these literals+/)
+							return 	cExpr.topLeftGapSize.y*2.5f /+Todo: calculate the gap properly+/
+								+ g.outerTop + g.outerHeight/2; 
+							
+							return cExpr.outerHeight/2; 
+						} 
+						
+						cExpr.outerPos = vec2(blk.x, symbolCenterY - cExprCenterY); 
 						if(cExpr.outerTop<0)
 						{ subCells.each!((a){ a.outerPos.y -= cExpr.outerTop; }); }
 						//innerSize = vec2(cExpr.outerRight, max(blk.y, cExpr.outerBottom)); 
@@ -10277,7 +10398,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						if(a>=0 && b>=0 && a>b) swap(subCells[a], subCells[b]); 
 					}
 				} 
-				
+				
 				void arrangeMixinTable(int doubleGridStyle)
 				{
 					if(operands[1])
@@ -10359,7 +10480,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
 					put("))"); 
 				} 
-				
+				
 				void buildMixinTable()
 				{
 					/+
@@ -10391,7 +10512,15 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						const isMultiLine = tbl.rows.length>1; 
 						
 						if(isMultiLine) indentCount++; 
-						foreach(row; tbl.rows)
+						foreach(
+							row; tbl.rows
+							/+
+								Todo: Must support multiline cells.
+								It should be a preprocessing algo: 
+									It goes through every row and tries to fetch one cell at a time.
+									If it is needed, it can look ahead to the next rows, until a valid mixinTableCell
+							+/
+						)
 						{
 							//ignore ending VT, but append it at the end of the [] line.
 							const hasVerticalTab = row.isBreakRow; 
@@ -10541,7 +10670,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						put(operator); put("("); putTable; put(")"); 
 					}
 				} 
-				
+				
 				put("("); 
 				{
 					sw: switch(templateIdx)

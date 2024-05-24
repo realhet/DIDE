@@ -235,7 +235,13 @@ version(/+$DIDE_REGION main+/all)
 		{
 			
 			
-			@STORED { bool mainMenuOpened; } 
+			@STORED {
+				bool mainMenuOpened; 
+				
+				enum MenuPage { Tools, Palette } 
+				MenuPage menuPage; 
+				string toolPalettePage; 
+			} 
 			
 			Workspace workspace; 
 			MainOverlayContainer overlay; 
@@ -253,6 +259,10 @@ version(/+$DIDE_REGION main+/all)
 			bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
 			
 			MSQueue!string dbgRerouteQueue; 
+			
+			ToolPalette _toolPalette; 
+			@property toolPalette()
+			{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
 			
 			@VERB("Alt+F4") void closeApp()
 			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
@@ -641,46 +651,86 @@ version(/+$DIDE_REGION main+/all)
 						if(!mainMenuOpened) {
 							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
 							if(Btn("\u2630")) mainMenuOpened = true; 
-						}else
-						{
-							Row({ if(Btn("\u2630")) mainMenuOpened = false; }); 
+						}
+						else {
+							Row(
+								{
+									if(Btn("\u2630")) mainMenuOpened = false; 
+									BtnRow(menuPage); 
+								}
+							); 
+							
 							with(workspace)
 							{
-								UI_refactor; 
-								
-								Grp!Column(
-									"Watches",
-									{
-										static float maxLocationWidth; 
-										foreach(ref w; globalWatches.byValue)
+								final switch(menuPage)
+								{
+									case MenuPage.Tools: 
 										{
-											auto 	sc = DLangScanner("//$DIDE_LOC "~w.id),
-												loc = new CodeComment(null); 
-											loc.rebuild(sc); 
-											loc.measure; 
-											maxLocationWidth.maximize(loc.outerWidth); 
-											Row(
+										UI_refactor; 
+										
+										Grp!Column
+										(
+											"Watches",
+											{
+												static float maxLocationWidth; 
+												foreach(ref w; globalWatches.byValue)
 												{
+													auto 	sc = DLangScanner("//$DIDE_LOC "~w.id),
+														loc = new CodeComment(null); 
+													loc.rebuild(sc); 
+													loc.measure; 
+													maxLocationWidth.maximize(loc.outerWidth); 
 													Row(
 														{
-															width = maxLocationWidth; 
-															actContainer.appendCell(loc); 
+															Row(
+																{
+																	width = maxLocationWidth; 
+																	actContainer.appendCell(loc); 
+																}
+															); 
+															Spacer; 
+															Row({ Text(w.value); }); 
 														}
 													); 
-													Spacer; 
-													Row({ Text(w.value); }); 
 												}
-											); 
-										}
+											}
+										); 
+										/*
+											if(B("F1", "autoRealign"	)) test_autoRealign;
+											if(B("F2", "StructureMap"	)) test_structureMap;
+											if(B("F3", "resyntax"	)) test_resyntax;
+											if(B("F4", "declaration"	)) test_declarationStatistics;
+										*/
 									}
-								); 
-								
-								/*
-									if(B("F1", "autoRealign"	)) test_autoRealign;
-									if(B("F2", "StructureMap"	)) test_structureMap;
-									if(B("F3", "resyntax"	)) test_resyntax;
-									if(B("F4", "declaration"	)) test_declarationStatistics;
-								*/
+									break; 
+									case MenuPage.Palette: 
+										{
+										toolPalette.UI(toolPalettePage); 
+										auto hs = hitTestManager.lastHitStack; 
+										
+										const toolPaletteIdx = hs.map!"a.id".countUntil(toolPalette.id); 
+										if(toolPaletteIdx>=0)
+										{
+											hs = hs[toolPaletteIdx..$]; 
+											T idTo(T)(string id)
+											{
+												if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
+												else	return null; 
+											} 
+											if(auto templateNode = idTo!CodeNode(hs.get(4).id))
+											{ Text("Node:", templateNode.id); }
+											else if(auto templateRow = idTo!CodeRow(hs.get(3).id))
+											{ Text("Row:", templateRow); }
+											
+											hs.each!((a){ Text(a.text); }); 
+										}
+										
+										
+										
+										
+									}
+									break; 
+								}
 							}
 						}
 					}
@@ -761,7 +811,7 @@ version(/+$DIDE_REGION main+/all)
 						margin = "0"; padding = "0"; //border = "1 normal gray";
 						Row(
 							{
-								Text(hitTestManager.lastHitStack.map!(a => "["~a.id~"]").join(` `)); 
+								Text(hitTestManager.lastHitStack.map!(a => "["~a.id.text~"]").join(` `)); 
 								NL; 
 								if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
 								
