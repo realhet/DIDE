@@ -704,31 +704,7 @@ version(/+$DIDE_REGION main+/all)
 									}
 									break; 
 									case MenuPage.Palette: 
-										{
-										toolPalette.UI(toolPalettePage); 
-										auto hs = hitTestManager.lastHitStack; 
-										
-										const toolPaletteIdx = hs.map!"a.id".countUntil(toolPalette.id); 
-										if(toolPaletteIdx>=0)
-										{
-											hs = hs[toolPaletteIdx..$]; 
-											T idTo(T)(string id)
-											{
-												if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
-												else	return null; 
-											} 
-											if(auto templateNode = idTo!CodeNode(hs.get(4).id))
-											{ Text("Node:", templateNode.id); }
-											else if(auto templateRow = idTo!CodeRow(hs.get(3).id))
-											{ Text("Row:", templateRow); }
-											
-											hs.each!((a){ Text(a.text); }); 
-										}
-										
-										
-										
-										
-									}
+										{ toolPalette.UI(toolPalettePage); }
 									break; 
 								}
 							}
@@ -6422,6 +6398,370 @@ Note:
 			super.draw(dr); 
 			structureMap.endCollect(dr); 
 			customDraw(dr); 
+		} 
+	}
+} 
+class ToolPalette : Column
+{
+	Page[] pages = /+Todo: Indentation is a problem here.  Ineffective and for multiline strings it's unreliable.+/
+	[
+		{
+			"Symbols, math", "α",
+			q{
+				(表1([
+					[q{"expression blocks"},q{
+						{}() [] 
+						"" r"" `` 
+						' ' q{}
+					}],
+					[q{"math letters"},q{
+						π ℯ ℂ α β γ µ
+						Δ δ ϕ ϑ ε
+					}],
+					[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
+					[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
+					[q{"floor, 
+ceil, 
+round, 
+trunc"},q{
+						(floor(x)) (ifloor(x)) (lfloor(x))
+						(ceil(x)) (iceil(x)) (lceil(x))
+						(round(x)) (iround(x)) (lround(x))
+						(trunc(x)) (itrunc(x)) (ltrunc(x))
+					}],
+					[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
+					[q{"multiply, divide, 
+dot, cross"},q{
+						((a).dot(b)) ((a).cross(b))
+						((a)*(b)) ((a)/(b))
+					}],
+					[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
+					[q{"color literals"},q{
+						(RGB( , , )) 
+						(RGBA( , , , ))
+					}],
+				]))
+			}
+		},
+		{
+			"Expressions", "( )", 
+			q{
+				(表1([
+					[q{"table blocks"},q{
+						(表1([
+							[q{/+Note: Header+/}],
+							[q{Cell}],
+						])) ((){with(表2([[q{/+Note: Header+/},q{Cell}],])){ return scr; }}())
+					}],
+					[q{"tenary operator"},q{
+						((a)?(b):(c))	((a)?(b) :(c)) 
+						((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
+					}],
+					[q{"lambda, 
+anonym method"},q{
+						((a)=>(a+1)) 	((a){ f; })
+						((a) =>(a+1))	((a) { f; })
+					}],
+					[q{"named param, 
+struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
+					[q{"enum member 
+blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
+					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
+					[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
+					[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
+					[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
+					[q{`product`},q{(mixin(求product(q{i=0},q{N},q{expr})))(mixin(求product(q{0<i<N},q{},q{expr})))(mixin(求product(q{i},q{1, 2, 3},q{expr})))}],
+				]))
+			}
+		},
+		{
+			"Comments", "//",
+			q{
+				(表1([
+					[q{"comments"},q{
+						/++/ 
+						/**/ //
+						/+Note: note+/ /+Code: code+/ 
+						/+Link:+/ /+$DIDE_IMG+/
+						/+Todo:+/ 
+						/+Opt:+/ /+Bug:+/
+						/+Error:+/ 
+						/+Warning:+/ 
+						/+Deprecation:+/
+						/+Console:+/
+						//$DIDE_LOC file.d(1,2)
+					}],
+					[q{"regions"},q{
+						version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
+						version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
+						version(/+$DIDE_REGION RGN+/all)
+						{}version(/+$DIDE_REGION RGN+/none)
+						{}
+					}],
+					[q{"directives"},q{
+						#
+						#!
+						#line 5
+						#define
+						#ifdef
+						#else
+						; 
+					}],
+				]))
+			}
+		},
+		{
+			"Blocks", "{ }",
+			q{
+				(表1([[q{`declaration blocks`},q{
+					; 	auto f()
+					{} 
+					import ; 	alias ; 
+					enum ; 	enum 
+					{} 
+					struct 
+					{} 	union 
+					{} 
+					class 
+					{} 	interface 
+					{} 
+					@()
+					{} 	private
+					{} 
+					public
+					{} 	protected
+					{} 
+					unittest
+					{} 	invariant
+					{} 
+					template 
+					{} 
+					mixin template 
+					{} 
+				}],]))
+			}
+		},
+		{
+			"Statement blocks", "RT",
+			q{
+				(表1([
+					[q{"if blocks"},q{
+						if() {}
+						if() {}else {}
+						if()
+						{}if()	{}
+						else	{}
+						if()	{}
+						else if()	{}
+						else	{}
+						else {}else
+						{}
+					}],
+					[q{"swicth case block"},q{
+						switch()
+						{
+							case: 
+							break; 
+							default: 
+						}
+					}],
+					[q{"with block"},q{
+						with()
+						{}with() {}
+					}],
+					[q{"while blocks"},q{
+						while()
+						{}while() {}
+					}],
+					[q{"do while blocks"},q{
+						do {}
+						while(); 
+						do {}while(); 
+					}],
+					[q{"for loops"},q{
+						for(; ;)
+						{}for(; ;) {}
+						foreach(;)
+						{}
+						foreach(;) {}
+						foreach_reverse(;)
+						{}
+						foreach_reverse(;) {}
+					}],
+				]))
+			}
+		},
+		{
+			"Compile time blocks", "CT",
+			q{
+				(表1([
+					[q{"static foreach"},q{
+						static foreach(;)
+						{}
+						static foreach(;) {}
+						static foreach_reverse(;)
+						{}
+						static foreach_reverse(;) {}
+					}],
+					[q{"static if blocks"},q{
+						static if() {}
+						static if() {}else {}
+						static if()
+						{}static if()	{}
+						else	{}
+						static if()	{}
+						else static if()	{}
+						else static assert(0, ); 
+					}],
+					[q{"version blocks"},q{
+						version() {}
+						version() {}else {}
+						version()
+						{}version()	{}
+						else	{}
+						version()	{}
+						else version()	{}
+						else	{}
+					}],
+					[q{"debug blocks"},q{
+						debug {}
+						debug {}else {}
+						debug
+						{}debug	{}
+						else	{}
+						debug(a) {}
+						debug(a) {}else {}
+						debug(a)
+						{}debug(a)	{}
+						else	{}
+						debug(a)	{}
+						else debug(a)	{}
+						else	{}
+					}],
+				]))
+			}
+		}
+	]; 
+	version(/+$DIDE_REGION+/all) {
+		struct Page
+		{
+			string title, caption, source; 
+			
+			Module _module; 
+			static struct Entry { Cell cell; string comment; } 
+			Entry[] entries; 
+			
+			void initialize(Container parent)
+			{
+				_module = new Module(null, source, StructureLevel.managed); 
+				if(_module)
+				if(auto mCol = _module.content)
+				if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
+				if(auto tCol = table.operands[0])
+				foreach(tRow; tCol.rows)
+				if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
+				{
+					string comment; 
+					if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
+					comment = cntr0.content.sourceText; 
+					//Todo: implement ?. null coalescing NiceExpression from C#
+					entries ~= Entry(cntr1, comment); 
+					cntr1.setParent(parent); //from here worldPos() calculations work
+					cntr1.measure; 
+				}
+			} 
+		} 
+		
+		string[] captions; 
+		
+		this()
+		{ (mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; } 
+		Page* actPage, lastPage; //cached
+		uint lastTick; 
+		
+		void UI(ref string actPageCaption)
+		{
+			im.BtnRow(actPageCaption, captions); 
+			const actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
+			if(actPageIdx<0)
+			{
+				actPage = null; 
+				if(pages.length)
+				{
+					//select first page if anything...
+					actPageCaption = pages[0].caption; 
+				}
+			}
+			else {
+				auto actPage = &pages[actPageIdx]; 
+				
+				if(lastPage.chkSet(actPage))
+				{
+					subCells = actPage.entries.map!"a.cell".array; 
+					
+					const maxW = subCells.map!"a.outerWidth".maxElement(0); 
+					subCells.each!((a){ a.outerWidth = maxW; }); 
+					subCells.spreadV; 
+					innerSize = calcContentSize; 
+					
+					/+Todo: Column aligning is totally fucked up...+/
+				}
+				
+				
+				id = "$ToolPalette$"; //it will be on the hitStack
+				im.actContainer.appendCell(this); 
+			}
+			
+			detectMouseLocation; 
+		} 
+		Cell hoveredCell; 
+		CodeColumn innerCol; 
+		
+		@property hoveredGlyph()
+		{ return (cast(Glyph)(hoveredCell)); } 
+		@property hoveredNode()
+		{ return (cast(CodeNode)(hoveredCell)); } 
+		
+		void detectMouseLocation()
+		{
+			hoveredCell = null; innerCol =  null; 
+			auto hs = hitTestManager.lastHitStack; 
+			
+			const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
+			if(toolPaletteIdx>=0)
+			{
+				hs = hs[toolPaletteIdx..$]; 
+				T idTo(T)(string id)
+				{
+					if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
+					else	return null; 
+				} 
+				
+				if(auto node = idTo!CodeNode(hs.get(4).id))
+				{
+					hoveredCell = node; 
+					innerCol = idTo!CodeColumn(hs.get(5).id); 
+				}
+				else if(auto row = idTo!CodeRow(hs.get(3).id))
+				{ hoveredCell = row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest); }
+				
+				//hs.each!((a){ im.Text(a.text); }); 
+			}
+		} 
+		
+		override void draw(Drawing dr)
+		{
+			super.draw(dr); 
+			
+			if(hoveredNode)
+			{
+				dr.color = mix(clAccent, clWhite, blink); 
+				dr.lineWidth = -(4*blink+1); 
+				dr.drawRect(hoveredNode.worldOuterBounds.inflated(2)); 
+				
+				if(innerCol)
+				{ dr.drawRect(innerCol.worldOuterBounds.inflated(-2)); }
+			}
 		} 
 	}
 } 

@@ -474,13 +474,23 @@ version(/+$DIDE_REGION+/all)
 			return bounds2(p, p+cell.innerSize); 
 		} 
 		
+		bounds2 worldOuterBounds(Cell cell)
+		{
+			auto bnd = worldInnerBounds(cell); 
+			if(bnd) {
+				bnd.low 	-= cell.topLeftGapSize,
+				bnd.high 	+= cell.bottomRightGapSize; 
+			}
+			return bnd; 
+		} 
+		
 		bounds2 worldBounds(TextCursor tc)
 		{
 			if(tc.valid)
 			if(auto row = tc.codeColumn.getRow(tc.pos.y))
 			with(row.localCaretPos(tc.pos.x))
 			{ return bounds2(pos, pos+vec2(0, height)) + row.worldInnerPos; }
-					
+			
 			return bounds2.init; 
 		} 
 		
@@ -492,7 +502,7 @@ version(/+$DIDE_REGION+/all)
 		
 		bounds2 worldBounds(TextSelection[] ts)
 		{
-			  //Todo: constness
+			//Todo: constness
 			return ts.map!worldBounds.fold!"a|b"(bounds2.init); 
 		} 
 		
@@ -3116,8 +3126,11 @@ class CodeRow: Row
 	this(Container parent)
 	{
 		this.parent = parent; 
-		//this.context = context;
-		//id.value = this.identityStr;  //id is not used anymore for this
+		id.value = this.identityStr; //it is used in ToolPalette to detect hitstack.
+		/+
+			Todo: This pointer coded in a string thing is so bad. 
+			It should be a void ptr. Which has a payload: to decide if it is a ptr or an immediate id.
+		+/
 		
 		initializeBorder; 
 		
@@ -3906,7 +3919,10 @@ class CodeRow: Row
 			
 			if(auto singleNode = (cast(CodeNode)(singleCellOrNull)))
 			if(auto parentNode = (cast(CodeNode)(parent)))
-			bkColor = mix(parentNode.bkColor, singleNode.bkColor, .5f).mix(bkColor, .18f); 
+			{
+				if(!parentNode.isTableCell)
+				bkColor = mix(parentNode.bkColor, singleNode.bkColor, .5f).mix(bkColor, .18f); 
+			}
 			
 			super.draw(dr); 
 			
@@ -4804,6 +4820,10 @@ version(/+$DIDE_REGION+/all)
 		nodeRearrangeWasCalled/+
 		This can used to track if rearrange was called or not.
 		NiceExpression uses it.
+	+/,
+		isTableCell /+
+		Used with MixinTables. 
+		The tokenstring should have normal background, not string-like background.
 	+/; 
 	
 	auto subColumns()
@@ -5053,11 +5073,7 @@ version(/+$DIDE_REGION+/all)
 	CodeColumn content; 
 	
 	bool 	noBorder, //omits the texts on the surface of the Node and uses square edges.
-		singleBkColor,
-		isTableCell /+
-		Used with MixinTables. 
-		The tokenstring should have normal background, not string-like background.
-	+/; 
+		singleBkColor; 
 	
 	//base properties
 	abstract SyntaxKind syntax() const; 
@@ -9276,327 +9292,7 @@ version(/+$DIDE_REGION+/all)
 		},
 	]; 
 	
-	class ToolPalette : Column
-	{
-		Page[] pages = /+Todo: Indentation is a problem here.  Ineffective and for multiline strings it's unreliable.+/
-		[
-			{
-				"Symbols, math", "SYM",
-				q{
-					(表1([
-						[q{"expression blocks"},q{
-							{}() [] 
-							"" r"" `` 
-							' ' q{}
-						}],
-						[q{"math letters"},q{
-							π ℯ ℂ α β γ µ 
-							Δ δ ϕ ϑ ε
-						}],
-						[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
-						[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
-						[q{"floor, 
-ceil, 
-round, 
-trunc"},q{
-							(floor(x)) (ifloor(x)) (lfloor(x))
-							(ceil(x)) (iceil(x)) (lceil(x))
-							(round(x)) (iround(x)) (lround(x))
-							(trunc(x)) (itrunc(x)) (ltrunc(x))
-						}],
-						[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
-						[q{"multiply, divide, 
-dot, cross"},q{
-							((a).dot(b)) ((a).cross(b))
-							((a)*(b)) ((a)/(b))
-						}],
-						[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
-						[q{"color literals"},q{
-							(RGB( , , )) 
-							(RGBA( , , , ))
-						}],
-					]))
-				}
-			},
-			{
-				"Blocks", "BLK",
-				q{
-					(表1([[q{`declaration blocks`},q{
-						; 
-						auto f()
-						{} 
-						import ; 
-						alias ; 
-						enum ; 
-						enum 
-						{} 
-						struct 
-						{} 
-						union 
-						{} 
-						class 
-						{} 
-						interface 
-						{} 
-						@()
-						{} 
-						private
-						{} 
-						public
-						{} 
-						protected
-						{} 
-						unittest
-						{} 
-						invariant
-						{} 
-						template 
-						{} 
-					}],]))
-				}
-			},
-			{
-				"Expressions", "EXPR", 
-				q{
-					(表1([
-						[q{"table blocks"},q{
-							(表1([
-								[q{/+Note: Header+/}],
-								[q{Cell}],
-							])) ((){with(表2([[q{/+Note: Header+/},q{Cell}],])){ return scr; }}())
-						}],
-						[q{"tenary operator"},q{
-							((a)?(b):(c))
-							((a)?(b) :(c)) 
-							((a) ?(b):(c))
-							((a)?(b) : (c))
-							((a) ?(b) :(c))
-						}],
-						[q{"lambda, 
-anonym method"},q{
-							((a)=>(a+1)) 	((a){ f; })
-							((a) =>(a+1))	((a) { f; })
-						}],
-						[q{"named param, 
-struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
-						[q{"enum member 
-blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
-						[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-						[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
-						[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
-						[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
-						[q{`product`},q{(mixin(求product(q{i=0},q{N},q{expr})))(mixin(求product(q{0<i<N},q{},q{expr})))(mixin(求product(q{i},q{1, 2, 3},q{expr})))}],
-					]))
-				}
-			},
-			{
-				"Comments", "CMT",
-				q{
-					(表1([
-						[q{"comments"},q{
-							/++/ 
-							/**/ //
-							/+Note: note+/ /+Code: code+/ 
-							/+Link:+/ /+$DIDE_IMG+/
-							/+Todo:+/ 
-							/+Opt:+/ /+Bug:+/
-							/+Error:+/ 
-							/+Warning:+/ 
-							/+Deprecation:+/
-							/+Console:+/
-							//$DIDE_LOC file.d(1,2)
-						}],
-						[q{"regions"},q{
-							version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
-							version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
-							version(/+$DIDE_REGION RGN+/all)
-							{}version(/+$DIDE_REGION RGN+/none)
-							{}
-						}],
-						[q{"directives"},q{
-							#
-							#!
-							#line 5
-							#define
-							#ifdef
-							#else
-							; 
-						}],
-					]))
-				}
-			},
-			{
-				"Statement blocks", "STM",
-				q{
-					(表1([
-						[q{"if blocks"},q{
-							if() {}
-							if() {}else {}
-							if()
-							{}if()	{}
-							else	{}
-							if()	{}
-							else if()	{}
-							else	{}
-							else {}else
-							{}
-						}],
-						[q{"swicth case block"},q{
-							switch()
-							{
-								case: 
-								break; 
-								default: 
-							}
-						}],
-						[q{"with block"},q{
-							with()
-							{}with() {}
-						}],
-						[q{"while blocks"},q{
-							while()
-							{}while() {}
-						}],
-						[q{"do while blocks"},q{
-							do {}
-							while(); 
-							do {}while(); 
-						}],
-						[q{"for loops"},q{
-							for(; ;)
-							{}for(; ;) {}
-							foreach(;)
-							{}
-							foreach(;) {}
-							foreach_reverse(;)
-							{}
-							foreach_reverse(;) {}
-						}],
-					]))
-				}
-			},
-			{
-				"Compile time blocks", "CT",
-				q{
-					(表1([
-						[q{"static foreach"},q{
-							static foreach(;)
-							{}
-							static foreach(;) {}
-							static foreach_reverse(;)
-							{}
-							static foreach_reverse(;) {}
-						}],
-						[q{"static if blocks"},q{
-							static if() {}
-							static if() {}else {}
-							static if()
-							{}static if()	{}
-							else	{}
-							static if()	{}
-							else static if()	{}
-							else static assert(0, ); 
-						}],
-						[q{"version blocks"},q{
-							version() {}
-							version() {}else {}
-							version()
-							{}version()	{}
-							else	{}
-							version()	{}
-							else version()	{}
-							else	{}
-						}],
-						[q{"debug blocks"},q{
-							debug {}
-							debug {}else {}
-							debug
-							{}debug	{}
-							else	{}
-							debug(a) {}
-							debug(a) {}else {}
-							debug(a)
-							{}debug(a)	{}
-							else	{}
-							debug(a)	{}
-							else debug(a)	{}
-							else	{}
-						}],
-					]))
-				}
-			}
-		]; version(/+$DIDE_REGION+/all) {
-			struct Page
-			{
-				string title, caption, source; 
-				
-				Module _module; 
-				static struct Entry { Cell cell; string comment; } 
-				Entry[] entries; 
-				
-				void initialize()
-				{
-					_module = new Module(null, source, StructureLevel.managed); 
-					if(_module)
-					if(auto mCol = _module.content)
-					if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
-					if(auto tCol = table.operands[0])
-					foreach(tRow; tCol.rows)
-					if(auto cell = tRow.subCells.get(1))
-					{
-						string comment; 
-						if(auto cntr = cast(CodeContainer)(tRow.subCells.get(0)))
-						comment = cntr.content.sourceText; 
-						//Todo: implement ?. null coalescing NiceExpression from C#
-						entries ~= Entry(cell, comment); 
-					}
-				} 
-			} 
-			
-			string[] captions; 
-			
-			this()
-			{
-				(mixin(求each(q{ref a},q{pages},q{a.initialize}))); 
-				captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; 
-			} 
-			
-			Page* actPage, lastPage; //cached
-			
-			void UI(ref string actPageCaption)
-			{
-				im.BtnRow(actPageCaption, captions); 
-				const actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
-				if(actPageIdx<0)
-				{
-					actPage = null; 
-					if(pages.length)
-					{
-						//select first page if anything...
-						actPageCaption = pages[0].caption; 
-					}
-				}
-				else {
-					auto actPage = &pages[actPageIdx]; 
-					
-					if(lastPage.chkSet(actPage))
-					{
-						subCells = actPage.entries.map!"a.cell".array; 
-						if(subCells.length)
-						innerWidth = subCells[0].outerWidth; 
-						rearrange; 
-						/+Todo: Column aligning is totally fucked up...+/
-					}
-					
-					
-					id = "$ToolPalette$"; //it will be on the hitStack
-					im.actContainer.appendCell(this); 
-				}
-			} 
-		}
-		
-		
-	} 
+	
 	
 	
 	
