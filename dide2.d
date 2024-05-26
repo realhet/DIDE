@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+///@release
 //@debug
 
 
@@ -1710,6 +1710,7 @@ version(/+$DIDE_REGION main+/all)
 				visitNode(node); 
 			} 
 		} 
+		
 		
 		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
 		{
@@ -2621,7 +2622,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		bool selectAll_impl()
 		{ return extendSelection_impl(Yes.selectAll); } 
-	}version(/+$DIDE_REGION Permissions+/all)
+	}
+	version(/+$DIDE_REGION Permissions+/all)
 	{
 		protected
 		{
@@ -2785,8 +2787,7 @@ version(/+$DIDE_REGION main+/all)
 				invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
 		} 
-	}
-	version(/+$DIDE_REGION Cut   +/all)
+	}version(/+$DIDE_REGION Cut   +/all)
 	{
 		///All operations must go through copy_impl or cut_impl. Those are calling 
 		///requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
@@ -2799,15 +2800,14 @@ version(/+$DIDE_REGION main+/all)
 			
 			//Bug: Two adjacent slashComnments are not emit a newLine in between them
 			
-			bool valid = s.length>0; 	
-			if(valid) clipboard.text = s; 	//Todo: BOM handling
+			bool valid = s.length>0; 
+			if(valid) clipboard.text = s; 
 			return valid; 
 		} 
 		
 		///Ditto
 		auto cut_impl(bool dontMeasure=false)(TextSelection[] textSelections, bool* returnSuccess=null)
 		{
-			//cut_impl ////////////////////////////////////////
 			undoGroupId++; 
 			
 			assert(textSelections.map!"a.valid".all && textSelections.isSorted); //Todo: merge check
@@ -2921,7 +2921,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return savedSelections.map!"a.fromReference".filter!"a.valid".array; 
 		} 
-			
+		
 		bool cut_impl2(bool dontMeasure=false)(TextSelection[] sel, ref TextSelection[] res)
 		{
 			//Todo: constness for input
@@ -2982,6 +2982,7 @@ version(/+$DIDE_REGION main+/all)
 			//Todo: insertText with fake local syntax highlighting. until the background syntax highlighter finishes.
 			
 			///inserts text at cursor, moves the corsor to the end of the text
+			
 			void insertSingleLine(ref TextSelection ts, string str)
 			{
 				assert(ts.valid); 
@@ -3041,7 +3042,9 @@ version(/+$DIDE_REGION main+/all)
 				}
 				else
 				assert("Row out if range"); 
-			} void insertMultiLine(ref TextSelection ts, string[] lines )
+			} 
+			
+			void insertMultiLine(ref TextSelection ts, string[] lines )
 			{
 				assert(ts.valid); 
 				assert(ts.isZeroLength); 
@@ -3148,6 +3151,28 @@ version(/+$DIDE_REGION main+/all)
 			
 			return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array; 
 		} 
+		
+		void insertNode(string source, int subColumnIdx=-1)
+		{
+			void insertStatementNode(string source, int subColumnIdx=-1)
+			{
+				textSelections = paste_impl(
+					textSelections, source, No.duplicateTabs, 
+					Yes.isObject, subColumnIdx, TextFormat.managed
+				); 
+			} 
+			void insertExpressionNode(string source, int subColumnIdx=-1)
+			{
+				textSelections = paste_impl(
+					textSelections, source, No.duplicateTabs, 
+					Yes.isObject, subColumnIdx, TextFormat.managed_goInside
+				); 
+			} 
+			
+			const isStatement = source.length && source.back.among(';', ':', '}'); 
+			((isStatement)?(insertStatementNode(source, subColumnIdx)) :(insertExpressionNode(source, subColumnIdx))); 
+		} 
+		
 	}struct ContainerSelectionManager(T : Container)
 	{
 		version(/+$DIDE_REGION+/all)
@@ -3207,7 +3232,7 @@ version(/+$DIDE_REGION main+/all)
 				return bounds2.init; 
 			} 
 			
-		}
+		}
 		void update(
 			bool 	mouseEnabled, 
 			View2D 	view, 
@@ -3217,172 +3242,166 @@ version(/+$DIDE_REGION main+/all)
 			void delegate() 	onMoveStarted
 		)
 		{
-			version(/+$DIDE_REGION+/all)
-			{
-				version(/+$DIDE_REGION detect mouse travel+/all) {
-					if(inputs.LMB.down)
-					mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta); 
-					else
-					mouseTravelDistance = 0; 
-				}
-				
-				void selectNone()
-				{ select!"false"(items); } 
-				void selectOnly(T item)
-				{ select!"false"(items, item); } 
-				void saveOldSelected()
-				{ foreach(a; items) a.setOldSelected = a.getSelected; } 
-				
-				auto mouseAct = view.mousePos.vec2; 
-				//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
-				
-				auto mouseDelta = mouseAct-mouseLast; 
-				mouseLast = mouseAct; 
-				
-				const 	LMB	= inputs.LMB.down,
-					LMB_pressed	= inputs.LMB.pressed,
-					LMB_released	= inputs.LMB.released,
-					Shift	= inputs.Shift.down,
-					Ctrl	= inputs.Ctrl.down,
-					Alt	= inputs.Alt.down; 
-				
-				const 	modNone	 = !Shift 	&& !Ctrl,
-					modShift	 = Shift 	&& !Ctrl,
-					modCtrl	 = !Shift 	&& Ctrl,
-					modShiftCtrl	 = Shift 	&& Ctrl; 
-				
-				const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed; 
-				
-				version(/+$DIDE_REGION update current selection mode+/all) {
-					if(modNone) selectOp = SelectOp.clearAdd; 
-					if(modShift) selectOp = SelectOp.add; 
-					if(modCtrl) selectOp = SelectOp.sub; 
-					if(modShiftCtrl) selectOp = SelectOp.toggle; 
-				}
-				
-				version(/+$DIDE_REGION update dragBounds+/all) {
-					if(LMB_pressed) dragSource = mouseAct; 
-					if(LMB) dragBounds = bounds2(dragSource, mouseAct).sorted; 
-				}
-				
-				version(/+$DIDE_REGION update hovered item+/all) {
-					hoveredItem = null; 
-					if(mouseEnabled)
-					foreach(item; items)
-					if(item.getBounds.contains!"[)"(mouseAct))
-					hoveredItem = item; 
-				}
+			version(/+$DIDE_REGION detect mouse travel+/all) {
+				if(inputs.LMB.down)
+				mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta); 
+				else
+				mouseTravelDistance = 0; 
 			}
-			version(/+$DIDE_REGION+/all)
+			
+			void selectNone()
+			{ select!"false"(items); } 
+			void selectOnly(T item)
+			{ select!"false"(items, item); } 
+			void saveOldSelected()
+			{ foreach(a; items) a.setOldSelected = a.getSelected; } 
+			
+			auto mouseAct = view.mousePos.vec2; 
+			//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
+			
+			auto mouseDelta = mouseAct-mouseLast; 
+			mouseLast = mouseAct; 
+			
+			const 	LMB	= inputs.LMB.down,
+				LMB_pressed	= inputs.LMB.pressed,
+				LMB_released	= inputs.LMB.released,
+				Shift	= inputs.Shift.down,
+				Ctrl	= inputs.Ctrl.down,
+				Alt	= inputs.Alt.down; 
+			
+			const 	modNone	 = !Shift 	&& !Ctrl,
+				modShift	 = Shift 	&& !Ctrl,
+				modCtrl	 = !Shift 	&& Ctrl,
+				modShiftCtrl	 = Shift 	&& Ctrl; 
+			
+			const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed; 
+			
+			version(/+$DIDE_REGION update current selection mode+/all) {
+				if(modNone) selectOp = SelectOp.clearAdd; 
+				if(modShift) selectOp = SelectOp.add; 
+				if(modCtrl) selectOp = SelectOp.sub; 
+				if(modShiftCtrl) selectOp = SelectOp.toggle; 
+			}
+			
+			version(/+$DIDE_REGION update dragBounds+/all) {
+				if(LMB_pressed) dragSource = mouseAct; 
+				if(LMB) dragBounds = bounds2(dragSource, mouseAct).sorted; 
+			}
+			
+			version(/+$DIDE_REGION update hovered item+/all) {
+				hoveredItem = null; 
+				if(mouseEnabled)
+				foreach(item; items)
+				if(item.getBounds.contains!"[)"(mouseAct))
+				hoveredItem = item; 
+			}
+			version(/+$DIDE_REGION LMB was pressed+/all)
 			{
-				version(/+$DIDE_REGION LMB was pressed+/all)
+				if(LMB_pressed && mouseEnabled)
 				{
-					if(LMB_pressed && mouseEnabled)
-					{
-						if(
-							hoveredItem && 
-							(
-								!hoveredItem.alwaysOnBottom || Alt || hoveredItem.flags.selected
-								/+
-									do rectSelect on alwaysOnBottom modules 
-									except when Alt is pressed.
-								+/
-							)
+					if(
+						hoveredItem && 
+						(
+							!hoveredItem.alwaysOnBottom || Alt || hoveredItem.flags.selected
+							/+
+								do rectSelect on alwaysOnBottom modules 
+								except when Alt is pressed.
+							+/
 						)
+					)
+					{
+						if(!anyTextSelected)
 						{
-							if(!anyTextSelected)
+							if(modNone)
 							{
-								if(modNone)
-								{
-									if(!hoveredItem.flags.selected)
-									selectOnly(hoveredItem); 
-									accumulatedMoveStartDelta = 0; 
-									mouseOp = MouseOp.beforeMove; 
-								}
-								if(modShift || modCtrl || modShiftCtrl)
-								hoveredItem.flags.selected = !hoveredItem.flags.selected; 
+								if(!hoveredItem.flags.selected)
+								selectOnly(hoveredItem); 
+								accumulatedMoveStartDelta = 0; 
+								mouseOp = MouseOp.beforeMove; 
 							}
-							else
-							{
-								//any mouse operation goes to text selection
-							}
+							if(modShift || modCtrl || modShiftCtrl)
+							hoveredItem.flags.selected = !hoveredItem.flags.selected; 
 						}
 						else
 						{
-							mouseOp = MouseOp.rectSelect; 
-							saveOldSelected; 
+							//any mouse operation goes to text selection
 						}
+					}
+					else
+					{
+						mouseOp = MouseOp.rectSelect; 
+						saveOldSelected; 
+					}
+				}
+			}
+			
+			version(/+$DIDE_REGION Update ongoing operations+/all)
+			{
+				
+				
+				version(/+$DIDE_REGION update rectangle selection+/all)
+				{
+					if(mouseOp == MouseOp.rectSelect && inputChanged)
+					{
+						foreach(a; items)
+						if(dragBounds.contains!"[]"(a.getBounds))
+						{
+							final switch(selectOp)
+							{
+								case 	SelectOp.add, 
+									SelectOp.clearAdd: 	a.flags.selected = true; 	break; 
+								case SelectOp.sub: 	a.flags.selected = false; 	break; 
+								case SelectOp.toggle: 	a.flags.selected = !a.flags.oldSelected; 	break; 
+								case SelectOp.none: 		break; 
+							}
+						}
+						else
+						{ a.flags.selected = (selectOp == SelectOp.clearAdd) ? false : a.flags.selected; }
 					}
 				}
 				
-				version(/+$DIDE_REGION Update ongoing operations+/all)
+				version(/+$DIDE_REGION trigger selection dragging+/all) {
+					if(mouseOp == MouseOp.beforeMove && mouseTravelDistance>4)
+					{
+						mouseOp = MouseOp.move; 
+						if(onMoveStarted)
+						onMoveStarted(); 
+					}
+					
+					if(mouseOp == MouseOp.beforeMove && mouseDelta)
+					accumulatedMoveStartDelta += mouseDelta; 
+				}
+				
+				version(/+$DIDE_REGION drag the selection+/all)
 				{
-					
-					
-					version(/+$DIDE_REGION update rectangle selection+/all)
+					if(mouseOp == MouseOp.move && mouseDelta)
 					{
-						if(mouseOp == MouseOp.rectSelect && inputChanged)
+						foreach(a; items)
+						if(a.flags.selected)
 						{
-							foreach(a; items)
-							if(dragBounds.contains!"[]"(a.getBounds))
+							a.outerPos += mouseDelta + accumulatedMoveStartDelta; 
+							
+							accumulatedMoveStartDelta = 0; 
+							
+							//Todo: jelezni kell valahogy az elmozdulast!!!
+							version(/+$DIDE_REGION+/none)
 							{
-								final switch(selectOp)
-								{
-									case 	SelectOp.add, 
-										SelectOp.clearAdd: 	a.flags.selected = true; 	break; 
-									case SelectOp.sub: 	a.flags.selected = false; 	break; 
-									case SelectOp.toggle: 	a.flags.selected = !a.flags.oldSelected; 	break; 
-									case SelectOp.none: 		break; 
-								}
-							}
-							else
-							{ a.flags.selected = (selectOp == SelectOp.clearAdd) ? false : a.flags.selected; }
-						}
-					}
-					
-					version(/+$DIDE_REGION trigger selection dragging+/all) {
-						if(mouseOp == MouseOp.beforeMove && mouseTravelDistance>4)
-						{
-							mouseOp = MouseOp.move; 
-							if(onMoveStarted)
-							onMoveStarted(); 
-						}
-						
-						if(mouseOp == MouseOp.beforeMove && mouseDelta)
-						accumulatedMoveStartDelta += mouseDelta; 
-					}
-					
-					version(/+$DIDE_REGION drag the selection+/all)
-					{
-						if(mouseOp == MouseOp.move && mouseDelta)
-						{
-							foreach(a; items)
-							if(a.flags.selected)
-							{
-								a.outerPos += mouseDelta + accumulatedMoveStartDelta; 
-								
-								accumulatedMoveStartDelta = 0; 
-								
-								//Todo: jelezni kell valahogy az elmozdulast!!!
-								version(/+$DIDE_REGION+/none)
-								{
-									//this is a good example of a disabled DIDE region
-									static if(is(a.cachedDrawing))
-									a.cachedDrawing.free; 
-								}
+								//this is a good example of a disabled DIDE region
+								static if(is(a.cachedDrawing))
+								a.cachedDrawing.free; 
 							}
 						}
 					}
 				}
-				version(/+$DIDE_REGION LMB was released+/all)
-				{
-					if(LMB_released) {
-						if(mouseOp == MouseOp.rectSelect) { onResetTextSelection(); }
-						//...                                               ou
-						
-						mouseOp = MouseOp.idle; 
-						accumulatedMoveStartDelta = 0; 
-					}
+			}
+			version(/+$DIDE_REGION LMB was released+/all)
+			{
+				if(LMB_released) {
+					if(mouseOp == MouseOp.rectSelect) { onResetTextSelection(); }
+					//...                                               ou
+					
+					mouseOp = MouseOp.idle; 
+					accumulatedMoveStartDelta = 0; 
 				}
 			}
 		} 
@@ -3440,7 +3459,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		T[] delegate() onBringToFront; //Use bringSelectedItemsToFront() for default behavior
 		bool deselectBelow; 
-		
+		
 		void update(bool mouseEnabled, View2D view, T[] items)
 		{
 			
@@ -4047,388 +4066,307 @@ version(/+$DIDE_REGION main+/all)
 				return true; 
 			} 
 		}
-	}version(/+$DIDE_REGION Update+/all)
+	}
+	version(/+$DIDE_REGION Update+/all)
 	{
 		
-		version(/+$DIDE_REGION+/all)
+		
+		//Todo: Ctrl+D word select and find
+		
+		//Mouse ---------------------------------------------------
+		
+		struct MouseMappings
 		{
-			
-			//Todo: Ctrl+D word select and find
-			
-			//Mouse ---------------------------------------------------
-			
-			struct MouseMappings
+			string 	main	= "LMB",
+				scroll	= "MMB", //Todo: soft scroll/zoom, fast scroll
+				menu	= "RMB",
+				zoom	= "MW",
+				zoomInHold	= "MB5",
+				zoomOutHold	= "MB4",
+				selectAdd	= "Alt",
+				selectExtend	= "Shift",
+				selectColumn	= "Shift+Alt",
+				selectColumnAdd 	= "Ctrl+Shift+Alt"; 
+		} 
+		
+		private bool MMBReleasedWithoutScrolling()
+		{
+			return inputs.MMB.released && frmMain.mouse.hoverMax.screen.manhattanLength<=2; 
+			//Todo: Ctrl+left click should be better. I think it will not conflict with the textSelection, only with module selection.
+		} 
+		
+		void handleKeyboard()
+		{
+			if(!im.wantKeys && frmMain.canProcessUserInput)
 			{
-				string 	main	= "LMB",
-					scroll	= "MMB", //Todo: soft scroll/zoom, fast scroll
-					menu	= "RMB",
-					zoom	= "MW",
-					zoomInHold	= "MB5",
-					zoomOutHold	= "MB4",
-					selectAdd	= "Alt",
-					selectExtend	= "Shift",
-					selectColumn	= "Shift+Alt",
-					selectColumnAdd 	= "Ctrl+Shift+Alt"; 
-			} 
-			
-			private bool MMBReleasedWithoutScrolling()
-			{
-				return inputs.MMB.released && frmMain.mouse.hoverMax.screen.manhattanLength<=2; 
-				//Todo: Ctrl+left click should be better. I think it will not conflict with the textSelection, only with module selection.
-			} 
-			
-			void handleKeyboard()
-			{
-				if(!im.wantKeys && frmMain.canProcessUserInput)
+				callVerbs(this); 
+				
+				if(textSelections.empty)
+				{ mainWindow.inputChars = []; }
+				else
 				{
-					callVerbs(this); 
-					
-					if(textSelections.empty)
-					{ mainWindow.inputChars = []; }
-					else
+					//Todo: single window only
+					string unprocessed; 
+					foreach(ch; mainWindow.inputChars.unTag.byDchar)
 					{
-						//Todo: single window only
-						string unprocessed; 
-						foreach(ch; mainWindow.inputChars.unTag.byDchar)
+						if(ch==9 && ch==10)
 						{
-							if(ch==9 && ch==10)
+							//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+						}
+						else if(ch>=32)
+						{
+							//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+							try
 							{
-								//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+								/+
+									if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
+									from keyboard or clipboard! Maybe it's a bug.
+								+/
+								auto s = ch.to!string; 
+								textSelections = paste_impl(textSelections, s); 
 							}
-							else if(ch>=32)
-							{
-								//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-								try
-								{
-									/+
-										if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
-										from keyboard or clipboard! Maybe it's a bug.
-									+/
-									auto s = ch.to!string; 
-									textSelections = paste_impl(textSelections, s); 
-								}
-								catch(Exception)
-								{ unprocessed ~= ch; }
-							}
-							else
+							catch(Exception)
 							{ unprocessed ~= ch; }
 						}
-						mainWindow.inputChars = unprocessed; 
+						else
+						{ unprocessed ~= ch; }
 					}
+					mainWindow.inputChars = unprocessed; 
 				}
-			} 
-			
-			void updateCodeLocationJump()
-			{
-				//jump to locations. A fucking nasty hack.
-				
-				if(MMBReleasedWithoutScrolling)
-				{
-					//T0; scope(exit) DT.LOG;
-					auto hs = hitTestManager.lastHitStack; 
-					if(!hs.empty)
-					{ jumpTo(hs.back.id); }
-				}
-			} 
-			
-			Nullable!vec2 jumpRequest; 
-			
-			void jumpTo(in CodeLocation loc)
-			{
-				if(!loc) return; 
-				
-				if(auto mod = findModule(loc.file))
-				{
-					//Todo: load the module automatically
-					
-					auto searchResults = codeLocationToSearchResults(loc); 
-					if(searchResults.length)
-					{
-						if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
-						{
-							with(frmMain.view) if(scale<0.3f) scale = 1; 
-							jumpRequest = nullable(vec2(bnd.center)); 
-							return; 
-						}
-					}
-				}
-				
-				im.flashWarning("Unable to jump to: "~loc.text); 
-			} 
-			
-			void jumpTo(string id)
-			{
-				if(id.empty) return; 
-				
-				if(id.startsWith(CodeLocationPrefix))
-				{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
-				else if(id.startsWith(MatchPrefix))
-				{ NOTIMPL; }
-			} 
-			
-			void handleXBox()
-			{
-				static DateTime t0; 
-				const df = (now - t0).value((1.0f/60)*second).clamp(0, 10); //1 = 60FPS
-				t0 = now; 
-				
-				if(!frmMain.isForeground) return; 
-				
-				const ss = df*32, zs = df*.18f; 
-				if(auto a = inputs.xiRX.value) scrollH	(-a*ss); 
-				if(auto a = inputs.xiRY.value) scrollV	(a*ss); 
-				if(auto a = inputs.xiLY.value)
-				{
-					version(/+$DIDE_REGION move mosuse to subScreen center+/all)
-					{
-						{
-							const p = frmMain.view.subScreenClientCenter; 
-							mouseLock(mix(desktopMousePos, frmMain.clientToScreen(p), .125f)); 
-							mouseUnlock; 
-						}
-					}
-					
-					version(/+$DIDE_REGION zoom around mouse+/all)
-					{
-						{
-							//const p = frmMain.view.subScreenClientCenter;
-							const p = frmMain.screenToClient(desktopMousePos); 
-							frmMain.view.zoomAround(vec2(p), a*zs); //Todo: ivec2 is not implicitly converted to vec2
-						}
-					}
-				}
-			} 
-			
-			const mouseMappings = MouseMappings.init; 
-		}version(/+$DIDE_REGION+/all)
+			}
+		} 
+		
+		void updateCodeLocationJump()
 		{
-			void UI_Popup()
+			//jump to locations. A fucking nasty hack.
+			
+			if(MMBReleasedWithoutScrolling)
 			{
-				version(/+$DIDE_REGION Popup menu+/all)
+				//T0; scope(exit) DT.LOG;
+				auto hs = hitTestManager.lastHitStack; 
+				if(!hs.empty)
+				{ jumpTo(hs.back.id); }
+			}
+		} 
+		
+		Nullable!vec2 jumpRequest; 
+		
+		void jumpTo(in CodeLocation loc)
+		{
+			if(!loc) return; 
+			
+			if(auto mod = findModule(loc.file))
+			{
+				//Todo: load the module automatically
+				
+				auto searchResults = codeLocationToSearchResults(loc); 
+				if(searchResults.length)
 				{
-					static Module popupModule; 
-					static vec2 popupGuiPos, popupWorldPos; 
-					bool justPopped; 
-					
-					if(inputs.RMB.pressed)
-					if(auto tbl = cast(ScrumTable) moduleSelectionManager.hoveredItem)
+					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
 					{
-						popupModule = tbl; 
-						popupGuiPos = frmMain.viewGUI.mousePos.vec2; 
-						popupWorldPos = frmMain.view.mousePos.vec2; 
-						justPopped = true; 
+						with(frmMain.view) if(scale<0.3f) scale = 1; 
+						jumpRequest = nullable(vec2(bnd.center)); 
+						return; 
 					}
-					
-					if(popupModule)
+				}
+			}
+			
+			im.flashWarning("Unable to jump to: "~loc.text); 
+		} 
+		
+		void jumpTo(string id)
+		{
+			if(id.empty) return; 
+			
+			if(id.startsWith(CodeLocationPrefix))
+			{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
+			else if(id.startsWith(MatchPrefix))
+			{ NOTIMPL; }
+		} 
+		
+		void handleXBox()
+		{
+			static DateTime t0; 
+			const df = (now - t0).value((1.0f/60)*second).clamp(0, 10); //1 = 60FPS
+			t0 = now; 
+			
+			if(!frmMain.isForeground) return; 
+			
+			const ss = df*32, zs = df*.18f; 
+			if(auto a = inputs.xiRX.value) scrollH	(-a*ss); 
+			if(auto a = inputs.xiRY.value) scrollV	(a*ss); 
+			if(auto a = inputs.xiLY.value)
+			{
+				version(/+$DIDE_REGION move mosuse to subScreen center+/all)
+				{
 					{
-						with(im)
+						const p = frmMain.view.subScreenClientCenter; 
+						mouseLock(mix(desktopMousePos, frmMain.clientToScreen(p), .125f)); 
+						mouseUnlock; 
+					}
+				}
+				
+				version(/+$DIDE_REGION zoom around mouse+/all)
+				{
+					{
+						//const p = frmMain.view.subScreenClientCenter;
+						const p = frmMain.screenToClient(desktopMousePos); 
+						frmMain.view.zoomAround(vec2(p), a*zs); //Todo: ivec2 is not implicitly converted to vec2
+					}
+				}
+			}
+		} 
+		
+		const mouseMappings = MouseMappings.init; 
+		void update(
+			View2D view, 
+			ref BuildResult buildResult/+Must be a ref because there is an internal file name correction cache.+/
+		)
+		{
+			//update ////////////////////////////////////
+			try
+			{
+				//textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
+				
+				//Note: all verbs can optonally validate textSelections by accessing them from validTextSelections
+				//all verbs can call invalidateTextSelections if it does something that affects them
+				handleXBox; 
+				handleKeyboard; 
+				
+				{
+					updateCodeLocationJump; 
+					
+					if(MMBReleasedWithoutScrolling)
+					{
+						if(nearestSearchResult.reference!="")
 						{
-							Column(
-								{
-									outerPos = popupGuiPos; 
-									border = "1 normal black"; padding = "4"; theme = "tool"; 
-									Row(
-										{
-											Text("ScrumTable Menu"); 
-											if(Btn(symbol("ChromeClose"))) popupModule = null; 
-										}
-									); 
-									Spacer; 
-									if(!modules.canFind(popupModule)) popupModule = null; 
-									if(popupModule)
-									{
-										if(Btn("New Sticker", genericId("New Sticker")).clicked)
-										{
-											scope(exit) popupModule = null; 
-											
-											const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
-											format	!`/+
-Note:
-+/
-/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
-												(popupWorldPos.x, popupWorldPos.y)
-												.saveTo(f); 
-											
-											//Ez felesleges volt!!! -> A loadModule() direkt fogadja a poziciot.
-											version(/+$DIDE_REGION+/none)
-											{
-												const ms = ModuleSettings(f.fullName, popupWorldPos); 
-												const idx = moduleSettings.map!"a.fileName".countUntil(ms.fileName); 
-												if(idx>=0)	moduleSettings[idx] = ms; 
-												else	moduleSettings ~= ms; 
-											}
-											
-											loadModule(f, popupWorldPos); 
-											
-											textSelections([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
-											//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
-											
-										}
-									}
-								}
-							); 
+							jumpTo(nearestSearchResult.reference); 
+							//Todo: only do this when there was no lmouseTravelSinceLastPress
 						}
+					}
+				}
+				
+				{ autoReloader.enabled = true; autoReloader.update(modules); }
+				
+				updateOpenQueue(1); 
+				updateResyntaxQueue; 
+				
+				measure; //measures all containers if needed, updates ElasticTabstops
+				//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
+				//and scene drawing routines.
+				
+				//From here every positions and sizes are correct -----------------------------------------
+				
+				
+				//Ctrl+Click handling
+				if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
+				{}
+				
+				moduleSelectionManager.update(
+					!im.wantMouse && mainWindow.canProcessUserInput
+					&& view.isMouseInside /+&& lod.moduleLevel+/,
+					view, modules, textSelections.length>0, 
+					{ textSelections = []; },
+					{ bringToFrontSelectedModules; }
+				); 
+				textSelectionManager.update(view, this, mouseMappings); 
+				
+				//detect textSelection change
+				const textSelectionChanged = textSelectionsHash.chkSet(textSelections.hashOf); 
+				
+				//if there are any cursors, module selection if forced to modules with textSelections
+				if(textSelectionChanged && textSelections.length)
+				{
+					foreach(m; modules) m.flags.selected = false; 
+					foreach(m; modulesWithTextSelection) m.flags.selected = true; 
+				}
+				
+				//focus at selection
+				if(!jumpRequest.isNull)
+				{ with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin); }
+				else if(!scrollInBoundsRequest.isNull)
+				{
+					const b = scrollInBoundsRequest.get; 
+					frmMain.view.scrollZoom(b); 
+				}
+				else if(!textSelectionManager.scrollInRequest.isNull)
+				{
+					const p = textSelectionManager.scrollInRequest.get; 
+					frmMain.view.scrollZoom(bounds2(p, p)); 
+				}
+				else if(textSelectionChanged)
+				{
+					if(!inputs[mouseMappings.main].down)
+					{
+						//don't focus to changed selection when the main mouse button is held down
+						frmMain.view.scrollZoom(worldBounds(textSelections)); 
+						//Todo: maybe it is problematic when the selection can't fit on the current screen
+					}
+				}
+				scrollInBoundsRequest.nullify; 
+				jumpRequest.nullify; 
+				
+				//animate cursors
+				version(AnimatedCursors)
+				{
+					if(textSelections.length<=MaxAnimatedCursors)
+					{
+						const 	animT	= calcAnimationT(application.deltaTime.value(second), .6, .25),
+							maxDist 	= 1.0f; 
 						
-						if(
-							inputs.Esc.pressed 
-							|| inputs.RMB.pressed && !justPopped 
-							|| inputs.LMB.released && false//Todo: MUST NOT!!! Btn can't catch it in the next frame. -> LAME
-							|| inputs.MMB.pressed || inputs.MB4.pressed || inputs.MB4.pressed
+						foreach(ref ts; textSelections)
+						{
+							foreach(ref cr; ts.cursors[])
+							with(cr)
+							{
+								const lp = localPos; 
+								targetPos = lp.pos; 
+								targetHeight = lp.height; 
+								if(animatedPos.x.isnan)
+								{
+									animatedPos = targetPos; 
+									animatedHeight = targetHeight; 
+								}
+								else
+								{
+									animatedPos.follow(targetPos, animT, maxDist); 
+									animatedHeight.follow(targetHeight, animT, maxDist); 
+								}
+							}
+						}
+					}
+				}
+				
+				//update buildresults if needed (compilation progress or layer mask change)
+				size_t calcBuildStateHash()
+				{
+					return modules	.map!"tuple(a.file, a.outerPos)"
+						.array
+						.hashOf(
+						buildResult.lastUpdateTime.hashOf(
+							markerLayerHideMask
+							/+to filter compile.err+/
 						)
-						popupModule = null; 
-					}
-				}
-			} void update(
-				View2D view, 
-				ref BuildResult buildResult/+Must be a ref because there is an internal file name correction cache.+/
-			)
-			{
-				//update ////////////////////////////////////
-				try
-				{
-					//textSelections = validTextSelections;  //just to make sure. (all verbs can validate by their own will)
-					
-					//Note: all verbs can optonally validate textSelections by accessing them from validTextSelections
-					//all verbs can call invalidateTextSelections if it does something that affects them
-					handleXBox; 
-					handleKeyboard; 
-					
-					{
-						updateCodeLocationJump; 
-						
-						if(MMBReleasedWithoutScrolling)
-						{
-							if(nearestSearchResult.reference!="")
-							{
-								jumpTo(nearestSearchResult.reference); 
-								//Todo: only do this when there was no lmouseTravelSinceLastPress
-							}
-						}
-					}
-					
-					{ autoReloader.enabled = true; autoReloader.update(modules); }
-					
-					updateOpenQueue(1); 
-					updateResyntaxQueue; 
-					
-					measure; //measures all containers if needed, updates ElasticTabstops
-					//textSelections = validTextSelections;  //this validation is required for the upcoming mouse handling
-					//and scene drawing routines.
-					
-					//From here every positions and sizes are correct -----------------------------------------
-					
-					
-					//Ctrl+Click handling
-					if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
-					{}
-					
-					moduleSelectionManager.update(
-						!im.wantMouse && mainWindow.canProcessUserInput
-						&& view.isMouseInside /+&& lod.moduleLevel+/,
-						view, modules, textSelections.length>0, 
-						{ textSelections = []; },
-						{ bringToFrontSelectedModules; }
 					); 
-					textSelectionManager.update(view, this, mouseMappings); 
-					
-					//detect textSelection change
-					const textSelectionChanged = textSelectionsHash.chkSet(textSelections.hashOf); 
-					
-					//if there are any cursors, module selection if forced to modules with textSelections
-					if(textSelectionChanged && textSelections.length)
-					{
-						foreach(m; modules) m.flags.selected = false; 
-						foreach(m; modulesWithTextSelection) m.flags.selected = true; 
-					}
-					
-					//focus at selection
-					if(!jumpRequest.isNull)
-					{ with(frmMain.view) origin = jumpRequest.get - (subScreenOrigin-origin); }
-					else if(!scrollInBoundsRequest.isNull)
-					{
-						const b = scrollInBoundsRequest.get; 
-						frmMain.view.scrollZoom(b); 
-					}
-					else if(!textSelectionManager.scrollInRequest.isNull)
-					{
-						const p = textSelectionManager.scrollInRequest.get; 
-						frmMain.view.scrollZoom(bounds2(p, p)); 
-					}
-					else if(textSelectionChanged)
-					{
-						if(!inputs[mouseMappings.main].down)
-						{
-							//don't focus to changed selection when the main mouse button is held down
-							frmMain.view.scrollZoom(worldBounds(textSelections)); 
-							//Todo: maybe it is problematic when the selection can't fit on the current screen
-						}
-					}
-					scrollInBoundsRequest.nullify; 
-					jumpRequest.nullify; 
-					
-					//animate cursors
-					version(AnimatedCursors)
-					{
-						if(textSelections.length<=MaxAnimatedCursors)
-						{
-							const 	animT	= calcAnimationT(application.deltaTime.value(second), .6, .25),
-								maxDist 	= 1.0f; 
-							
-							foreach(ref ts; textSelections)
-							{
-								foreach(ref cr; ts.cursors[])
-								with(cr)
-								{
-									const lp = localPos; 
-									targetPos = lp.pos; 
-									targetHeight = lp.height; 
-									if(animatedPos.x.isnan)
-									{
-										animatedPos = targetPos; 
-										animatedHeight = targetHeight; 
-									}
-									else
-									{
-										animatedPos.follow(targetPos, animT, maxDist); 
-										animatedHeight.follow(targetHeight, animT, maxDist); 
-									}
-								}
-							}
-						}
-					}
-					
-					//update buildresults if needed (compilation progress or layer mask change)
-					size_t calcBuildStateHash()
-					{
-						return modules	.map!"tuple(a.file, a.outerPos)"
-							.array
-							.hashOf(
-							buildResult.lastUpdateTime.hashOf(
-								markerLayerHideMask
-								/+to filter compile.err+/
-							)
-						); 
-					} 
-					/+
-						Opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
-						all the layers with all the info, only move the affected layer items.
-					+/
-					buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash); 
-					if(buildStateChanged)
-					{
-						updateModuleBuildStates(buildResult); 
-						convertBuildMessagesToSearchResults(buildResult); 
-					}
-					
-					updateLastKnownModulePositions; 
-					
+				} 
+				/+
+					Opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
+					all the layers with all the info, only move the affected layer items.
+				+/
+				buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash); 
+				if(buildStateChanged)
+				{
+					updateModuleBuildStates(buildResult); 
+					convertBuildMessagesToSearchResults(buildResult); 
 				}
-				catch(Exception e)
-				{ im.flashError(e.simpleMsg); }
-			} 
-		}
-	}
-	version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+				
+				updateLastKnownModulePositions; 
+				
+			}
+			catch(Exception e)
+			{ im.flashError(e.simpleMsg); }
+		} 
+	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
 	{
 		struct Location
 		{
@@ -5373,43 +5311,40 @@ Note:
 				{ declarationStatistics_impl; } 
 			}version(/+$DIDE_REGION Rich editing+/all)
 			{
-				void insertBlock(string source, TextFormat textFormat, int subColumnIdx=-1)
-				{ textSelections = paste_impl(textSelections, source, No.duplicateTabs, Yes.isObject, subColumnIdx, textFormat); } 
-				void insertBlock(string source, int subColumnIdx=-1)
-				{ textSelections = paste_impl(textSelections, source, No.duplicateTabs, Yes.isObject, subColumnIdx); } 
-				
-				
 				@VERB("Shift+Alt+9") insertBraceBlock()
-				{ insertBlock("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
-				{ insertBlock("(\0)"); } 
+				{ insertNode("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
+				{ insertNode("(\0)"); } 
 				@VERB("Alt+[") insertSquareBlock    ()
-				{ insertBlock("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
-				{ insertBlock("[\0]"); } 
+				{ insertNode("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
+				{ insertNode("[\0]"); } 
 				@VERB("Shift+Alt+[") insertCurlyBlock ()
-				{ insertBlock("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
-				{ insertBlock("{\0}"); } 
+				{ insertNode("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
+				{ insertNode("{\0}"); } 
 				
 				@VERB("Alt+`") insertDString()
-				{ insertBlock("`\0`", 0); } @VERB("Alt+'") insertCChar()
-				{ insertBlock("'\0'"); } @VERB("Shift+Alt+'") insertCString()
-				{ insertBlock("\"\0\""); } 
+				{ insertNode("`\0`", 0); } @VERB("Alt+'") insertCChar()
+				{ insertNode("'\0'"); } @VERB("Shift+Alt+'") insertCString()
+				{ insertNode("\"\0\""); } 
 				
 				@VERB("Alt+/") insertDComment()
-				{ insertBlock("/+\0+/", 0); } 
+				{
+					//insertBlock("/+\0+/", 0); 
+					insertNode("(real(\0))", 0); 
+				} 
 				
 				@VERB("Shift+Alt+/") insertTenary()
 				{
-					insertBlock("((\0)?():())", TextFormat.managed_goInside, 0); 
+					insertNode("((\0)?():())", 0); 
 					//Todo: must be inserted as an expression!!!
 				} 
 				@VERB("Shift+Alt+;") insertGenericArg()
 				{
-					insertBlock("((\0).genericArg!q{})", TextFormat.managed_goInside, 0); 
+					insertNode("((\0).genericArg!q{})", 0); 
 					//Todo: must be inserted as an expression!!!
 				} 
 			}
 		}
-	}version(/+$DIDE_REGION UI         +/all)
+	}version(/+$DIDE_REGION UI                 +/all)
 	{
 		deprecated void UI_ModuleBtns()
 		{
@@ -5878,6 +5813,84 @@ Note:
 				
 				if(mouseOverHintCntr)
 				actContainer.append(mouseOverHintCntr); 
+			}
+		} 
+		
+		void UI_Popup()
+		{
+			version(/+$DIDE_REGION Popup menu+/all)
+			{
+				static Module popupModule; 
+				static vec2 popupGuiPos, popupWorldPos; 
+				bool justPopped; 
+				
+				if(inputs.RMB.pressed)
+				if(auto tbl = cast(ScrumTable) moduleSelectionManager.hoveredItem)
+				{
+					popupModule = tbl; 
+					popupGuiPos = frmMain.viewGUI.mousePos.vec2; 
+					popupWorldPos = frmMain.view.mousePos.vec2; 
+					justPopped = true; 
+				}
+				
+				if(popupModule)
+				{
+					with(im)
+					{
+						Column(
+							{
+								outerPos = popupGuiPos; 
+								border = "1 normal black"; padding = "4"; theme = "tool"; 
+								Row(
+									{
+										Text("ScrumTable Menu"); 
+										if(Btn(symbol("ChromeClose"))) popupModule = null; 
+									}
+								); 
+								Spacer; 
+								if(!modules.canFind(popupModule)) popupModule = null; 
+								if(popupModule)
+								{
+									if(Btn("New Sticker", genericId("New Sticker")).clicked)
+									{
+										scope(exit) popupModule = null; 
+										
+										const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
+										format	!`/+
+		Note:
+		+/
+		/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
+											(popupWorldPos.x, popupWorldPos.y)
+											.saveTo(f); 
+										
+										//Ez felesleges volt!!! -> A loadModule() direkt fogadja a poziciot.
+										version(/+$DIDE_REGION+/none)
+										{
+											const ms = ModuleSettings(f.fullName, popupWorldPos); 
+											const idx = moduleSettings.map!"a.fileName".countUntil(ms.fileName); 
+											if(idx>=0)	moduleSettings[idx] = ms; 
+											else	moduleSettings ~= ms; 
+										}
+										
+										loadModule(f, popupWorldPos); 
+										
+										textSelections([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
+										//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
+										
+									}
+								}
+							}
+						); 
+					}
+					
+					if(
+						inputs.Esc.pressed 
+						|| inputs.RMB.pressed && !justPopped 
+						|| inputs.LMB.released && false//Todo: MUST NOT!!! Btn can't catch it in the next frame. -> LAME
+						|| inputs.MMB.pressed || inputs.MB4.pressed || inputs.MB4.pressed
+					)
+					popupModule = null; 
+				}
 			}
 		} 
 	}version(/+$DIDE_REGION Draw     +/all)
@@ -6714,6 +6727,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			
 			detectMouseLocation; 
 		} 
+		CodeRow hoveredRow; //only for the glyph
 		Cell hoveredCell; 
 		CodeColumn innerCol; 
 		
@@ -6724,7 +6738,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		
 		void detectMouseLocation()
 		{
-			hoveredCell = null; innerCol =  null; 
+			hoveredRow=null; hoveredCell = null; innerCol =  null; 
 			auto hs = hitTestManager.lastHitStack; 
 			
 			const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
@@ -6743,7 +6757,12 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					innerCol = idTo!CodeColumn(hs.get(5).id); 
 				}
 				else if(auto row = idTo!CodeRow(hs.get(3).id))
-				{ hoveredCell = row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest); }
+				if(auto glyph = (cast(Glyph)(row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest))))
+				if(!glyph.isWhite)
+				{
+					hoveredCell = glyph; 
+					hoveredRow = row; 
+				}
 				
 				//hs.each!((a){ im.Text(a.text); }); 
 			}
@@ -6753,14 +6772,23 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			super.draw(dr); 
 			
+			dr.color = mix(clAccent, clWhite, blink); 
+			dr.lineWidth = -(4*blink+1); 
+			
 			if(hoveredNode)
 			{
-				dr.color = mix(clAccent, clWhite, blink); 
-				dr.lineWidth = -(4*blink+1); 
 				dr.drawRect(hoveredNode.worldOuterBounds.inflated(2)); 
-				
 				if(innerCol)
 				{ dr.drawRect(innerCol.worldOuterBounds.inflated(-2)); }
+			}
+			else if(hoveredGlyph)
+			{
+				const idx = hoveredRow.subCells.countUntil(hoveredCell); 
+				if(idx>=0)
+				{
+					const bnd = hoveredGlyph.outerBounds + hoveredRow.worldInnerPos; 
+					dr.drawRect(bnd.inflated(2)); 
+				}
 			}
 		} 
 	}

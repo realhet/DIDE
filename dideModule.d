@@ -2336,7 +2336,13 @@ class CodeRow: Row
 		adjustCharWidths; 
 		innerSize = vec2(0); flags.autoWidth = true; flags.autoHeight = true; 
 		super.rearrange; 
-		innerSize = max(innerSize, DefaultFontEmptyEditorSize * ((halfSize)?(SubScriptFontScale):(1))); 
+		
+		{
+			vec2 v = innerSize; 
+			v.maximize(DefaultFontEmptyEditorSize * ((halfSize) ?(SubScriptFontScale):(1))); 
+			if(empty && parent.rowCount>1) v.y /= 2; 
+			innerSize = v; 
+		}
 		
 		static if(rearrangeLOG) LOG("rearranging", this); 
 		static if(rearrangeFlash) rearrangeTime = now; 
