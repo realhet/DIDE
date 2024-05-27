@@ -6423,9 +6423,9 @@ class ToolPalette : Column
 			q{
 				(表1([
 					[q{"expression blocks"},q{
-						{}() [] 
-						"" r"" `` 
-						' ' q{}
+						{ s; }(a) [a] 
+						"S" r"S" `S` 
+						'S' q{S}
 					}],
 					[q{"math letters"},q{
 						π ℯ ℂ α β γ µ
@@ -6492,24 +6492,24 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			q{
 				(表1([
 					[q{"comments"},q{
-						/++/ 
-						/**/ //
+						/+cmt+/ 
+						/*cmt*/ //cmt
 						/+Note: note+/ /+Code: code+/ 
-						/+Link:+/ /+$DIDE_IMG+/
-						/+Todo:+/ 
-						/+Opt:+/ /+Bug:+/
-						/+Error:+/ 
-						/+Warning:+/ 
-						/+Deprecation:+/
-						/+Console:+/
+						/+Link: cmt+/ /+$DIDE_IMG+/
+						/+Todo: cmt+/ 
+						/+Opt: cmt+/ /+Bug: cmt+/
+						/+Error: cmt+/ 
+						/+Warning: cmt+/ 
+						/+Deprecation: cmt+/
+						/+Console: cmt+/
 						//$DIDE_LOC file.d(1,2)
 					}],
 					[q{"regions"},q{
-						version(/+$DIDE_REGION RGN+/all) {}version(/+$DIDE_REGION+/all) {}
-						version(/+$DIDE_REGION RGN+/none) {}version(/+$DIDE_REGION+/none) {}
+						version(/+$DIDE_REGION RGN+/all) { s; }version(/+$DIDE_REGION+/all) { s; }
+						version(/+$DIDE_REGION RGN+/none) { s; }version(/+$DIDE_REGION+/none) { s; }
 						version(/+$DIDE_REGION RGN+/all)
-						{}version(/+$DIDE_REGION RGN+/none)
-						{}
+						{ s; }version(/+$DIDE_REGION RGN+/none)
+						{ s; }
 					}],
 					[q{"directives"},q{
 						#
@@ -6518,7 +6518,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						#define
 						#ifdef
 						#else
-						; 
+						s; 
 					}],
 				]))
 			}
@@ -6527,30 +6527,30 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			"Blocks", "{ }",
 			q{
 				(表1([[q{`declaration blocks`},q{
-					; 	auto f()
+					s; 	auto f()
+					{ s; } 
+					import ; 	alias id; 
+					enum id; 	enum id
 					{} 
-					import ; 	alias ; 
-					enum ; 	enum 
-					{} 
-					struct 
-					{} 	union 
-					{} 
-					class 
-					{} 	interface 
-					{} 
-					@()
-					{} 	private
-					{} 
+					struct id
+					{ s; } 	union id
+					{ s; } 
+					class id
+					{ s; } 	interface id
+					{ s; } 
+					@(u)
+					{ s; } 	private
+					{ s; } 
 					public
-					{} 	protected
-					{} 
+					{ s; } 	protected
+					{ s; } 
 					unittest
-					{} 	invariant
-					{} 
-					template 
-					{} 
-					mixin template 
-					{} 
+					{ s; } 	invariant
+					{ s; } 
+					template id
+					{ s; } 
+					mixin template id
+					{ s; } 
 				}],]))
 			}
 		},
@@ -6559,19 +6559,19 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			q{
 				(表1([
 					[q{"if blocks"},q{
-						if() {}
-						if() {}else {}
-						if()
-						{}if()	{}
-						else	{}
-						if()	{}
-						else if()	{}
-						else	{}
-						else {}else
-						{}
+						if(c) { f; }
+						if(c) { f; }else { g; }
+						if(c)
+						{}if(c)	{ f; }
+						else	{ g; }
+						if(c)	{ f; }
+						else if(d)	{ g; }
+						else	{ h; }
+						else { f; }else
+						{ f; }
 					}],
 					[q{"swicth case block"},q{
-						switch()
+						switch(c)
 						{
 							case: 
 							break; 
@@ -6579,27 +6579,27 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						}
 					}],
 					[q{"with block"},q{
-						with()
-						{}with() {}
+						with(a)
+						{ f; }with(a) { f; }
 					}],
 					[q{"while blocks"},q{
-						while()
-						{}while() {}
+						while(a)
+						{ f; }while(a) { f; }
 					}],
 					[q{"do while blocks"},q{
-						do {}
-						while(); 
-						do {}while(); 
+						do { f; }
+						while(c); 
+						do { f; }while(c); 
 					}],
 					[q{"for loops"},q{
 						for(; ;)
-						{}for(; ;) {}
+						{ f; }for(; ;) { f; }
 						foreach(;)
-						{}
-						foreach(;) {}
+						{ f; }
+						foreach(;) { f; }
 						foreach_reverse(;)
-						{}
-						foreach_reverse(;) {}
+						{ f; }
+						foreach_reverse(;) { f; }
 					}],
 				]))
 			}
@@ -6610,46 +6610,61 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 				(表1([
 					[q{"static foreach"},q{
 						static foreach(;)
-						{}
-						static foreach(;) {}
+						{ f; }
+						static foreach(;) { f; }
 						static foreach_reverse(;)
-						{}
-						static foreach_reverse(;) {}
+						{ f; }
+						static foreach_reverse(;) { f; }
 					}],
 					[q{"static if blocks"},q{
-						static if() {}
-						static if() {}else {}
-						static if()
-						{}static if()	{}
-						else	{}
-						static if()	{}
-						else static if()	{}
+						static if(c) { f; }
+						static if(c) { f; }else { g; }
+						static if(c)
+						{ f; }static if(c)	{ f; }
+						else	{ g; }
+						static if(c)	{ f; }
+						else static if(d)	{ g; }
 						else static assert(0, ); 
 					}],
+				]))
+			}
+		},
+		{
+			"Compile time blocks", "VD",
+			q{
+				(表1([
 					[q{"version blocks"},q{
-						version() {}
-						version() {}else {}
-						version()
-						{}version()	{}
-						else	{}
-						version()	{}
-						else version()	{}
-						else	{}
+						version(v) { f; }
+						version(v) { f; }else { g; }
+						version(v)
+						{ f; }version(v)	{ f; }
+						else	{ g; }
+						version(v)	{ f; }
+						else version(w)	{ g; }
+						else	{ h; }
 					}],
 					[q{"debug blocks"},q{
-						debug {}
-						debug {}else {}
+						debug { f; }
+						debug { f; }else { g; }
 						debug
-						{}debug	{}
-						else	{}
-						debug(a) {}
-						debug(a) {}else {}
-						debug(a)
-						{}debug(a)	{}
-						else	{}
-						debug(a)	{}
-						else debug(a)	{}
-						else	{}
+						{ f; }debug	{ f; }
+						else	{ g; }
+					}],
+					[q{"debug blocks
+with condition"},q{
+						debug(d) { f; }
+						debug(d) { f; }else { g; }
+						debug(d)
+						{ f; }debug(d)	{ f; }
+						else	{ g; }
+						debug(d)	{ f; }
+						else debug(e)	{ g; }
+						else	{ h; }
+						/+
+							Todo: When the operand of 
+							debug() becomes empty, 
+							it disappears. 🤬
+						+/
 					}],
 				]))
 			}
@@ -6692,6 +6707,13 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		Page* actPage, lastPage; //cached
 		uint lastTick; 
 		
+		private enum enableDebug = false; 
+		private void DBG(A...)(A a)
+		{
+			static if(enableDebug)
+			im.Text(text(a)); 
+		} 
+		
 		void UI(ref string actPageCaption)
 		{
 			im.BtnRow(actPageCaption, captions); 
@@ -6726,6 +6748,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			}
 			
 			detectMouseLocation; 
+			detectTemplate; 
 		} 
 		CodeRow hoveredRow; //only for the glyph
 		Cell hoveredCell; 
@@ -6763,8 +6786,59 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					hoveredCell = glyph; 
 					hoveredRow = row; 
 				}
-				
-				//hs.each!((a){ im.Text(a.text); }); 
+			}
+		} 
+		
+		string templateText; 
+		int subColumnIdx = -1; 
+		
+		void detectTemplate()
+		{
+			templateText=""; subColumnIdx=-1; 
+			if(hoveredNode)
+			{
+				auto src = hoveredNode.sourceText; DBG(src); 
+				auto subColumns = hoveredNode.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a".array; 
+				foreach(idx, sc; subColumns)
+				{
+					string marker = ""; 
+					if(
+						sc is 
+						innerCol
+					) {
+						subColumnIdx = (cast(int)(idx)); 
+						marker = "\0"; 	//ASCII 0 is the market. It's nasty...
+					}
+					
+					auto s = sc.sourceText; DBG(s); 
+					
+					if(s=="id")
+					{
+						//s has no brackets.
+						src = src.replaceWords(s, marker); 
+					}
+					else
+					{
+						string t; 
+						if(s=="i=0")	t = "="; 
+						else if(s=="0<i<N")	t = "<<"; 
+						
+						t ~= marker; //copied text will go here
+						
+						foreach(q; [["(", ")"], ["q{", "}"], ["{ ", "}"]])
+						src = src.replace(q[0]~s~q[1], q[0].strip~t~q[1].strip); 
+					}
+				}
+				templateText = src; 
+			}
+			else if(hoveredGlyph)
+			{ templateText = hoveredGlyph.ch.text; }
+			
+			if(templateText!="")
+			{
+				auto col(string s) { return het.ui.tag("style fontColor="~s); } 
+				auto s = col("black")~templateText.replace("\0", col("red")~"⌖"~col("black")); 
+				im.Text(s); 
 			}
 		} 
 		
@@ -6791,5 +6865,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 				}
 			}
 		} 
+		
+		
 	}
 } 
