@@ -8493,7 +8493,8 @@ version(/+$DIDE_REGION+/all)
 			case TextFormat.managed_enum: 	processHighLevelPatterns_enum(col_); break; 
 			case TextFormat.managed_statement: 	processHighLevelPatterns_statement(col_); break; 
 			case TextFormat.managed_goInside: 	processHighLevelPatterns_goInside(col_); break; 
-			case TextFormat.managed_optionalBlock: 	processHighLevelPatterns_optionalBlock(col_); break; 
+			case 	TextFormat.managed_optionalBlock,
+				TextFormat.managed: 	processHighLevelPatterns_optionalBlock(col_); break; 
 			default: 
 		}
 	} 
@@ -10034,6 +10035,7 @@ version(/+$DIDE_REGION+/all)
 						auto cExprCenterY()
 						{
 							/+Note: If the content is a single sigma op, then its' symbol's center is the center.+/
+							if(layout != Layout.A /+Bug: fix this for every layout!+/)
 							if(auto n = (cast(NiceExpression)(cExpr.singleCellOrNull)))
 							if(auto g = (cast(Glyph)(n.subCells.get(0))))
 							if(g.ch.among('∏', '∑', '∀', '⇶')/+Todo: centralize these literals+/)

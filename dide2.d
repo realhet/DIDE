@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
+//@release
 //@debug
 
 
@@ -704,7 +704,12 @@ version(/+$DIDE_REGION main+/all)
 									}
 									break; 
 									case MenuPage.Palette: 
-										{ toolPalette.UI(toolPalettePage); }
+										with(toolPalette) {
+										UI(toolPalettePage); 
+										
+										if(templateSource!="" && KeyCombo("LMB").typed)
+										workspace.insertNode(templateSource, subColumnIdx); 
+									}
 									break; 
 								}
 							}
@@ -2956,9 +2961,11 @@ version(/+$DIDE_REGION main+/all)
 				const source = input.replace("\0", ""); 
 				//syntaxCheck(source);   not good for expressions, only good for blocks.
 				auto testCol = new CodeColumn(null, source, objectTextFormat); 
-				enforce(testCol.byCell.drop(1).empty, "Object insert: Column must have only 1 object."); 
+				enforce(testCol.byCell.drop(1).empty, "Object insert: Column must have only 1 object. "~source.quoted~" "~objectTextFormat.text); 
 				auto testNode = cast(CodeNode) testCol.byCell.frontOrNull; 
-				enforce(testNode, "Object insert: CodeNode expected."); 
+				auto testGlyph = cast(Glyph) testCol.byCell.frontOrNull; 
+				enforce(testNode || testGlyph, "Object insert: CodeNode expected."); 
+				//Todo: clean this mess up, allow multiple glyphs and later multiline glyphs!
 				
 				lines = textSelections.map!"a.sourceText".array; 
 				//this will be the content inserted into the object
@@ -3002,22 +3009,31 @@ version(/+$DIDE_REGION main+/all)
 							try
 							{
 								auto col = new CodeColumn(null, source, objectTextFormat); 
-								auto node = col.extractSingleNode; 
-								insertedCnt = row.insertSomething(
-									ts.caret.pos.x, {
-										node.setParent(row); 
-										row.append(node); 
-									}
-								); 
 								
-								node.measure; //regenerates subColumns
-								if(objectSubColumnIdx>=0)
-								if(auto subCol = node.subColumns.array.get(objectSubColumnIdx))
-								updatedCursor = subCol.endCursor; 
+								if(auto node = col.extractSingleNode.ifThrown(null))
+								{
+									insertedCnt = row.insertSomething(
+										ts.caret.pos.x, {
+											node.setParent(row); 
+											row.append(node); 
+										}
+									); 
+									
+									node.measure; //regenerates subColumns
+									if(objectSubColumnIdx>=0)
+									if(auto subCol = node.subColumns.array.get(objectSubColumnIdx))
+									updatedCursor = subCol.endCursor; 
+								}
+								else if(auto glyph = (cast(Glyph)(col.byCell.frontOrNull)))
+								{
+									//Todo: support multiple glyphs AKA source text
+									insertedCnt = row.insertSomething(ts.caret.pos.x, { row.append(glyph); }); 
+								}
+								else raise("Unhandled sourceCone node template"); 
 							}
 							catch(Exception e)
 							{
-								im.flashWarning("Error inserting CodeNode."); 
+								im.flashWarning("Error inserting CodeNode:"~e.simpleMsg); 
 								insertedCnt = row.insertText(ts.caret.pos.x, source); 
 							}
 						}
@@ -3154,23 +3170,30 @@ version(/+$DIDE_REGION main+/all)
 		
 		void insertNode(string source, int subColumnIdx=-1)
 		{
-			void insertStatementNode(string source, int subColumnIdx=-1)
-			{
-				textSelections = paste_impl(
-					textSelections, source, No.duplicateTabs, 
-					Yes.isObject, subColumnIdx, TextFormat.managed
-				); 
-			} 
-			void insertExpressionNode(string source, int subColumnIdx=-1)
-			{
-				textSelections = paste_impl(
-					textSelections, source, No.duplicateTabs, 
-					Yes.isObject, subColumnIdx, TextFormat.managed_goInside
-				); 
-			} 
+			/+
+				void insertStatementNode(string source, int subColumnIdx=-1)
+					{
+						textSelections = paste_impl(
+							textSelections, source, No.duplicateTabs, 
+							Yes.isObject, subColumnIdx, TextFormat.managed_block
+						); 
+					} 
+					void insertExpressionNode(string source, int subColumnIdx=-1)
+					{
+						textSelections = paste_impl(
+							textSelections, source, No.duplicateTabs, 
+							Yes.isObject, subColumnIdx, TextFormat.managed_goInside
+						); 
+					} 
+					
+					const isStatement = source.length && source.back.among(';', ':', '}'); 
+					((isStatement)?(insertStatementNode(source, subColumnIdx)) :(insertExpressionNode(source, subColumnIdx))); 
+			+/
 			
-			const isStatement = source.length && source.back.among(';', ':', '}'); 
-			((isStatement)?(insertStatementNode(source, subColumnIdx)) :(insertExpressionNode(source, subColumnIdx))); 
+			textSelections = paste_impl(
+				textSelections, source, No.duplicateTabs, 
+				Yes.isObject, subColumnIdx, TextFormat.managed_optionalBlock
+			); 
 		} 
 		
 	}struct ContainerSelectionManager(T : Container)
@@ -4220,7 +4243,10 @@ version(/+$DIDE_REGION main+/all)
 		const mouseMappings = MouseMappings.init; 
 		void update(
 			View2D view, 
-			ref BuildResult buildResult/+Must be a ref because there is an internal file name correction cache.+/
+			ref BuildResult buildResult/+
+				Must be a ref because there is 
+				an internal file name correction cache.
+			+/
 		)
 		{
 			//update ////////////////////////////////////
@@ -5327,10 +5353,7 @@ version(/+$DIDE_REGION main+/all)
 				{ insertNode("\"\0\""); } 
 				
 				@VERB("Alt+/") insertDComment()
-				{
-					//insertBlock("/+\0+/", 0); 
-					insertNode("(real(\0))", 0); 
-				} 
+				{ insertNode("/+\0+/", 0); } 
 				
 				@VERB("Shift+Alt+/") insertTenary()
 				{
@@ -6789,15 +6812,15 @@ with condition"},q{
 			}
 		} 
 		
-		string templateText; 
+		string templateSource; 
 		int subColumnIdx = -1; 
 		
 		void detectTemplate()
 		{
-			templateText=""; subColumnIdx=-1; 
+			templateSource=""; subColumnIdx=-1; 
 			if(hoveredNode)
 			{
-				auto src = hoveredNode.sourceText; DBG(src); 
+				auto src = hoveredNode.sourceText.strip; DBG(src); 
 				auto subColumns = hoveredNode.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a".array; 
 				foreach(idx, sc; subColumns)
 				{
@@ -6829,15 +6852,15 @@ with condition"},q{
 						src = src.replace(q[0]~s~q[1], q[0].strip~t~q[1].strip); 
 					}
 				}
-				templateText = src; 
+				templateSource = src; 
 			}
 			else if(hoveredGlyph)
-			{ templateText = hoveredGlyph.ch.text; }
+			{ templateSource = hoveredGlyph.ch.text; }
 			
-			if(templateText!="")
+			if(templateSource!="")
 			{
 				auto col(string s) { return het.ui.tag("style fontColor="~s); } 
-				auto s = col("black")~templateText.replace("\0", col("red")~"⌖"~col("black")); 
+				auto s = col("black")~templateSource.replace("\0", col("red")~"⌖"~col("black")); 
 				im.Text(s); 
 			}
 		} 
