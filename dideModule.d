@@ -2246,10 +2246,7 @@ class CodeRow: Row
 	} 
 	
 	vec2 newLinePos()
-	{
-		assert(innerHeight>=DefaultFontHeight); 
-		return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); 
-	} 
+	{ return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); } 
 	
 	/// Returns inserted count
 	int insertSomething(int at, void delegate() appendFun)
@@ -9126,6 +9123,7 @@ version(/+$DIDE_REGION+/all)
 			"cast",
 			q{put("cast"); op(0); op(1); }, 
 			q{op(1); put(0 ? ".cast" : "↦"); op(0); }
+			/+ugyanez, de balra fele mutat. Amikor csak 1 ertekadas van pl.+/
 		},
 		
 		{
