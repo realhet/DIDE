@@ -1700,12 +1700,11 @@ version(/+$DIDE_REGION+/all)
 		
 		string result; 
 		
-		bool enableIndent = true; 
-		
 		int lineCounter = 1; 
 		int indentCount; 
-		bool needsNewLine; //to support //comments and #directives
 		
+		bool enableIndent = true; 
+		bool needsNewLine; //to support //comments and #directives
 		bool updateLineIdx; 
 		
 		bool actLineIsClear()
@@ -4884,7 +4883,8 @@ version(/+$DIDE_REGION+/all)
 	final string sourceText()
 	{
 		SourceTextBuilder builder; 
-		if(cast(Module) this) builder.updateLineIdx = true; 
+		if(auto mod = (cast(Module)(this))) { builder.updateLineIdx = true; }
+		
 		buildSourceText(builder); 
 		return builder.result; 
 	} 
@@ -5900,6 +5900,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		//this is any file in the project
 		File file; 
+		uint fileNameHash; 
 		
 		DateTime fileLoaded, fileModified, fileSaved; //Opt: detect these times from the outside
 		size_t sizeBytes;  //Todo: update this form the outside
@@ -5914,7 +5915,7 @@ version(/+$DIDE_REGION+/all)
 		); 
 		
 		ModuleBuildState buildState; 
-		bool isCompiling; 
+		bool isCompiling, isSaving; 
 		
 		bool isMainExe, isMainDll, isMainLib, isMain, isStdModule, isFileReadOnly; 
 		
@@ -5964,6 +5965,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			fileLoaded = now; 
 			file = file_.actualFile; 
+			fileNameHash = file.fullName.xxh32; 
 			reload(desiredStructureLevel); 
 		} 
 		
@@ -5971,6 +5973,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			fileLoaded = now; 
 			file = File("$nullFileName$"); //Bug: When filename is empty, this fuck is crashing without any errors. ($nullFileName$)
+			fileNameHash = 0; 
 			reload(desiredStructureLevel, nullable(contents)); 
 		} 
 		
@@ -6041,6 +6044,8 @@ version(/+$DIDE_REGION+/all)
 			undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText)); 
 			
 			CodeColumnBuilder!true.staticLineCounter = 1; 
+			
+			clearInspectors; 
 			
 			void doPlain()
 			{
@@ -6149,9 +6154,10 @@ version(/+$DIDE_REGION+/all)
 			lineIdx = 1; //first line is always 1.  ignoring the #line directive.
 			
 			SourceTextBuilder builder; 
+			builder.updateLineIdx = true; 
+			
 			with(builder)
 			{
-				updateLineIdx = true; 
 				foreach(idx, row; content.rows) {
 					put(row); 
 					putNL; 
@@ -6176,6 +6182,8 @@ version(/+$DIDE_REGION+/all)
 		void save()
 		{
 			if(isReadOnly) return; 
+			clearInspectors; 
+			isSaving = true; scope(exit) isSaving = false; 
 			sourceText.saveTo(file, Yes.onlyIfChanged); //sourceText can throw
 			clearChanged; 
 			fileModified = file.modified; //Opt: slow
@@ -6201,6 +6209,43 @@ version(/+$DIDE_REGION+/all)
 				popupState.cell.outerPos = mainWindow.screenToClient(inputs.mouseAct); 
 			}
 		} 
+		
+		
+		
+		version(/+$DIDE_REGION Inspector handling+/all)
+		{
+			
+			protected
+			{
+				CodeNode[uint] inspectorNodeById; 
+				uint[CodeNode] inspectorIdByNode; 
+			} 
+			
+			void clearInspectors()
+			{
+				inspectorNodeById.clear; 
+				inspectorIdByNode.clear; 
+			} 
+			
+			auto getInspectorId(CodeNode node)
+			{
+				ulong loc = inspectorIdByNode.get(node, 0); 
+				if(loc) loc = (ulong(loc)<<32) | fileNameHash; 
+				return loc; 
+			} 
+			
+			auto getInspectorNode(uint id)
+			{ return inspectorNodeById.get(id, null); } 
+			
+			
+			auto addInspector(CodeNode node, uint id)
+			{
+				inspectorNodeById[id] = node; 
+				inspectorIdByNode[node] = id; 
+				return (ulong(id)<<32) | fileNameHash; 
+			} 
+		}
+		
 	} 
 }version(/+$DIDE_REGION SCRUM+/all)
 {
@@ -6827,6 +6872,7 @@ version(/+$DIDE_REGION+/all)
 	
 	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
 	{
+		assert(parent); 
 		super(parent); 
 		
 		auto detectInternalNewLine(Cell[][] a) //blabla
@@ -7868,7 +7914,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		return res; 
-	} Declaration[] extractPrepositions(ref Cell[][] cellRows)
+	} Declaration[] extractPrepositions(CodeRow temporaryParent, ref Cell[][] cellRows)
 	{
 		//extractPrepositions ///////////////////////////////
 		Declaration[] res; 
@@ -7932,7 +7978,7 @@ version(/+$DIDE_REGION+/all)
 		void append(string keyword, Cell[][] paramCells)
 		{
 			//write("	"~keyword~"  "); //todo
-			auto decl = new	Declaration(null, null, keyword, paramCells, new CodeColumn(null, []), ')'); 
+			auto decl = new Declaration(temporaryParent, null, keyword, paramCells, new CodeColumn(null, []), ')'); 
 			res ~= decl; 
 			skipWhite; 
 			appendCommentsAndNewLines; 
@@ -8285,8 +8331,12 @@ version(/+$DIDE_REGION+/all)
 						else
 						enforce(0, "Unhandled endingChar: "~endingChar.text.quoted); 
 						
-						auto declarationChain = 	extractPrepositions(attrs.length ? attrs : header) ~
-							new Declaration(null, attrs, keyword, header, block, endingChar); 
+						auto temporaryParent = proc.dst.back /+
+							Note: This is not the final parent, it's only there 
+							to access the module from the parent chain.
+						+/; 
+						auto declarationChain = 	extractPrepositions(temporaryParent, attrs.length ? attrs : header) ~
+							new Declaration(temporaryParent, attrs, keyword, header, block, endingChar); 
 						
 						foreach(decl; declarationChain) appendDeclaration(decl); 
 						
@@ -8506,6 +8556,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		
 		
+		
 		unaryOp, 
 		binaryOp, 
 		tenaryOp, 
@@ -8517,8 +8568,7 @@ version(/+$DIDE_REGION+/all)
 		binaryTokenStringOp,
 		tenaryTokenStringOp,
 		mixinTableInjectorOp,
-		anonymMethod
-		
+		anonymMethod
 		/+
 			Code: Source form:
 			
@@ -8592,6 +8642,9 @@ version(/+$DIDE_REGION+/all)
 		static bool mixinTableSplitFun(Cell a, Cell b)
 		{ return isMixinTableCell(a) || isMixinTableCell(b); } 
 	}
+	
+	
+	
 	
 	
 	static immutable NiceExpressionTemplate[] niceExpressionTemplates =
@@ -9295,6 +9348,66 @@ version(/+$DIDE_REGION+/all)
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('∏'); }
 		},
+		
+		
+		
+		
+		{
+			"inspect", 
+			NET.binaryOp, 
+			skIdentifier1, 
+			NodeStyle.dim,
+			q{
+				((expr).檢(250629))((expr).檢(250649))
+				((expr).檢(250675))((expr).檢(250695))((expr).檢(250715))
+				((expr).檢(250741))
+				((expr).檢(250767))
+				((expr).檢(250793))
+				((expr).檢(250819))
+				((expr).檢(250845))
+			},
+			
+			".檢",
+			q{
+				ulong id; 
+				if(auto m = moduleOf(this))
+				{
+					if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
+					else	id = m.getInspectorId(this); 
+				}
+				op(0); put(operator); put("(0x"~id.to!string(16)~")"); 
+			},
+			q{
+				ulong id; 
+				if(auto m = moduleOf(this))
+				{ id = m.getInspectorId(this); }
+				
+				op(0); putNL; 
+				style.fontHeight = DefaultSubScriptFontHeight; 
+				style.bold = false; 
+				put("test: 0x"~id.to!string(16)); 
+			},
+			q{
+				ulong id; 
+				if(auto m = moduleOf(this))
+				{ id = m.getInspectorId(this); }
+				dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+			},
+			
+			initCode: 
+			q{
+				ulong id; 
+				if(auto m = moduleOf(this))
+				{
+					auto s = operands[1].extractThisLevelDString.text.strip; 
+					ulong a; 
+					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
+					else	a = a.to!ulong.ifThrown(0); 
+					id = m.addInspector(this, (cast(uint)(a>>32))); 
+				}
+			}
+		},
+		
 	]; 
 	
 	

@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
+///@release
 //@debug
 
 
@@ -470,7 +470,26 @@ version(/+$DIDE_REGION main+/all)
 			
 			void onDebugLog(string s)
 			{
-				if(s.isWild("PR(?*(?*)):*"))
+				if(s.isWild("INSP:*:*"))
+				{
+					try
+					{
+						const 	id 	= wild[0].to!ulong(16),
+							value 	= (cast(string)(wild[1].fromBase64)),
+							moduleHash 	= (cast(uint)(id)),
+							location 	= (cast(uint)(id>>32)); 
+						LOG(id, value, moduleHash, location); 
+						LOG(workspace.moduleByHash.keys); 
+						if(auto m = moduleHash in workspace.moduleByHash)
+						{
+							if(auto node = m.getInspectorNode(location))
+							{ LOG("INSPECT:", node, node.lineIdx, value); }
+						}
+					}
+					catch(Exception e)
+					{ ERR("debugLog inpect error: "~e.simpleMsg); }
+				}
+				else if(s.isWild("PR(?*(?*)):*"))
 				{
 					const id = wild[0]~'('~wild[1]~')'; 
 					const value = (cast(string)(wild[2].fromBase64)).ifThrown("BASE64 Error"); 
@@ -1189,6 +1208,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			File[] openQueue; 
 			Module[] modules; 
+			Module[uint] moduleByHash; 
 			
 			@STORED File mainModuleFile; 
 			@property
@@ -1384,6 +1404,7 @@ version(/+$DIDE_REGION main+/all)
 			void clear()
 			{
 				modules = []; 
+				moduleByHash.clear; 
 				textSelections = []; 
 				updateSubCells; 
 			} 
@@ -1424,6 +1445,10 @@ version(/+$DIDE_REGION main+/all)
 				if(!file) return; 
 				const idx = modules.map!(m => m.file).countUntil(file); 
 				if(idx<0) return; 
+				
+				const h = modules[idx].fileNameHash; 
+				if(h in moduleByHash) moduleByHash.remove(h); 
+				
 				modules = modules.remove(idx); 
 				updateSubCells; 
 			} 
@@ -1525,6 +1550,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//Todo: ask user to save if needed
 				modules = unselectedModules; 
+				moduleByHash = assocArray(modules.map!"a.fileNameHash".array, modules); 
 				updateSubCells; 
 				invalidateTextSelections; 
 			} 
@@ -1574,6 +1600,7 @@ version(/+$DIDE_REGION main+/all)
 				m.measure; 
 				m.outerPos = targetPos; 
 				modules ~= m; 
+				moduleByHash[m.fileNameHash] = m; 
 				updateSubCells; 
 				
 				/+
