@@ -6525,15 +6525,10 @@ dot, cross"},q{
 							[q{Cell}],
 						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
 					}],
-					[q{"mixin tables"},q{
-						mixin((
-							(表([
-								[q{/+Note: Hdr+/}],
-								[q{Cell}],
-							]))
-						).GEN!q{cell(0, 1)}); mixin(((表([[q{/+Note: Hdr+/},q{Cell}],]))) .GEN!q{rows[0][1]}); 
+					[q{"mixin generators"},q{
+						mixin((src).GEN!q{script}); 
+						mixin((src) .GEN!q{script}); 
 					}],
-					[q{"mixin generators"},q{mixin((src).GEN!q{script}); mixin((src) .GEN!q{script}); }],
 					[q{"tenary operator"},q{
 						((a)?(b):(c))	((a)?(b) :(c)) 
 						((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
