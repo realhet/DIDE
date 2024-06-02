@@ -1,7 +1,7 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-///@release
+//@release
 //@debug
 
 
@@ -470,6 +470,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			void onDebugLog(string s)
 			{
+				//Todo: This communication should be full binary
 				if(s.isWild("INSP:*:*"))
 				{
 					try
@@ -478,16 +479,21 @@ version(/+$DIDE_REGION main+/all)
 							value 	= (cast(string)(wild[1].fromBase64)),
 							moduleHash 	= (cast(uint)(id)),
 							location 	= (cast(uint)(id>>32)); 
-						LOG(id, value, moduleHash, location); 
-						LOG(workspace.moduleByHash.keys); 
 						if(auto m = moduleHash in workspace.moduleByHash)
 						{
 							if(auto node = m.getInspectorNode(location))
-							{ LOG("INSPECT:", node, node.lineIdx, value); }
+							{
+								if(auto ne = cast(NiceExpression)node)
+								{
+									ne.updateDebugValue(value); 
+									return; 
+								}
+							}
 						}
+						WARN("Inspection unknown location: "~id.to!string(16)~":"~value); 
 					}
 					catch(Exception e)
-					{ ERR("debugLog inpect error: "~e.simpleMsg); }
+					{ ERR("Inspection exception: "~e.simpleMsg); }
 				}
 				else if(s.isWild("PR(?*(?*)):*"))
 				{
@@ -640,7 +646,10 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				if(dbgRerouteQueue)
-				dbgRerouteQueue.fetchAll.each!((msg){ print("Local debug mgs:", msg); }); 
+				dbgRerouteQueue.fetchAll.each!((msg){
+					print("Local debug mgs:", msg); 
+					//Todo: convert these into flashmessages
+				}); 
 				
 				invalidate; //Todo: low power usage
 				caption = format!"%s - [%s]%s %s %s %s"(
@@ -726,7 +735,7 @@ version(/+$DIDE_REGION main+/all)
 										with(toolPalette) {
 										UI(toolPalettePage); 
 										
-										if(templateSource!="" && KeyCombo("LMB").typed)
+										if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
 										workspace.insertNode(templateSource, subColumnIdx); 
 									}
 									break; 
@@ -6512,10 +6521,21 @@ dot, cross"},q{
 				(表1([
 					[q{"table blocks"},q{
 						(表1([
-							[q{/+Note: Header+/}],
+							[q{/+Note: Hdr+/}],
 							[q{Cell}],
-						])) ((){with(表2([[q{/+Note: Header+/},q{Cell}],])){ return scr; }}())
+						])) ((){with(表2([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
 					}],
+					[q{"mixin tables"},q{
+						mixin(
+							(
+								(表1([
+									[q{/+Note: Hdr+/}],
+									[q{Cell}],
+								]))
+							).GEN!q{cell(0, 1)}
+						); mixin(((表1([[q{/+Note: Hdr+/},q{Cell}],]))) .GEN!q{rows[0][1]}); 
+					}],
+					[q{"mixin generators"},q{mixin((src).GEN!q{script}); mixin((src) .GEN!q{script}); }],
 					[q{"tenary operator"},q{
 						((a)?(b):(c))	((a)?(b) :(c)) 
 						((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
@@ -6844,6 +6864,7 @@ with condition"},q{
 		
 		void detectTemplate()
 		{
+			//Todo: support mixinStatement
 			templateSource=""; subColumnIdx=-1; 
 			if(hoveredNode)
 			{

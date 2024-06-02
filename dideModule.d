@@ -7396,7 +7396,8 @@ version(/+$DIDE_REGION+/all)
 			(CodeString _)	=> '"'	,
 			(CodeBlock b)	=> b.prefix[0]	,
 			(Declaration d)	=> compoundObjectChar	,
-			(NiceExpression n)	=> compoundObjectChar
+			(NiceExpression n)	=> compoundObjectChar	,
+			()	=> ' '
 		); 
 	} 
 	
@@ -7412,8 +7413,8 @@ version(/+$DIDE_REGION+/all)
 	bool cellIsSpace(Cell c)
 	{
 		return c.castSwitch!(
-			(Glyph	g) 	=> g.ch==' '	,
-			(Cell	c)	=> false
+			(Glyph g) 	=> g.ch==' '	,
+			(Cell c)	=> false
 		); 
 	} 
 	
@@ -8450,14 +8451,20 @@ version(/+$DIDE_REGION+/all)
 		}
 	} 
 	
-	void processHighLevelPatterns_statement(CodeColumn col_)
+	void processHighLevelPatterns_statement(CodeColumn col)
 	{
 		//Note: it's called from Declaration.this() for every highlevel statement
 		
-		if(!col_) return; 
+		if(!col) return; 
 		
-		//print("statement: "~col_.extractThisLevelDString.text);
-		processHighLevelPatterns_goInside(col_); 
+		
+		//print("statement: "~col.extractThisLevelDString.text);
+		processHighLevelPatterns_goInside(col);  //Note: depth first recursion
+		
+		if(auto decl = (cast(Declaration)(col.parent)))
+		if(decl.isStatement)
+		if(col.byCell.map!structuredCellToChar.equal("mixin("))
+		{ Cell cell = decl; processNiceExpression(cell); }
 	} 
 	
 	bool isHighLevelBlock(CodeColumn col)
@@ -8568,7 +8575,8 @@ version(/+$DIDE_REGION+/all)
 		binaryTokenStringOp,
 		tenaryTokenStringOp,
 		mixinTableInjectorOp,
-		anonymMethod
+		anonymMethod,
+		mixinGeneratorOp
 		/+
 			Code: Source form:
 			
@@ -8584,6 +8592,7 @@ version(/+$DIDE_REGION+/all)
 			(op(q{},q{},q{}))
 			((){with(op(expr)){expr}}())
 			((expr)op{code})
+			mixin((expr)opq{script})
 		+//+
 			Note: Example:
 			
@@ -8595,10 +8604,13 @@ version(/+$DIDE_REGION+/all)
 			體 (EnumFields, StructInitializer)
 			
 			
+			
+			
 			表! (old MixinTable)
 			Sigma operations
 			表 new MixinTable
 			anonym method (without attrs)
+			.GEN! /+Todo: Mixin Generator+/
 		+/
 	} 
 	private alias NET = NiceExpressionType; 
@@ -8610,11 +8622,14 @@ version(/+$DIDE_REGION+/all)
 		{
 			case unaryOp: 	return 1; 
 			case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
-				binaryTokenStringOp, 	binaryMixinTokenStringOp,	
-				mixinTableInjectorOp, anonymMethod: 	return 2; 
+				binaryTokenStringOp, binaryMixinTokenStringOp,
+				mixinTableInjectorOp, anonymMethod, mixinGeneratorOp: 	return 2; 
 			case tenaryOp, tenaryTokenStringOp, tenaryMixinTokenStringOp: 	return 3; 
 		}
 	} 
+	
+	int hasListBrackets(NiceExpressionType t)
+	{ with(NiceExpressionType) return !t.among(mixinGeneratorOp); } 
 	
 	static if(
 		0//Todo: tenary lambda.  (a lambdra which is evaluated)
@@ -9246,22 +9261,30 @@ version(/+$DIDE_REGION+/all)
 					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
 					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
 					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
-						(表1([
-							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-							[q{ubyte},q{2},q{"red"},q{3}],
-							[q{ubyte},q{3},q{"green"},q{}],
-							[q{ubyte},q{2},q{`blue`},q{3}],
-						]))
+						(
+							表(
+								[
+									[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+									[q{ubyte},q{2},q{"red"},q{3}],
+									[q{ubyte},q{3},q{"green"},q{}],
+									[q{ubyte},q{2},q{`blue`},q{3}],
+								]
+							)
+						)
 					}],
 					[q{
 						Second Nested Table
 						aligned to the first one
 					},q{"more complicated..."},q{"..."},q{
-						(表1([
-							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-							[q{bool},q{1},q{"al"~"pha"},q{1}],
-							[q{/+Default color: Fuchsia+/}],
-						]))
+						(
+							表(
+								[
+									[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+									[q{bool},q{1},q{"al"~"pha"},q{1}],
+									[q{/+Default color: Fuchsia+/}],
+								]
+							)
+						)
 					}],
 					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
 					[],
@@ -9295,6 +9318,30 @@ version(/+$DIDE_REGION+/all)
 			q{},
 			initCode: q{initMixinTable(1); }
 		},
+		
+		{
+			"mixinGenerator1", 
+			NET.mixinGeneratorOp, 
+			skKeyword, NodeStyle.bright,
+			q{mixin((expr).GEN!{script}); },
+			
+			".GEN!",
+			q{buildMixinGenerator; },
+			q{arrangeMixinGenerator(false); }
+			
+		},
+		
+		{
+			"mixinGenerator2", 
+			NET.mixinGeneratorOp, 
+			skKeyword, NodeStyle.bright,
+			q{mixin((expr) .GEN!{script}); },
+			
+			" .GEN!",
+			q{buildMixinGenerator; },
+			q{arrangeMixinGenerator(true); }
+			
+		},
 		
 		/+
 			Todo: HalfSize or other components.  Index and blocks, strings and indices 
@@ -9312,6 +9359,7 @@ version(/+$DIDE_REGION+/all)
 			"求map",
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('⇶'); }
+			//Todo: [sigma] => .array
 		},
 		
 		{
@@ -9382,16 +9430,44 @@ version(/+$DIDE_REGION+/all)
 				if(auto m = moduleOf(this))
 				{ id = m.getInspectorId(this); }
 				
-				op(0); putNL; 
-				style.fontHeight = DefaultSubScriptFontHeight; 
-				style.bold = false; 
-				put("test: 0x"~id.to!string(16)); 
+				op(0); 
+				
+				bkColor = border.color = clBlack; 
+				with(style) {
+					fontColor 	= clWhite,
+					bkColor 	= clBlack,
+					fontHeight 	= DefaultSubScriptFontHeight,
+					bold 	= false; 
+				}
+				
+				
+				if(debugValue!="")
+				{
+					putNL; 
+					auto 	cells 	= (mixin(求map(q{line},q{
+						debugValue
+						.splitLines
+					},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
+						col 	= new CodeColumn(this, cells); 
+					with(col) {
+						halfSize = true; 
+						margin.set(0); 
+						border = Border.init; 
+						padding.set(0, 2); 
+						bkColor = clBlack; 
+					}(mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); 
+					
+					operands[1] = col; op(1); 
+				}
 			},
 			q{
-				ulong id; 
-				if(auto m = moduleOf(this))
-				{ id = m.getInspectorId(this); }
-				dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+				static if(0)
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{ id = m.getInspectorId(this); }
+					dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+				}
 			},
 			
 			initCode: 
@@ -9491,122 +9567,62 @@ version(/+$DIDE_REGION+/all)
 		+/
 		//Todo: Double _ could be a subText. Example: dir__start
 		
-		/+
-			Todo: Should use Chinese/Japanese one character symbols instead of complicated (().abc()) format.
-			Maybe SYM() would be easier to detect. And there is no way I can type those manually.
-		+/
 		
 		//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
 		
-		//Todo: Symbol for foreach: ∀
 		
-		/+Bug: If a mixin table is inside 12x ((())) listblocks, the loading is exponentially fucking slow!!!+/
+		
 		
 		if(auto blk = asListBlock(outerCell))
-		if(blk.content.rows.length==1)
-		if(auto row = blk.content.getRow(0))
-		if(row.length.inRange(2, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
 		{
-			if(auto right = asListBlock(row.subCells.back))
+			if(blk.content.rows.length==1)
+			if(auto row = blk.content.getRow(0))
+			if(row.length.inRange(2, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
 			{
-				if(auto left = asListBlock(row.subCells.front))
+				if(auto right = asListBlock(row.subCells.back))
 				{
-					const op = row.chars[1..$-1].text; 
-					if(left.content && right.content)
+					if(auto left = asListBlock(row.subCells.front))
 					{
+						const op = row.chars[1..$-1].text; 
+						if(left.content && right.content)
 						{
-							/+Note: binaryOp: ((expr)op(expr))+/
-							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryOp, op))
-							{ outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); return; }
-						}
-						{
-							/+Note: tenaryyOp: ((expr)op(expr)op(expr))+/
-							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op))
 							{
-								const mIdx = op.countUntil('￼'); 
-								if(mIdx>=0)
-								{
-									if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
-									{
-										outerCell = new NiceExpression(blk.parent, tIdx, left.content, middle.content, right.content); 
-										return; 
-									}
-								}
+								/+Note: binaryOp: ((expr)op(expr))+/
+								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryOp, op))
+								{ outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); return; }
 							}
-						}
-						{
-							/+Note: mixinTableInjectorOp: ((){with(op(expr)){expr}}())+/
-							if(row.length==3 && left.content.empty && right.content.empty)
-							if(auto mid = asStatementBlockDeclaration(row.subCells[1]))
-							if(mid.block)
-							if(auto with_ = (cast(Declaration)(mid.block.singleCellOrNull)))
-							if(with_.isPreposition && with_.keyword=="with" && with_.header && with_.block)
-							if(with_.header.rowCount==1)
 							{
-								auto headerRow = with_.header.rows[0]; 
-								if(headerRow.subCells.length.inRange(2, 16))
-								if(auto expr1 = asListBlock(headerRow.subCells.back))
-								if(expr1.content)
+								/+Note: tenaryyOp: ((expr)op(expr)op(expr))+/
+								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op))
 								{
-									const innerOp = headerRow.chars[0..$-1].text; 
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinTableInjectorOp, innerOp))
-									{ outerCell = new NiceExpression(blk.parent, tIdx, expr1.content, with_.block); return; }
-								}
-							}
-						}
-					}
-				}
-				else
-				{
-					const op = row.chars[0..$-1].text; 
-					if(op=="mixin")
-					{
-						if(right.content.rows.length==1)
-						if(auto row2 = right.content.getRow(0))
-						{
-							if(row2.subCells.length==3)
-							if(row2.chars[1]=='!')
-							{
-								string mixinOp = row2.chars[0].text; 
-								{
-									/+Note: binaryMixinEQOp: (mixin(op!((expr),q{code})))+/
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinEQOp, mixinOp))
-									if(auto right2 = asListBlock(row2.subCells.back))
-									if(right2.content.rowCount==1)
-									if(auto row3 = right2.content.rows[0])
-									if(row3.cellCount==3 && row3.chars[1]==',')
-									if(auto left3 = asListBlock(row3.subCells[0]))
-									if(auto right3 = asTokenString(row3.subCells[2]))
+									const mIdx = op.countUntil('￼'); 
+									if(mIdx>=0)
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, left3.content, right3.content); 
-										return; 
-									}
-								}
-							}
-							const mixinOp = row2.chars[0..$-1].text; 
-							{
-								/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinTokenStringOp, mixinOp))
-								if(auto right2 = asListBlock(row2.subCells.back))
-								{
-									auto params = extractTokenStringParams(right2.content); 
-									if(params.length==2)
-									{
-										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
-										return; 
+										if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, left.content, middle.content, right.content); 
+											return; 
+										}
 									}
 								}
 							}
 							{
-								/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp))
-								if(auto right2 = asListBlock(row2.subCells.back))
+								/+Note: mixinTableInjectorOp: ((){with(op(expr)){expr}}())+/
+								if(row.length==3 && left.content.empty && right.content.empty)
+								if(auto mid = asStatementBlockDeclaration(row.subCells[1]))
+								if(mid.block)
+								if(auto with_ = (cast(Declaration)(mid.block.singleCellOrNull)))
+								if(with_.isPreposition && with_.keyword=="with" && with_.header && with_.block)
+								if(with_.header.rowCount==1)
 								{
-									auto params = extractTokenStringParams(right2.content); 
-									if(params.length==3)
+									auto headerRow = with_.header.rows[0]; 
+									if(headerRow.subCells.length.inRange(2, 16))
+									if(auto expr1 = asListBlock(headerRow.subCells.back))
+									if(expr1.content)
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
-										return; 
+										const innerOp = headerRow.chars[0..$-1].text; 
+										if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinTableInjectorOp, innerOp))
+										{ outerCell = new NiceExpression(blk.parent, tIdx, expr1.content, with_.block); return; }
 									}
 								}
 							}
@@ -9614,86 +9630,170 @@ version(/+$DIDE_REGION+/all)
 					}
 					else
 					{
-						if(op.endsWith('￼'))
+						const op = row.chars[0..$-1].text; 
+						if(op=="mixin")
 						{
-							if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
+							if(right.content.rows.length==1)
+							if(auto row2 = right.content.getRow(0))
 							{
+								if(row2.subCells.length==3)
+								if(row2.chars[1]=='!')
 								{
-									/+Note: castOp (op(expr)(expr))+/
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.castOp, op.withoutEnding('￼')))
+									string mixinOp = row2.chars[0].text; 
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, mid.content, right.content); 
-										return; 
+										/+Note: binaryMixinEQOp: (mixin(op!((expr),q{code})))+/
+										if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinEQOp, mixinOp))
+										if(auto right2 = asListBlock(row2.subCells.back))
+										if(right2.content.rowCount==1)
+										if(auto row3 = right2.content.rows[0])
+										if(row3.cellCount==3 && row3.chars[1]==',')
+										if(auto left3 = asListBlock(row3.subCells[0]))
+										if(auto right3 = asTokenString(row3.subCells[2]))
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, left3.content, right3.content); 
+											return; 
+										}
+									}
+								}
+								const mixinOp = row2.chars[0..$-1].text; 
+								{
+									/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinTokenStringOp, mixinOp))
+									if(auto right2 = asListBlock(row2.subCells.back))
+									{
+										auto params = extractTokenStringParams(right2.content); 
+										if(params.length==2)
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
+											return; 
+										}
+									}
+								}
+								{
+									/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp))
+									if(auto right2 = asListBlock(row2.subCells.back))
+									{
+										auto params = extractTokenStringParams(right2.content); 
+										if(params.length==3)
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
+											return; 
+										}
 									}
 								}
 							}
 						}
 						else
 						{
+							if(op.endsWith('￼'))
 							{
-								//Note: unaryOp (op(expr))
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op))
+								if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
 								{
-									outerCell = new NiceExpression(blk.parent, tIdx, right.content); 
-									return; 
-								}
-							}
-							{
-								/+Note: binaryTokenStringOp (op(q{},q{}))+/
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
-								{
-									auto params = extractTokenStringParams(right.content); 
-									if(params.length==2)
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
-										return; 
+										/+Note: castOp (op(expr)(expr))+/
+										if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.castOp, op.withoutEnding('￼')))
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, mid.content, right.content); 
+											return; 
+										}
 									}
 								}
 							}
+							else
 							{
-								/+Note: tenaryTokenStringOp (op(q{},q{},q{}))+/
-								if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
 								{
-									auto params = extractTokenStringParams(right.content); 
-									if(params.length==3)
+									//Note: unaryOp (op(expr))
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryOp, op))
 									{
-										outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
+										outerCell = new NiceExpression(blk.parent, tIdx, right.content); 
 										return; 
+									}
+								}
+								{
+									/+Note: binaryTokenStringOp (op(q{},q{}))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
+									{
+										auto params = extractTokenStringParams(right.content); 
+										if(params.length==2)
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
+											return; 
+										}
+									}
+								}
+								{
+									/+Note: tenaryTokenStringOp (op(q{},q{},q{}))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
+									{
+										auto params = extractTokenStringParams(right.content); 
+										if(params.length==3)
+										{
+											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
+											return; 
+										}
 									}
 								}
 							}
 						}
 					}
 				}
-			}
-			else if(auto right = asTokenString(row.subCells.back))
-			{
-				if(auto left = asListBlock(row.subCells.front))
+				else if(auto right = asTokenString(row.subCells.back))
 				{
-					const op = row.chars[1..$-1].text; 
+					if(auto left = asListBlock(row.subCells.front))
 					{
-						/+Note: namedUnaryOp: ((expr)op q{code})+///Example: op = .genericArg!`
-						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.namedUnaryOp, op))
+						const op = row.chars[1..$-1].text; 
 						{
-							outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
-							return; 
+							/+Note: namedUnaryOp: ((expr)op q{code})+///Example: op = .genericArg!`
+							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.namedUnaryOp, op))
+							{
+								outerCell = new NiceExpression(blk.parent, tIdx, left.content, right.content); 
+								return; 
+							}
+						}
+					}
+				}
+				else if(auto rightContent = asStatementBlockContents(row.subCells.back))
+				{
+					if(auto left = asListBlock(row.subCells.front))
+					if(left.content)
+					{
+						const op = row.chars[1..$-1].text; //No attributes handled here.
+						{
+							//Note: anonymMethod: ((expr)or{code})
+							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.anonymMethod, op))
+							{
+								outerCell = new NiceExpression(blk.parent, tIdx, left.content, rightContent); 
+								return; 
+							}
 						}
 					}
 				}
 			}
-			else if(auto rightContent = asStatementBlockContents(row.subCells.back))
+		}
+		else if(auto decl = (cast(Declaration)(outerCell)))
+		{
+			if(decl.isStatement && decl.header.rowCount==1 && decl.header.byCell.map!structuredCellToChar.equal("mixin("))
+			if(auto statementRow = decl.header.rows[0])
+			if(auto blk = asListBlock(statementRow.subCells.back))
+			if(blk.content.rows.length==1)
+			if(auto row = blk.content.rows[0])
+			if(row.length>=2)
+			if(auto left = asListBlock(row.subCells.front))
+			if(auto right = asTokenString(row.subCells.back))
 			{
-				if(auto left = asListBlock(row.subCells.front))
-				if(left.content)
+				const op = row.chars[1..$-1].text; 
 				{
-					const op = row.chars[1..$-1].text; //Note: No attributes handled here.
+					/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
+					if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinGeneratorOp, op))
 					{
-						//Note: anonymMethod: ((expr)or{code})
-						if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.anonymMethod, op))
+						with(statementRow)
 						{
-							outerCell = new NiceExpression(blk.parent, tIdx, left.content, rightContent); 
-							return; 
+							clearSubCells; 
+							appendCell(new NiceExpression(statementRow, tIdx, left.content, right.content)); 
+							needMeasure; 
 						}
+						return; 
 					}
 				}
 			}
@@ -9705,6 +9805,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
+		string debugValue; //Todo: should be in another class... It's inspector exclusive.
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
@@ -9804,7 +9905,14 @@ version(/+$DIDE_REGION+/all)
 					}
 				}
 			}
-		} 
+		} 
+		
+		void updateDebugValue(string value)
+		{
+			if(debugValue.chkSet(value))
+			needMeasure; 
+		} 
+		
 		void initMixinTable(int doubleGridStyle)
 		{
 			static isFiller(Cell c)
@@ -10059,6 +10167,18 @@ version(/+$DIDE_REGION+/all)
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
 				} 
+				
+				void arrangeMixinGenerator(bool isMultiLine)
+				{
+					if(isMultiLine) flags.hAlign = HAlign.right; 
+					style.bkColor = bkColor = structuredColor("static if"); 
+					op(0); if(isMultiLine) putNL; 
+					put(" mixin "); op(1); 
+					
+					super.rearrange; 
+					
+					subCells[0].outerPos.x = 0; 
+				} 
 				
 				void arrangeSigmaOp(dchar symbol)
 				{
@@ -10295,6 +10415,13 @@ version(/+$DIDE_REGION+/all)
 					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
 					put("))"); 
 				} 
+				
+				void buildMixinGenerator()
+				{
+					put("mixin"); put('('); 
+						op(0); put(operator); put("q{", operands[1], "}"); 
+					put(')'); 
+				} 
 				
 				void buildMixinTable()
 				{
@@ -10486,7 +10613,8 @@ version(/+$DIDE_REGION+/all)
 					}
 				} 
 				
-				put("("); 
+				const brackets = getTemplate.type.hasListBrackets; 
+				if(brackets) put("("); 
 				{
 					sw: switch(templateIdx)
 					{
@@ -10494,7 +10622,7 @@ version(/+$DIDE_REGION+/all)
 						{ case a.index: { mixin(a.value); }break sw; }default: 
 					}
 				}
-				put(")"); 
+				if(brackets) put(")"); 
 			}
 		} 
 		
