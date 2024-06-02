@@ -4168,7 +4168,7 @@ class CodeRow: Row
 				if(auto tstr = (cast(CodeString)(cell)))
 				if(tstr.type==CodeString.Type.tokenString)
 				if(auto ne = (cast(NiceExpression)(tstr.content.singleCellOrNull)))
-				if(ne.operator.among(`表1`, `表2`)) return ne; 
+				if(ne.operator.among(`表`)) return ne; 
 				return null; 
 			} 
 			
@@ -9222,20 +9222,24 @@ version(/+$DIDE_REGION+/all)
 				mixin
 				(
 					/+saved:9132  loaded:9132+/
-					(表1([
-						[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-						[q{ubyte},q{2},q{"red"},q{3}],
-						[q{ubyte},q{3},q{"green"},q{}],
-						[q{ubyte},q{2},q{`blue`},q{3}],
-						[q{bool},q{1},q{"alpha"},q{1}],
-					]))
+					(
+						表(
+							[
+								[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+								[q{ubyte},q{2},q{"red"},q{3}],
+								[q{ubyte},q{3},q{"green"},q{}],
+								[q{ubyte},q{2},q{`blue`},q{3}],
+								[q{bool},q{1},q{"alpha"},q{1}],
+							]
+						)
+					)
 					/+saved:9140  loaded:9142+/
 					.GEN_bitfields 
 					/+Bug: Table adds extra lineIndices after right load.+/
 				); 
 			},
 			
-			"表1",
+			"表",
 			q{buildMixinTable; },
 			q{
 				arrangeMixinTable(1)
@@ -9254,58 +9258,74 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, NodeStyle.bright,
 			q{
 				/+saved:9163  loaded:9165+/
-				((){with(表2([
-					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
-					[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
-					[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
-					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
-					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
-					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
-						(
+				(
+					(){
+						with(
 							表(
 								[
-									[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-									[q{ubyte},q{2},q{"red"},q{3}],
-									[q{ubyte},q{3},q{"green"},q{}],
-									[q{ubyte},q{2},q{`blue`},q{3}],
+									[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
+									[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
+									[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
+									[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
+									[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
+									[
+										q{Nested Table},q{"It's complicated..."},q{"..."},q{
+											(
+												表(
+													[
+														[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+														[q{ubyte},q{2},q{"red"},q{3}],
+														[q{ubyte},q{3},q{"green"},q{}],
+														[q{ubyte},q{2},q{`blue`},q{3}],
+													]
+												)
+											)
+										}
+									],
+									[
+										q{
+											Second Nested Table
+											aligned to the first one
+										},q{"more complicated..."},q{"..."},q{
+											(
+												表(
+													[
+														[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+														[q{bool},q{1},q{"al"~"pha"},q{1}],
+														[q{/+Default color: Fuchsia+/}],
+													]
+												)
+											)
+										}
+									],
+									[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
+									[],
+									[q{/+^^ Empty line     Also this is a single line comment.+/}],
+									[
+										q{
+											/+
+												Warning: Use /+Code: Tab+/ to enter more than one entries.
+												Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
+											+/
+										}
+									],
 								]
 							)
-						)
-					}],
-					[q{
-						Second Nested Table
-						aligned to the first one
-					},q{"more complicated..."},q{"..."},q{
-						(
-							表(
-								[
-									[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-									[q{bool},q{1},q{"al"~"pha"},q{1}],
-									[q{/+Default color: Fuchsia+/}],
-								]
-							)
-						)
-					}],
-					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
-					[],
-					[q{/+^^ Empty line     Also this is a single line comment.+/}],
-					[q{/+
-						Warning: Use /+Code: Tab+/ to enter more than one entries.
-						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
-					+/}],
-				])){
-					/+Here comes the program that generates a string from the table.+/
-					return rows.map!(
-						r=>format!"%s %s%s;"(
-							r.get(0), r.get(1), 
-							((r.length>2) ?("="~r[2].inner):(""))
-						)
-					).join; 
-				}}())
+						) {
+							/+Here comes the program that generates a string from the table.+/
+							return rows.map!(
+								r=>format!"%s %s%s;"(
+									r.get(0), r.get(1), 
+									((r.length>2) ?("="~r[2].inner):(""))
+								)
+							).join; 
+						}
+					}()
+				)
 				/+saved:9204  loaded:9220+/
 			},
 			
-			"表2",
+			"表",
 			q{buildMixinTable; },
 			q{
 				arrangeMixinTable(1)

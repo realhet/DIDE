@@ -6480,7 +6480,7 @@ class ToolPalette : Column
 		{
 			"Symbols, math", "α",
 			q{
-				(表1([
+				(表([
 					[q{"expression blocks"},q{
 						{ s; }(a) [a] 
 						"S" r"S" `S` 
@@ -6518,22 +6518,20 @@ dot, cross"},q{
 		{
 			"Expressions", "( )", 
 			q{
-				(表1([
+				(表([
 					[q{"table blocks"},q{
-						(表1([
+						(表([
 							[q{/+Note: Hdr+/}],
 							[q{Cell}],
-						])) ((){with(表2([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
+						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
 					}],
 					[q{"mixin tables"},q{
-						mixin(
-							(
-								(表1([
-									[q{/+Note: Hdr+/}],
-									[q{Cell}],
-								]))
-							).GEN!q{cell(0, 1)}
-						); mixin(((表1([[q{/+Note: Hdr+/},q{Cell}],]))) .GEN!q{rows[0][1]}); 
+						mixin((
+							(表([
+								[q{/+Note: Hdr+/}],
+								[q{Cell}],
+							]))
+						).GEN!q{cell(0, 1)}); mixin(((表([[q{/+Note: Hdr+/},q{Cell}],]))) .GEN!q{rows[0][1]}); 
 					}],
 					[q{"mixin generators"},q{mixin((src).GEN!q{script}); mixin((src) .GEN!q{script}); }],
 					[q{"tenary operator"},q{
@@ -6560,7 +6558,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			"Comments", "//",
 			q{
-				(表1([
+				(表([
 					[q{"comments"},q{
 						/+cmt+/ 
 						/*cmt*/ //cmt
@@ -6596,7 +6594,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			"Blocks", "{ }",
 			q{
-				(表1([[q{`declaration blocks`},q{
+				(表([[q{`declaration blocks`},q{
 					s; 	auto f()
 					{ s; } 
 					import ; 	alias id; 
@@ -6627,7 +6625,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			"Statement blocks", "RT",
 			q{
-				(表1([
+				(表([
 					[q{"if blocks"},q{
 						if(c) { f; }
 						if(c) { f; }else { g; }
@@ -6677,7 +6675,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			"Compile time blocks", "CT",
 			q{
-				(表1([
+				(表([
 					[q{"static foreach"},q{
 						static foreach(;)
 						{ f; }
@@ -6702,7 +6700,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 		{
 			"Compile time blocks", "VD",
 			q{
-				(表1([
+				(表([
 					[q{"version blocks"},q{
 						version(v) { f; }
 						version(v) { f; }else { g; }
