@@ -6512,6 +6512,7 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
+					[q{"debug inspector"},q{((expr).檢(0x2EB2035B2D627))}],
 				]))
 			}
 		},

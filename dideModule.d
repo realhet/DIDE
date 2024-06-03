@@ -9222,17 +9222,13 @@ version(/+$DIDE_REGION+/all)
 				mixin
 				(
 					/+saved:9132  loaded:9132+/
-					(
-						表(
-							[
-								[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-								[q{ubyte},q{2},q{"red"},q{3}],
-								[q{ubyte},q{3},q{"green"},q{}],
-								[q{ubyte},q{2},q{`blue`},q{3}],
-								[q{bool},q{1},q{"alpha"},q{1}],
-							]
-						)
-					)
+					(表([
+						[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+						[q{ubyte},q{2},q{"red"},q{3}],
+						[q{ubyte},q{3},q{"green"},q{}],
+						[q{ubyte},q{2},q{`blue`},q{3}],
+						[q{bool},q{1},q{"alpha"},q{1}],
+					]))
 					/+saved:9140  loaded:9142+/
 					.GEN_bitfields 
 					/+Bug: Table adds extra lineIndices after right load.+/
@@ -9258,70 +9254,46 @@ version(/+$DIDE_REGION+/all)
 			skIdentifier1, NodeStyle.bright,
 			q{
 				/+saved:9163  loaded:9165+/
-				(
-					(){
-						with(
-							表(
-								[
-									[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
-									[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
-									[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
-									[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
-									[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
-									[
-										q{Nested Table},q{"It's complicated..."},q{"..."},q{
-											(
-												表(
-													[
-														[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-														[q{ubyte},q{2},q{"red"},q{3}],
-														[q{ubyte},q{3},q{"green"},q{}],
-														[q{ubyte},q{2},q{`blue`},q{3}],
-													]
-												)
-											)
-										}
-									],
-									[
-										q{
-											Second Nested Table
-											aligned to the first one
-										},q{"more complicated..."},q{"..."},q{
-											(
-												表(
-													[
-														[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
-														[q{bool},q{1},q{"al"~"pha"},q{1}],
-														[q{/+Default color: Fuchsia+/}],
-													]
-												)
-											)
-										}
-									],
-									[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
-									[],
-									[q{/+^^ Empty line     Also this is a single line comment.+/}],
-									[
-										q{
-											/+
-												Warning: Use /+Code: Tab+/ to enter more than one entries.
-												Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
-											+/
-										}
-									],
-								]
-							)
-						) {
-							/+Here comes the program that generates a string from the table.+/
-							return rows.map!(
-								r=>format!"%s %s%s;"(
-									r.get(0), r.get(1), 
-									((r.length>2) ?("="~r[2].inner):(""))
-								)
-							).join; 
-						}
-					}()
-				)
+				((){with(表([
+					[q{/+Note: Cell Type+/},q{/+Note: Entry+/},q{/+Note: Storage+/},q{/+Note: Display+/}],
+					[q{Expression / Code},q{"(1+2)*3"},q{"q{(1+2)*3}"},q{(1+2)*3}],
+					[q{String literal},q{"`string`"},q{"q{`string`}"},q{`string`}],
+					[q{Comment},q{"/+comment+/"},q{"q{/+comment+/}"},q{/+comment+/}],
+					[q{Image},q{`/+$DIDE_IMG icon:\.txt+/`},q{`q{/+$DIDE_IMG icon:\.txt+/}`},q{/+$DIDE_IMG icon:\.txt+/}],
+					[q{Nested Table},q{"It's complicated..."},q{"..."},q{
+						(表([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{ubyte},q{2},q{"red"},q{3}],
+							[q{ubyte},q{3},q{"green"},q{}],
+							[q{ubyte},q{2},q{`blue`},q{3}],
+						]))
+					}],
+					[q{
+						Second Nested Table
+						aligned to the first one
+					},q{"more complicated..."},q{"..."},q{
+						(表([
+							[q{/+Note: Type+/},q{/+Note: Bits+/},q{/+Note: Name+/},q{/+Note: Def+/}],
+							[q{bool},q{1},q{"al"~"pha"},q{1}],
+							[q{/+Default color: Fuchsia+/}],
+						]))
+					}],
+					[q{bad syntax},q{"1+(2"},q{"q{/+Error: ...+/}"},q{/+Error: 1+(2+/}],
+					[],
+					[q{/+^^ Empty line     Also this is a single line comment.+/}],
+					[q{/+
+						Warning: Use /+Code: Tab+/ to enter more than one entries.
+						Multiline entries are not supported yet: /+Code: NewLine+/s are treated as table row boundaries only.
+					+/}],
+				])){
+					/+Here comes the program that generates a string from the table.+/
+					return rows.map!(
+						r=>format!"%s %s%s;"(
+							r.get(0), r.get(1), 
+							((r.length>2) ?("="~r[2].inner):(""))
+						)
+					).join; 
+				}}())
 				/+saved:9204  loaded:9220+/
 			},
 			
@@ -9425,15 +9397,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{
-				((expr).檢(250629))((expr).檢(250649))
-				((expr).檢(250675))((expr).檢(250695))((expr).檢(250715))
-				((expr).檢(250741))
-				((expr).檢(250767))
-				((expr).檢(250793))
-				((expr).檢(250819))
-				((expr).檢(250845))
-			},
+			q{((expr).檢(0x3D7197B6B4BCC))},
 			
 			".檢",
 			q{
@@ -9487,6 +9451,19 @@ version(/+$DIDE_REGION+/all)
 					if(auto m = moduleOf(this))
 					{ id = m.getInspectorId(this); }
 					dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+				}
+				
+				
+				{
+					//highlight changed debugvalues
+					const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
+					if(du<1)
+					{
+						const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
+						dr.alpha = sqr(1-du); dr.color = mix(clWhite, clYellow, 1-dc); 
+						dr.fillRect(outerBounds); 
+						dr.alpha = 1; 
+					}
 				}
 			},
 			
@@ -9825,7 +9802,8 @@ version(/+$DIDE_REGION+/all)
 	{
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
-		string debugValue; //Todo: should be in another class... It's inspector exclusive.
+		
+		
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
@@ -9927,11 +9905,22 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		void updateDebugValue(string value)
+		
+		version(/+$DIDE_REGION DebugValue support+/all)
 		{
-			if(debugValue.chkSet(value))
-			needMeasure; 
-		} 
+			string debugValue; 
+			DateTime debugValueUpdatedTime, debugValueChangedTime; //Todo: should be in another class... It's inspector exclusive.
+			
+			void updateDebugValue(string value)
+			{
+				debugValueUpdatedTime = application.tickTime; 
+				if(debugValue.chkSet(value))
+				{
+					debugValueChangedTime = debugValueUpdatedTime; 
+					needMeasure; 
+				}
+			} 
+		}
 		
 		void initMixinTable(int doubleGridStyle)
 		{
