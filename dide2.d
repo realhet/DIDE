@@ -6512,7 +6512,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2EB2035B2D627))}],
+					[q{"debug inspector"},q{((expr).檢(0x2EB2035B2D627)) ((expr).檢 (0))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EB7E35B2D627)); }],
 				]))
 			}
 		},

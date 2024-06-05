@@ -58,6 +58,8 @@ version(/+$DIDE_REGION+/all)
 	//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
 	//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
 	
+	//Todo: \u2028 \u2029 could be the vertical tab instead.  Vertical tab \0x0b should be used for something else.
+	
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
@@ -5551,6 +5553,14 @@ version(/+$DIDE_REGION+/all)
 					auto cmd = scmt.CommandLine; 
 					auto f = cmd.files.get(1);  //first file is command.
 					
+					if(f.fullName.startsWith(`$\`)/+$\ means the path of this module+/)
+					{
+						string path; 
+						if(auto mod = moduleOf(this))
+						path = mod.file.path.fullPath; 
+						f = File(path, f.fullName[2..$]); 
+					}
+					
 					style.italic = false; 
 					
 					const maxHeight = cmd.option("maxHeight", -1); 
@@ -5559,7 +5569,9 @@ version(/+$DIDE_REGION+/all)
 					auto bmp = bitmaps(f, No.delayed); 
 					
 					if(!bmp.valid)
-					{ put('\U0001F5BC'); }else {
+					{ put('\U0001F5BC'); }
+					else
+					{
 						padding = "4"; 
 						
 						auto img = new Img(f, darkColor); 
@@ -8462,9 +8474,15 @@ version(/+$DIDE_REGION+/all)
 		processHighLevelPatterns_goInside(col);  //Note: depth first recursion
 		
 		if(auto decl = (cast(Declaration)(col.parent)))
-		if(decl.isStatement)
-		if(col.byCell.map!structuredCellToChar.equal("mixin("))
+		if(
+			decl.isStatement && col.rowCount==1
+			/+
+				These ifs are redundant, but they are safe.
+				/+Todo: make an additional processNiceExpression_statement() funct.+/
+			+/
+		)
 		{ Cell cell = decl; processNiceExpression(cell); }
+		
 	} 
 	
 	bool isHighLevelBlock(CodeColumn col)
@@ -8559,6 +8577,8 @@ version(/+$DIDE_REGION+/all)
 }
 version(/+$DIDE_REGION+/all)
 {
+	enum lowestSpecialUnicodeChar = '\u3000' /+Contains all chinese chars used in NiceExpressions+/; 
+	
 	enum NiceExpressionType : ubyte
 	{
 		
@@ -8570,13 +8590,17 @@ version(/+$DIDE_REGION+/all)
 		castOp, 
 		namedUnaryOp, 
 		binaryMixinEQOp, 
+		nullaryMixinTokenStringOp,
+		unaryMixinTokenStringOp,
 		binaryMixinTokenStringOp,
 		tenaryMixinTokenStringOp,
 		binaryTokenStringOp,
 		tenaryTokenStringOp,
 		mixinTableInjectorOp,
 		anonymMethod,
-		mixinGeneratorOp
+		mixinGeneratorOp,
+		specialStatementOp,
+		
 		/+
 			Code: Source form:
 			
@@ -8586,6 +8610,8 @@ version(/+$DIDE_REGION+/all)
 			(op(expr)(expr))
 			((expr)opq{code})
 			(mixin(op!((expr),q{code})))
+			(mixin(op))
+			(mixin(op(q{})))
 			(mixin(op(q{},q{})))
 			(mixin(op(q{},q{},q{})))
 			(op(q{},q{}))
@@ -8593,6 +8619,7 @@ version(/+$DIDE_REGION+/all)
 			((){with(op(expr)){expr}}())
 			((expr)op{code})
 			mixin((expr)opq{script})
+			op
 		+//+
 			Note: Example:
 			
@@ -8606,11 +8633,15 @@ version(/+$DIDE_REGION+/all)
 			
 			
 			
+			
+			
+			
 			表! (old MixinTable)
 			Sigma operations
 			表 new MixinTable
 			anonym method (without attrs)
 			.GEN! /+Todo: Mixin Generator+/
+			auto 間T=now間 //Last char must be a unicode special char
 		+/
 	} 
 	private alias NET = NiceExpressionType; 
@@ -8620,7 +8651,8 @@ version(/+$DIDE_REGION+/all)
 		with(NiceExpressionType)
 		final switch(t)
 		{
-			case unaryOp: 	return 1; 
+			case nullaryMixinTokenStringOp, specialStatementOp: 	return 0; 
+			case unaryOp, unaryMixinTokenStringOp: 	return 1; 
 			case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
 				binaryTokenStringOp, binaryMixinTokenStringOp,
 				mixinTableInjectorOp, anonymMethod, mixinGeneratorOp: 	return 2; 
@@ -8629,7 +8661,7 @@ version(/+$DIDE_REGION+/all)
 	} 
 	
 	int hasListBrackets(NiceExpressionType t)
-	{ with(NiceExpressionType) return !t.among(mixinGeneratorOp); } 
+	{ with(NiceExpressionType) return !t.among(mixinGeneratorOp, specialStatementOp); } 
 	
 	static if(
 		0//Todo: tenary lambda.  (a lambdra which is evaluated)
@@ -9388,99 +9420,75 @@ version(/+$DIDE_REGION+/all)
 			q{buildSigmaOp; },
 			q{arrangeSigmaOp('∏'); }
 		},
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		{
+			"perf_start", 
+			NET.specialStatementOp, 
+			skBasicType, 
+			NodeStyle.bright,
+			q{auto _間=init間; },
+			"auto _間=init間",
+			q{put(operator); },
+			q{
+				style.bold = false; 
+				put("⏱.init"); 
+			}
+		},
+		
+		{
+			"perf_measure", 
+			NET.unaryOp, 
+			skBasicType, 
+			NodeStyle.bright,
+			q{(update間(_間)); },
+			"update間",
+			q{put(operator); put("(_間)"); },
+			q{
+				style.bold = false; 
+				put("⏱"); 
+			}
+		},
 		
 		
 		
 		
 		{
-			"inspect", 
+			"inspect1", 
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3D7197B6B4BCC))},
-			
+			q{((expr).檢(0x3DCA77B6B4BCC))},
+			
 			".檢",
-			q{
-				ulong id; 
-				if(auto m = moduleOf(this))
-				{
-					if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
-					else	id = m.getInspectorId(this); 
-				}
-				op(0); put(operator); put("(0x"~id.to!string(16)~")"); 
-			},
-			q{
-				ulong id; 
-				if(auto m = moduleOf(this))
-				{ id = m.getInspectorId(this); }
-				
-				op(0); 
-				
-				bkColor = border.color = clBlack; 
-				with(style) {
-					fontColor 	= clWhite,
-					bkColor 	= clBlack,
-					fontHeight 	= DefaultSubScriptFontHeight,
-					bold 	= false; 
-				}
-				
-				
-				if(debugValue!="")
-				{
-					putNL; 
-					auto 	cells 	= (mixin(求map(q{line},q{
-						debugValue
-						.splitLines
-					},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
-						col 	= new CodeColumn(this, cells); 
-					with(col) {
-						halfSize = true; 
-						margin.set(0); 
-						border = Border.init; 
-						padding.set(0, 2); 
-						bkColor = clBlack; 
-					}(mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); 
-					
-					operands[1] = col; op(1); 
-				}
-			},
-			q{
-				static if(0)
-				{
-					ulong id; 
-					if(auto m = moduleOf(this))
-					{ id = m.getInspectorId(this); }
-					dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
-				}
-				
-				
-				{
-					//highlight changed debugvalues
-					const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
-					if(du<1)
-					{
-						const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
-						dr.alpha = sqr(1-du); dr.color = mix(clWhite, clYellow, 1-dc); 
-						dr.fillRect(outerBounds); 
-						dr.alpha = 1; 
-					}
-				}
-			},
-			
-			initCode: 
-			q{
-				ulong id; 
-				if(auto m = moduleOf(this))
-				{
-					auto s = operands[1].extractThisLevelDString.text.strip; 
-					ulong a; 
-					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
-					else	a = a.to!ulong.ifThrown(0); 
-					id = m.addInspector(this, (cast(uint)(a>>32))); 
-				}
-			}
+			q{buildInspector; },
+			q{arrangeInspector; },
+			q{drawInspector; },
+			initCode: q{initInspector; }
 		},
 		
+		{
+			"inspect2", 
+			NET.binaryOp, 
+			skIdentifier1, 
+			NodeStyle.dim,
+			q{((expr).檢 (0x3DDA67B6B4BCC))},
+			
+			".檢 ",
+			q{buildInspector; },
+			q{arrangeInspector; },
+			q{drawInspector; },
+			initCode: q{initInspector; }
+		},
 	]; 
 	
 	
@@ -9652,32 +9660,39 @@ version(/+$DIDE_REGION+/all)
 										}
 									}
 								}
-								const mixinOp = row2.chars[0..$-1].text; 
+								if(auto right2 = asListBlock(row2.subCells.back))
 								{
-									/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinTokenStringOp, mixinOp))
-									if(auto right2 = asListBlock(row2.subCells.back))
+									auto params = extractTokenStringParams(right2.content); 
+									const mixinOp = row2.chars[0..$-1].text; 
+									switch(params.length)
 									{
-										auto params = extractTokenStringParams(right2.content); 
-										if(params.length==2)
+										case 1: 
 										{
-											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); 
-											return; 
+											/+Note: unaryMixinTokenStringOp (mixin(op(q{})))+/
+											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.unaryMixinTokenStringOp, mixinOp))
+											{ outerCell = new NiceExpression(blk.parent, tIdx, params[0]); return; }break; 
 										}
+										case 2: 
+										{
+											/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
+											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinTokenStringOp, mixinOp))
+											{ outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1]); return; }break; 
+										}
+										case 3: 
+										{
+											/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
+											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp))
+											{ outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); return; }break; 
+										}
+										default: 
 									}
 								}
+								else
 								{
-									/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp))
-									if(auto right2 = asListBlock(row2.subCells.back))
-									{
-										auto params = extractTokenStringParams(right2.content); 
-										if(params.length==3)
-										{
-											outerCell = new NiceExpression(blk.parent, tIdx, params[0], params[1], params[2]); 
-											return; 
-										}
-									}
+									const mixinOp = row2.chars.text; 
+									/+Note: nullaryMixinTokenStringOp (mixin(op))+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.nullaryMixinTokenStringOp, mixinOp))
+									{ outerCell = new NiceExpression(blk.parent, tIdx); return; }
 								}
 							}
 						}
@@ -9770,27 +9785,56 @@ version(/+$DIDE_REGION+/all)
 		}
 		else if(auto decl = (cast(Declaration)(outerCell)))
 		{
-			if(decl.isStatement && decl.header.rowCount==1 && decl.header.byCell.map!structuredCellToChar.equal("mixin("))
+			if(decl.isStatement && decl.header.rowCount==1 && decl.header.rows[0].cellCount>=1)
 			if(auto statementRow = decl.header.rows[0])
-			if(auto blk = asListBlock(statementRow.subCells.back))
-			if(blk.content.rows.length==1)
-			if(auto row = blk.content.rows[0])
-			if(row.length>=2)
-			if(auto left = asListBlock(row.subCells.front))
-			if(auto right = asTokenString(row.subCells.back))
 			{
-				const op = row.chars[1..$-1].text; 
 				{
-					/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
-					if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinGeneratorOp, op))
+					/+Todo: make an additional processNiceExpression_statement() funct.+/
+					const lastCh = statementRow.chars.back; 
+					if(lastCh=='￼')
 					{
-						with(statementRow)
+						if(statementRow.subCells.map!structuredCellToChar.equal("mixin("))
 						{
-							clearSubCells; 
-							appendCell(new NiceExpression(statementRow, tIdx, left.content, right.content)); 
-							needMeasure; 
+							if(auto blk = asListBlock(statementRow.subCells.back))
+							if(blk.content.rows.length==1)
+							if(auto row = blk.content.rows[0])
+							if(row.length>=2)
+							if(auto left = asListBlock(row.subCells.front))
+							if(auto right = asTokenString(row.subCells.back))
+							{
+								const op = row.chars[1..$-1].text; 
+								{
+									/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
+									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinGeneratorOp, op))
+									{
+										with(statementRow)
+										{
+											clearSubCells; 
+											appendCell(new NiceExpression(statementRow, tIdx, left.content, right.content)); 
+											needMeasure; 
+										}
+										return; 
+									}
+								}
+							}
 						}
-						return; 
+					}
+					else if(lastCh>=lowestSpecialUnicodeChar)
+					{
+						const op = statementRow.chars.text; 
+						{
+							/+Note: specialStatementOp: op  //last char is special unicode+/
+							if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.specialStatementOp, op))
+							{
+								with(statementRow)
+								{
+									clearSubCells; 
+									appendCell(new NiceExpression(statementRow, tIdx)); 
+									needMeasure; 
+								}
+								return; 
+							}
+						}
 					}
 				}
 			}
@@ -9844,7 +9888,7 @@ version(/+$DIDE_REGION+/all)
 		
 		this(
 			Container parent, int templateIdx_, 
-			CodeColumn col0, CodeColumn col1 = null, CodeColumn col2 = null
+			CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
 		)
 		{
 			super(parent); 
@@ -9852,7 +9896,7 @@ version(/+$DIDE_REGION+/all)
 			templateIdx = templateIdx_; 
 			enforce(validTemplate, "Invalid NiceExpressionTemplate idx."); 
 			
-			lineIdx = col0.getLineIdxOfFirstGlyphOrNode_notRecursive; 
+			if(col0) lineIdx = col0.getLineIdxOfFirstGlyphOrNode_notRecursive; 
 			
 			static foreach(i; 0..operands.length)
 			{
@@ -9862,6 +9906,19 @@ version(/+$DIDE_REGION+/all)
 					operands[i].setParent(this); 
 				}
 			}
+			
+			void initInspector()
+			{
+				ulong id; 
+				if(auto m = moduleOf(this))
+				{
+					auto s = operands[1].extractThisLevelDString.text.strip; 
+					ulong a; 
+					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
+					else	a = a.to!ulong.ifThrown(0); 
+					id = m.addInspector(this, (cast(uint)(a>>32))); 
+				}
+			} 
 			
 			{
 				sw: switch(templateIdx)
@@ -9893,6 +9950,31 @@ version(/+$DIDE_REGION+/all)
 					lineRel(2, 5); 
 					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
 					lineRel(operands[0].outerWidth-2, 0); 
+				} 
+				
+				void drawInspector()
+				{
+					static if(0)
+					{
+						ulong id; 
+						if(auto m = moduleOf(this))
+						{ id = m.getInspectorId(this); }
+						dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+					}
+					
+					
+					{
+						//highlight changed debugvalues
+						const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
+						if(du<1)
+						{
+							const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
+							dr.alpha = sqr(1-du); dr.color = mix(clYellow, clWhite, 1-dc); 
+							dr.lineWidth = -4; 
+							dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
+							dr.alpha = 1; 
+						}
+					}
 				} 
 				
 				{
@@ -10176,18 +10258,6 @@ version(/+$DIDE_REGION+/all)
 					
 					op(0); putNL; put(prefix); op(1); put(postfix); 
 				} 
-				
-				void arrangeMixinGenerator(bool isMultiLine)
-				{
-					if(isMultiLine) flags.hAlign = HAlign.right; 
-					style.bkColor = bkColor = structuredColor("static if"); 
-					op(0); if(isMultiLine) putNL; 
-					put(" mixin "); op(1); 
-					
-					super.rearrange; 
-					
-					subCells[0].outerPos.x = 0; 
-				} 
 				
 				void arrangeSigmaOp(dchar symbol)
 				{
@@ -10376,6 +10446,72 @@ version(/+$DIDE_REGION+/all)
 					{ operands[0].bkColor = mix(style.fontColor, bkColor, .33f); }
 				} 
 				
+				void arrangeMixinGenerator(bool isMultiLine)
+				{
+					if(isMultiLine) flags.hAlign = HAlign.right; 
+					style.bkColor = bkColor = structuredColor("static if"); 
+					op(0); if(isMultiLine) putNL; 
+					put(" mixin "); op(1); 
+					
+					super.rearrange; 
+					
+					subCells[0].outerPos.x = 0; 
+				} 
+				
+				void arrangeInspector()
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{ id = m.getInspectorId(this); }
+					
+					op(0); 
+					
+					bkColor = border.color = clBlack; 
+					with(style) {
+						fontColor 	= clWhite,
+						bkColor 	= clBlack,
+						fontHeight 	= DefaultSubScriptFontHeight,
+						bold 	= false; 
+					}
+					
+					
+					const hasNewLine = operator.endsWith(' '); 
+					
+					if(debugValue!="")
+					{
+						if(hasNewLine) putNL; else put(' '); 
+						
+						enum DideCodePrefix = "$"~"DIDE_CODE "; 
+						if(debugValue.startsWith(DideCodePrefix))
+						{
+							//Note: Insert dlang managed code. It's full size.
+							const src = debugValue[DideCodePrefix.length .. $]; 
+							auto col = new CodeColumn(this, src, (mixin(舉!((TextFormat),q{managed_optionalBlock}))), lineIdx)
+							; 
+							
+							operands[1] = col; op(1); 
+						}
+						else
+						{
+							//just insert plain text fast
+							auto 	cells 	= (mixin(求map(q{line},q{
+								debugValue
+								.splitLines
+							},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
+								col 	= new CodeColumn(this, cells); 
+							with(col) {
+								halfSize = true; 
+								margin.set(0); 
+								border = Border.init; 
+								padding.set(0, 2); 
+								bkColor = clBlack; 
+							}(mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); 
+							
+							operands[1] = col; op(1); 
+						}
+					}
+				} 
+				
 				version(/+$DIDE_REGION Call the plugin function, finalize+/all)
 				{
 					{
@@ -10423,13 +10559,6 @@ version(/+$DIDE_REGION+/all)
 					put("mixin("~operator~"("); 
 					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
 					put("))"); 
-				} 
-				
-				void buildMixinGenerator()
-				{
-					put("mixin"); put('('); 
-						op(0); put(operator); put("q{", operands[1], "}"); 
-					put(')'); 
 				} 
 				
 				void buildMixinTable()
@@ -10622,6 +10751,29 @@ version(/+$DIDE_REGION+/all)
 					}
 				} 
 				
+				void buildMixinGenerator()
+				{
+					put("mixin"); put('('); 
+						op(0); put(operator); put("q{", operands[1], "}"); 
+					put(')'); 
+				} 
+				
+				void buildInspector()
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{
+						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
+						else	id = m.getInspectorId(this); 
+					}
+					op(0); put(operator); put("(0x"~id.to!string(16)~")"); 
+				} 
+				
+				
+				
+				//------------------------------------------------------------------------
+				
+				
 				const brackets = getTemplate.type.hasListBrackets; 
 				if(brackets) put("("); 
 				{
