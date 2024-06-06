@@ -173,6 +173,52 @@ version(/+$DIDE_REGION+/all)
 		
 	} 
 	
+}version(/+$DIDE_REGION InspectorParticleEffect+/all)
+{
+	struct InspectorParticle
+	{
+		vec2 center, size; 
+		float life=0; 
+		void updateAndDraw(Drawing dr)
+		{
+			enum scale = 10; 
+			if(life>=.05f)
+			{
+				life *= .91f; 
+				const sqLife = ((life)^^(2)); 
+				
+				auto b = bounds2(((center).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
+				
+				dr.lineWidth = -1-sqLife*10; 
+				dr.alpha = 1 - sqLife; 
+				dr.color = mix(clWhite, clAqua, life); 
+				dr.drawRect(b); 
+				dr.alpha = 1; 
+			}
+		} 
+		
+		void setup(NiceExpression ne)
+		{
+			if(ne) {
+				life = 1; 
+				auto b = ne.worldOuterBounds; 
+				center = b.center; 
+				size = b.size; 
+			}
+		} 
+	} 
+	
+	__gshared {
+		InspectorParticle[1024] inspectorParticles; 
+		size_t inspectorParticleIdx = 0; 
+	} 
+	
+	void addInspectorParticle(NiceExpression ne)
+	{
+		inspectorParticleIdx++; 
+		if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
+		inspectorParticles[inspectorParticleIdx].setup(ne); 
+	} 
 }version(/+$DIDE_REGION Probes+/all)
 {
 	//Probes /////////////////////////////////////
@@ -9467,7 +9513,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3DCA77B6B4BCC))},
+			q{((expr).檢(0x3E0C57B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },

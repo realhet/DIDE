@@ -486,6 +486,7 @@ version(/+$DIDE_REGION main+/all)
 								if(auto ne = cast(NiceExpression)node)
 								{
 									ne.updateDebugValue(value); 
+									addInspectorParticle(ne); 
 									return; 
 								}
 							}
@@ -6444,6 +6445,8 @@ version(/+$DIDE_REGION main+/all)
 			
 			.drawProbes(dr); globalVisibleProbes.clear; 
 			
+			(mixin(求each(q{ref p},q{inspectorParticles},q{p.updateAndDraw(dr)}))); 
+			
 			drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
 			
 			void drawProgressBalls()
@@ -6512,8 +6515,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2EB2035B2D627)) ((expr).檢 (0))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EB7E35B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2EB9835B2D627)) ((expr).檢 (0))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EBF635B2D627)); }],
 				]))
 			}
 		},
