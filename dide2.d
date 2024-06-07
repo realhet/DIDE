@@ -1,8 +1,8 @@
 //@exe
 //@compile --d-version=stringId,AnimatedCursors
 
-//@release
 //@debug
+///@release
 
 
 version(/+$DIDE_REGION main+/all)
@@ -1882,8 +1882,29 @@ version(/+$DIDE_REGION main+/all)
 					{
 						//Todo: use CodeColumn here!
 						auto tempModule = new Module(null, msg.sourceText, StructureLevel.structured); 
-						tempModule.measure; 
-						messageUICache[src] = tempModule.content.rows.get(0); 
+						try
+						{
+							auto msgCol = new CodeColumn(null, msg.sourceText, TextFormat.managed_block); 
+							auto msgRow = msgCol.rows.frontOrNull.enforce("Can't get builMsgRow."); 
+							msgRow.measure; 
+							messageUICache[src] = msgRow; 
+							
+							
+							version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
+							{
+								auto srs = codeLocationToSearchResults(msg.location); 
+								CodeNode[] getNodePath(Container.SearchResult sr)
+								{
+									return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a)))).filter!"a"
+										.array.retro.array; 
+								} 
+								auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
+								if(auto rootNode = rootPath.backOrNull)
+								{ rootNode.insertBuildMessage(msgRow); }
+							}
+						}
+						catch(Exception e)
+						{ ERR("Cand build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
 					}
 					errorModule.content.subCells ~= messageUICache[src]; 
 					with(errorModule.content.subCells.back)
@@ -6515,8 +6536,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2EB9835B2D627)) ((expr).檢 (0))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EBF635B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2EEFE35B2D627)) ((expr).檢 (0x2EF1C35B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EF6A35B2D627)); }],
 				]))
 			}
 		},

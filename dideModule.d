@@ -197,14 +197,12 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		void setup(NiceExpression ne)
+		void setup(CodeNode node)
 		{
-			if(ne) {
-				life = 1; 
-				auto b = ne.worldOuterBounds; 
-				center = b.center; 
-				size = b.size; 
-			}
+			life = 1; 
+			auto b = node.worldOuterBounds; 
+			center = b.center; 
+			size = b.size; 
 		} 
 	} 
 	
@@ -213,12 +211,14 @@ version(/+$DIDE_REGION+/all)
 		size_t inspectorParticleIdx = 0; 
 	} 
 	
-	void addInspectorParticle(NiceExpression ne)
+	void addInspectorParticle(CodeNode node)
 	{
 		inspectorParticleIdx++; 
 		if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-		inspectorParticles[inspectorParticleIdx].setup(ne); 
+		inspectorParticles[inspectorParticleIdx].setup(node); 
 	} 
+	
+	//Todo: this animated highlight effect is useful for other stuff than just inspectors.
 }version(/+$DIDE_REGION Probes+/all)
 {
 	//Probes /////////////////////////////////////
@@ -4867,7 +4867,7 @@ version(/+$DIDE_REGION+/all)
 	int lineIdx; 
 	NodeStyle nodeStyle; 
 	bool 	alwaysOnBottom, 
-		nodeRearrangeWasCalled/+
+		rearrangeNodeWasCalled/+
 		This can used to track if rearrange was called or not.
 		NiceExpression uses it.
 	+/,
@@ -4875,6 +4875,7 @@ version(/+$DIDE_REGION+/all)
 		Used with MixinTables. 
 		The tokenstring should have normal background, not string-like background.
 	+/; 
+	
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
@@ -5017,34 +5018,24 @@ version(/+$DIDE_REGION+/all)
 		return res; 
 	} 
 	
-	override void rearrange()
+	final void rearrangeRow()
+	{ super.rearrange; } 
+	
+	final void rearrangeNode()
 	{
 		innerSize = vec2(0); 
 		flags.autoWidth = true; 
 		flags.autoHeight = true; 
 		
 		super.rearrange; 
+		
 		static if(rearrangeLOG) LOG("rearranging", this); 
 		
-		enum enableStretchGlyphs = true; 
-		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
-		{
-			foreach(i, c; subCells)
-			if(auto col = (cast(CodeColumn)(c)))
-			{
-				//to the left
-				if(auto g = (cast(Glyph)(subCells.get(i-1))))
-				if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
-				g.stretch(col.outerTop, col.outerBottom); 
-				//to the right
-				if(auto g = (cast(Glyph)(subCells.get(i+1))))
-				if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
-				g.stretch(col.outerTop, col.outerBottom); 
-			}
-		}
-		
-		nodeRearrangeWasCalled = true; //signal rearrange() completion
+		rearrangeNodeWasCalled = true; //signal rearrangeNode() completion
 	} 
+	
+	override void rearrange()
+	{ rearrangeNode; } 
 	
 	override void draw(Drawing dr)
 	{
@@ -5080,14 +5071,13 @@ version(/+$DIDE_REGION+/all)
 	void fillSyntax(SyntaxKind sk)
 	{
 		static TextStyle ts; ts.applySyntax(sk); 
-		subCells.map!(a => cast(Glyph) a).filter!"a".each!(
-			(g){
-				g.bkColor = ts.bkColor; 
-				g.fontColor = ts.fontColor; 
-				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
-				g.syntax = cast(ubyte) sk; 
-			}  
-		); 
+		subCells.map!(a => cast(Glyph) a).filter!"a".each
+			!((g){
+			g.bkColor = ts.bkColor; 
+			g.fontColor = ts.fontColor; 
+			g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
+			g.syntax = cast(ubyte) sk; 
+		}); 
 		bkColor = ts.bkColor; 
 	} 
 	
@@ -5117,6 +5107,24 @@ version(/+$DIDE_REGION+/all)
 		row.measure; //this will rebuild subCells
 		row.refreshTabIdx; 
 		row.spreadElasticNeedMeasure; 
+	} 
+	
+	CodeColumn buildMessages; 
+	
+	void insertBuildMessage(CodeRow msgRow)
+	{
+		/+Todo: This does nothing →+/addInspectorParticle(this); 
+		enforce(msgRow); 
+		
+		bkColor = border.color = clRed; 
+		
+		if(!buildMessages)
+		buildMessages = new CodeColumn(this); 
+		
+		buildMessages.subCells ~= msgRow; 
+		msgRow.setParent(buildMessages); 
+		
+		buildMessages.needMeasure; 
 	} 
 } class CodeContainer : CodeNode
 {
@@ -5166,14 +5174,9 @@ version(/+$DIDE_REGION+/all)
 		return res; 
 	} 
 	
-	
-	protected final void rearrange_node()
-	{ super.rearrange; } 
-	
-	
 	override void rearrange()
 	{
-		with(nodeBuilder(syntax, ((prefix.among("[", "(", "{"))?(NodeStyle.dim) :(NodeStyle.normal))))
+		with(nodeBuilder(syntax, ((prefix.among("[", "(", "{")) ?(NodeStyle.dim):(NodeStyle.normal))))
 		{
 			content.bkColor = darkColor; 
 			if(singleBkColor) bkColor = darkColor; //Minimalistic table look
@@ -5182,10 +5185,27 @@ version(/+$DIDE_REGION+/all)
 			put(content); 
 			if(!noBorder) put(postfix); 
 			
-			rearrange_node; 
-			
 			//Todo: //slashComment must ensure that after it there is a newLine
 		}
+		
+		enum enableStretchGlyphs = true; 
+		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
+		{
+			foreach(i, c; subCells)
+			if(auto col = (cast(CodeColumn)(c)))
+			{
+				//to the left
+				if(auto g = (cast(Glyph)(subCells.get(i-1))))
+				if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+				//to the right
+				if(auto g = (cast(Glyph)(subCells.get(i+1))))
+				if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+			}
+		}
+		
+		super.rearrange; 
 	} 
 	
 	void applyNoBorder()
@@ -5635,7 +5655,7 @@ version(/+$DIDE_REGION+/all)
 						put(img); 
 					}
 					
-					rearrange_node; 
+					rearrangeNode; 
 				}
 					return; 
 				case "LOC": 
@@ -5655,7 +5675,7 @@ version(/+$DIDE_REGION+/all)
 					style.bold = true; put(loc.file.nameWithoutExt); style.bold = false; 
 					put(loc.file.ext); 
 					put(loc.mixinText ~ loc.lineColText); 
-					rearrange_node; 
+					rearrangeNode; 
 				}
 					return; 
 				case "MSG": 
@@ -5670,7 +5690,7 @@ version(/+$DIDE_REGION+/all)
 						//img = new Img(File(`icon:\`~loc.file.ext), style.bkColor);
 						//img.height = style.fontHeight;
 						put(content.sourceText); 
-						rearrange_node; 
+						rearrangeNode; 
 					}
 				}
 					return; 
@@ -5679,15 +5699,13 @@ version(/+$DIDE_REGION+/all)
 			}
 		}
 		
-		if(isCustom)
-		rearrangeCustom; 
-		else
-		super.rearrange; 
+		if(isCustom)	rearrangeCustomComment; 
+		else	super.rearrange; 
 		
 		verify!true; 
 	} 
 	
-	private void rearrangeCustom()
+	protected void rearrangeCustomComment()
 	{
 		with(nodeBuilder(syntax, isDirective ? NodeStyle.bright : NodeStyle.dim))
 		{
@@ -5713,7 +5731,7 @@ version(/+$DIDE_REGION+/all)
 				put(postfix); 
 			}
 			
-			rearrange_node; 
+			rearrangeNode; 
 		}
 	} 
 	
@@ -9513,11 +9531,11 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E0C57B6B4BCC))},
+			q{((expr).檢(0x3E2B87B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
-			q{arrangeInspector; },
+			q{arrangeInspector(No.isHalfSize); },
 			q{drawInspector; },
 			initCode: q{initInspector; }
 		},
@@ -9527,11 +9545,11 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3DDA67B6B4BCC))},
+			q{((expr).檢 (0x3E3C67B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
-			q{arrangeInspector; },
+			q{arrangeInspector(No.isHalfSize); },
 			q{drawInspector; },
 			initCode: q{initInspector; }
 		},
@@ -10174,8 +10192,7 @@ version(/+$DIDE_REGION+/all)
 		override void rearrange()
 		{
 			const inverseMode = getTemplate.invertMode; 
-			nodeRearrangeWasCalled = false; //This will track super.rearrange() calls.
-			
+			rearrangeNodeWasCalled = false; //this flag will be set inside CodeNode.rearrange()
 			with(nodeBuilder(syntax, inverseMode))
 			{
 				version(/+$DIDE_REGION initialize stuff+/all)
@@ -10504,7 +10521,7 @@ version(/+$DIDE_REGION+/all)
 					subCells[0].outerPos.x = 0; 
 				} 
 				
-				void arrangeInspector()
+				void arrangeInspector(Flag!"isHalfSize" isHalfSize)
 				{
 					ulong id; 
 					if(auto m = moduleOf(this))
@@ -10516,7 +10533,7 @@ version(/+$DIDE_REGION+/all)
 					with(style) {
 						fontColor 	= clWhite,
 						bkColor 	= clBlack,
-						fontHeight 	= DefaultSubScriptFontHeight,
+						fontHeight 	= ((isHalfSize)?(DefaultSubScriptFontHeight) :(DefaultFontHeight)),
 						bold 	= false; 
 					}
 					
@@ -10545,13 +10562,16 @@ version(/+$DIDE_REGION+/all)
 								.splitLines
 							},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
 								col 	= new CodeColumn(this, cells); 
+							
 							with(col) {
-								halfSize = true; 
 								margin.set(0); 
 								border = Border.init; 
 								padding.set(0, 2); 
 								bkColor = clBlack; 
-							}(mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); 
+							}
+							
+							if(isHalfSize)
+							{ col.halfSize = true; (mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); }
 							
 							operands[1] = col; op(1); 
 						}
@@ -10568,7 +10588,7 @@ version(/+$DIDE_REGION+/all)
 						}
 					}
 					
-					if(!nodeRearrangeWasCalled)
+					if(!rearrangeNodeWasCalled)
 					{
 						//If super.rearrange() is not called in the plugins, this will call now.
 						super.rearrange; 
