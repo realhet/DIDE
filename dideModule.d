@@ -2133,8 +2133,11 @@ class CodeRow: Row
 	size_t length() const
 	{ return subCells.length; } 
 	
-	Cell singleCellOrNull()
+	auto singleCellOrNull()
 	{ return subCells.length==1 ? subCells[0] : null; } 
+	
+	auto singleNodeOrNull()
+	{ return (cast(CodeNode)(singleCellOrNull)); } 
 	
 	auto byCell()
 	{ return subCells.map!"a"; } 
@@ -5108,24 +5111,47 @@ version(/+$DIDE_REGION+/all)
 		row.refreshTabIdx; 
 		row.spreadElasticNeedMeasure; 
 	} 
-	
-	CodeColumn buildMessages; 
 	
-	void insertBuildMessage(CodeRow msgRow)
+	version(/+$DIDE_REGION BuildMessage handling+/all)
 	{
-		/+Todo: This does nothing →+/addInspectorParticle(this); 
-		enforce(msgRow); 
+		final bool canAcceptBuildMessages()
+		{ return !!accessBuildMessageColumn; } 
 		
-		bkColor = border.color = clRed; 
+		CodeColumn* accessBuildMessageColumn()
+		{ return null; } 
 		
-		if(!buildMessages)
-		buildMessages = new CodeColumn(this); 
+		protected void rearrange_appendBuildMessages()
+		{
+			if(auto col = *accessBuildMessageColumn)
+			{
+				col.measure; 
+				const siz = col.outerSize; 
+				
+				const oldSize = innerSize; 
+				innerSize = vec2(max(oldSize.x, siz.x), oldSize.y + siz.y); 
+				
+				subCells ~= col; 
+				col.outerPos = vec2(0, oldSize.y); 
+			}
+		} 
 		
-		buildMessages.subCells ~= msgRow; 
-		msgRow.setParent(buildMessages); 
-		
-		buildMessages.needMeasure; 
-	} 
+		void addBuildMessage(string src, CodeNode msgNode)
+		{
+			enforce(canAcceptBuildMessages, typeid(this).name ~ " Can't accept BuildMessages."); 
+			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
+			
+			
+			if(!msgNode) return; 
+			/+Todo: This does nothing →+/addInspectorParticle(this); 
+			
+			bkColor = border.color = clRed; 
+			
+			if(!*col) *col = new CodeColumn(this); 
+			(*col).appendCell(new CodeRow(*col, [msgNode])); 
+		} 
+	}
+	
+	
 } class CodeContainer : CodeNode
 {
 	//CodeContainer /////////////////////////////
@@ -5188,6 +5214,8 @@ version(/+$DIDE_REGION+/all)
 			//Todo: //slashComment must ensure that after it there is a newLine
 		}
 		
+		super.rearrange; 
+		
 		enum enableStretchGlyphs = true; 
 		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
 		{
@@ -5204,8 +5232,6 @@ version(/+$DIDE_REGION+/all)
 				g.stretch(col.outerTop, col.outerBottom); 
 			}
 		}
-		
-		super.rearrange; 
 	} 
 	
 	void applyNoBorder()
@@ -6106,7 +6132,16 @@ version(/+$DIDE_REGION+/all)
 			//Todo: periodically chenck if file is exists and other attributes in the IDE
 			//Note: This is just the file based input of the actual ReadOnly decision in isReadOnly().
 		} 
-		
+		
+		
+		
+		version(/+$DIDE_REGION BuildMessage handling+/all)
+		{
+			CodeColumn buildMessageColumn; 
+			
+			override CodeColumn* accessBuildMessageColumn()
+			{ return &buildMessageColumn; } 
+		}
 		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 		{
 			fileModified = file.modified; 
@@ -6253,6 +6288,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			detectModuleTypeFlags; 
 			super.rearrange; 
+			rearrange_appendBuildMessages; 
 		} 
 		
 		void save()
@@ -7369,6 +7405,8 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		super.rearrange; 
+		
+		(mixin(求each(q{a},q{allJoinedPrepositionsFromThis},q{a.rearrange_appendBuildMessages}))); 
 	} 
 	
 	override void buildSourceText(ref SourceTextBuilder builder)
@@ -7453,6 +7491,14 @@ version(/+$DIDE_REGION+/all)
 		The statements can be aligned with the TAB.
 		But the expressions can't.
 	+/
+	
+	version(/+$DIDE_REGION BuildMessage handling+/all)
+	{
+		CodeColumn buildMessages; 
+		
+		override CodeColumn* accessBuildMessageColumn()
+		{ return &buildMessages; } 
+	}
 } version(/+$DIDE_REGION parsing helper fun+/all)
 {
 	//parsing helper fun ////////////////////////////////////////////////
@@ -9531,7 +9577,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E2B87B6B4BCC))},
+			q{((expr).檢(0x3E7B97B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9545,7 +9591,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3E3C67B6B4BCC))},
+			q{((expr).檢 (0x3E8C77B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },

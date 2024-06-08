@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 
 version(/+$DIDE_REGION main+/all)
@@ -1804,7 +1804,7 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		
-		CodeRow[string] messageUICache;  //why a row??????
+		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
 		
 		struct MessageConnectionArrow
@@ -1889,25 +1889,38 @@ version(/+$DIDE_REGION main+/all)
 							msgRow.measure; 
 							messageUICache[src] = msgRow; 
 							
-							
-							version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
+							version(none)
 							{
-								auto srs = codeLocationToSearchResults(msg.location); 
-								CodeNode[] getNodePath(Container.SearchResult sr)
+								version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
 								{
-									return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a)))).filter!"a"
-										.array.retro.array; 
-								} 
-								auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
-								if(auto rootNode = rootPath.backOrNull)
-								{ rootNode.insertBuildMessage(msgRow); }
+									{
+										auto msgNode = msgRow.singleNodeOrNull.enforce("Unable to get single buildMessageNode."); 
+										auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
+										CodeNode[] getNodePath(Container.SearchResult sr)
+										{
+											return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
+												.filter!((a)=>(a && a.canAcceptBuildMessages))
+												.array.retro.array; 
+										} 
+										auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
+										
+										if(auto rootNode = rootPath.backOrNull)
+										{
+											rootNode.addBuildMessage(src, msgNode); 
+											/+Todo: only add once, not always!+/
+										}
+									}
+								}
 							}
 						}
 						catch(Exception e)
 						{ ERR("Cand build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
 					}
-					errorModule.content.subCells ~= messageUICache[src]; 
-					with(errorModule.content.subCells.back)
+					
+					auto msgRow = messageUICache[src]; 
+					errorModule.content.subCells ~= msgRow; 
+					
+					with(msgRow)
 					{
 						setParent(errorModule.content); 
 						outerPos = vec2(0, y); 
@@ -6109,12 +6122,9 @@ version(/+$DIDE_REGION main+/all)
 		
 		void drawMessageConnectionArrows(Drawing dr)
 		{
-			dr.lineWidth = -1; 
-			dr.lineStyle = LineStyle.dash; 
-			messageConnectionArrows.keys.each!((a){
-				dr.color = a.color; 
-				dr.line(a.p1, a.p2); 
-			}); 
+			dr.lineWidth = -4; 
+			dr.lineStyle = LineStyle.dot; 
+			(mixin(求each(q{a},q{messageConnectionArrows.keys},q{dr.color = a.color; dr.line(a.p1, a.p2); }))); 
 			dr.lineStyle = LineStyle.normal; 
 		} 
 		
@@ -6536,8 +6546,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2EEFE35B2D627)) ((expr).檢 (0x2EF1C35B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2EF6A35B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2F04335B2D627)) ((expr).檢 (0x2F06135B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0AF35B2D627)); }],
 				]))
 			}
 		},
