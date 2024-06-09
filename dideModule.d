@@ -5032,6 +5032,25 @@ version(/+$DIDE_REGION+/all)
 		
 		super.rearrange; 
 		
+		//Todo: this glyph stretcher should be more specific to a few classes
+		enum enableStretchGlyphs = true; 
+		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
+		{
+			foreach(i, c; subCells)
+			if(auto col = (cast(CodeColumn)(c)))
+			{
+				//to the left
+				if(auto g = (cast(Glyph)(subCells.get(i-1))))
+				if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+				//to the right
+				if(auto g = (cast(Glyph)(subCells.get(i+1))))
+				if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
+				g.stretch(col.outerTop, col.outerBottom); 
+			}
+		}
+		
+		
 		static if(rearrangeLOG) LOG("rearranging", this); 
 		
 		rearrangeNodeWasCalled = true; //signal rearrangeNode() completion
@@ -5111,7 +5130,7 @@ version(/+$DIDE_REGION+/all)
 		row.refreshTabIdx; 
 		row.spreadElasticNeedMeasure; 
 	} 
-	
+	
 	version(/+$DIDE_REGION BuildMessage handling+/all)
 	{
 		final bool canAcceptBuildMessages()
@@ -5215,23 +5234,6 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		super.rearrange; 
-		
-		enum enableStretchGlyphs = true; 
-		if(enableStretchGlyphs && nodeStyle==NodeStyle.dim)
-		{
-			foreach(i, c; subCells)
-			if(auto col = (cast(CodeColumn)(c)))
-			{
-				//to the left
-				if(auto g = (cast(Glyph)(subCells.get(i-1))))
-				if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
-				g.stretch(col.outerTop, col.outerBottom); 
-				//to the right
-				if(auto g = (cast(Glyph)(subCells.get(i+1))))
-				if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
-				g.stretch(col.outerTop, col.outerBottom); 
-			}
-		}
 	} 
 	
 	void applyNoBorder()
@@ -9577,7 +9579,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E7B97B6B4BCC))},
+			q{((expr).檢(0x3E8077B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9591,7 +9593,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3E8C77B6B4BCC))},
+			q{((expr).檢 (0x3E9157B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
