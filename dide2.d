@@ -6521,7 +6521,7 @@ class ToolPalette : Column
 						'S' q{S}
 					}],
 					[q{"math letters"},q{
-						π ℯ ℂ α β γ µ
+						π ℯ ℂ α β γ µ σ
 						Δ δ ϕ ϑ ε
 					}],
 					[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
@@ -6546,8 +6546,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2F04335B2D627)) ((expr).檢 (0x2F06135B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0AF35B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2F04635B2D627)) ((expr).檢 (0x2F06435B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0B235B2D627)); }],
 				]))
 			}
 		},

@@ -7009,6 +7009,8 @@ version(/+$DIDE_REGION+/all)
 		decodeSpecial; 
 		verify; 
 		
+		//Todo: Enum statement can't detect niceexpressions.
+		
 		//RECURSIVE!!!
 		if(isBlock)
 		{
@@ -9579,7 +9581,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E8077B6B4BCC))},
+			q{((expr).檢(0x3E8437B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9593,7 +9595,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3E9157B6B4BCC))},
+			q{((expr).檢 (0x3E9517B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
