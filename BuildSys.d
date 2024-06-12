@@ -526,9 +526,12 @@ end of file}";
 			if(
 				runningCnt==0 || (
 					(now-lastLaunchTime).value(second)>0.1f 
-					&& runningCnt<5/+GetNumberOfCores-1+/
-					&& GetCPULoadPercent<85 
-					&& GetMemAvailMB>1024
+					&& runningCnt<(GetNumberOfCores) /+
+						ram: 	12GB 	5 cores, 128.2s
+							24GB 	8 cores, 107.6s  19% speedup
+					+/
+					&& GetCPULoadPercent<90 
+					&& GetMemAvailMB>2048
 				)
 			)
 			{
