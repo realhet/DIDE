@@ -16,6 +16,7 @@ version(/+$DIDE_REGION+/all) {
 	+/
 	//Todo: editor: ha typo-t ejtek, es egy nekifutasra irtam be a szot, akkor magatol korrigaljon!
 	//Todo: Ha vmelyik modulnal error van, az osszes olyan modul forditasat allitsa le, amelyik fugg attol!
+	//Todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
 	
 	/*
 		[ ] irja ki, hogy mi van a cache-ban.
@@ -44,191 +45,7 @@ version(/+$DIDE_REGION+/all) {
 	/+The targeted LDC version by this builder.  Valid versions: 120, 128+/; 
 	
 	
-	version(/+$DIDE_REGION+/none) {
-		auto predecodeLdcOutput(string input)
-		{
-			//LDC2 must be called with --vcolumns --verrors-context    And all filenames must be ABSOLUTE!
-			//first detect long messages:
-			//file.d*(*,*):*  //message geader
-			//... optional multiline contents
-			//context code line
-			//^ context position indicator
-			
-			static bool isMessageLine(string line)
-			{ return line.isWild(`?:\*.d*(*): *`)==true; } 
-			static bool isContextPositionLine(string line)
-			{ return line.endsWith('^') && line[0..$-1].map!"a==' '".all; } 
-			
-			static struct PredecodedLdcOutput
-			{
-				string[][] messages; 
-				string[] pragmas; 
-				
-				void dump()
-				{
-					
-					void box(string capt, string[] m)
-					{
-						print("\u250C\u2500"~capt~"\u2500".replicate(30)); 
-						(mixin(求each(q{a},q{m},q{print("\u2502"~a)}))); 
-						print("\u2514"~"\u2500".replicate(5)); 
-					} 
-					
-					box("PRAGMAS", pragmas); 
-					(mixin(求each(q{m},q{messages},q{box("MESSAGE", m)}))); 
-				} 
-			} 
-			
-			PredecodedLdcOutput res; 
-			
-			auto lines = input.splitLines; 
-			
-			if(lines.length && lines[$-1]=="")
-			lines = lines[0..$-1]; //last line is always empty. Just remove it.
-			
-			int lastMessageIdx = -1; 
-			string[] stack; //contains possible pragma messages
-			
-			void fetchLastMessage(int markerIdx = -1)
-			{
-				if(lastMessageIdx>=0)
-				{
-					
-					if(markerIdx<0)
-					res.pragmas ~= stack; 
-					
-					auto r = lines[lastMessageIdx..(markerIdx>=0 ? markerIdx : lastMessageIdx)+1]; 
-					res.messages ~= r[0..$-(markerIdx>=0?2:0)]; 
-					lastMessageIdx = -1; 
-					
-				}else
-				{ res.pragmas ~= stack; }
-				
-				stack = []; 
-			} 
-			
-			foreach(i; 0..lines.length.to!int)
-			{
-				if(isMessageLine(lines[i]))
-				{
-					fetchLastMessage; 
-					lastMessageIdx = i; 
-				}
-				else if(
-					isContextPositionLine(lines[i]) &&
-					i>0 && lines[i-1].length>=lines[i].length && //previous line is sameSize or longer?
-					lastMessageIdx>=0 && i-lastMessageIdx>=2 && //is there 3 lines from the last message?
-					lines[i].countUntil('^')==(lines[lastMessageIdx].isWild("*(*,*)*") ? wild.ints(2, -1)-1 : -1)
-					/+spaces before marker and column in message are correct?+/
-				)
-				{ fetchLastMessage(i); }
-				else
-				stack ~= lines[i]; 
-			}
-			fetchLastMessage; 
-			
-			return res; 
-		} 
-		
-		void test_predecodeLdcOutput()
-		{
-			
-			immutable testProgram = q{
-				deprecated("cause") void depr1()
-				{ print("a"); } 
-				
-				void depr2()
-				{
-					depr1; depr1; 
-					depr1; 
-				} 
-				
-				void depr3()
-				{
-					depr2; 
-					depr1; 
-				} 
-				
-				void main()
-				{
-					pragma(msg, "this is just a pragma"); 
-					iota(5).map!"b+5".print; 
-					mixin(`"iota(5).map!"b+5".print;"`); 
-					pragma(msg, "this is just a pragma\nwith multiple lines"); 
-					iota(5).countUntil!((a, b)=>c>d)(5); 
-					pragma(msg, "also a pragma"); 
-					depr3; 
-					pragma(msg, "fake markes here"); 
-					pragma(msg, "       ^"); 
-					pragma(msg, "end of file"); 
-				} 
-			}; 
-			
-			//C:\D>ldc2 --vcolumns --verrors-context -Ic:\d\libs testMixinError.d
-			immutable inputText = 
-			q"{the first pragma
-c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-    body
-    ^
-c:\d\libs\quantities\internal\dimensions.d(136,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-    body
-    ^
-c:\d\testMixinError.d(10,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-  depr1; depr1;
-  ^
-c:\d\testMixinError.d(10,10): Deprecation: function `testMixinError.depr1` is deprecated - cause
-  depr1; depr1;
-         ^
-c:\d\testMixinError.d(11,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-  depr1;
-  ^
-c:\d\testMixinError.d(16,3): Deprecation: function `testMixinError.depr1` is deprecated - cause
-  depr1;
-  ^
-this is just a pragma
-c:\D\ldc2\bin\..\import\std\functional.d-mixin-124(124,1): Error: undefined identifier `b`
-c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(627,19): Error: template instance `std.functional.unaryFun!("b+5", "a").unaryFun!int` error instantiating
-        return fun(_input.front);
-                  ^
-c:\D\ldc2\bin\..\import\std\algorithm\iteration.d(524,16):        instantiated from here: `MapResult!(unaryFun, Result)`
-        return MapResult!(_fun, Range)(r);
-               ^
-c:\d\testMixinError.d(21,10):        instantiated from here: `map!(Result)`
-  iota(5).map!"b+5".print;
-         ^
-c:\d\testMixinError.d-mixin-22(22,15): Error: found `b` when expecting `;` following statement
-this is just a pragma
-with multiple lines
-c:\d\testMixinError.d(24,35): Error: template `std.algorithm.searching.countUntil` cannot deduce function from argument types `!((a, b) => c > d)(Result, int)`
-  iota(5).countUntil!((a, b)=>c>d)(5);
-                                  ^
-c:\D\ldc2\bin\..\import\std\algorithm\searching.d(770,11):        Candidates are: `countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)`
-  with `pred = __lambda1,
-       R = Result,
-       Rs = (int)`
-  must satisfy the following constraint:
-`       allSatisfy!(canTestStartsWith!(pred, R), Rs)`
-ptrdiff_t countUntil(alias pred = "a == b", R, Rs...)(R haystack, Rs needles)
-          ^
-c:\D\ldc2\bin\..\import\std\algorithm\searching.d(858,11):                        `countUntil(alias pred = "a == b", R, N)(R haystack, N needle)`
-  with `pred = __lambda1,
-       R = Result,
-       N = int`
-  must satisfy the following constraint:
-`       is(typeof(binaryFun!pred(haystack.front, needle)) : bool)`
-ptrdiff_t countUntil(alias pred = "a == b", R, N)(R haystack, N needle)
-          ^
-c:\D\ldc2\bin\..\import\std\algorithm\searching.d(917,11):                        `countUntil(alias pred, R)(R haystack)`
-ptrdiff_t countUntil(alias pred, R)(R haystack)
-          ^
-also a pragma 
-fake markes here
-       ^
-end of file}"; 
-			
-			inputText.predecodeLdcOutput.dump; 
-		} 
-	}
+	
 	
 	class GlobalPidList
 	{
@@ -682,22 +499,63 @@ Experimental:
 	
 	struct BuildSettings
 	{
-		 //Todo: mi a faszert irja ki allandoan az 1 betus roviditest mindenhez???
-		@("v|verbose     = Verbose output. Otherwise it will only display the errors.") bool verbose	; 
-		@("m|map         = Generate map file.",	   ) bool generateMap		; 
-		@("c|compileOnly = Compile and link only, do not run."	   ) bool	compileOnly	; 
-		@("e|leaveObj    = Leave behind .obj and .res files after compilation."	   ) bool leaveObjs	; 
-		@("r|rebuild     = Rebuilds everything. Clears all caches."	   ) bool rebuild	; 
-		@("I|include     = Add include path to search for .d files."	   ) string[]	importPaths	; 
-		@("o|compileOpt  = Pass extra compiler option."		) string[] compileArgs		; 
-		@("L|linkOpt     = Pass extra linker option."	   )	string[] linkArgs	; 
-		@("y|ldcLinkOpt     = Pass extra LDC linker option."	   )	string[] ldcLinkArgs	; 
-		@("k|kill        = Kill currently running executable before compile."	   ) bool killExe	; 
-		@("t|todo        = Collect //Todo: and //Opt: comments."	   ) bool collectTodos	; 
-		@("n|single      = Single step compilation."	   ) bool singleStepCompilation		; 
-		@("w|workPath    = Specify path for temp files. Default = Project's path."	   )	string workPath	; 
-		@("a|macroHelp   = Show info about the build-macros."	   ) bool macroHelp	; 
-		@("d|dideDbgEnv = DIDE can specify it's debug environment.") string dideDbgEnv; 
+		version(/+$DIDE_REGION+/none) {
+			@("v|verbose     = Verbose output. Otherwise it will only display the errors.") bool verbose	; 
+			@("m|map         = Generate map file.",	   ) bool generateMap		; 
+			@("c|compileOnly = Compile and link only, do not run."	   ) bool	compileOnly	; 
+			@("e|leaveObj    = Leave behind .obj and .res files after compilation."	   ) bool leaveObjs	; 
+			@("r|rebuild     = Rebuilds everything. Clears all caches."	   ) bool rebuild	; 
+			@("I|include     = Add include path to search for .d files."	   ) string[]	importPaths	; 
+			@("o|compileOpt  = Pass extra compiler option."		) string[] compileArgs		; 
+			@("L|linkOpt     = Pass extra linker option."	   )	string[] linkArgs	; 
+			@("y|ldcLinkOpt     = Pass extra LDC linker option."	   )	string[] ldcLinkArgs	; 
+			@("k|kill        = Kill currently running executable before compile."	   ) bool killExe	; 
+			@("t|todo        = Collect //Todo: and //Opt: comments."	   ) bool collectTodos	; 
+			@("n|single      = Single step compilation."	   ) bool singleStepCompilation		; 
+			@("w|workPath    = Specify path for temp files. Default = Project's path."	   )	string workPath	; 
+			@("a|macroHelp   = Show info about the build-macros."	   ) bool macroHelp	; 
+			@("d|dideDbgEnv = DIDE can specify it's debug environment.") string dideDbgEnv; 
+		}
+		
+		mixin((
+			(表([
+				[q{/+Note: type+/},q{/+Note: decl+/},q{/+Note: char+/},q{/+Note: name+/},q{/+Note: description+/}],
+				[q{bool},q{verbose},q{"v"},q{"verbose"},q{"Verbose output. Otherwise it will only display the errors."}],
+				[q{bool},q{generateMap},q{"m"},q{"map"},q{"Generate map file."}],
+				[q{bool},q{compileOnly},q{"c"},q{"compileOnly"},q{"Compile and link only, do not run."}],
+				[q{bool},q{leaveObjs},q{"e"},q{"leaveObj"},q{"Leave behind .obj and .res files after compilation."}],
+				[q{bool},q{rebuild},q{"r"},q{"rebuild"},q{"Rebuilds everything. Clears all caches."}],
+				[q{string[]},q{importPaths},q{"I"},q{"include"},q{"Add include path to search for .d files."}],
+				[q{string[]},q{compileArgs},q{"o"},q{"compileOpt"},q{"Pass extra compiler option."}],
+				[q{string[]},q{linkArgs},q{"L"},q{"linkOpt"},q{"Pass extra linker option."}],
+				[q{string[]},q{ldcLinkArgs},q{"y"},q{"ldcLinkOpt"},q{"Pass extra LDC linker option."}],
+				[q{bool},q{killExe},q{"k"},q{"kill"},q{"Kill currently running executable before compile."}],
+				[q{bool},q{collectTodos},q{"t"},q{"todo"},q{"Collect //Todo: and //Opt: comments."}],
+				[q{bool},q{singleStepCompilation},q{"n"},q{"single"},q{"Single step compilation."}],
+				[q{string},q{workPath},q{"w"},q{"workPath"},q{"Specify path for temp files. Default = Project's path."}],
+				[q{bool},q{macroHelp},q{"a"},q{"macroHelp"},q{"Show info about the build-macros."}],
+				[q{string},q{dideDbgEnv},q{"d"},q{"dideDbgEnv"},q{"DIDE can specify it's debug environment."}],
+			]))
+		) .GEN!q{
+			(mixin(求map(q{a},q{rows},q{
+				format!q{@("%s|%-14s= %s") %s %s; }
+				(a[2][1..$-1], a[3][1..$-1], a[4][1..$-1], a[0], a[1])
+			}))).join
+		}); 
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		//Todo: mi a faszert irja ki allandoan az 1 betus roviditest mindenhez???
+		
 		
 		/// This is needed because the main source header can override the string arrays
 		auto dup() const
@@ -735,7 +593,6 @@ Experimental:
 	{
 		static
 		{
-			 //MSVCEnv ///////////////////////////////
 			private
 			{
 				string[string] amd64, x86; 
@@ -2270,67 +2127,6 @@ version(/+$DIDE_REGION+/all) {
 		}
 		
 	} 
-	version(none)
-	{
-		//Note: keep this code to test the CodeTable feature.
-		struct OldBuildMessageInfo
-		{
-			SyntaxKind syntax; 
-			string caption; 
-		} 
-		
-		
-		/+
-			Todo: This is a perfect candidate for a table.
-			
-			colulmns:
-			$0 	Expr	
-			$1 	Expr	
-			$2 	CString 	
-			
-			table:
-			find	skBug	Bug
-			error	skTodo	Todo
-			warning	skOpt	Opt
-			deprecation	skWarning	Err
-			todo	skDeprecation	Warn
-			opt	skFoundAct	Depr
-			bug	skError	Find
-			
-			outputs:
-			/+
-				Code: enum BuildMessageType{ $0, ... }
-				static immutable BuildMessageInfo[] buildMessageInfo = [ {$1, $2}, ... ];
-			+/
-		+/
-		enum OldBuildMessageType
-		{
-			find,
-			error,
-			warning,
-			deprecation,
-			todo,
-			opt,
-			bug
-		} static immutable OldBuildMessageInfo[] oldBuildMessageInfo = 
-		[
-			{ skFoundAct, "Find"},
-			{ skError, "Err"},
-			{ skWarning, "Warn"},
-			{ skDeprecation, "Depr"},
-			{ skTodo, "Todo"},
-			{ skOpt, "Opt"},
-			{ skBug, "Bug"},
-		]; 
-	}
-	
-	version(/+$DIDE_REGION+/none) {
-		enum ModuleBuildState
-		{ notInProject, queued, compiling, aborted, hasErrors, hasWarnings, hasDeprecations, flawless} 
-		
-		auto moduleBuildStateColors = [clBlack, clWhite, clWhite, clGray, clRed, (RGB(128, 255, 0)), (RGB(64, 255, 0)), clLime]; 
-	}
-	
 	mixin((
 		(表([
 			[q{/+Note: ModuleBuildState+/},q{/+Note: Colors+/}],
@@ -2346,45 +2142,11 @@ version(/+$DIDE_REGION+/all) {
 	) .GEN!q{GEN_enumTable}); 
 	
 	
-	//Todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
+	
 	
 	
 	struct DMDMessage
 	{
-		/+
-			enum Type {        unknown, find,      error,     warning,      deprecation,     todo,      opt,      bug,  console} 
-			enum typePrefixes = ["",   "Find: ", "Error: ", "Warning: ", "Deprecation:	", "Todo: ", "Opt: ",  "Bug: ", "Console: "],
-			typeShortCaption = ["", "Find", "Err",  "Warn",			 "Depr",	     "Todo",	"Opt",   "Bug", "Con"], 
-			typeColorCode = ["", "",    "\33\14", "\33\16",			 "\33\13",	     "\33\11", "\33\15", "\33\6", ""],
-			typeColor = [clBlack,   clSilver,   clRed,     clYellow,      clAqua,          clBlue,     clFuchsia,  clOrange, clWhite],
-			typeSyntax = [skWhitespace, skFoundAct, skError, skWarning, skDeprecation, skTodo,      skOpt,     skBug,  skConsole]; 
-			//Todo: this must be also table driven!!!
-			
-			mixin template DumpTable(string prefix)
-			{
-				pragma(msg, prefix~"\t"~EnumMemberNames!Type.stringof); 
-				static foreach(name; __traits(allMembers, typeof(this)))
-				static if(name.startsWith(prefix) && name.length>prefix.length)
-				pragma(msg, name~"\t"~mixin(name).text); 
-				pragma(msg, prefix~"\t"~EnumMemberNames!Type.stringof.hashOf.to!string(26)); 
-				static foreach(name; __traits(allMembers, typeof(this)))
-				static if(name.startsWith(prefix) && name.length>prefix.length)
-				pragma(msg, name~"\t"~mixin(name).text.hashOf.to!string(26)); 
-			} 
-			
-			mixin DumpTable!"type"; 
-		+/
-		
-		
-		version(/+$DIDE_REGION+/none) {
-			enum Type {        unknown, find,      error,     warning,      deprecation,     todo,      opt,      bug,  console} 
-			enum typePrefixes = ["",   "Find: ", "Error: ", "Warning: ", "Deprecation:	", "Todo: ", "Opt: ",  "Bug: ", "Console: "],
-			typeShortCaption = ["", "Find", "Err",  "Warn",	   "Depr",	     "Todo",	"Opt",   "Bug", "Con"], 
-			typeColorCode = ["", "",    "\33\14", "\33\16",	   "\33\13",	     "\33\11", "\33\15", "\33\6", ""],
-			typeColor = [clBlack,   clSilver,   clRed,     clYellow,      clAqua,          clBlue,     clFuchsia,  clOrange, clWhite],
-			typeSyntax = [skWhitespace, skFoundAct, skError, skWarning, skDeprecation, skTodo,      skOpt,     skBug,  skConsole]; 
-		}
-		
 		mixin((
 			(表([
 				[q{/+Note: Type+/},q{/+Note: Prefixes+/},q{/+Note: ShortCaption+/},q{/+Note: ColorCode+/},q{/+Note: Color+/},q{/+Note: Syntax+/}],
@@ -2399,7 +2161,6 @@ version(/+$DIDE_REGION+/all) {
 				[q{console},q{"Console: "},q{"Con"},q{""},q{clWhite},q{skConsole}],
 			]))
 		) .GEN!q{GEN_enumTable}); 
-		
 		
 		CodeLocation location; 
 		Type type; 
@@ -2649,12 +2410,12 @@ version(/+$DIDE_REGION+/all) {
 			
 			static decodeColumnMarker(string s)
 			{
-				return (
+				return ((
 					s.endsWith('^') &&(
 						s.length==1 || 
 						s[0..$-1].all!"a.among(' ', '\t')"
 					)
-				) ? s.length.to!int : 0; 
+				)?(s.length.to!int):(0)); 
 			} 
 			
 			DMDMessage decodeDMDMessage(string s)

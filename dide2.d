@@ -6522,9 +6522,9 @@ class ToolPalette : Column
 					}],
 					[q{"math letters"},q{
 						π ℯ ℂ α β γ µ σ
-						Δ δ ϕ ϑ ε
+						Δ δ ϕ ϑ ε ω
 					}],
-					[q{"symbols"},q{"° ⍵ ℃ ± ∞ ↔ → ∈ ∉"}],
+					[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 					[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 					[q{"floor, 
 ceil, 
@@ -6546,8 +6546,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2F04635B2D627)) ((expr).檢 (0x2F06435B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0B235B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2F04535B2D627)) ((expr).檢 (0x2F06335B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0B135B2D627)); }],
 				]))
 			}
 		},
@@ -6768,7 +6768,7 @@ with condition"},q{
 				]))
 			}
 		}
-	]; 
+	]; /+/+Link: https://en.wikipedia.org/wiki/Greek_letters_used_in_mathematics,_science,_and_engineering+/+/
 	version(/+$DIDE_REGION+/all) {
 		struct Page
 		{
