@@ -1,5 +1,14 @@
 module buildsys; 
 version(/+$DIDE_REGION+/all) {
+	/+
+		Todo: 240624
+		Integrating other external compilers into LDC2
+		/+Link: https://forum.dlang.org/post/aeerdahnkiujvrdwyxvt@forum.dlang.org+/
+		
+		LDC2 -> DIDE: pragma(msg, x)  Special message catched realtime using pipeProcess()
+		DIDE -> LDC2: import(fileName)  -J Virtual files in a directory using ProjFS
+	+/
+	
 	
 	//Todo: syntaxHighlight() returns errors! Build system it must handle those!
 	//Todo: RUN: set working directory to the main.d
@@ -306,25 +315,6 @@ version(/+$DIDE_REGION+/all) {
 			{ executors.each!(e => e.kill); }
 			
 			return !executors.all!(e => e.isFinished); 
-		} 
-		
-		static void executorTest()
-		{
-			auto e = new Executor; 
-			
-			print("testing..."); 
-			e.start(
-				["cmd", "/c", "echo", "hello world", "%ENVTEST%", "%CD%"], //commandline
-				["ENVTEST" : "EnvTestValue"], //env override
-				Path(`z:\TEMP`), //workPath
-				Path(`z:\TEMP`)/+logPath for the logFile+/
-			); 
-			print(currentPath); 
-			while(update([e]))
-			{ print(e.state, e.result, e.output); sleep(3); }
-			print(e.state, e.result, e.output); 
-			
-			print("end of test"); 
 		} 
 		
 		
