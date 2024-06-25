@@ -4422,6 +4422,7 @@ version(/+$DIDE_REGION+/all)
 		f: foreach(sr; scanner)
 		{
 			with(EgaColor)
+			with(StructureScanner)
 			switch(sr.op)
 			{
 				case ScanOp.content: 	{
@@ -4441,6 +4442,7 @@ version(/+$DIDE_REGION+/all)
 				case ScanOp.trans: 	{ write(ltCyan(sr.src)); }break; 
 				default: 	{ write(EgaColor.ltRed(sr.op.text~":"~sr.src)); }break; 
 			}
+			
 		}
 		 
 		print("---End of Processed DDoc----------------------------------------------"); 
@@ -9581,7 +9583,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E8437B6B4BCC))},
+			q{((expr).檢(0x3E8637B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9595,7 +9597,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3E9517B6B4BCC))},
+			q{((expr).檢 (0x3E9717B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
