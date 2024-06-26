@@ -2859,7 +2859,7 @@ version(/+$DIDE_REGION main+/all)
 			if(auto m = moduleWithPrimaryTextSelection)
 			{
 				//Todo: undo should not remove textSelections on other modules.
-				mixin(q{m.undoManager.#(&execute_#, &execute_reload); }.replace("#", what)); 
+				mixin(q{m.undoManager.$(&execute_$, &execute_reload); }.replace("$", what)); 
 				invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
 		} 
