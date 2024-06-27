@@ -653,8 +653,13 @@ version(/+$DIDE_REGION main+/all)
 				}); 
 				
 				invalidate; //Todo: low power usage
-				caption = format!"%s - [%s]%s %s %s %s"(
+				
+				version(D_Optimized)	enum D_Optimized = true; 
+				else	enum D_Optimized = false; //Todo: exeBuildInfo struct into het.utils
+				
+				caption = format!"%s%s - [%s]%s %s %s %s"(
 					baseCaption,
+					D_Optimized ? " (opt)" : "",
 					workspace.mainModuleFile.fullName,
 					workspace.modules.any!"a.changed" ? "CHG" : "",
 					dbgsrv.pingLedStateText,
@@ -6546,8 +6551,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2F04535B2D627)) ((expr).檢 (0x2F06335B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F0B135B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2F0F935B2D627)) ((expr).檢 (0x2F11735B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F16535B2D627)); }],
 				]))
 			}
 		},
