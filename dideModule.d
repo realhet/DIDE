@@ -3070,9 +3070,9 @@ class CodeRow: Row
 					switch(sr.src)
 					{
 						case "//", "/*", "/+": 	doit(skComment); 		break; 
-						case "{", "(", "[": 	doit(skSymbol); 	syntax = skWhitespace; 	break; 
+						case "{", "(", "[", `$(`: 	doit(skSymbol); 	syntax = skWhitespace; 	break; 
 						case `q{`: 	doit(skString); 	syntax = skWhitespace; syntaxStack.back.isTokenString = true; 	break; 
-						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`: 	doit(skString); 		break; 
+						case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `x"`, `i"`, "i`", `iq{`: 	doit(skString); 		break; 
 						default: 	doit(skError); 		break; 
 						//Todo: identifier quoted string `q"id`
 					}
@@ -3096,8 +3096,8 @@ class CodeRow: Row
 								//Todo: //comment must ensure that after it, there will be a NewLine
 								case "//": 	N!CodeComment; appendChar('\n'); 	continue; 
 								case "/*", "/+",: 	N!CodeComment; 	continue; 
-								case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`: 	N!CodeString; 	continue; 
-								case "{", "(", "[": 	N!CodeBlock; 	continue; 
+								case "`", "'", `"`, `r"`, `q"(`, `q"[`, `q"{`, `q"<`, `q"/`, `q{`, `x"`, `i"`, "i`", `iq{`: 	N!CodeString; 	continue; 
+								case "{", "(", "[", "$(": 	N!CodeBlock; 	continue; 
 								default: handleHighlightedPush; 
 							}
 						}
@@ -5775,9 +5775,9 @@ version(/+$DIDE_REGION+/all)
 	//CodeString //////////////////////////////////////////
 	//Todo: qString_id
 	enum Type
-	{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	} 
-	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`]; 
-	enum TypePostfix 	= 	["`"	, "'"	, `"`	, `"`	, `)"`	, `]"`	, `}"`	, `>"`	, `/"`	, `}`	]; 
+	{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	, hexString, interpolated_cString, interpolated_dString, interpolated_tokenString} 
+	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`, `x"`, `i"`, "i`", `qi{`]; 
+	enum TypePostfix 	= 	["`"	, "'"	, `"`	, `"`	, `)"`	, `]"`	, `}"`	, `>"`	, `/"`	, `}`, `"`, `"`, "`", `}`]; 
 	
 	enum CharSize
 	{ default_, c, w, d} 
@@ -5815,7 +5815,7 @@ version(/+$DIDE_REGION+/all)
 		//get content
 		auto rebuilder = CodeColumnBuilder!true(content); 
 		
-		if(type==Type.tokenString)
+		if(type.among(Type.tokenString, Type.interpolated_tokenString))
 		{
 			content.bkColor = mix(syntaxBkColor(skString), clCodeBackground, .75f); 
 			//Todo: clCodeBackground should be inherited to all the inner backgrounds.
@@ -5832,14 +5832,23 @@ version(/+$DIDE_REGION+/all)
 				scanner.popFront; 
 			}
 			else
-			enforce(0, "Invalid tokenstring"); 
+			enforce(0, "Invalid tokenstring."); 
 		}
 		else
 		{
 			while(!scanner.empty)
 			{
+				if(
+					type.among(Type.interpolated_cString, Type.interpolated_dString) &&
+					!scanner.empty && scanner.front.op==ScanOp.push && scanner.front.src=="$("
+				)
+				{
+					rebuilder.appendStructured(scanner); 
+					continue; 
+				}
+				
 				if(scanner.front.op==ScanOp.push)
-				{ enforce(0, "Invalid push: "~scanner.front.src); }
+				{ enforce(0, "Invalid push in string literal: "~scanner.front.src); }
 				else if(scanner.front.op==ScanOp.pop)
 				{
 					//closing token: Decode char/word/dword string element size specifier.
@@ -5877,7 +5886,7 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		auto byGlyph()
-		{ return content.rows.map!(r => r.glyphs).joiner(only(null)); } 
+		{ return content.rows.map!(r => r.glyphs).joiner(only(null)).filter!"a"; } 
 		
 		void checkInvalid(dchar ch)
 		{
@@ -5933,12 +5942,14 @@ version(/+$DIDE_REGION+/all)
 		with(Type)
 		final switch(type)
 		{
-			case cString, cChar: 	checkInvalid_escape(TypePrefix[type].back, '\\'); 	break; 
-			case dString, rString: 	checkInvalid(TypePrefix[type].back); 	break; 
+			case cString, cChar, interpolated_cString: 	checkInvalid_escape(TypePrefix[type].back, '\\'); 	break; 
+			case dString, rString, interpolated_dString, hexString: 	checkInvalid(TypePrefix[type].back); 	break; 
 			case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(TypePrefix[type].back, TypePostfix[type].front); 	break; 
-			case tokenString: 		break; 
+			case tokenString, interpolated_tokenString: 		break; 
 			/+Todo: Any symbol can be used, not just slash '/'. The symbol in the qString must be a parameter.+/
 			//Todo: Identifier delimited qString.
+			//Todo: interpolated string verification.
+			//Todo: hexString verification.
 		}
 		
 		
@@ -5962,9 +5973,9 @@ version(/+$DIDE_REGION+/all)
 } class CodeBlock : CodeContainer
 {
 	
-	enum Type 		 { block	, list	, index	} 
-	enum TypePrefix 	= 	["{"	, "("	, `[`	]; 
-	enum TypePostfix 	= 	["}"	, ")"	, `]`	]; 
+	enum Type 		 { block	, list	, index	, interpolation} 
+	enum TypePrefix 	= 	["{"	, "("	, `[`, `$(`]; 
+	enum TypePostfix 	= 	["}"	, ")"	, `]`, `)`]; 
 	
 	Type type; 
 	
@@ -8631,7 +8642,8 @@ version(/+$DIDE_REGION+/all)
 						{ cell = new Declaration(blk); }
 					}	break; 
 					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
-					case CodeBlock.Type.list: 	{
+					case 	CodeBlock.Type.list,
+						CodeBlock.Type.interpolation: 	{
 						blk.content.processHighLevelPatterns_goInside; 
 						processNiceExpression(cell); /+Note: depth first recursion+/
 					}	break; 
@@ -9583,7 +9595,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3E8637B6B4BCC))},
+			q{((expr).檢(0x3EB3E7B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9597,7 +9609,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3E9717B6B4BCC))},
+			q{((expr).檢 (0x3EC4C7B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
