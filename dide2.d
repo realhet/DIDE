@@ -6521,9 +6521,10 @@ class ToolPalette : Column
 			q{
 				(表([
 					[q{"expression blocks"},q{
-						{ s; }(a) [a] 
+						{ a; }(a) [a] 
 						"S" r"S" `S` 
-						'S' q{S}
+						'S' q{S} $(a)
+						i"S" i`S` iq{S}
 					}],
 					[q{"math letters"},q{
 						π ℯ ℂ α β γ µ σ
@@ -6551,8 +6552,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2F0F935B2D627)) ((expr).檢 (0x2F11735B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F16535B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2F11535B2D627)) ((expr).檢 (0x2F13335B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F18135B2D627)); }],
 				]))
 			}
 		},

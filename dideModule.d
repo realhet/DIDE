@@ -5248,11 +5248,21 @@ version(/+$DIDE_REGION+/all)
 } class CodeComment : CodeContainer
 {
 	//Todo: bug when potting /+link:http://...+/ comments inside /++/  The newline after the // suxx.
-	
-	enum Type
-	{ slashComment, cComment, dComment, directive} 
-	enum TypePrefix	= ["//", "/*", "/+", "#"],
-	TypePostfix 	= ["", "*/", "+/", "" ]; 
+	mixin((
+		(表([
+			[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
+			[q{slashComment},q{"//"},q{""}],
+			[q{cComment},q{"/*"},q{"*/"}],
+			[q{dComment},q{"/+"},q{"+/"}],
+			[q{directive},q{"#"},q{""}],
+		]))
+	) .GEN!q{GEN_enumTable}); 
+	version(/+$DIDE_REGION+/none) {
+		enum Type
+		{ slashComment, cComment, dComment, directive} 
+		enum TypePrefix	= ["//", "/*", "/+", "#"],
+		TypePostfix 	= ["", "*/", "+/", "" ]; 
+	}
 	//node: directive is detected by the high level parser, not the structured scanner.
 	
 	Type type; 
@@ -5362,7 +5372,7 @@ version(/+$DIDE_REGION+/all)
 	{ return customPrefix == "Note:"; } 
 	
 	string commentPrefix() const
-	{ return TypePrefix[type]; } 
+	{ return typePrefix[type]; } 
 	
 	override string prefix() const
 	{
@@ -5373,7 +5383,7 @@ version(/+$DIDE_REGION+/all)
 		return s; 
 	} 
 	override string postfix() const
-	{ return TypePostfix[type]; } 
+	{ return typePostfix[type]; } 
 	
 	
 	this(CodeRow parent)
@@ -5382,7 +5392,7 @@ version(/+$DIDE_REGION+/all)
 	
 	void rebuild(R)(R scanner) if(isScannerRange!R)
 	{
-		type = parseBlockPrefix!(Type, TypePrefix)(scanner); 
+		type = parseBlockPrefix!(Type, typePrefix)(scanner); 
 		
 		customPrefix = ""; 
 		customSyntax = skWhitespace; 
@@ -5773,11 +5783,27 @@ version(/+$DIDE_REGION+/all)
 } class CodeString : CodeContainer
 {
 	//CodeString //////////////////////////////////////////
-	//Todo: qString_id
-	enum Type
-	{ dString	, cChar	, cString	, rString	, qString_round	, qString_square	, qString_curly	, qString_angle	, qString_slash	, tokenString	, hexString, interpolated_cString, interpolated_dString, interpolated_tokenString} 
-	enum TypePrefix 	= 	["`"	, "'"	, `"`	, `r"`	, `q"(`	, `q"[`	, `q"{`	, `q"<`	, `q"/`	, `q{`, `x"`, `i"`, "i`", `qi{`]; 
-	enum TypePostfix 	= 	["`"	, "'"	, `"`	, `"`	, `)"`	, `]"`	, `}"`	, `>"`	, `/"`	, `}`, `"`, `"`, "`", `}`]; 
+	mixin((
+		(表([
+			[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
+			[q{dString},q{"`"},q{"`"}],
+			[q{cChar},q{"'"},q{"'"}],
+			[q{cString},q{`"`},q{`"`}],
+			[q{rString},q{`r"`},q{`"`}],
+			[q{qString_round},q{`q"(`},q{`)"`}],
+			[q{qString_square},q{`q"[`},q{`]"`}],
+			[q{qString_curly},q{`q"{`},q{`}"`}],
+			[q{qString_angle},q{`q"<`},q{`>"`}],
+			[q{qString_slash},q{`q"/`},q{`/"`}],
+			[q{tokenString},q{`q{`},q{`}`}],
+			[q{hexString},q{`x"`},q{`"`}],
+			[q{interpolated_cString},q{`i"`},q{`"`}],
+			[q{interpolated_dString},q{"i`"},q{"`"}],
+			[q{interpolated_tokenString},q{`iq{`},q{`}`}],
+			[q{//Todo: qString_id
+			}],
+		]))
+	) .GEN!q{GEN_enumTable}); 
 	
 	enum CharSize
 	{ default_, c, w, d} 
@@ -5798,9 +5824,9 @@ version(/+$DIDE_REGION+/all)
 		+/
 	} 
 	override string prefix() const
-	{ return TypePrefix[type]; } 
+	{ return typePrefix[type]; } 
 	override string postfix() const
-	{ return TypePostfix[type]~sizePostfix; } 
+	{ return typePostfix[type]~sizePostfix; } 
 	
 	@property isTokenString() const
 	{ return type==Type.tokenString; } 
@@ -5809,7 +5835,7 @@ version(/+$DIDE_REGION+/all)
 	
 	void rebuild(R)(R scanner) if(isScannerRange!R)
 	{
-		type = parseBlockPrefix!(Type, TypePrefix)(scanner); 
+		type = parseBlockPrefix!(Type, typePrefix)(scanner); 
 		charSize = CharSize.default_; 
 		
 		//get content
@@ -5942,9 +5968,9 @@ version(/+$DIDE_REGION+/all)
 		with(Type)
 		final switch(type)
 		{
-			case cString, cChar, interpolated_cString: 	checkInvalid_escape(TypePrefix[type].back, '\\'); 	break; 
-			case dString, rString, interpolated_dString, hexString: 	checkInvalid(TypePrefix[type].back); 	break; 
-			case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(TypePrefix[type].back, TypePostfix[type].front); 	break; 
+			case cString, cChar, interpolated_cString: 	checkInvalid_escape(typePrefix[type].back, '\\'); 	break; 
+			case dString, rString, interpolated_dString, hexString: 	checkInvalid(typePrefix[type].back); 	break; 
+			case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(typePrefix[type].back, typePostfix[type].front); 	break; 
 			case tokenString, interpolated_tokenString: 		break; 
 			/+Todo: Any symbol can be used, not just slash '/'. The symbol in the qString must be a parameter.+/
 			//Todo: Identifier delimited qString.
@@ -8651,8 +8677,13 @@ version(/+$DIDE_REGION+/all)
 			}
 			else if(auto str = cast(CodeString) cell)
 			{
-				if(str.type == CodeString.Type.tokenString)
-				str.content.processHighLevelPatterns_optionalBlock; 
+				switch(str.type)
+				{
+					case CodeString.Type.tokenString: 	{ str.content.processHighLevelPatterns_optionalBlock; }	break; 
+					case 	CodeString.Type.interpolated_cString, 
+						CodeString.Type.interpolated_dString: 	{ str.content.processHighLevelPatterns_goInside; }	break; 
+					default: 
+				}
 			}
 		}
 		
@@ -9595,7 +9626,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3EB3E7B6B4BCC))},
+			q{((expr).檢(0x3EE167B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9609,7 +9640,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3EC4C7B6B4BCC))},
+			q{((expr).檢 (0x3EF247B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
