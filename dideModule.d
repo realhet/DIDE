@@ -8662,14 +8662,14 @@ version(/+$DIDE_REGION+/all)
 			{
 				final switch(blk.type)
 				{
-					case CodeBlock.Type.block: 	{
+					case 	CodeBlock.Type.block /+Note: {}+/: 	{
 						blk.content.processHighLevelPatterns_optionalBlock; 
 						if(blk.content.isHighLevelBlock)
 						{ cell = new Declaration(blk); }
 					}	break; 
-					case CodeBlock.Type.index: 	blk.content.processHighLevelPatterns_goInside; 	break; 
-					case 	CodeBlock.Type.list,
-						CodeBlock.Type.interpolation: 	{
+					case CodeBlock.Type.index /+Note: []+/: 	blk.content.processHighLevelPatterns_goInside; 	break; 
+					case 	CodeBlock.Type.list /+Note: ()+/,
+						CodeBlock.Type.interpolation /+Note: $()+/: 	{
 						blk.content.processHighLevelPatterns_goInside; 
 						processNiceExpression(cell); /+Note: depth first recursion+/
 					}	break; 
@@ -8679,9 +8679,10 @@ version(/+$DIDE_REGION+/all)
 			{
 				switch(str.type)
 				{
-					case CodeString.Type.tokenString: 	{ str.content.processHighLevelPatterns_optionalBlock; }	break; 
-					case 	CodeString.Type.interpolated_cString, 
-						CodeString.Type.interpolated_dString: 	{ str.content.processHighLevelPatterns_goInside; }	break; 
+					case 	CodeString.Type.tokenString /+Note: q{}+/,
+						CodeString.Type.interpolated_tokenString /+Note: iq{}+/: 	{ str.content.processHighLevelPatterns_optionalBlock; }	break; 
+					case 	CodeString.Type.interpolated_cString /+Note: i""+/, 
+						CodeString.Type.interpolated_dString /+Note: i``+/: 	{ str.content.processHighLevelPatterns_goInside; }	break; 
 					default: 
 				}
 			}
@@ -9626,7 +9627,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3EE167B6B4BCC))},
+			q{((expr).檢(0x3EEB77B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9640,7 +9641,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3EF247B6B4BCC))},
+			q{((expr).檢 (0x3EFC57B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
