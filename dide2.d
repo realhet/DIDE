@@ -6568,8 +6568,8 @@ dot, cross"},q{
 						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
 					}],
 					[q{"mixin generators"},q{
+						mixin((src) .GEN!q{script}); mixin((expr).調!fun); 
 						mixin((src).GEN!q{script}); 
-						mixin((src) .GEN!q{script}); 
 					}],
 					[q{"tenary operator"},q{
 						((a)?(b):(c))	((a)?(b) :(c)) 

@@ -1377,18 +1377,17 @@ version(/+$DIDE_REGION+/all)
 						
 						if(crsr.pos.x<row.cellCount)
 						{
-							//highlighted chars
 							auto cell = row.subCells[crsr.pos.x]; 
+							//Note: this code is redundant, but fast -> .sourceText(cells)
 							if(auto g = cast(Glyph)cell)
 							{ res ~= g.ch; }
 							else if(auto n = cast(CodeNode)cell)
 							{
-								res ~= n.sourceText; //this can throw exceptions if the node has an invalid content
+								res ~= n.sourceText; 
+								//this can throw exceptions if the node has an invalid content
 							}
 							else
-							{
-								raise("NOT IMPL"); //Todo: structured editor
-							}
+							{ raise("Fatal error: Source cells must be either Glyph or CodeNode 1"); }
 						}
 						else
 						{
@@ -1712,6 +1711,26 @@ version(/+$DIDE_REGION+/all)
 		return a.join; 
 	} 
 	
+	
+	string sourceText(R)(R cells)
+	if(isInputRange!(R, Cell))
+	{
+		string res; 
+		foreach(cell; cells)
+		{
+			//Note: this is redundant code. The same is inside TextSelection.sourceText, but it's fast.
+			if(auto g = cast(Glyph)cell)
+			{ res ~= g.ch; }
+			else if(auto n = cast(CodeNode)cell)
+			{
+				res ~= n.sourceText; 
+				//this can throw exceptions if the node has an invalid content
+			}
+			else
+			{ raise("Fatal error: Source cells must be either Glyph or CodeNode"); }
+		}
+		return res; 
+	} 
 	
 	string sourceText(TextSelection[] ts)
 	{
@@ -2201,6 +2220,9 @@ class CodeRow: Row
 	
 	auto codeTabCount()
 	{ return subCells.count!isCodeTab; } 
+	
+	bool isDLangIdentifier()
+	{ return chars.isDLangIdentifier; } 
 	
 	
 	this(CodeColumn parent_)
@@ -3284,6 +3306,9 @@ class CodeRow: Row
 	
 	bool isStructuredCode() //Todo: constness
 	{ return getStructureLevel >= StructureLevel.structured; } 
+	
+	bool isDLangIdentifier()
+	{ return rowCount==1 && rows[0].isDLangIdentifier; } 
 	
 	
 	SyntaxKind getSyntax(dchar ch)
@@ -6805,9 +6830,10 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		//Todo: move to utils
-		bool isDLangIdentifier(alias fStart=isDLangIdentifierStart, alias fCont=isDLangIdentifierCont, S)(in S s)
+		bool isDLangIdentifier(alias fStart=isDLangIdentifierStart, alias fCont=isDLangIdentifierCont, S)(S s)
 		{
-			auto a = s.byDchar; 
+			static if(isInputRange!(S, dchar))	auto a = s; 
+			else	auto a = s.byDchar; 
 			if(a.empty) return false; 
 			if(!a.front.unaryFun!fStart) return false; 
 			a.popFront; 
@@ -8759,6 +8785,7 @@ version(/+$DIDE_REGION+/all)
 		mixinTableInjectorOp,
 		anonymMethod,
 		mixinGeneratorOp,
+		mixinFunctionCallOp,
 		specialStatementOp,
 		
 		/+
@@ -8779,6 +8806,7 @@ version(/+$DIDE_REGION+/all)
 			((){with(op(expr)){expr}}())
 			((expr)op{code})
 			mixin((expr)opq{script})
+			mixin((expr).op!fun)
 			op
 		+//+
 			Note: Example:
@@ -8801,6 +8829,7 @@ version(/+$DIDE_REGION+/all)
 			表 new MixinTable
 			anonym method (without attrs)
 			.GEN! /+Todo: Mixin Generator+/
+			調, the third way to mixin a table
 			auto 間T=now間 //Last char must be a unicode special char
 		+/
 	} 
@@ -8815,13 +8844,21 @@ version(/+$DIDE_REGION+/all)
 			case unaryOp, unaryMixinTokenStringOp: 	return 1; 
 			case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
 				binaryTokenStringOp, binaryMixinTokenStringOp,
-				mixinTableInjectorOp, anonymMethod, mixinGeneratorOp: 	return 2; 
+				mixinTableInjectorOp, anonymMethod, mixinGeneratorOp,
+				mixinFunctionCallOp: 	return 2; 
 			case tenaryOp, tenaryTokenStringOp, tenaryMixinTokenStringOp: 	return 3; 
 		}
 	} 
 	
 	int hasListBrackets(NiceExpressionType t)
-	{ with(NiceExpressionType) return !t.among(mixinGeneratorOp, specialStatementOp); } 
+	{
+		with(NiceExpressionType)
+		return !t.among(
+			mixinGeneratorOp, specialStatementOp,
+			mixinFunctionCallOp
+		); 
+		
+	} 
 	
 	static if(
 		0//Todo: tenary lambda.  (a lambdra which is evaluated)
@@ -9507,7 +9544,7 @@ version(/+$DIDE_REGION+/all)
 			"mixinGenerator1", 
 			NET.mixinGeneratorOp, 
 			skKeyword, NodeStyle.bright,
-			q{mixin((expr).GEN!{script}); },
+			q{mixin((expr).GEN!q{script}); },
 			
 			".GEN!",
 			q{buildMixinGenerator; },
@@ -9519,11 +9556,23 @@ version(/+$DIDE_REGION+/all)
 			"mixinGenerator2", 
 			NET.mixinGeneratorOp, 
 			skKeyword, NodeStyle.bright,
-			q{mixin((expr) .GEN!{script}); },
+			q{mixin((expr) .GEN!q{script}); },
 			
 			" .GEN!",
 			q{buildMixinGenerator; },
 			q{arrangeMixinGenerator(true); }
+			
+		},
+		
+		{
+			"mixinGenerator3", 
+			NET.mixinFunctionCallOp, 
+			skKeyword, NodeStyle.bright,
+			q{mixin((expr).調!fun); },
+			
+			"調",
+			q{buildMixinFunctionCall; },
+			q{arrangeMixinFunctionCall; }
 			
 		},
 		
@@ -9627,7 +9676,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3EEB77B6B4BCC))},
+			q{((expr).檢(0x3F3547B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9641,7 +9690,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3EFC57B6B4BCC))},
+			q{((expr).檢 (0x3F4627B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -9960,20 +10009,48 @@ version(/+$DIDE_REGION+/all)
 							if(auto row = blk.content.rows[0])
 							if(row.length>=2)
 							if(auto left = asListBlock(row.subCells.front))
-							if(auto right = asTokenString(row.subCells.back))
 							{
-								const op = row.chars[1..$-1].text; 
+								if(auto right = asTokenString(row.subCells.back))
 								{
-									/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
-									if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinGeneratorOp, op))
+									const op = row.chars[1..$-1].text; 
 									{
-										with(statementRow)
+										/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
+										if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinGeneratorOp, op))
 										{
-											clearSubCells; 
-											appendCell(new NiceExpression(statementRow, tIdx, left.content, right.content)); 
-											needMeasure; 
+											with(statementRow)
+											{
+												clearSubCells; 
+												appendCell(new NiceExpression(statementRow, tIdx, left.content, right.content)); 
+												needMeasure; 
+											}
+											return; 
 										}
-										return; 
+									}
+								}
+								if(row.length>=4 && row.chars[1]=='.')
+								{
+									const exclIdx = row.chars.countUntil('!'); 
+									if(exclIdx>=3)
+									{
+										const op = row.chars[2..exclIdx].text; 
+										{
+											/+Note: mixinFunctionCallOp: mixin((expr).op!fun)+/
+											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinFunctionCallOp, op))
+											{
+												//only leave the function part on the row.
+												row.subCells = row.subCells[exclIdx+1..$]; 
+												row.refreshTabIdx; 
+												auto rightCol = row.parent; 
+												
+												with(statementRow)
+												{
+													clearSubCells; 
+													appendCell(new NiceExpression(statementRow, tIdx, left.content, rightCol)); 
+													needMeasure; 
+												}
+												return; 
+											}
+										}
 									}
 								}
 							}
@@ -10409,8 +10486,8 @@ version(/+$DIDE_REGION+/all)
 					style.fontColor = sk.syntaxBkColor; 
 					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
 					
+					if(operands[0].isDLangIdentifier)
 					with(operands[0]) {
-						/+Todo: Make this CodeColumn stand out when it's empty+/
 						fillColor(style.fontColor, style.bkColor); 
 						applyHalfSize; 
 					}
@@ -10615,6 +10692,23 @@ version(/+$DIDE_REGION+/all)
 					super.rearrange; 
 					
 					subCells[0].outerPos.x = 0; 
+				} 
+				
+				void arrangeMixinFunctionCall()
+				{
+					style.bkColor = bkColor = structuredColor("static if"); 
+					
+					if(const isSimple = operands[1].isDLangIdentifier)
+					{
+						with(operands[1]) {
+							fillColor(style.fontColor, style.bkColor); 
+							applyHalfSize; 
+						}
+						style.fontHeight = DefaultSubScriptFontHeight; 
+					}
+					
+					put(" mixin "); op(1); 
+					putNL; op(0); 
 				} 
 				
 				void arrangeInspector(Flag!"isHalfSize" isHalfSize)
@@ -10917,6 +11011,13 @@ version(/+$DIDE_REGION+/all)
 				{
 					put("mixin"); put('('); 
 						op(0); put(operator); put("q{", operands[1], "}"); 
+					put(')'); 
+				} 
+				
+				void buildMixinFunctionCall()
+				{
+					put("mixin"); put('('); 
+						op(0); put("."~operator~"!"); put(operands[1]); 
 					put(')'); 
 				} 
 				
