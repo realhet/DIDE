@@ -5807,7 +5807,6 @@ version(/+$DIDE_REGION+/all)
 	} 
 } class CodeString : CodeContainer
 {
-	//CodeString //////////////////////////////////////////
 	mixin((
 		(表([
 			[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
@@ -5828,7 +5827,7 @@ version(/+$DIDE_REGION+/all)
 			[q{//Todo: qString_id
 			}],
 		]))
-	) .GEN!q{GEN_enumTable}); 
+	).調!GEN_enumTable); 
 	
 	enum CharSize
 	{ default_, c, w, d} 
@@ -9676,7 +9675,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3F3547B6B4BCC))},
+			q{((expr).檢(0x3F3167B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9690,7 +9689,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3F4627B6B4BCC))},
+			q{((expr).檢 (0x3F4247B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
