@@ -260,9 +260,35 @@ version(/+$DIDE_REGION main+/all)
 			
 			MSQueue!string dbgRerouteQueue; 
 			
-			ToolPalette _toolPalette; 
-			@property toolPalette()
+			bool[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
+			
+			ToolPalette _toolPalette; @property toolPalette()
 			{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
+			
+			override void onCreate()
+			{
+				//onCreate //////////////////////////////////
+				baseCaption = appFile.nameWithoutExt.uc; 
+				isSpecialVersion = baseCaption != "DIDE2"; 
+				
+				{ auto a = this; a.fromJson(ini.read("settings", "")); }//Todo: this.fromJson
+				
+				initBuildSystem; 
+				workspace = new Workspace; 
+				workspaceFile = appFile.otherExt(Workspace.defaultExt); 
+				overlay = new MainOverlayContainer; 
+				
+				dbgRerouteQueue = new MSQueue!string; 
+				globalDbgRerouteQueue = dbgRerouteQueue; 
+			} 
+			
+			override void onDestroy()
+			{
+				ini.write("settings", this.toJson); 
+				if(initialized) workspace.saveWorkspace(workspaceFile); 
+				workspace.destroy; 
+				destroyBuildSystem; 
+			} 
 			
 			@VERB("Alt+F4") void closeApp()
 			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
@@ -364,6 +390,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			void resetDbg()
 			{
+				clearDebugImageBlobs; 
 				resetGlobalWatches; 
 				dbgsrv.resetBeforeRun; 
 			} 
@@ -443,55 +470,120 @@ version(/+$DIDE_REGION main+/all)
 				{ killRunningProcess; killRunningConsole; }
 			} 
 			
-			override void onCreate()
-			{
-				//onCreate //////////////////////////////////
-				baseCaption = appFile.nameWithoutExt.uc; 
-				isSpecialVersion = baseCaption != "DIDE2"; 
-				
-				{ auto a = this; a.fromJson(ini.read("settings", "")); }//Todo: this.fromJson
-				
-				initBuildSystem; 
-				workspace = new Workspace; 
-				workspaceFile = appFile.otherExt(Workspace.defaultExt); 
-				overlay = new MainOverlayContainer; 
-				
-				dbgRerouteQueue = new MSQueue!string; 
-				globalDbgRerouteQueue = dbgRerouteQueue; 
-			} 
-			
-			override void onDestroy()
-			{
-				ini.write("settings", this.toJson); 
-				if(initialized) workspace.saveWorkspace(workspaceFile); 
-				workspace.destroy; 
-				destroyBuildSystem; 
-			} 
-			
 			void onDebugLog(string s)
 			{
 				//Todo: This communication should be full binary
-				if(s.isWild("INSP:*:*"))
+				if(s.startsWith("INSP_"))
 				{
+					s = s[5..$]; 
 					try
 					{
-						const 	id 	= wild[0].to!ulong(16),
-							value 	= (cast(string)(wild[1].fromBase64)),
-							moduleHash 	= (cast(uint)(id)),
-							location 	= (cast(uint)(id>>32)); 
-						if(auto m = moduleHash in workspace.moduleByHash)
+						if(s.isWild("TXT:*:*"))
 						{
-							if(auto node = m.getInspectorNode(location))
+							const 	id 	= wild[0].to!ulong(16),
+								value 	= wild[1],
+								moduleHash 	= (cast(uint)(id)),
+								location 	= (cast(uint)(id>>32)); 
+							if(auto m = moduleHash in workspace.moduleByHash)
 							{
-								if(auto ne = cast(NiceExpression)node)
+								if(auto node = m.getInspectorNode(location))
 								{
-									ne.updateDebugValue(value); 
-									addInspectorParticle(ne); 
-									return; 
+									if(auto ne = cast(NiceExpression)node)
+									{
+										ne.updateDebugValue(value); 
+										addInspectorParticle(ne); 
+										return; 
+									}
+								}
+							}
+							WARN("Inspection unknown location: "~id.to!string(16)~":"~value); 
+						}
+						else if(s.isWild("TXT_BLB:*:*"))
+						{
+							const 	id 	= wild[0].to!ulong(16),
+								blobAddress 	= wild[1].to!ulong(16),
+								moduleHash 	= (cast(uint)(id)),
+								location 	= (cast(uint)(id>>32)),
+								value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
+							
+							if(auto m = moduleHash in workspace.moduleByHash)
+							{
+								if(auto node = m.getInspectorNode(location))
+								{
+									if(auto ne = cast(NiceExpression)node)
+									{
+										ne.updateDebugValue(value); 
+										addInspectorParticle(ne); 
+										return; 
+									}
 								}
 							}
 						}
-						WARN("Inspection unknown location: "~id.to!string(16)~":"~value); 
+						else if(s.isWild("IMG_BLB:*:*:*:*:*"))
+						{
+							const 	id 	= wild[0].to!ulong(16),
+								blobAddress 	= wild[1].to!ulong(16),
+								moduleHash 	= (cast(uint)(id)),
+								location 	= (cast(uint)(id>>32)),
+								value 	= dbgsrv.getBlob(blobAddress),
+								elementType	= wild[2],
+								width	= wild[3].to!int(16),
+								height	= wild[4].to!int(16); 
+							
+							Bitmap bmp; string error; 
+							try
+							{
+								enforce(width>0 && height>0, i"Invalid image dimensions ($(width)x$(height))".text); 
+								enforce(blobAddress, "Image Blob is null."); 
+								auto buf = dbgsrv.getBlob(blobAddress); 
+								enforce(buf.length, "Image Blob is empty."); 
+								
+								sw: 
+								switch(elementType)
+								{
+									static foreach(C; AliasSeq!(ubyte, float))
+									static foreach(N; [1, 2, 3, 4])
+									{
+										{
+											static if(N==1) alias E = C; else alias E = Vector!(C, N); 
+											case E.stringof: bmp = new Bitmap(image2D(width, height, (cast(E[])(buf)))); break sw; 
+										}
+									}
+									default: raise("Unknown ImageBlob element type: "~elementType); 
+								}
+								
+								enforce(bmp && bmp.valid, "Can't load ImageBlob."); 
+								bmp.modified = now; //Todo: This should come from the EXE, not from DIDE.
+								bmp.file = File(i`temp:\\IMG_BLB_$(wild[0]).img`.text); 
+								bitmaps.set(bmp); 
+								textures.invalidate(bmp.file); 
+								debugImageBlobs[bmp.file] = true; 
+							}
+							catch(Exception e)
+							{ error = e.simpleMsg; }
+							if(auto m = moduleHash in workspace.moduleByHash)
+							{
+								if(auto node = m.getInspectorNode(location))
+								{
+									if(auto ne = cast(NiceExpression)node)
+									{
+										ne.updateDebugValue
+											(
+											((error=="")?(
+												"$DIDE_CODE " ~ //prefix handled by Inspector Node.
+												i"/+$DIDE_IMG $(bmp.file.cmdArg) maxHeight=96+/".text
+											) :("ImageBlob Error: " ~ error))
+										); 
+										//Todo: no Img.autoRefresh is needed for these.
+										
+										addInspectorParticle(ne); 
+										return; 
+									}
+								}
+							}
+						}
+						else
+						raise("Invalid inspection message: "~s.quoted); 
 					}
 					catch(Exception e)
 					{ ERR("Inspection exception: "~e.simpleMsg); }
@@ -6552,8 +6644,8 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2F11535B2D627)) ((expr).檢 (0x2F13335B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2F18135B2D627)); }],
+					[q{"debug inspector"},q{((expr).檢(0x2FD6435B2D627)) ((expr).檢 (0x2FD8235B2D627))}],
+					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2FDD035B2D627)); }],
 				]))
 			}
 		},
