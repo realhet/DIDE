@@ -2164,6 +2164,12 @@ class CodeRow: Row
 	auto byNode(T : CodeNode = CodeNode)()
 	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
 	
+	auto lastNode(T : CodeNode = CodeNode)()
+	{ return (cast(T)(subCells.backOrNull)); } 
+	
+	auto lastComment()
+	{ return lastNode!CodeComment; } 
+	
 	auto glyphs()
 	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
 	
@@ -2408,7 +2414,7 @@ class CodeRow: Row
 		
 		{
 			vec2 v = innerSize; 
-			v.maximize(DefaultFontEmptyEditorSize * ((halfSize) ?(SubScriptFontScale):(1))); 
+			if(empty) v.maximize(DefaultFontEmptyEditorSize * ((halfSize) ?(SubScriptFontScale):(1))); 
 			if(empty && parent.rowCount>1) v.y /= 2; 
 			innerSize = v; 
 		}
@@ -5309,8 +5315,8 @@ version(/+$DIDE_REGION+/all)
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
 		"include", "define", /*"if",*/ "ifdef", "ifndef", "endif", "elif", "else" 	//Link: Arduino directives
 	],
-		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation, skConsole],
-		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:", "Console:"]
+		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation, skConsole, skComment],
+		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:", "Console:", "Hidden:"]
 		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 		; 
 	
@@ -5395,6 +5401,8 @@ version(/+$DIDE_REGION+/all)
 	{ return customPrefix == "Code:"; } 
 	bool isNote() const
 	{ return customPrefix == "Note:"; } 
+	bool isHidden() const
+	{ return customPrefix == "Hidden:"; } 
 	
 	string commentPrefix() const
 	{ return typePrefix[type]; } 
@@ -5694,7 +5702,10 @@ version(/+$DIDE_REGION+/all)
 					
 					style.italic = false; 
 					
-					const maxHeight = cmd.option("maxHeight", -1); 
+					const 	maxHeight	= cmd.option("maxHeight", -1),
+						noBorder	= cmd.option("noBorder", 0),
+						samplerEffectStr 	= cmd.option("samplerEffect", "none"),
+						autoRefresh	= cmd.option("autoRefresh", 1); 
 					
 					//Load it immediatelly.
 					auto bmp = bitmaps(f, No.delayed); 
@@ -5703,14 +5714,24 @@ version(/+$DIDE_REGION+/all)
 					{ put('\U0001F5BC'); }
 					else
 					{
-						padding = "4"; 
+						if(noBorder)
+						{
+							padding = Padding(0); 
+							border.width = 0; 
+						}
+						else
+						{ padding = "4"; }
 						
 						auto img = new Img(f, darkColor); 
-						img.autoRefresh = true; //Todo: this eats up too much resources!!!
-						//need a lighter refresh strategy
+						
+						img.autoRefresh = !!autoRefresh; 
+						
 						img.flags.autoWidth = false; 
 						img.flags.autoHeight = false; 
 						img.outerSize = bmp.size.vec2; 
+						
+						img.samplerEffect = samplerEffectStr	.to!SamplerEffect
+							.ifThrown(SamplerEffect.none); 
 						
 						
 						//restrict maxHeight
@@ -5776,10 +5797,17 @@ version(/+$DIDE_REGION+/all)
 		{
 			content.bkColor = darkColor; 
 			
-			if(customPrefix != "") {
-				const origUnderline = style.underline; 
+			if(isHidden)
+			{
+				margin.set(.5); border.width /= 3; padding.set(1); 
+				style.fontHeight = DefaultFontHeight/4; 
+				style.italic = false; 
+				put(typePrefix[type].back); 
+			}
+			else
+			{
 				//Remove underlined style
-				style.underline = false; 
+				const origUnderline = style.underline; style.underline = false; 
 				
 				if(!isCode && !isNote)
 				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
@@ -5790,10 +5818,6 @@ version(/+$DIDE_REGION+/all)
 				
 				if(isDirective && content.empty)
 				content.bkColor = mix(darkColor, brightColor, 0.75f); 
-			}else {
-				put(prefix); 
-				put(content); 
-				put(postfix); 
 			}
 			
 			rearrangeNode; 
@@ -6737,6 +6761,7 @@ version(/+$DIDE_REGION+/all)
 					case "__region": 	return clGray; 
 						
 					case "try": 	return (RGB(200, 250, 189)); 
+					case "scope": 	return (RGB(50, 250, 189)); 
 						
 					case "auto": 	return clAqua; 
 					
@@ -6772,7 +6797,7 @@ version(/+$DIDE_REGION+/all)
 				"with (",
 				"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
 				"while (", 	"do",		
-				"version (", 	"debug (",  	"debug", 	
+				"version (", 	"debug (",  	"debug", 	"scope (",
 				"if (", 	"static if (", 	"else if (", 	"else static if (",
 				"else", 	"else version (", 	"else debug (", 	"else debug", 
 				"switch (", 	"final switch (",		
@@ -6783,14 +6808,15 @@ version(/+$DIDE_REGION+/all)
 			].sort!"a>b".array; 
 			//Note: descending order is important.  "debug (" must be checked before "debug"
 			
-			//used in detectCurlyBlock()
-			static immutable statementDetecionEndings = [
-				"with(",	"for(", 	"foreach(", 	"foreach_reverse(",
-				"while(", 	"do", 	"if(", 	"else", 
-				"version(", 	"debug(",		
-				"switch(",	"try", 	"catch(", 	"finally"
-			].sort.array; //sorting is important: it is binary-searched
-			
+			version(/+$DIDE_REGION+/none) {
+				//used in detectCurlyBlock()
+				static immutable statementDetecionEndings = [
+					"with(",	"for(", 	"foreach(", 	"foreach_reverse(",
+					"while(", 	"do", 	"if(", 	"else", 
+					"version(", 	"debug(",	
+					"switch(",	"try", 	"catch(", 	"finally",
+				].sort.array; //sorting is important: it is binary-searched
+			}
 			static immutable prepositionLinkingRules =
 			[
 				[["do"	], ["while"	]],
@@ -9675,7 +9701,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3F3167B6B4BCC))},
+			q{((expr).檢(0x3F6227B6B4BCC))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9689,7 +9715,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3F4247B6B4BCC))},
+			q{((expr).檢 (0x3F7307B6B4BCC))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -10148,7 +10174,7 @@ version(/+$DIDE_REGION+/all)
 				ulong id; 
 				if(auto m = moduleOf(this))
 				{
-					auto s = operands[1].extractThisLevelDString.text.strip; 
+					auto s = operands[0].extractThisLevelDString.text.strip; 
 					ulong a; 
 					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
 					else	a = a.to!ulong.ifThrown(0); 
@@ -10716,7 +10742,7 @@ version(/+$DIDE_REGION+/all)
 					if(auto m = moduleOf(this))
 					{ id = m.getInspectorId(this); }
 					
-					op(0); 
+					op(1); //op(1) is the the expression, op(0) is the id, but it is not used.
 					
 					bkColor = border.color = clBlack; 
 					with(style) {
@@ -10741,7 +10767,7 @@ version(/+$DIDE_REGION+/all)
 							auto col = new CodeColumn(this, src, (mixin(舉!((TextFormat),q{managed_optionalBlock}))), lineIdx)
 							; 
 							
-							operands[1] = col; op(1); 
+							operands[0] = col; op(0); //reuse former operand of ID
 						}
 						else
 						{
@@ -10762,7 +10788,7 @@ version(/+$DIDE_REGION+/all)
 							if(isHalfSize)
 							{ col.halfSize = true; (mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); }
 							
-							operands[1] = col; op(1); 
+							operands[0] = col; op(0); //reuse former operand of ID
 						}
 					}
 				} 
@@ -11028,7 +11054,7 @@ version(/+$DIDE_REGION+/all)
 						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
 						else	id = m.getInspectorId(this); 
 					}
-					op(0); put(operator); put("(0x"~id.to!string(16)~")"); 
+					put("(0x"~id.to!string(16)~")"); put(operator); op(1); 
 				} 
 				
 				

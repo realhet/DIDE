@@ -567,11 +567,19 @@ version(/+$DIDE_REGION main+/all)
 								{
 									if(auto ne = cast(NiceExpression)node)
 									{
+										string imgParams; 
+										if(auto col = ne.operands[1])
+										if(auto cmt = col.lastRow.lastComment)
+										{
+											imgParams = cmt.content.sourceText; 
+											LOG(imgParams); 
+										}
+										
 										ne.updateDebugValue
 											(
 											((error=="")?(
 												"$DIDE_CODE " ~ //prefix handled by Inspector Node.
-												i"/+$DIDE_IMG $(bmp.file.cmdArg) maxHeight=96+/".text
+												i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=0 $(imgParams)+/".text
 											) :("ImageBlob Error: " ~ error))
 										); 
 										//Todo: no Img.autoRefresh is needed for these.
@@ -6331,6 +6339,11 @@ version(/+$DIDE_REGION main+/all)
 									{
 										//newLine
 										auto g = newLineGlyph; 
+										const originalSize = g.outerSize; 
+										const mustShrink = g.outerHeight>row.outerHeight+.125f; 
+										if(mustShrink) g.outerSize = originalSize * (row.outerHeight / g.outerHeight); 
+										scope(exit) if(mustShrink) g.outerSize = originalSize; 
+										
 										g.bkColor = row.bkColor;  g.fontColor = clGray; 
 										dr.alpha = 1; 
 										g.outerPos = row.newLinePos; 
@@ -6644,25 +6657,13 @@ dot, cross"},q{
 						(RGB( , , )) 
 						(RGBA( , , , ))
 					}],
-					[q{"debug inspector"},q{((expr).檢(0x2FD6435B2D627)) ((expr).檢 (0x2FD8235B2D627))}],
-					[q{"stop watch"},q{auto _間=init間; (((update間(_間))).檢(0x2FDD035B2D627)); }],
 				]))
 			}
 		},
 		{
-			"Expressions", "( )", 
+			"Expressions", "(1)", 
 			q{
 				(表([
-					[q{"table blocks"},q{
-						(表([
-							[q{/+Note: Hdr+/}],
-							[q{Cell}],
-						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
-					}],
-					[q{"mixin generators"},q{
-						mixin((src) .GEN!q{script}); mixin((expr).調!fun); 
-						mixin((src).GEN!q{script}); 
-					}],
 					[q{"tenary operator"},q{
 						((a)?(b):(c))	((a)?(b) :(c)) 
 						((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
@@ -6677,6 +6678,26 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
+					[],
+					[q{"debug inspector"},q{((0x301F035B2D627). 檢 (expr)) ((). 檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3025C35B2D627). 檢 ((update間(_間)))); }],
+				]))
+			}
+		},
+		{
+			"Expressions", "(2)", 
+			q{
+				(表([
+					[q{"table blocks"},q{
+						(表([
+							[q{/+Note: Hdr+/}],
+							[q{Cell}],
+						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
+					}],
+					[q{"mixin generators"},q{
+						mixin((src) .GEN!q{script}); mixin((expr).調!fun); 
+						mixin((src).GEN!q{script}); 
+					}],
 					[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
 					[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
 					[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
@@ -6689,9 +6710,9 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 			q{
 				(表([
 					[q{"comments"},q{
-						/+cmt+/ 
+						/+cmt+/
 						/*cmt*/ //cmt
-						/+Note: note+/ /+Code: code+/ 
+						/+Note: note+/ /+Code: code+/ /+hidden:+/
 						/+Link: cmt+/ /+$DIDE_IMG+/
 						/+Todo: cmt+/ 
 						/+Opt: cmt+/ /+Bug: cmt+/
@@ -6779,6 +6800,18 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						with(a)
 						{ f; }with(a) { f; }
 					}],
+					[q{"scope"},q{
+						scope(exit)
+						{ a; } 
+						scope(exit) { a; } 
+					}],
+				]))
+			}
+		},
+		{
+			"Loops Exceptions", "LE",
+			q{
+				(表([
 					[q{"while blocks"},q{
 						while(a)
 						{ f; }while(a) { f; }
@@ -6797,6 +6830,17 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						foreach_reverse(;)
 						{ f; }
 						foreach_reverse(;) { f; }
+					}],
+					[q{"try catch finally"},q{
+						try
+						{}
+						catch(a)
+						{}try
+						{}
+						finally
+						{}
+						try {}catch(a) {}
+						try {}finally {}
 					}],
 				]))
 			}
