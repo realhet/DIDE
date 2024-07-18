@@ -556,7 +556,7 @@ version(/+$DIDE_REGION main+/all)
 								bmp.modified = now; //Todo: This should come from the EXE, not from DIDE.
 								bmp.file = File(i`temp:\\IMG_BLB_$(wild[0]).img`.text); 
 								bitmaps.set(bmp); 
-								textures.invalidate(bmp.file); 
+								textures.invalidate(bmp.file); //Todo: ez lehet, hogy nem kell, mert Img.autoRefresh van.
 								debugImageBlobs[bmp.file] = true; 
 							}
 							catch(Exception e)
@@ -579,7 +579,7 @@ version(/+$DIDE_REGION main+/all)
 											(
 											((error=="")?(
 												"$DIDE_CODE " ~ //prefix handled by Inspector Node.
-												i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=0 $(imgParams)+/".text
+												i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=1 $(imgParams)+/".text
 											) :("ImageBlob Error: " ~ error))
 										); 
 										//Todo: no Img.autoRefresh is needed for these.
@@ -2388,7 +2388,7 @@ version(/+$DIDE_REGION main+/all)
 							if(!c.targetPos.x.isnan) c.targetPos += delta; 
 						}
 					}
-				} 
+				}
 				
 				ts.move(dir, select); 
 				
@@ -2555,7 +2555,7 @@ version(/+$DIDE_REGION main+/all)
 			//Todo: preserve module selections too
 			const savedTextSelections = textSelections.map!(a => a.toReference.text).array; 
 			scope(exit)
-			{ textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; } 
+			{ textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; }
 			if(fun) fun(); 
 		} 
 		
@@ -6679,8 +6679,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
 					[],
-					[q{"debug inspector"},q{((0x301F035B2D627). 檢 (expr)) ((). 檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3025C35B2D627). 檢 ((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3022835B2D627).檢(expr)) ((0x3024635B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3029435B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
@@ -6712,7 +6712,7 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					[q{"comments"},q{
 						/+cmt+/
 						/*cmt*/ //cmt
-						/+Note: note+/ /+Code: code+/ /+hidden:+/
+						/+Note: note+/ /+Code: code+/ /+Hidden:+/
 						/+Link: cmt+/ /+$DIDE_IMG+/
 						/+Todo: cmt+/ 
 						/+Opt: cmt+/ /+Bug: cmt+/
@@ -6802,8 +6802,8 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					}],
 					[q{"scope"},q{
 						scope(exit)
-						{ a; } 
-						scope(exit) { a; } 
+						{ a; }
+						scope(exit) { a; }
 					}],
 				]))
 			}
