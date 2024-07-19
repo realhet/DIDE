@@ -260,7 +260,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			MSQueue!string dbgRerouteQueue; 
 			
-			bool[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
+			Bitmap[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
 			
 			ToolPalette _toolPalette; @property toolPalette()
 			{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
@@ -546,7 +546,17 @@ version(/+$DIDE_REGION main+/all)
 									{
 										{
 											static if(N==1) alias E = C; else alias E = Vector!(C, N); 
-											case E.stringof: bmp = new Bitmap(image2D(width, height, (cast(E[])(buf)))); break sw; 
+											case E.stringof: 
+											bmp = new Bitmap(
+												image2D(width, height, (cast(E[])(buf)))
+												/+
+													Note: NOT a copy!
+													It points to Windows SharedMemory.
+													
+													This means, it is noisy, but good enough for debugging.
+												+/
+											); 
+											break sw; 
 										}
 									}
 									default: raise("Unknown ImageBlob element type: "~elementType); 
@@ -556,8 +566,14 @@ version(/+$DIDE_REGION main+/all)
 								bmp.modified = now; //Todo: This should come from the EXE, not from DIDE.
 								bmp.file = File(i`temp:\\IMG_BLB_$(wild[0]).img`.text); 
 								bitmaps.set(bmp); 
-								textures.invalidate(bmp.file); //Todo: ez lehet, hogy nem kell, mert Img.autoRefresh van.
-								debugImageBlobs[bmp.file] = true; 
+								/+
+									Opt: ain't work: textures.refreshFile(bmp.file, bmp); 
+									ain't work: textures.invalidate(bmp.file);
+									Only Img.autoRefresh works and that's slow...
+									This is a big mess...
+								+/
+								
+								debugImageBlobs[bmp.file] = bmp; 
 							}
 							catch(Exception e)
 							{ error = e.simpleMsg; }
@@ -570,10 +586,7 @@ version(/+$DIDE_REGION main+/all)
 										string imgParams; 
 										if(auto col = ne.operands[1])
 										if(auto cmt = col.lastRow.lastComment)
-										{
-											imgParams = cmt.content.sourceText; 
-											LOG(imgParams); 
-										}
+										{ imgParams = cmt.content.sourceText; }
 										
 										ne.updateDebugValue
 											(
@@ -582,7 +595,7 @@ version(/+$DIDE_REGION main+/all)
 												i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=1 $(imgParams)+/".text
 											) :("ImageBlob Error: " ~ error))
 										); 
-										//Todo: no Img.autoRefresh is needed for these.
+										//Opt: Img.autoRefresh is slow. It should update Img.stIdx
 										
 										addInspectorParticle(ne); 
 										return; 
@@ -6679,8 +6692,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
 					[],
-					[q{"debug inspector"},q{((0x3022835B2D627).檢(expr)) ((0x3024635B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3029435B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3038735B2D627).檢(expr)) ((0x303A535B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x303F335B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
