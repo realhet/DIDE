@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-//@release
+///@release
 
 
 version(/+$DIDE_REGION main+/all)
@@ -681,6 +681,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(0) dr.mmGrid(view); 
 				
+				scope(exit) dr.alpha = 1; 
 				dr.alpha = .5f; 
 				dr.lineWidth = -1; 
 				if(visualizeMarginsAndPaddingUnderMouse)
@@ -1262,12 +1263,58 @@ version(/+$DIDE_REGION main+/all)
 				
 				im.UI_FlashMessages; 
 				
+				workspace.update(view, buildResult); 
 				im.root ~= workspace; 
+				
+				version(/+$DIDE_REGION Interactive controls on modules+/all)
+				{
+					with(im)
+					{
+						auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
+						if(enabledModule && enabledModule.isReadOnly) enabledModule = null; 
+						
+						const oldStyle = style; scope(exit) style = oldStyle; 
+						
+						foreach(m; workspace.modules)
+						{
+							//baszik mukodni igy: im.root ~= m; 
+							foreach(n; m.visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
+							{
+								if(n.operands[0] && n.operands[1])
+								{
+									const type = n.operands[0].extractThisLevelDString.text; 
+									switch(type)
+									{
+										case "bool": {
+											//Todo: edit permission
+											const b1 = !!n.controlValue; 
+											bool b2 = b1; 
+											style.bkColor = n.bkColor; 
+											style.fontColor = syntaxFontColor(skIdentifier1); 
+											ChkBox(
+												b2, "", {
+													flags.targetSurface = 0; 
+													outerPos = n.worldInnerPos; 
+												}, 
+												enable(m is enabledModule), ((n.identityStr).genericArg!q{id})
+											); 
+											if(b1!=b2) {
+												n.controlValue = b2; 
+												n.setChanged; 
+											}
+										}break; 
+										default: 
+									}
+								}
+							}
+						}
+					}
+				}
+				
 				im.root ~= overlay; 
 				
 				view.subScreenArea = im.clientArea / clientSize; 
 				
-				workspace.update(view, buildResult); 
 				workspace.UI_Popup; 
 				
 				//bottomRight hint
@@ -2844,7 +2891,7 @@ version(/+$DIDE_REGION main+/all)
 				auto s = ts.sourceText; 
 				/+
 					this can throw if the structured contents are invalid. 
-								If that goes into the undo, it would not be redo'd.
+					If that goes into the undo, it would not be redo'd.
 				+/
 				
 				auto res = requestModifyPermission(ts.codeColumn); 
@@ -6622,6 +6669,7 @@ version(/+$DIDE_REGION main+/all)
 		override void draw(Drawing dr)
 		{
 			globalChangeindicatorsAppender.clear; 
+			(mixin(求each(q{m},q{modules},q{m.visibleConstantNodes.clear}))); 
 			
 			structureMap.beginCollect; 
 			super.draw(dr); 
@@ -6691,9 +6739,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[],
-					[q{"debug inspector"},q{((0x3038735B2D627).檢(expr)) ((0x303A535B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x303F335B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3092B35B2D627).檢(expr)) ((0x3094935B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3099735B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},

@@ -221,181 +221,181 @@ version(/+$DIDE_REGION+/all)
 	//Todo: this animated highlight effect is useful for other stuff than just inspectors.
 }version(/+$DIDE_REGION Probes+/all)
 {
-	//Probes /////////////////////////////////////
-	
-	version(none) { auto _testProbe() { return ((now).PR!()); } }
-	const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
-	
-	void _updateTestProbe()
-	{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
-	
-	void resetGlobalWatches()
+	deprecated("Use inspectors!")
 	{
-		foreach(ref w; globalWatches.byValue)
-		{ w.value = ""; }
-	} 
-	
-	struct Watch
-	{
-		string id; 
+		version(none) { auto _testProbe() { return ((now).PR!()); } }
+		const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
 		
-		string value; 
+		void _updateTestProbe()
+		{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
 		
-		vec2 relativePos; //vector from srcBounds.center to dstBounds.center
-		
-		private string _lastValue; 
-		private Container _container; 
-		
-		void update(string value)
+		void resetGlobalWatches()
 		{
-			this.value = value; 
-			
-			if(_lastValue.chkSet(value)) _container = null; 
+			foreach(ref w; globalWatches.byValue)
+			{ w.value = ""; }
 		} 
 		
-		void draw(Drawing dr, bounds2 srcBounds)
+		struct Watch
 		{
-			//this looks like a workspace with lots of modules on top of it.  
-			//A second layer over the real modules.
+			string id; 
 			
-			if(!_container)
-			{
-				with(im)
-				{
-					Column(
-						{
-							outerPos = pos; 
-							flags.targetSurface = 0; 
-							padding = "2"; 
-							style.applySyntax(skConsole); bkColor = style.bkColor; 
-							border = Border(1, BorderStyle.normal, style.fontColor); 
-							Text(value); 
-						}  
-					); 
-					_container = removeLastContainer; 
-					_container.measure; 
-				}
-			}
+			string value; 
 			
-			//Todo: no clipping yet
-			if(auto c = _container)
+			vec2 relativePos; //vector from srcBounds.center to dstBounds.center
+			
+			private string _lastValue; 
+			private Container _container; 
+			
+			void update(string value)
 			{
-				enum shadowSize = 6, shadowAlpha=.33f; 
+				this.value = value; 
 				
-				/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
-				c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
+				if(_lastValue.chkSet(value)) _container = null; 
+			} 
+			
+			void draw(Drawing dr, bounds2 srcBounds)
+			{
+				//this looks like a workspace with lots of modules on top of it.  
+				//A second layer over the real modules.
 				
-				const dstBounds = c.outerBounds; 
-				
-				//shadow
-				if(shadowSize)
+				if(!_container)
 				{
-					dr.alpha = shadowAlpha; 
-					dr.color = clBlack; 
-					dr.fillRect(c.outerBounds + shadowSize); 
-					dr.alpha = 1; 
-				}
-				
-				//line
-				{
-					dr.lineWidth = 1; 
-					
-					void doit(bool horiz, float x0, float y0, float x1, float y1)
+					with(im)
 					{
-						void doit(bool shadow)
-						{
-							enum triangularThickness = 4; 
-							
-							const p0 = vec2(x0, y0); 
-							const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
-							
-							if(triangularThickness)
+						Column(
 							{
-								const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
-								dr.fillTriangle(p0, p1+sh, p1-sh); 
-								dr.fillTriangle(p0, p1-sh, p1+sh); 
+								outerPos = pos; 
+								flags.targetSurface = 0; 
+								padding = "2"; 
+								style.applySyntax(skConsole); bkColor = style.bkColor; 
+								border = Border(1, BorderStyle.normal, style.fontColor); 
+								Text(value); 
+							}  
+						); 
+						_container = removeLastContainer; 
+						_container.measure; 
+					}
+				}
+				
+				//Todo: no clipping yet
+				if(auto c = _container)
+				{
+					enum shadowSize = 6, shadowAlpha=.33f; 
+					
+					/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
+					c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
+					
+					const dstBounds = c.outerBounds; 
+					
+					//shadow
+					if(shadowSize)
+					{
+						dr.alpha = shadowAlpha; 
+						dr.color = clBlack; 
+						dr.fillRect(c.outerBounds + shadowSize); 
+						dr.alpha = 1; 
+					}
+					
+					//line
+					{
+						dr.lineWidth = 1; 
+						
+						void doit(bool horiz, float x0, float y0, float x1, float y1)
+						{
+							void doit(bool shadow)
+							{
+								enum triangularThickness = 4; 
+								
+								const p0 = vec2(x0, y0); 
+								const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
+								
+								if(triangularThickness)
+								{
+									const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
+									dr.fillTriangle(p0, p1+sh, p1-sh); 
+									dr.fillTriangle(p0, p1-sh, p1+sh); 
+								}
+								else
+								dr.line(p0, p1); 
+							} 
+							
+							if(shadowSize)
+							{
+								dr.color = clBlack; 
+								dr.alpha = shadowAlpha; 
+								doit(true); 
+								dr.alpha = 1; 
 							}
-							else
-							dr.line(p0, p1); 
+							
+							dr.color = clWhite; 
+							doit(false); 
 						} 
 						
-						if(shadowSize)
+						const d = (normalize(dstBounds.center - srcBounds.center)); 
+						if((magnitude(d.x))>(magnitude(d.y)))
 						{
-							dr.color = clBlack; 
-							dr.alpha = shadowAlpha; 
-							doit(true); 
-							dr.alpha = 1; 
+							if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
+							else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
 						}
-						
-						dr.color = clWhite; 
-						doit(false); 
-					} 
+						else
+						{
+							if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
+							else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
+						}
+					}
 					
-					const d = (normalize(dstBounds.center - srcBounds.center)); 
-					if((magnitude(d.x))>(magnitude(d.y)))
-					{
-						if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-						else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-					}
-					else
-					{
-						if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
-						else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
-					}
+					c.draw(dr); 
 				}
+			} 
+		} 
+		
+		Watch[string] globalWatches; 
+		
+		struct Probe
+		{
+			string id; 
+			NiceExpression node; 
+			bounds2 bounds; //the bounds of the expression in world coods
+		} 
+		
+		Probe[string] globalVisibleProbes; 
+		
+		string calcProbeId(NiceExpression node)
+		{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
+		
+		void addGlobalProbe(Drawing dr, NiceExpression node)
+		{
+			const id = calcProbeId(node); 
+			globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
+		} 
+		
+		void drawProbes(Drawing dr)
+		{
+			foreach(id, const probe; globalVisibleProbes)
+			{
+				//print("Visible:", probe); 
+				/+
+					dr.lineWidth = 4; 
+					dr.color = clWhite; 
+					dr.drawRect(probe.bounds); 
+					dr.lineWidth = 1.333; 
+					dr.color = clBlack; 
+					dr.drawRect(probe.bounds); 
+				+/
 				
-				c.draw(dr); 
+				dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
+				dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
+				dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
+				dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
+				
+				if(auto watch = id in globalWatches)
+				{
+					//print("Found:", *watch); 
+					watch.draw(dr, probe.bounds); 
+				}
 			}
 		} 
 	} 
-	
-	Watch[string] globalWatches; 
-	
-	struct Probe
-	{
-		string id; 
-		NiceExpression node; 
-		bounds2 bounds; //the bounds of the expression in world coods
-	} 
-	
-	Probe[string] globalVisibleProbes; 
-	
-	string calcProbeId(NiceExpression node)
-	{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
-	
-	void addGlobalProbe(Drawing dr, NiceExpression node)
-	{
-		const id = calcProbeId(node); 
-		globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
-	} 
-	
-	void drawProbes(Drawing dr)
-	{
-		foreach(id, const probe; globalVisibleProbes)
-		{
-			//print("Visible:", probe); 
-			/+
-				dr.lineWidth = 4; 
-				dr.color = clWhite; 
-				dr.drawRect(probe.bounds); 
-				dr.lineWidth = 1.333; 
-				dr.color = clBlack; 
-				dr.drawRect(probe.bounds); 
-			+/
-			
-			dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
-			dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-			dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
-			dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-			
-			if(auto watch = id in globalWatches)
-			{
-				//print("Found:", *watch); 
-				watch.draw(dr, probe.bounds); 
-			}
-		}
-	} 
-	
 }version(/+$DIDE_REGION Utility+/all)
 {
 	//Utility //////////////////////////////////////////
@@ -2799,7 +2799,7 @@ class CodeRow: Row
 					Todo: only display this when there is an editor cursor active in the codeColumn
 					(or in the module)
 				+/
-				dr.translate(innerPos); scope(exit) { dr.pop; dr.alpha = 1; } 
+				dr.translate(innerPos); scope(exit) { dr.pop; dr.alpha = 1; }
 				
 				dr.color = clGray; dr.alpha = .4f; dr.lineWidth = .5f; dr.pointSize = 1; 
 				
@@ -2879,11 +2879,17 @@ class CodeRow: Row
 				}
 			} 
 			
+			void appendCell(Cell cell)
+			{
+				assert(cell); 
+				actRow.appendCell(cell); 
+			} 
+			
 			void appendNode(CodeNode node)
 			{
 				assert(node); 
 				assert(node.parent is actRow); 
-				actRow.appendCell(node); 
+				appendCell(node); 
 			} 
 		}
 			
@@ -4475,7 +4481,7 @@ version(/+$DIDE_REGION+/all)
 			}
 			
 		}
-		 
+		
 		print("---End of Processed DDoc----------------------------------------------"); 
 	} 
 	
@@ -5743,7 +5749,7 @@ version(/+$DIDE_REGION+/all)
 					
 					rearrangeNode; 
 				}
-					return; 
+					return; 
 				case "LOC": 
 					with(nodeBuilder(skIdentifier1, NodeStyle.bright))
 				{
@@ -6447,6 +6453,9 @@ version(/+$DIDE_REGION+/all)
 			} 
 		}
 		
+		
+		version(/+$DIDE_REGION Constant Node handling+/all)
+		{ CodeNode[] visibleConstantNodes; }
 	} 
 }version(/+$DIDE_REGION SCRUM+/all)
 {
@@ -9701,7 +9710,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢(0x3F6227B6B4BCC))},
+			q{((0x3F77F7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9715,7 +9724,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((expr).檢 (0x3F7307B6B4BCC))},
+			q{((0x3F88D7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -9723,6 +9732,38 @@ version(/+$DIDE_REGION+/all)
 			q{drawInspector; },
 			initCode: q{initInspector; }
 		},
+		
+		{
+			"const_bool", 
+			NET.castOp,
+			skIdentifier1,
+			NodeStyle.dim,
+			q{(常!(bool)(1))},
+			
+			"常!",
+			q{
+				switch(controlType)
+				{
+					case "bool": { put(operator); op(0); put('('); put((controlValue)?('1'):('0')); put(')'); }break; 
+					default: put(operator); op(0); op(1); 
+				}
+			},
+			q{
+				controlType = operands[0].byShallowChar.text; 
+				const value = operands[1].byShallowChar.text; 
+				switch(controlType)
+				{
+					case "bool": {
+						put(' '); subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
+						const b = 	value=="true" || 
+							!!value.to!float.ifThrown(0); 
+						controlValue = b ? 1 : 0; 
+					}break; 
+					default: put(operator); op(0); op(1); //unknown type
+				}
+			},
+			q{if(!isnan(controlValue)) moduleOf(this).visibleConstantNodes ~= this; }
+		}
 	]; 
 	
 	
@@ -10109,7 +10150,9 @@ version(/+$DIDE_REGION+/all)
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
-		
+		//controller only
+		string controlType; 
+		float controlValue; 
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
