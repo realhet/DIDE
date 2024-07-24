@@ -102,300 +102,302 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isManaged(TextFormat tf)
 	{ return tf.inRange(TextFormat.managed_first, TextFormat.managed_last); } 
-	
-}version(/+$DIDE_REGION ChangeIndicator+/all)
-{
-	//ChangeIndicator /////////////////////////////////////
-	
-	struct ChangeIndicator
+	
+	version(/+$DIDE_REGION ChangeIndicator+/all)
 	{
-		//Todo: this is quite similar to CaretPos
-		vec2 pos; 
-		float height; 
-		ubyte thickness; 
-		ubyte mask; 
+		//ChangeIndicator /////////////////////////////////////
 		
-		vec2 top() const
-		{ return pos; } 
-		vec2 center() const
-		{ return pos + vec2(0, height/2); } 
-		vec2 bottom() const
-		{ return pos + vec2(0, height); } 
-		bounds2 bounds() const
-		{ return bounds2(top, bottom); } 
-	} 
-	
-	Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
-	
-	void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
-	{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
-	
-	void addGlobalChangeIndicator(Drawing dr, Container cntr)
-	{
-		with(cntr) {
-			if(const mask = changedMask)
+		struct ChangeIndicator
+		{
+			//Todo: this is quite similar to CaretPos
+			vec2 pos; 
+			float height; 
+			ubyte thickness; 
+			ubyte mask; 
+			
+			vec2 top() const
+			{ return pos; } 
+			vec2 center() const
+			{ return pos + vec2(0, height/2); } 
+			vec2 bottom() const
+			{ return pos + vec2(0, height); } 
+			bounds2 bounds() const
+			{ return bounds2(top, bottom); } 
+		} 
+		
+		Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
+		
+		void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
+		{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
+		
+		void addGlobalChangeIndicator(Drawing dr, Container cntr)
+		{
+			with(cntr) {
+				if(const mask = changedMask)
+				{
+					enum ofs = vec2(-4, 0); 
+					if(cast(CodeRow)cntr)
+					addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
+					else if(cast(CodeColumn)cntr)
+					addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
+				}
+			}
+		} 
+		
+		void draw(Drawing dr, in ChangeIndicator[] arr)
+		{
+			enum palette = [clBlack, clLime, clRed, clYellow]; 
+			
+			//const clamper = RectClamper(im.getView, 5);
+			
+			void drawPass(int pass)(in ChangeIndicator ci)
 			{
-				enum ofs = vec2(-4, 0); 
-				if(cast(CodeRow)cntr)
-				addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
-				else if(cast(CodeColumn)cntr)
-				addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
-			}
-		}
-	} 
-	
-	void draw(Drawing dr, in ChangeIndicator[] arr)
-	{
-		enum palette = [clBlack, clLime, clRed, clYellow]; 
-		
-		//const clamper = RectClamper(im.getView, 5);
-		
-		void drawPass(int pass)(in ChangeIndicator ci)
-		{
-			static if(pass==1) {
-				dr.lineWidth = -float(ci.thickness)-1.5f; 
-				//opted out: dr.color = clBlack;
-			}
-			static if(pass==2) {
-				dr.lineWidth = -float(ci.thickness); 
-				dr.color = palette[ci.mask]; 
-			}
-					
-			//if(clamper.overlaps(ci.bounds)){
-				dr.vLine(ci.pos, ci.pos.y + ci.height); 
-			//}else{
-			//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
-			//}
-		} 
-		
-		/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
-		/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
-		
-	} 
-	
-}version(/+$DIDE_REGION InspectorParticleEffect+/all)
-{
-	struct InspectorParticle
-	{
-		vec2 center, size; 
-		float life=0; 
-		void updateAndDraw(Drawing dr)
-		{
-			enum scale = 10; 
-			if(life>=.05f)
-			{
-				life *= .91f; 
-				const sqLife = ((life)^^(2)); 
-				
-				auto b = bounds2(((center).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
-				
-				dr.lineWidth = -1-sqLife*10; 
-				dr.alpha = 1 - sqLife; 
-				dr.color = mix(clWhite, clAqua, life); 
-				dr.drawRect(b); 
-				dr.alpha = 1; 
-			}
-		} 
-		
-		void setup(CodeNode node)
-		{
-			life = 1; 
-			auto b = node.worldOuterBounds; 
-			center = b.center; 
-			size = b.size; 
-		} 
-	} 
-	
-	__gshared {
-		InspectorParticle[1024] inspectorParticles; 
-		size_t inspectorParticleIdx = 0; 
-	} 
-	
-	void addInspectorParticle(CodeNode node)
-	{
-		inspectorParticleIdx++; 
-		if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-		inspectorParticles[inspectorParticleIdx].setup(node); 
-	} 
-	
-	//Todo: this animated highlight effect is useful for other stuff than just inspectors.
-}version(/+$DIDE_REGION Probes+/all)
-{
-	deprecated("Use inspectors!")
-	{
-		version(none) { auto _testProbe() { return ((now).PR!()); } }
-		const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
-		
-		void _updateTestProbe()
-		{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
-		
-		void resetGlobalWatches()
-		{
-			foreach(ref w; globalWatches.byValue)
-			{ w.value = ""; }
-		} 
-		
-		struct Watch
-		{
-			string id; 
-			
-			string value; 
-			
-			vec2 relativePos; //vector from srcBounds.center to dstBounds.center
-			
-			private string _lastValue; 
-			private Container _container; 
-			
-			void update(string value)
-			{
-				this.value = value; 
-				
-				if(_lastValue.chkSet(value)) _container = null; 
+				static if(pass==1) {
+					dr.lineWidth = -float(ci.thickness)-1.5f; 
+					//opted out: dr.color = clBlack;
+				}
+				static if(pass==2) {
+					dr.lineWidth = -float(ci.thickness); 
+					dr.color = palette[ci.mask]; 
+				}
+						
+				//if(clamper.overlaps(ci.bounds)){
+					dr.vLine(ci.pos, ci.pos.y + ci.height); 
+				//}else{
+				//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
+				//}
 			} 
 			
-			void draw(Drawing dr, bounds2 srcBounds)
+			/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
+			/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
+			
+		} 
+	}
+	
+	version(/+$DIDE_REGION InspectorFX+/all)
+	{
+		struct InspectorParticle
+		{
+			vec2 center, size; 
+			float life=0; 
+			void updateAndDraw(Drawing dr)
 			{
-				//this looks like a workspace with lots of modules on top of it.  
-				//A second layer over the real modules.
-				
-				if(!_container)
+				enum scale = 10; 
+				if(life>=.05f)
 				{
-					with(im)
-					{
-						Column(
-							{
-								outerPos = pos; 
-								flags.targetSurface = 0; 
-								padding = "2"; 
-								style.applySyntax(skConsole); bkColor = style.bkColor; 
-								border = Border(1, BorderStyle.normal, style.fontColor); 
-								Text(value); 
-							}  
-						); 
-						_container = removeLastContainer; 
-						_container.measure; 
-					}
+					life *= .91f; 
+					const sqLife = ((life)^^(2)); 
+					
+					auto b = bounds2(((center).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
+					
+					dr.lineWidth = -1-sqLife*10; 
+					dr.alpha = 1 - sqLife; 
+					dr.color = mix(clWhite, clAqua, life); 
+					dr.drawRect(b); 
+					dr.alpha = 1; 
 				}
+			} 
+			
+			void setup(CodeNode node, float initialLife = 1)
+			{
+				life = initialLife; 
+				auto b = node.worldOuterBounds; 
+				center = b.center; 
+				size = b.size; 
+			} 
+		} 
+		
+		__gshared {
+			InspectorParticle[1024] inspectorParticles; 
+			size_t inspectorParticleIdx = 0; 
+		} 
+		
+		void addInspectorParticle(CodeNode node, float initialLife=1)
+		{
+			inspectorParticleIdx++; 
+			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
+			inspectorParticles[inspectorParticleIdx].setup(node, initialLife); 
+		} 
+	}
+	
+	version(/+$DIDE_REGION Probes+/all)
+	{
+		deprecated("Use inspectors!")
+		{
+			version(none) { auto _testProbe() { return ((now).PR!()); } }
+			const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
+			
+			void _updateTestProbe()
+			{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
+			
+			void resetGlobalWatches()
+			{
+				foreach(ref w; globalWatches.byValue)
+				{ w.value = ""; }
+			} 
+			
+			struct Watch
+			{
+				string id; 
 				
-				//Todo: no clipping yet
-				if(auto c = _container)
+				string value; 
+				
+				vec2 relativePos; //vector from srcBounds.center to dstBounds.center
+				
+				private string _lastValue; 
+				private Container _container; 
+				
+				void update(string value)
 				{
-					enum shadowSize = 6, shadowAlpha=.33f; 
+					this.value = value; 
 					
-					/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
-					c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
+					if(_lastValue.chkSet(value)) _container = null; 
+				} 
+				
+				void draw(Drawing dr, bounds2 srcBounds)
+				{
+					//this looks like a workspace with lots of modules on top of it.  
+					//A second layer over the real modules.
 					
-					const dstBounds = c.outerBounds; 
-					
-					//shadow
-					if(shadowSize)
+					if(!_container)
 					{
-						dr.alpha = shadowAlpha; 
-						dr.color = clBlack; 
-						dr.fillRect(c.outerBounds + shadowSize); 
-						dr.alpha = 1; 
+						with(im)
+						{
+							Column(
+								{
+									outerPos = pos; 
+									flags.targetSurface = 0; 
+									padding = "2"; 
+									style.applySyntax(skConsole); bkColor = style.bkColor; 
+									border = Border(1, BorderStyle.normal, style.fontColor); 
+									Text(value); 
+								}  
+							); 
+							_container = removeLastContainer; 
+							_container.measure; 
+						}
 					}
 					
-					//line
+					//Todo: no clipping yet
+					if(auto c = _container)
 					{
-						dr.lineWidth = 1; 
+						enum shadowSize = 6, shadowAlpha=.33f; 
 						
-						void doit(bool horiz, float x0, float y0, float x1, float y1)
+						/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
+						c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
+						
+						const dstBounds = c.outerBounds; 
+						
+						//shadow
+						if(shadowSize)
 						{
-							void doit(bool shadow)
+							dr.alpha = shadowAlpha; 
+							dr.color = clBlack; 
+							dr.fillRect(c.outerBounds + shadowSize); 
+							dr.alpha = 1; 
+						}
+						
+						//line
+						{
+							dr.lineWidth = 1; 
+							
+							void doit(bool horiz, float x0, float y0, float x1, float y1)
 							{
-								enum triangularThickness = 4; 
-								
-								const p0 = vec2(x0, y0); 
-								const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
-								
-								if(triangularThickness)
+								void doit(bool shadow)
 								{
-									const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
-									dr.fillTriangle(p0, p1+sh, p1-sh); 
-									dr.fillTriangle(p0, p1-sh, p1+sh); 
+									enum triangularThickness = 4; 
+									
+									const p0 = vec2(x0, y0); 
+									const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
+									
+									if(triangularThickness)
+									{
+										const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
+										dr.fillTriangle(p0, p1+sh, p1-sh); 
+										dr.fillTriangle(p0, p1-sh, p1+sh); 
+									}
+									else
+									dr.line(p0, p1); 
+								} 
+								
+								if(shadowSize)
+								{
+									dr.color = clBlack; 
+									dr.alpha = shadowAlpha; 
+									doit(true); 
+									dr.alpha = 1; 
 								}
-								else
-								dr.line(p0, p1); 
+								
+								dr.color = clWhite; 
+								doit(false); 
 							} 
 							
-							if(shadowSize)
+							const d = (normalize(dstBounds.center - srcBounds.center)); 
+							if((magnitude(d.x))>(magnitude(d.y)))
 							{
-								dr.color = clBlack; 
-								dr.alpha = shadowAlpha; 
-								doit(true); 
-								dr.alpha = 1; 
+								if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
+								else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
 							}
-							
-							dr.color = clWhite; 
-							doit(false); 
-						} 
+							else
+							{
+								if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
+								else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
+							}
+						}
 						
-						const d = (normalize(dstBounds.center - srcBounds.center)); 
-						if((magnitude(d.x))>(magnitude(d.y)))
-						{
-							if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-							else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-						}
-						else
-						{
-							if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
-							else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
-						}
+						c.draw(dr); 
 					}
+				} 
+			} 
+			
+			Watch[string] globalWatches; 
+			
+			struct Probe
+			{
+				string id; 
+				NiceExpression node; 
+				bounds2 bounds; //the bounds of the expression in world coods
+			} 
+			
+			Probe[string] globalVisibleProbes; 
+			
+			string calcProbeId(NiceExpression node)
+			{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
+			
+			void addGlobalProbe(Drawing dr, NiceExpression node)
+			{
+				const id = calcProbeId(node); 
+				globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
+			} 
+			
+			void drawProbes(Drawing dr)
+			{
+				foreach(id, const probe; globalVisibleProbes)
+				{
+					//print("Visible:", probe); 
+					/+
+						dr.lineWidth = 4; 
+						dr.color = clWhite; 
+						dr.drawRect(probe.bounds); 
+						dr.lineWidth = 1.333; 
+						dr.color = clBlack; 
+						dr.drawRect(probe.bounds); 
+					+/
 					
-					c.draw(dr); 
+					dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
+					dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
+					dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
+					dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
+					
+					if(auto watch = id in globalWatches)
+					{
+						//print("Found:", *watch); 
+						watch.draw(dr, probe.bounds); 
+					}
 				}
 			} 
 		} 
-		
-		Watch[string] globalWatches; 
-		
-		struct Probe
-		{
-			string id; 
-			NiceExpression node; 
-			bounds2 bounds; //the bounds of the expression in world coods
-		} 
-		
-		Probe[string] globalVisibleProbes; 
-		
-		string calcProbeId(NiceExpression node)
-		{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
-		
-		void addGlobalProbe(Drawing dr, NiceExpression node)
-		{
-			const id = calcProbeId(node); 
-			globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
-		} 
-		
-		void drawProbes(Drawing dr)
-		{
-			foreach(id, const probe; globalVisibleProbes)
-			{
-				//print("Visible:", probe); 
-				/+
-					dr.lineWidth = 4; 
-					dr.color = clWhite; 
-					dr.drawRect(probe.bounds); 
-					dr.lineWidth = 1.333; 
-					dr.color = clBlack; 
-					dr.drawRect(probe.bounds); 
-				+/
-				
-				dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
-				dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-				dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
-				dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-				
-				if(auto watch = id in globalWatches)
-				{
-					//print("Found:", *watch); 
-					watch.draw(dr, probe.bounds); 
-				}
-			}
-		} 
-	} 
+	}
 }version(/+$DIDE_REGION Utility+/all)
 {
 	//Utility //////////////////////////////////////////
@@ -9710,7 +9712,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F77F7B6B4BCC).檢(expr))},
+			q{((0x3F88A7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9724,7 +9726,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F88D7B6B4BCC).檢 (expr))},
+			q{((0x3F9987B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -10296,16 +10298,24 @@ version(/+$DIDE_REGION+/all)
 		version(/+$DIDE_REGION DebugValue support+/all)
 		{
 			string debugValue; 
-			DateTime debugValueUpdatedTime, debugValueChangedTime; //Todo: should be in another class... It's inspector exclusive.
+			DateTime prevDebugValueUpdatedTime, debugValueUpdatedTime, debugValueChangedTime; //Todo: should be in another class... It's inspector exclusive.
 			
 			void updateDebugValue(string value)
 			{
+				prevDebugValueUpdatedTime = debugValueUpdatedTime; 
 				debugValueUpdatedTime = application.tickTime; 
 				if(debugValue.chkSet(value))
 				{
 					debugValueChangedTime = debugValueUpdatedTime; 
 					needMeasure; 
 				}
+			} 
+			
+			float debugValueDiminisingIntensity()
+			{
+				//If the frequency of an event is too high, it's visualization will be less intense.
+				const Δt = (float((debugValueUpdatedTime - prevDebugValueUpdatedTime).value(((2)*(second))))); 
+				return ((Δt>=1)?(1):(max(sqrt(Δt), .1f))); 
 			} 
 		}
 		

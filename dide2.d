@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 
 version(/+$DIDE_REGION main+/all)
@@ -491,7 +491,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne); 
+										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -513,7 +513,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne); 
+										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -597,7 +597,7 @@ version(/+$DIDE_REGION main+/all)
 										); 
 										//Opt: Img.autoRefresh is slow. It should update Img.stIdx
 										
-										addInspectorParticle(ne); 
+										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -6739,8 +6739,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3092B35B2D627).檢(expr)) ((0x3094935B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3099735B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3099035B2D627).檢(expr)) ((0x309AE35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x309FC35B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
