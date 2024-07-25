@@ -318,11 +318,12 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(dbgsrv.exe_pid)
 				{
-					import core.sys.windows.windows; 
-					if(auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dbgsrv.exe_pid))
-					CloseHandle(hProcess); 
-					else
-					dbgsrv.exe_pid = 0; 
+					const running = PIDModuleFileIsRunning(dbgsrv.exe_pid, workspace.mainModuleFile.otherExt("exe")); 
+					
+					if(!running) {
+						dbgsrv.exe_pid = 0; /+It's been terminated.+/
+						WARN("PID terminated"); 
+					}
 				}
 				
 				if(dbgsrv.console_hwnd)
@@ -6739,8 +6740,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3099035B2D627).檢(expr)) ((0x309AE35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x309FC35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x309AE35B2D627).檢(expr)) ((0x309CC35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30A1A35B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
