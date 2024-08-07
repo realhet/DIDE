@@ -102,14 +102,28 @@ version(/+$DIDE_REGION+/all) {
 	alias globalPidList = Singleton!GlobalPidList; 
 	//Todo: globalPidList... Not the best naming...
 	
+	struct LaunchRequirements
+	{
+		@CAPTION("Min latency (ms)") @HINT("Amout of time it will wait \nbetween consequtive compiler launches.") @RANGE(0, 10_000) uint minLatency_ms = 100; 
+		@CAPTION("Max running threads") @HINT("Maximum number of \nconcurrent compilers running.") @RANGE(1, 32) uint maxThreads = 8; /+
+			ram: 	12GB 	5/8 cores	128.2s
+				24GB 	8/8 cores	107.6s  19% speedup
+				8GB	12/12 cores 	partial fail!
+				8GB	4/12 cores	works.
+		+/
+		@CAPTION("Max CPU usage %") @HINT("Maximum CPU usage % allowed \nwhen launching a new compiler instance.") @RANGE(10, 100) uint maxCpuUsage_percent = 90; 
+		@CAPTION("Min free RAM (MB)") @HINT("RAM requirement to launch \na new compiler instance.") @RANGE(1, 8192) uint minAvalilableRam_MB = 2048; 
+	} 
+	
 	int spawnProcessMulti2(
 		File[] mainFiles, in string[][] cmdLines, 
 		in string[string] env, Path workPath, Path logPath, out string[] sOutput, 
 		bool delegate(int idx, int result, string output) onProgress/*returns enable flag*/, 
-		bool delegate(int inFlight, int justStartedIdx) onIdle/*return cancel flag*/
+		bool delegate(int inFlight, int justStartedIdx) onIdle/*return cancel flag*/,
+		in ref LaunchRequirements launchRequirements
 	)
 	{
-		static class Executor
+		class Executor_old
 		{
 			import std.process, std.file : chdir; 
 			
@@ -118,8 +132,8 @@ version(/+$DIDE_REGION+/all) {
 			string[string] env; 
 			Path workPath, logPath; 
 			
-			//temporal	data
-			File	logFile/+,    errFile+/; 
+			//temporal data
+			File logFile/+,    errFile+/; 
 			StdFile stdLogFile/+, stdErrFile+/; 
 			Pid pid; 
 			
@@ -161,7 +175,7 @@ version(/+$DIDE_REGION+/all) {
 				{ return state==State.finished; } 
 			} 
 			
-			void reset()
+			protected void reset()
 			{
 				kill; 
 				this.clearFields_init; 
@@ -189,7 +203,7 @@ version(/+$DIDE_REGION+/all) {
 				setup(cmd, env, workPath, logPath); 
 				start; 
 			} 
-			
+			
 			void start()
 			{
 				if(isRunning)
@@ -287,6 +301,185 @@ version(/+$DIDE_REGION+/all) {
 				}
 			} 
 			
+		} class Executor/+_new+/
+		{
+			import std.process, std.file : chdir; 
+			
+			//input data
+			string[] cmd; 
+			string[string] env; 
+			Path workPath; 
+			
+			//temporal data
+			ProcessPipes pipes; 
+			@property pid() => pipes.pid; 
+			
+			//output data
+			string output; 
+			int result; 
+			bool ended; 
+			
+			enum State
+			{ idle, running, finished} 
+			@property state() => ((pid !is null)?(State.running) : (((!ended)?(State.idle) :(State.finished)))); 
+			@property isIdle() => state==State.idle; 
+			@property isRunning() => state==State.running; 
+			@property isFinished() => state==State.finished; 
+			
+			
+			Thread outThread, errThread; 
+			
+			this()
+			{} 
+			
+			void setup(in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			{
+				if(isRunning) ERR("already running"); 
+				
+				version(/+$DIDE_REGION Reset everything+/all)
+				{
+					kill; 
+					this.clearFields_init; 
+				}
+				
+				this.cmd = cmd.dup; 
+				this.env = cast(string[string])env; 
+				this.workPath = workPath; 
+			} 
+			
+			void start(in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			{
+				setup(cmd, env, workPath); 
+				start; 
+			} 
+			
+			this(bool startNow, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			{
+				this(); 
+				((startNow)?(&start):(&setup))(cmd, env, workPath); 
+			} 
+			
+			
+			protected void setEndResult(int val)
+			{
+				result = val; 
+				pipes = ProcessPipes.init; 
+				ended = true; 
+			} 
+			
+			protected void killPipeReader(alias thr)()
+			{ thr.free; } 
+			protected void waitPipeReader(alias thr)()
+			{
+				ignoreExceptions({ if(thr) thr.join; }); 
+				thr.free; 
+			} 
+			
+			
+			void start()
+			{
+				if(isRunning) ERR("already running"); 
+				
+				try
+				{
+					//launch the process
+					pipes = pipeProcess(
+						cmd, Redirect.stdout | Redirect.stderr, env, 
+						Config.suppressConsole, workPath.fullPath
+					); 
+				}
+				catch(Exception e)
+				{
+					output = "Error: " ~ e.simpleMsg; 
+					setEndResult(-1); 
+					return; 
+				}
+				
+				version(/+$DIDE_REGION Start listening to stdOut and stdErr+/all)
+				{
+					output = ""; 
+					
+					outThread = new Thread
+					(
+						{
+							foreach(line; pipes.stdout.byLineCopy(Yes.keepTerminator))
+							{
+								synchronized(this) {
+									LOG("O:", line.stripRight); 
+									output ~= line; 
+								} 
+							}
+						}
+					); 
+					outThread.start; 
+					
+					errThread = new Thread
+					(
+						{
+							foreach(line; pipes.stderr.byLineCopy(Yes.keepTerminator))
+							{
+								synchronized(this) {
+									LOG("E:", line.stripRight); 
+									output ~= line; 
+								} 
+							}
+						}
+					); 
+					errThread.start; 
+				}
+				
+				if(pid) globalPidList.add(pid); 
+			} 
+			
+			void update()
+			{
+				//checks if the running process ended.
+				if(pid !is null)
+				{
+					auto w = tryWait(pid); 
+					if(w.terminated)
+					{
+						globalPidList.remove(pid); 
+						
+						/+
+							Note: These readers should automatically ended after the process is terminated,
+							so it's OK to just wait for them.
+						+/
+						waitPipeReader!outThread; 
+						waitPipeReader!errThread; 
+						
+						//output is already collected in 'output' field.
+						
+						setEndResult(w.status); 
+					}
+				}
+			} 
+			
+			void kill()
+			{
+				if(pid) globalPidList.remove(pid); //make sure to remove.
+				
+				killPipeReader!outThread; 
+				killPipeReader!errThread; 
+				
+				if(!isFinished)
+				{
+					if(pid)
+					try
+					{ std.process.kill(pid); }
+					catch(Exception e)
+					{
+						WARN(e.extendedMsg); 
+						/+
+							Sometimes it gives "Access is denied.", 
+							maybe because it's already dead, so just ignore.
+						+/
+					}
+					output ~= "\nError: Process has been killed."; 
+					setEndResult(-1); 
+				}
+			} 
+			
 		} 
 		/// returns true if it must work more
 		static bool update(Executor[] executors, bool delegate(int idx, int result, string output) onProgress = null)
@@ -320,41 +513,37 @@ version(/+$DIDE_REGION+/all) {
 		
 		//it was developed for running multiple compiler instances.
 		
-		Executor[] executors = cmdLines.map!(a => new Executor(false, a, env, workPath, logPath)).array; 
+		Executor[] executors = cmdLines.map!(a => new Executor(false, a, env, workPath/+, logPath+/)).array; 
 		
 		DateTime lastLaunchTime; 
 		bool cancelled; 
+		
 		while(update(executors, onProgress))
 		{
 			const runningCnt = executors.count!(e => e.isRunning).to!int; 
 			
-			int justStartedIdx = -1; 
-			if(!cancelled)
-			if(
-				runningCnt==0 || (
-					(now-lastLaunchTime).value(second)>0.1f 
-					&& runningCnt<(GetNumberOfCores) /+
-						ram: 	12GB 	5 cores, 128.2s
-							24GB 	8 cores, 107.6s  19% speedup
-					+/
-					&& GetCPULoadPercent<90 
-					&& GetMemAvailMB>2048
-				)
-			)
+			bool canLaunchNow()
 			{
-				 //Todo: make these settings configurable
-				//find something to launch
-				foreach(i, e; executors)
-				if(e.isIdle)
-				{
-					e.start; 
-					lastLaunchTime = now; 
-					justStartedIdx = i.to!int; 
-					break; 
-				}
-				
-			}
+				with(launchRequirements)
+				return	runningCnt==0 /+the very first compiler will launc immediately+/|| 
+					(
+					(now-lastLaunchTime).value(milli(second)) >= minLatency_ms
+					&& runningCnt < maxThreads.clamp(0, GetNumberOfCores)
+					&& GetCPULoadPercent <= maxCpuUsage_percent 
+					&& GetMemAvailMB >= minAvalilableRam_MB
+				); 
+			} 
 			
+			int justStartedIdx = -1; 
+			if(!cancelled && canLaunchNow)
+			foreach(i, e; executors)
+			if(e.isIdle)
+			{
+				e.start; 
+				lastLaunchTime = now; 
+				justStartedIdx = i.to!int; 
+				break; 
+			}
 			
 			if(onIdle)
 			cancelled |= onIdle(runningCnt, justStartedIdx); 
@@ -489,24 +678,6 @@ Experimental:
 	
 	struct BuildSettings
 	{
-		version(/+$DIDE_REGION+/none) {
-			@("v|verbose     = Verbose output. Otherwise it will only display the errors.") bool verbose	; 
-			@("m|map         = Generate map file.",	   ) bool generateMap		; 
-			@("c|compileOnly = Compile and link only, do not run."	   ) bool	compileOnly	; 
-			@("e|leaveObj    = Leave behind .obj and .res files after compilation."	   ) bool leaveObjs	; 
-			@("r|rebuild     = Rebuilds everything. Clears all caches."	   ) bool rebuild	; 
-			@("I|include     = Add include path to search for .d files."	   ) string[]	importPaths	; 
-			@("o|compileOpt  = Pass extra compiler option."		) string[] compileArgs		; 
-			@("L|linkOpt     = Pass extra linker option."	   )	string[] linkArgs	; 
-			@("y|ldcLinkOpt     = Pass extra LDC linker option."	   )	string[] ldcLinkArgs	; 
-			@("k|kill        = Kill currently running executable before compile."	   ) bool killExe	; 
-			@("t|todo        = Collect //Todo: and //Opt: comments."	   ) bool collectTodos	; 
-			@("n|single      = Single step compilation."	   ) bool singleStepCompilation		; 
-			@("w|workPath    = Specify path for temp files. Default = Project's path."	   )	string workPath	; 
-			@("a|macroHelp   = Show info about the build-macros."	   ) bool macroHelp	; 
-			@("d|dideDbgEnv = DIDE can specify it's debug environment.") string dideDbgEnv; 
-		}
-		
 		mixin((
 			(表([
 				[q{/+Note: type+/},q{/+Note: decl+/},q{/+Note: char+/},q{/+Note: name+/},q{/+Note: description+/}],
@@ -532,17 +703,6 @@ Experimental:
 				(a[2][1..$-1], a[3][1..$-1], a[4][1..$-1], a[0], a[1])
 			}))).join
 		}); 
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
 		
 		//Todo: mi a faszert irja ki allandoan az 1 betus roviditest mindenhez???
 		
@@ -1010,7 +1170,7 @@ struct BuildSystem
 		{ settings.linkArgs.addIfCan(args); } void addLdcLinkArgs(in string[] args)
 		{ settings.ldcLinkArgs.addIfCan(args); } 
 		
-		version(none) scope(exit) { LOG("buildMacro processed:", buildMacro.quoted, "settings:", settings.toJson); } 
+		version(none) scope(exit) { LOG("buildMacro processed:", buildMacro.quoted, "settings:", settings.toJson); }
 		
 		const 	args	= splitCommandLine(buildMacro),
 			cmd	= lc(args[0]),
@@ -1195,7 +1355,7 @@ struct BuildSystem
 	
 		static string processDMDErrors(string sErr, string path)
 	{
-		 //processes each errorlog individually, making absolute filepaths
+		//processes each errorlog individually, making absolute filepaths
 		string[] list; 
 		auto rx = ctRegex!`(.+)\(.+\): `; 
 		foreach(s; sErr.splitLines)
@@ -1451,7 +1611,8 @@ struct BuildSystem
 			((int inFlight, int justStartedIdx) {
 				cancelled |= onIdle ? onIdle(inFlight, justStartedIdx) : false; 
 				return cancelled; 
-			})
+			}),
+			buildSystemLaunchRequirements
 		); 
 		
 		logln; 
@@ -1799,7 +1960,7 @@ struct BuildSystem
 				}
 				if(!settings.generateMap)
 				mapFile.remove; //linker makes it for dlls even not wanted
-			} 
+			}
 			
 			/////////////////////////////////////////////////////////////////////////////////////
 			//compile and link
@@ -2031,6 +2192,8 @@ version(/+$DIDE_REGION+/all) {
 	} 
 	
 	__gshared const BuildSystemWorkerState buildSystemWorkerState; 
+	
+	__gshared LaunchRequirements buildSystemLaunchRequirements; //controls multithreaded compilation behavior
 	
 	void buildSystemWorker()
 	{
@@ -2170,9 +2333,9 @@ version(/+$DIDE_REGION+/all) {
 		
 		bool opEquals(in DMDMessage b)const
 		{
-			return 	location == b.location &&
-				type==b.type && 
-				content==b.content; 
+			return 	location 	== b.location 	&&
+				type	== b.type 	&&
+				content	== b.content; 
 		}  int opCmp(const DMDMessage b) const
 		{
 			return 	cmp(location, b.location)
@@ -2181,23 +2344,16 @@ version(/+$DIDE_REGION+/all) {
 		} 
 		
 		size_t toHash()const
-		{
-			return 	location.hashOf
-				(
-				type.hashOf
-				(content.hashOf)
-			); 
-		} 
+		{ return 	location.hashOf	(type.hashOf(content.hashOf)); } 
 		
 		bool isSupplemental() const
 		{ return type==Type.unknown && content.startsWith(' '); } 
 		
 		bool isInstantiatedFrom() const
 		{
-			return 	isSupplemental && 
-				(
-				content.stripLeft.startsWith("instantiated from here: ") ||
-				content.endsWith(" instantiations, -v to show) ...") ||
+			return 	isSupplemental && 	(
+				content.stripLeft.startsWith("instantiated from here: ") 	||
+				content.endsWith(" instantiations, -v to show) ...") 	||
 				content.canFind(" recursive instantiations from here: ")
 			); 
 		} 
@@ -2219,11 +2375,11 @@ version(/+$DIDE_REGION+/all) {
 		{
 			auto res = 	indentStr.replicate(level) ~
 				withEndingColon(location.text) ~
-				(enableColor ? typeColorCode[type] : "") ~ typePrefixes[type] ~
-				(enableColor ? "\33\7" : "") ~ content; 
+				((enableColor)?(typeColorCode[type]):("")) ~ typePrefixes[type] ~
+				((enableColor)?("\33\7"):("")) ~ content; 
 			
 			foreach(const ref sm; subMessages)
-			res ~= "\n"~sm.toString_internal(level + sm.isInstantiatedFrom, enableColor, indentStr); 
+			res ~= "\n" ~ sm.toString_internal(level + sm.isInstantiatedFrom, enableColor, indentStr); 
 			
 			return res; 
 		} 
@@ -2235,13 +2391,13 @@ version(/+$DIDE_REGION+/all) {
 		private static
 		{
 			static withEndingColon(string s)
-			{ return s=="" ? "" : s~": "; }  static withStartingSpace(string s)
-			{ return s=="" ? "" : " "~s; } 
+			{ return ((s=="")?(""):(s~": ")); }  static withStartingSpace(string s)
+			{ return ((s=="")?(""):(" "~s)); } 
 			
 			int[] findQuotePairIndices(string s)
 			{
 				int[] indices; 
-				foreach(i, char ch; s) if(ch=='`') indices ~= i.to!int; 
+				foreach(int i, char ch; s) if(ch=='`') indices ~= i/+.to!int <- not needed in new LDC+/; 
 				
 				if(indices.length & 1)
 				{
@@ -2251,14 +2407,11 @@ version(/+$DIDE_REGION+/all) {
 				return indices; 
 			} 
 			
-			string safeDComment(string s)
-			{ return s.replace("/+", "/ +").replace("+/", "+ /"); } 
-			
-			string encapsulateCodeBlocks(string msg)
+			static string encapsulateCodeBlocks(string msg)
 			{
 				//locate all the code snippets inside `` and surround them with / +Code: ... + /
 				const indices = findQuotePairIndices(msg); 
-				bool opening = false; 
+				auto opening = false; 
 				foreach_reverse(i; indices)
 				{
 					const 	left = msg[0 .. i],
@@ -2280,7 +2433,7 @@ version(/+$DIDE_REGION+/all) {
 		{
 			auto res = 	"\t".replicate(level) ~
 				typePrefixes[type] ~
-				encapsulateCodeBlocks(safeDComment(content.stripLeft)) ~
+				encapsulateCodeBlocks(safeDCommentBody(content.stripLeft)) ~
 				((location)?(" /+$DIDE_LOC "~location.text~"+/"):("")); 
 			
 			foreach(const ref sm; subMessages)
@@ -2572,7 +2725,8 @@ version(/+$DIDE_REGION+/all) {
 				if(f in remainings && remainings[f].length)
 				{
 					auto act = "/+Output:/+$DIDE_LOC "~f.fullName~"+/\n/+"; 
-					remainings[f].each!(a => act ~= DMDMessage.safeDComment(a)~"\n"); 
+					foreach(a; remainings[f])
+					act ~= safeDCommentBody(a)~'\n'; 
 					act ~= "+/+/"; 
 					
 					res ~= act; 

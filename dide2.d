@@ -238,9 +238,14 @@ version(/+$DIDE_REGION main+/all)
 			@STORED {
 				bool mainMenuOpened; 
 				
-				enum MenuPage { Tools, Palette } 
+				enum MenuPage { Tools, Palette, Settings } 
 				MenuPage menuPage; 
 				string toolPalettePage; 
+				
+				@property {
+					string _settings_launchRequirements() const { return buildSystemLaunchRequirements.toJson; } 
+					void _settings_launchRequirements(string s) { buildSystemLaunchRequirements.fromJson(s); } 
+				} 
 			} 
 			
 			Workspace workspace; 
@@ -859,6 +864,9 @@ version(/+$DIDE_REGION main+/all)
 										if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
 										workspace.insertNode(templateSource, subColumnIdx); 
 									}
+									break; 
+									case MenuPage.Settings: 
+										Grp!Column("BuildSystem: Launch Requirements", { buildSystemLaunchRequirements.stdUI; }); 
 									break; 
 								}
 							}
@@ -6740,8 +6748,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x309AE35B2D627).檢(expr)) ((0x309CC35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30A1A35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30B3835B2D627).檢(expr)) ((0x30B5635B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30BA435B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
