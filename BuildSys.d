@@ -113,197 +113,52 @@ version(/+$DIDE_REGION+/all) {
 		+/
 		@CAPTION("Max CPU usage %") @HINT("Maximum CPU usage % allowed \nwhen launching a new compiler instance.") @RANGE(10, 100) uint maxCpuUsage_percent = 90; 
 		@CAPTION("Min free RAM (MB)") @HINT("RAM requirement to launch \na new compiler instance.") @RANGE(1, 8192) uint minAvalilableRam_MB = 2048; 
+	} struct GroupByTime(T)
+	{
+		T[] queue; 
+		DateTime lastT; 
+		@property empty() const => queue.empty; 
+		
+		void put(T a)
+		{ if(a.empty) return; queue ~= a; lastT = now; } 
+		
+		void put(R)(R a) if(isInputRange!(R, T))
+		{ if(a.empty) return; queue ~= a.array; lastT = now; } 
+		
+		bool canGet(Time minElapsedTime)
+		{
+			if(!queue.empty) {
+				const Δt = now-lastT; 
+				if(Δt>=minElapsedTime)
+				return true; 
+			}
+			return false; 
+		} 
+		
+		T[] get(Time minElapsedTime)
+		{
+			T[] res; 
+			if(canGet(minElapsedTime))
+			{ res = queue; queue = []; }
+			return res; 
+		} 
 	} 
 	
+	alias globalCompileLog = Singleton!(SafeQueue!(string, true, false)); 
+	
 	int spawnProcessMulti2(
-		File[] mainFiles, in string[][] cmdLines, 
+		File[] ids, in string[][] cmdLines, 
 		in string[string] env, Path workPath, Path logPath, out string[] sOutput, 
 		bool delegate(int idx, int result, string output) onProgress/*returns enable flag*/, 
 		bool delegate(int inFlight, int justStartedIdx) onIdle/*return cancel flag*/,
 		in ref LaunchRequirements launchRequirements
 	)
 	{
-		class Executor_old
+		class Executor/+_new+/
 		{
 			import std.process, std.file : chdir; 
 			
-			//input data
-			string[] cmd; 
-			string[string] env; 
-			Path workPath, logPath; 
-			
-			//temporal data
-			File logFile/+,    errFile+/; 
-			StdFile stdLogFile/+, stdErrFile+/; 
-			Pid pid; 
-			
-			//output data
-			string output; 
-			int result; 
-			bool ended; 
-			
-			this()
-			{} 
-			
-			this(
-				bool startNow, in string[] cmd, in string[string] env = null, 
-				Path workPath = Path.init, Path logPath = Path.init
-			)
-			{
-				this(); 
-				(startNow ? &start : &setup)(cmd, env, workPath, logPath); 
-			} 
-			
-			
-			enum State
-			{ idle, running, finished} 
-			@property
-			{
-				auto state() const
-				{
-					if(pid !is null)
-					return State.running; 
-					if(!ended)
-					return State.idle; 
-					return State.finished; 
-				} 
-				auto isIdle	() const
-				{ return state==State.idle	; } 
-				auto isRunning	() const
-				{ return state==State.running	; } 
-				auto isFinished() const
-				{ return state==State.finished; } 
-			} 
-			
-			protected void reset()
-			{
-				kill; 
-				this.clearFields_init; 
-			} 
-			
-			void setup(
-				in string[] cmd, in string[string] env = null, 
-				Path workPath = Path.init, Path logPath = Path.init
-			)
-			{
-				if(isRunning)
-				ERR("already running"); 
-				reset; 
-				this.cmd = cmd.dup; 
-				this.env = cast(string[string])env; 
-				this.workPath = workPath; 
-				this.logPath = logPath; 
-			} 
-			
-			void start(
-				in string[] cmd, in string[string] env = null, 
-				Path workPath = Path.init, Path logPath = Path.init
-			)
-			{
-				setup(cmd, env, workPath, logPath); 
-				start; 
-			} 
-			
-			void start()
-			{
-				if(isRunning)
-				ERR("already running"); 
-				
-				try
-				{
-					//create logFile default logFile path is tempPath
-					Path actualLogPath = logPath ? logPath : het.tempPath; 
-					logFile = File(actualLogPath, this.identityStr ~ ".log"); 
-					logFile.path.make; 
-					stdLogFile = StdFile(logFile.fullName, "w"); 
-					
-					//errFile = logFile.otherExt("err");
-					//stdErrFile = StdFile(errFile.fullName, "w");
-					
-					//launch the process
-					pid = spawnProcess(
-						cmd, stdin, stdLogFile, stdLogFile, env, 
-						
-						//Config.retainStdout | Config.retainStderr |
-						Config.suppressConsole, 
-						
-						workPath.fullPath
-					); 
-					globalPidList.add(pid); 
-					//Note: Config.retainStdout makes it impossible to remove the file after.
-				}
-				catch(Exception e)
-				{
-					result = -1; 
-					output = "Error: " ~ e.simpleMsg; 
-					ended = true; 
-					ignoreExceptions({ stdLogFile.close; }); 
-					ignoreExceptions({ logFile.forcedRemove; }); 
-				}
-			} 
-			
-			void update()
-			{
-				//checks if the running process ended.
-				if(pid !is null)
-				{
-					auto w = tryWait(pid); 
-					if(w.terminated)
-					{
-						result = w.status; 
-						globalPidList.remove(pid); 
-						pid = null; 
-						ended = true; 
-						ignoreExceptions({ output = logFile.readStr; }); 
-						
-						//string error; ignoreExceptions({ error = errFile.readStr; });
-						//LOG(mainFile, "CMD", cmd);
-						//LOG(mainFile, "OUTPUT", output);
-						//LOG(mainFile, "ERROR", error);
-						//Todo: this is only specific for compilers!!!
-						/+
-							output = output.splitLines.enumerate.map!
-								(a => format!"%s(%d, 1): Message: %s\n"
-								(mainFile.fullName, a.index+1, a.value)).join ~ error;
-						+/
-						
-						ignoreExceptions({ logFile.forcedRemove; }); 
-						//ignoreExceptions({ errFile.forcedRemove; });
-					}
-				}
-			} 
-			
-			void kill()
-			{
-				if(pid) globalPidList.remove(pid); //make sure to remove.
-				
-				if(!isFinished)
-				{
-					if(pid)
-					try
-					{ std.process.kill(pid); }
-					catch(Exception e)
-					{
-						WARN(e.extendedMsg); 
-						/+
-							Sometimes it gives "Access is denied.", 
-							maybe because it's already dead, so just ignore.
-						+/
-					}
-					
-					
-					result = -1; 
-					output = "Error: Process has been killed."; 
-					pid = null; 
-					ended = true; 
-					ignoreExceptions({ logFile.forcedRemove; }); 
-					//ignoreExceptions({ errFile.forcedRemove; });
-				}
-			} 
-			
-		} class Executor/+_new+/
-		{
-			import std.process, std.file : chdir; 
+			string id; //to identify this executor
 			
 			//input data
 			string[] cmd; 
@@ -313,9 +168,14 @@ version(/+$DIDE_REGION+/all) {
 			//temporal data
 			ProcessPipes pipes; 
 			@property pid() => pipes.pid; 
+			GroupByTime!string stdOutGrouper, stdErrGrouper; 
+			
+			
+			string[] pendingErrLines; //Todo: nem ide!!!
+			DMDMessages msgs; //Todo: nem ide!!!
 			
 			//output data
-			string output; 
+			deprecated string output; 
 			int result; 
 			bool ended; 
 			
@@ -332,7 +192,7 @@ version(/+$DIDE_REGION+/all) {
 			this()
 			{} 
 			
-			void setup(in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			void setup(string id, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
 			{
 				if(isRunning) ERR("already running"); 
 				
@@ -340,23 +200,22 @@ version(/+$DIDE_REGION+/all) {
 				{
 					kill; 
 					this.clearFields_init; 
-				}
-				
-				this.cmd = cmd.dup; 
-				this.env = cast(string[string])env; 
-				this.workPath = workPath; 
+				}this.id 	= id,
+				this.cmd 	= cmd.dup,
+				this.env 	= cast(string[string])env,
+				this.workPath 	= workPath; 
 			} 
 			
-			void start(in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			void start(string id, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
 			{
-				setup(cmd, env, workPath); 
+				setup(id, cmd, env, workPath); 
 				start; 
 			} 
 			
-			this(bool startNow, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
+			this(bool startNow, string id, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
 			{
 				this(); 
-				((startNow)?(&start):(&setup))(cmd, env, workPath); 
+				((startNow)?(&start):(&setup))(id, cmd, env, workPath); 
 			} 
 			
 			
@@ -375,21 +234,64 @@ version(/+$DIDE_REGION+/all) {
 				thr.free; 
 			} 
 			
+			protected void fetchPipes(in Time minT, bool isFinal=false)
+			{
+				if(stdOutGrouper.canGet(minT) || stdErrGrouper.canGet(minT) || isFinal /+Fast exit without synching.+/)
+				synchronized(this)
+				{
+					auto lines = stdOutGrouper.get(minT); 
+					if(!lines.empty) {
+						print("----------------- STDOUT ", id, "--------------------"); 
+						lines.map!"`incoming > `~a".each!print; 
+						
+						DMDMessage msg; 
+						msg.type = DMDMessage.Type.console; 
+						msg.location = CodeLocation(id); 
+						msg.content = lines.join('\n'); 
+						msgs.messages ~= msg; 
+						
+						
+						print("-----------------------------------------------------"); 
+					}
+					lines = stdErrGrouper.get(minT); 
+					if(!lines.empty || isFinal) {
+						print("----------------- STDERR ", id, "--------------------"); 
+						lines.map!"`incoming > `~a".each!print; 
+						
+						pendingErrLines ~= lines; 
+						
+						msgs.actSourceFile = File(id); 
+						msgs.processDMDOutput_partial(pendingErrLines, isFinal); 
+						
+						//Todo: pragmas
+						print("-----------------------------------------------------"); 
+						print("pending", pendingErrLines); 
+					}
+				} 
+				
+				if(isFinal) {
+					print("===================== STDERR ", id, "======================"); 
+					msgs.messages.each!print; 
+					msgs.pragmas.print; 
+					print("======================================================="); 
+				}
+			} 
 			
+			protected void fetchPipes_final()
+			{ fetchPipes(0*second, true); } 
+			
+			
 			void start()
 			{
 				if(isRunning) ERR("already running"); 
 				
-				try
-				{
-					//launch the process
+				try {
 					pipes = pipeProcess(
 						cmd, Redirect.stdout | Redirect.stderr, env, 
 						Config.suppressConsole, workPath.fullPath
 					); 
 				}
-				catch(Exception e)
-				{
+				catch(Exception e) {
 					output = "Error: " ~ e.simpleMsg; 
 					setEndResult(-1); 
 					return; 
@@ -402,29 +304,19 @@ version(/+$DIDE_REGION+/all) {
 					outThread = new Thread
 					(
 						{
-							foreach(line; pipes.stdout.byLineCopy(Yes.keepTerminator))
-							{
-								synchronized(this) {
-									LOG("O:", line.stripRight); 
-									output ~= line; 
-								} 
-							}
+							foreach(a; pipes.stdout.byLineCopy.map!((a)=>(a.withoutEnding('\r'))))
+							synchronized(this) stdOutGrouper.put(a); 
 						}
 					); 
-					outThread.start; 
-					
 					errThread = new Thread
 					(
 						{
-							foreach(line; pipes.stderr.byLineCopy(Yes.keepTerminator))
-							{
-								synchronized(this) {
-									LOG("E:", line.stripRight); 
-									output ~= line; 
-								} 
-							}
+							foreach(a; pipes.stderr.byLineCopy.map!((a)=>(a.withoutEnding('\r'))))
+							synchronized(this) stdErrGrouper.put(a); 
 						}
 					); 
+					
+					outThread.start; 
 					errThread.start; 
 				}
 				
@@ -436,6 +328,8 @@ version(/+$DIDE_REGION+/all) {
 				//checks if the running process ended.
 				if(pid !is null)
 				{
+					fetchPipes(.5*second); 
+					
 					auto w = tryWait(pid); 
 					if(w.terminated)
 					{
@@ -447,6 +341,8 @@ version(/+$DIDE_REGION+/all) {
 						+/
 						waitPipeReader!outThread; 
 						waitPipeReader!errThread; 
+						
+						fetchPipes_final; 
 						
 						//output is already collected in 'output' field.
 						
@@ -493,19 +389,13 @@ version(/+$DIDE_REGION+/all) {
 					if(e.isFinished && (onProgress !is null))
 					{
 						const doContinue = onProgress(i.to!int, e.result, e.output); 
-						//LOG("-".replicate(80));
-						//LOG(e.result);
-						//LOG(e.output);
-						if(!doContinue)
-						doBreak = true; 
+						if(!doContinue) doBreak = true; 
 					}
 				}
-				if(doBreak)
-				break; 
+				if(doBreak) break; 
 			}
 			
-			if(doBreak)
-			{ executors.each!(e => e.kill); }
+			if(doBreak) { executors.each!(e => e.kill); }
 			
 			return !executors.all!(e => e.isFinished); 
 		} 
@@ -513,7 +403,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		//it was developed for running multiple compiler instances.
 		
-		Executor[] executors = cmdLines.map!(a => new Executor(false, a, env, workPath/+, logPath+/)).array; 
+		Executor[] executors = (mixin(求map(q{a},q{cmdLines.enumerate},q{new Executor(false, a.value.filter!"a.endsWith(`.d`)".join(';'), a.value, env, workPath)}))).array; 
 		
 		DateTime lastLaunchTime; 
 		bool cancelled; 
@@ -536,12 +426,12 @@ version(/+$DIDE_REGION+/all) {
 			
 			int justStartedIdx = -1; 
 			if(!cancelled && canLaunchNow)
-			foreach(i, e; executors)
+			foreach(int i, e; executors)
 			if(e.isIdle)
 			{
 				e.start; 
 				lastLaunchTime = now; 
-				justStartedIdx = i.to!int; 
+				justStartedIdx = i; 
 				break; 
 			}
 			
@@ -562,6 +452,10 @@ version(/+$DIDE_REGION+/all) {
 			//combine output and error lof
 			sOutput ~= e.output; 
 		}
+		
+		
+		globalCompileLog.fetchAll.sort!("a<b", SwapStrategy.stable).join("\r\n").saveTo(File(`c:\dl\globalCompile.log`)); 
+		
 		return res; 
 		
 	} 
@@ -1440,7 +1334,7 @@ struct BuildSystem
 		string[] makeCommonCompileArgs()
 	{
 		//make commandline args
-		auto args = ["ldc2", "-vcolumns", "-verrors-context"]; 
+		auto args = ["ldc2", "-vcolumns", "-verrors-context"/+"-v"+//+, /+It's quitr bogus in LDC.+/+/]; 
 		
 		if(isIncremental)
 		args ~= ["-c", "-allinst"]; /+
@@ -2461,7 +2355,7 @@ version(/+$DIDE_REGION+/all) {
 		alias messages this; 
 		
 		DMDMessage[] messages; 
-		string[][File] pragmas; 
+		deprecated("Rename to unprocessedLines!") string[][File] pragmas; 
 		
 		//message filtering
 		
@@ -2472,7 +2366,7 @@ version(/+$DIDE_REGION+/all) {
 		private
 		{
 			size_t[size_t] messageMap; 
-			File actSourceFile; 
+			public File actSourceFile; 
 			DMDMessage* parentMessage; 
 			FileNameFixer fileNameFixer; 
 		} 
@@ -2545,57 +2439,129 @@ version(/+$DIDE_REGION+/all) {
 			pragmas.clear; 
 		} 
 		
+		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
+			/+1:fn 2:drive       3      4        5      6       7+/
+			/+drive:\ is optional.+/; 
+		
+		static int decodeColumnMarker(string s)
+		{
+			return ((
+				s.endsWith('^') &&
+				(
+					s.length==1 || 
+					s[0..$-1].all!"a.among(' ', '\t')"
+				)
+			)?((cast(int)(s.length))):(0)); 
+		} 
+		static bool isColumnMarker(string s)
+		{
+			print("DCM:", decodeColumnMarker(s), s.quoted); 
+			return decodeColumnMarker(s)>0; 
+		} ; 
+		
+		
+		static bool isDMDMessage(string s)
+		{
+			auto m = matchFirst(s, rxDMDMessage); 
+			return !m.empty; 
+		} 
+		
+		static bool isDMDMainMessage(string s)
+		{
+			auto m = matchFirst(s, rxDMDMessage); 
+			if(!m.empty)
+			{
+				DMDMessage msg; 
+				with(msg)
+				{
+					content = m[7]; detectType; 
+					return type!=Type.unknown; 
+				}
+			}
+			return false; 
+		} 
+		
+		void processDMDOutput_partial(ref string[] lines, bool isFinal)
+		{
+			if(isFinal)
+			{
+				processDMDOutput(lines); 
+				lines = []; 
+			}
+			else
+			{
+				auto prevLines = lines; 
+				
+				while(lines.length)
+				{
+					const s = lines.back; 
+					
+					//from here, break if it's a valid ending
+					if(isColumnMarker(s)) { print("Valid ending because ColumnMarker:", s.quoted); break; }
+					else if(isDMDMessage(s))
+					{
+						const dqCnt = s.count('`'); 
+						if(
+							!dqCnt
+							/+has no quotation inside+/
+						)
+						{ print("Valid ending because no strings:", s.quoted); break; }
+						if(
+							(dqCnt%2==0) && 
+							(s.count('"')==0) && 
+							(s.count('\'')==0)
+							/+
+								has even quotation, 
+								but no other strings
+							+/
+						)
+						{ print("Valid ending because simple strings:", s.quoted); break; }
+					}
+					lines.popBack; 
+				}
+				
+				processDMDOutput(lines); 
+				lines = prevLines[lines.length..$]; 
+			}
+		} 
+		
 		void processDMDOutput(string[] lines)
 		{
 			if(lines.empty) return; 
 			
 			createFileNameFixerIfNeeded; 
 			
-			static decodeColumnMarker(string s)
-			{
-				return ((
-					s.endsWith('^') &&(
-						s.length==1 || 
-						s[0..$-1].all!"a.among(' ', '\t')"
-					)
-				)?(s.length.to!int):(0)); 
-			} 
-			
-			DMDMessage decodeDMDMessage(string s)
-			{
-				enum rx = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
-					/+1:fn 2:drive       3      4        5      6       7+/; 
-				//drive:\ is optional.
-				
-				DMDMessage res; 
-				auto m = matchFirst(s, rx); 
-				if(!m.empty)
-				{
-					with(res)
-					{
-						location = CodeLocation(
-							fileNameFixer(m[1]).fullName, 
-							m[5].to!int.ifThrown(0), 
-							m[6].to!int.ifThrown(0), 
-							m[4].to!int.ifThrown(0)
-						); 
-						content = m[7]; 
-						detectType; 
-					}
-				}
-				
-				return res; 
-			} 
-			
-			File decodeFileMarker(string line)
+			static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
 			{
 				enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
 				auto m = matchFirst(line, rx); 
 				return m.empty ? File.init : fileNameFixer(m[1]); 
 			} 
 			
-			DMDMessage fetchDMDMessage(ref string[] lines)
+			static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
 			{
+				DMDMessage decodeDMDMessage(string s)
+				{
+					DMDMessage res; 
+					auto m = matchFirst(s, rxDMDMessage); 
+					if(!m.empty)
+					{
+						with(res)
+						{
+							location = CodeLocation(
+								fileNameFixer(m[1]).fullName, 
+								m[5].to!int.ifThrown(0), 
+								m[6].to!int.ifThrown(0), 
+								m[4].to!int.ifThrown(0)
+							); 
+							content = m[7]; 
+							detectType; 
+						}
+					}
+					
+					return res; 
+				} 
+				
 				auto msg = decodeDMDMessage(lines.front); 
 				if(msg)
 				{
@@ -2605,7 +2571,7 @@ version(/+$DIDE_REGION+/all) {
 						if(decodeColumnMarker(lines[i])==msg.col)
 						{ endIdx = i; break; }
 						if(decodeDMDMessage(lines[i])) break; 
-						if(decodeFileMarker(lines[i])) break; 
+						if(decodeFileMarker(lines[i], fileNameFixer)) break; 
 					}
 					
 					if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
@@ -2627,7 +2593,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			while(lines.length)
 			{
-				if(auto msg = fetchDMDMessage(lines))
+				if(auto msg = fetchDMDMessage(lines, fileNameFixer))
 				{
 					if(msg.isSupplemental && parentMessage)
 					{
@@ -2667,7 +2633,7 @@ version(/+$DIDE_REGION+/all) {
 						}
 					}
 				}
-				else if(auto f = decodeFileMarker(lines.front))
+				else if(auto f = decodeFileMarker(lines.front, fileNameFixer))
 				{
 					lines.popFront; 
 					actSourceFile = f; 
