@@ -102,56 +102,40 @@ version(/+$DIDE_REGION+/all) {
 	alias globalPidList = Singleton!GlobalPidList; 
 	//Todo: globalPidList... Not the best naming...
 	
-	struct LaunchRequirements
+	struct SpawnProcessMultiSettings
 	{
-		@CAPTION("Min latency (ms)") @HINT("Amout of time it will wait \nbetween consequtive compiler launches.") @RANGE(0, 10_000) uint minLatency_ms = 100; 
-		@CAPTION("Max running threads") @HINT("Maximum number of \nconcurrent compilers running.") @RANGE(1, 32) uint maxThreads = 8; /+
+		mixin((
+			(表([
+				[q{/+Note: Type+/},q{/+Note: Name+/},q{/+Note: Default+/},q{/+Note: @RANGE+/},q{/+Note: @CAPTION+/},q{/+Note: @HINT+/}],
+				[q{uint},q{minLatency_ms},q{100},q{0, 10_000},q{"Min latency (ms)"},q{"Amout of time it will wait 
+between consequtive compiler launches."}],
+				[q{uint},q{maxThreads},q{8},q{1, 32},q{"Max running threads"},q{"Maximum number of 
+concurrent compilers running."}],
+				[q{uint},q{maxCpuUsage_percent},q{90},q{10, 100},q{"Max CPU usage %"},q{"Maximum CPU usage % allowed 
+when launching a new compiler instance."}],
+				[q{uint},q{minAvalilableRam_MB},q{2048},q{10, 100},q{"Min free RAM (MB)"},q{"RAM requirement to launch 
+a new compiler instance."}],
+				[q{uint},q{stdLineGroupungInterval_ms},q{500},q{0, 10_000},q{"Grouping Interval (ms)"},q{"Group consequtive incoming text lines from stdOut and stdErr.  
+	0	:  Disable.
+	max 	: Process all  lines when the exe finishes."}],
+			]))
+		).調!GEN_fields); /+
 			ram: 	12GB 	5/8 cores	128.2s
 				24GB 	8/8 cores	107.6s  19% speedup
 				8GB	12/12 cores 	partial fail!
 				8GB	4/12 cores	works.
 		+/
-		@CAPTION("Max CPU usage %") @HINT("Maximum CPU usage % allowed \nwhen launching a new compiler instance.") @RANGE(10, 100) uint maxCpuUsage_percent = 90; 
-		@CAPTION("Min free RAM (MB)") @HINT("RAM requirement to launch \na new compiler instance.") @RANGE(1, 8192) uint minAvalilableRam_MB = 2048; 
-	} struct GroupByTime(T)
-	{
-		T[] queue; 
-		DateTime lastT; 
-		@property empty() const => queue.empty; 
-		
-		void put(T a)
-		{ if(a.empty) return; queue ~= a; lastT = now; } 
-		
-		void put(R)(R a) if(isInputRange!(R, T))
-		{ if(a.empty) return; queue ~= a.array; lastT = now; } 
-		
-		bool canGet(Time minElapsedTime)
-		{
-			if(!queue.empty) {
-				const Δt = now-lastT; 
-				if(Δt>=minElapsedTime)
-				return true; 
-			}
-			return false; 
-		} 
-		
-		T[] get(Time minElapsedTime)
-		{
-			T[] res; 
-			if(canGet(minElapsedTime))
-			{ res = queue; queue = []; }
-			return res; 
-		} 
 	} 
 	
 	alias globalCompileLog = Singleton!(SafeQueue!(string, true, false)); 
 	
-	int spawnProcessMulti2(
+	int spawnProcessMulti(
 		File[] ids, in string[][] cmdLines, 
 		in string[string] env, Path workPath, Path logPath, out string[] sOutput, 
 		bool delegate(int idx, int result, string output) onProgress/*returns enable flag*/, 
 		bool delegate(int inFlight, int justStartedIdx) onIdle/*return cancel flag*/,
-		in ref LaunchRequirements launchRequirements
+		in ref SpawnProcessMultiSettings settings,
+		void delegate(string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) onStdLineReceived
 	)
 	{
 		class Executor/+_new+/
@@ -168,11 +152,9 @@ version(/+$DIDE_REGION+/all) {
 			//temporal data
 			ProcessPipes pipes; 
 			@property pid() => pipes.pid; 
-			GroupByTime!string stdOutGrouper, stdErrGrouper; 
-			
-			
-			string[] pendingErrLines; //Todo: nem ide!!!
-			DMDMessages msgs; //Todo: nem ide!!!
+			GroupByTime!string 	stdOutGrouper, 
+				stdErrGrouper; string[] 	pendingOutLines, 
+				pendingErrLines; 
 			
 			//output data
 			deprecated string output; 
@@ -233,48 +215,20 @@ version(/+$DIDE_REGION+/all) {
 				ignoreExceptions({ if(thr) thr.join; }); 
 				thr.free; 
 			} 
-			
-			protected void fetchPipes(in Time minT, bool isFinal=false)
+			
+			protected void fetchPipes(Time minT, bool isFinal=false)
 			{
 				if(stdOutGrouper.canGet(minT) || stdErrGrouper.canGet(minT) || isFinal /+Fast exit without synching.+/)
-				synchronized(this)
+				synchronized(this /+Note: synches GroupeByTime structs.+/)
 				{
-					auto lines = stdOutGrouper.get(minT); 
-					if(!lines.empty) {
-						print("----------------- STDOUT ", id, "--------------------"); 
-						lines.map!"`incoming > `~a".each!print; 
-						
-						DMDMessage msg; 
-						msg.type = DMDMessage.Type.console; 
-						msg.location = CodeLocation(id); 
-						msg.content = lines.join('\n'); 
-						msgs.messages ~= msg; 
-						
-						
-						print("-----------------------------------------------------"); 
-					}
-					lines = stdErrGrouper.get(minT); 
-					if(!lines.empty || isFinal) {
-						print("----------------- STDERR ", id, "--------------------"); 
-						lines.map!"`incoming > `~a".each!print; 
-						
-						pendingErrLines ~= lines; 
-						
-						msgs.actSourceFile = File(id); 
-						msgs.processDMDOutput_partial(pendingErrLines, isFinal); 
-						
-						//Todo: pragmas
-						print("-----------------------------------------------------"); 
-						print("pending", pendingErrLines); 
-					}
+					if(isFinal) minT = 0*second; 
+					auto 	o 	= stdOutGrouper.get(minT),
+						e	= stdErrGrouper.get(minT); 
+					pendingOutLines 	~= o,
+					pendingErrLines 	~= e; 
+					if(o.length || e.length || isFinal)
+					onStdLineReceived(id, pendingOutLines, pendingErrLines, isFinal); 
 				} 
-				
-				if(isFinal) {
-					print("===================== STDERR ", id, "======================"); 
-					msgs.messages.each!print; 
-					msgs.pragmas.print; 
-					print("======================================================="); 
-				}
 			} 
 			
 			protected void fetchPipes_final()
@@ -328,7 +282,7 @@ version(/+$DIDE_REGION+/all) {
 				//checks if the running process ended.
 				if(pid !is null)
 				{
-					fetchPipes(.5*second); 
+					fetchPipes(settings.stdLineGroupungInterval_ms * milli(second)); 
 					
 					auto w = tryWait(pid); 
 					if(w.terminated)
@@ -414,7 +368,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			bool canLaunchNow()
 			{
-				with(launchRequirements)
+				with(settings)
 				return	runningCnt==0 /+the very first compiler will launc immediately+/|| 
 					(
 					(now-lastLaunchTime).value(milli(second)) >= minLatency_ms
@@ -1334,7 +1288,17 @@ struct BuildSystem
 		string[] makeCommonCompileArgs()
 	{
 		//make commandline args
-		auto args = ["ldc2", "-vcolumns", "-verrors-context"/+"-v"+//+, /+It's quitr bogus in LDC.+/+/]; 
+		auto args = [
+			"ldc2", "--vcolumns", "--verrors-context", 
+			
+			"--verrors=0", "--verror-supplements=0" 
+			/+
+				240813: 	LDC bugfix: Supplemental messages are always displayed, 
+					even when their main messages are filtered out.
+			+/
+			
+			/+"-v"+//+, /+It's quitr bogus in LDC.+/+/
+		]; 
 		
 		if(isIncremental)
 		args ~= ["-c", "-allinst"]; /+
@@ -1464,8 +1428,10 @@ struct BuildSystem
 			accumulateOutput(output, srcFile); 
 		}
 		
+		DMDMessages msgs2; 
+		
 		bool cancelled; 
-		combinedResult = spawnProcessMulti2
+		combinedResult = spawnProcessMulti
 		(
 			srcFiles, cmdLines, null, 
 			/*working dir=*/mainFile.path, /*log path=*/workPath, outputs, 
@@ -1506,8 +1472,33 @@ struct BuildSystem
 				cancelled |= onIdle ? onIdle(inFlight, justStartedIdx) : false; 
 				return cancelled; 
 			}),
-			buildSystemLaunchRequirements
+			buildsys_spawnProcessMultiSettings,
+			((string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) {
+				if(stdOut.length)
+				{
+					DMDMessage msg; 
+					msg.type = DMDMessage.Type.console; 
+					msg.location = CodeLocation(id); 
+					msg.content = stdOut.join('\n'); 
+					msgs2.messages ~= msg; 
+					
+					stdOut = []; 
+				}
+				if(stdErr.length)
+				{
+					msgs2.actSourceFile = File(id); 
+					msgs2.processDMDOutput_partial(stdErr, isFinal); 
+				}
+			}) 
 		); 
+		
+		
+		{
+			print("===================== MSGS2 ======================"); 
+			msgs2.messages.each!print; 
+			msgs2.pragmas.print; 
+			print("================================================="); 
+		}
 		
 		logln; 
 		logln; 
@@ -2087,7 +2078,7 @@ version(/+$DIDE_REGION+/all) {
 	
 	__gshared const BuildSystemWorkerState buildSystemWorkerState; 
 	
-	__gshared LaunchRequirements buildSystemLaunchRequirements; //controls multithreaded compilation behavior
+	__gshared SpawnProcessMultiSettings buildsys_spawnProcessMultiSettings; //controls multithreaded compilation behavior
 	
 	void buildSystemWorker()
 	{

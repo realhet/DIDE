@@ -243,8 +243,9 @@ version(/+$DIDE_REGION main+/all)
 				string toolPalettePage; 
 				
 				@property {
-					string _settings_launchRequirements() const { return buildSystemLaunchRequirements.toJson; } 
-					void _settings_launchRequirements(string s) { buildSystemLaunchRequirements.fromJson(s); } 
+					//Todo: bad naming
+					string _settings_launchRequirements() const { return buildsys_spawnProcessMultiSettings.toJson; } 
+					void _settings_launchRequirements(string s) { buildsys_spawnProcessMultiSettings.fromJson(s); } 
 				} 
 			} 
 			
@@ -866,7 +867,7 @@ version(/+$DIDE_REGION main+/all)
 									}
 									break; 
 									case MenuPage.Settings: 
-										Grp!Column("BuildSystem: Launch Requirements", { buildSystemLaunchRequirements.stdUI; }); 
+										Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 
 									break; 
 								}
 							}
@@ -6748,8 +6749,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30B3835B2D627).檢(expr)) ((0x30B5635B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30BA435B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30B6035B2D627).檢(expr)) ((0x30B7E35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30BCC35B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
