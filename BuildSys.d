@@ -127,8 +127,6 @@ a new compiler instance."}],
 		+/
 	} 
 	
-	alias globalCompileLog = Singleton!(SafeQueue!(string, true, false)); 
-	
 	int spawnProcessMulti(
 		File[] ids, in string[][] cmdLines, 
 		in string[string] env, Path workPath, Path logPath, out string[] sOutput, 
@@ -215,7 +213,7 @@ a new compiler instance."}],
 				ignoreExceptions({ if(thr) thr.join; }); 
 				thr.free; 
 			} 
-			
+			
 			protected void fetchPipes(Time minT, bool isFinal=false)
 			{
 				if(stdOutGrouper.canGet(minT) || stdErrGrouper.canGet(minT) || isFinal /+Fast exit without synching.+/)
@@ -407,8 +405,6 @@ a new compiler instance."}],
 			sOutput ~= e.output; 
 		}
 		
-		
-		globalCompileLog.fetchAll.sort!("a<b", SwapStrategy.stable).join("\r\n").saveTo(File(`c:\dl\globalCompile.log`)); 
 		
 		return res; 
 		
@@ -886,6 +882,16 @@ struct BuildSystem
 	
 		//flags for special operation (daemon mode)
 		public bool disableKillProgram, isDaemon; 
+	
+		//events ///////////////////////////////////////////////////////////////////////////
+	
+		void delegate(
+		File mainFile, in File[] filesToCompile, in File[] filesInCache, 
+		in string[] todos, in SourceStats sourceStats
+	) onBuildStarted; 
+		void delegate(File f, int result, string output) onCompileProgress; 
+		void delegate (immutable DMDMessage[] messages) onBuildMessages; 
+		bool delegate(int inFlight, int justStartedIdx) onIdle; //returns true if IDE wants to cancel.
 	
 		//logging
 		public string sLog; 
@@ -1428,7 +1434,8 @@ struct BuildSystem
 			accumulateOutput(output, srcFile); 
 		}
 		
-		DMDMessages msgs2; 
+		DMDMessageDecoder msgDec; 
+		msgDec.defaultPath = mainFile.path; 
 		
 		bool cancelled; 
 		combinedResult = spawnProcessMulti
@@ -1474,31 +1481,28 @@ struct BuildSystem
 			}),
 			buildsys_spawnProcessMultiSettings,
 			((string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) {
+				print("FINAL", id); 
 				if(stdOut.length)
 				{
 					DMDMessage msg; 
 					msg.type = DMDMessage.Type.console; 
 					msg.location = CodeLocation(id); 
 					msg.content = stdOut.join('\n'); 
-					msgs2.messages ~= msg; 
+					msgDec.messages ~= msg; 
 					
 					stdOut = []; 
 				}
 				if(stdErr.length)
 				{
-					msgs2.actSourceFile = File(id); 
-					msgs2.processDMDOutput_partial(stdErr, isFinal); 
+					msgDec.actSourceFile = File(id); 
+					msgDec.processDMDOutput_partial(stdErr, isFinal); 
+					msgDec.fetchUpdatedMessages.each!print; 
 				}
-			}) 
+			})
 		); 
 		
-		
-		{
-			print("===================== MSGS2 ======================"); 
-			msgs2.messages.each!print; 
-			msgs2.pragmas.print; 
-			print("================================================="); 
-		}
+		print("=========================================="); 
+		msgDec.messages.each!print; 
 		
 		logln; 
 		logln; 
@@ -2005,16 +2009,6 @@ struct BuildSystem
 		*/
 	} 
 	
-		//events ///////////////////////////////////////////////////////////////////////////
-	
-		void delegate(
-		File mainFile, in File[] filesToCompile, in File[] filesInCache, 
-		in string[] todos, in SourceStats sourceStats
-	) onBuildStarted; 
-		void delegate(File f, int result, string output) onCompileProgress; 
-		bool delegate(int inFlight, int justStartedIdx) onIdle; //returns true if IDE wants to cancel.
-	
-	
 } 
 version(/+$DIDE_REGION+/all) {
 	
@@ -2066,11 +2060,14 @@ version(/+$DIDE_REGION+/all) {
 		string output; 
 	} 
 	
+	struct MsgBuildMessages
+	{ immutable DMDMessage[] messages; } 
+	
 	
 	
 	struct BuildSystemWorkerState
 	{
-		 //BuildSystemWorkerState /////////////////////////////////
+		//BuildSystemWorkerState /////////////////////////////////
 		//worker state that don't need synching.
 		bool building, cancelling; 
 		int totalModules, compiledModules, inFlight; 
@@ -2137,6 +2134,10 @@ version(/+$DIDE_REGION+/all) {
 			return cancelRequest; 
 		} 
 		buildSystem.onIdle = &onIdle; 
+		
+		void onBuildMessages(immutable DMDMessage[] messages)
+		{ ownerTid.send(MsgBuildMessages(messages)); } 
+		buildSystem.onBuildMessages = &onBuildMessages; 
 		
 		//main worker loop
 		while(!isDone)
@@ -2346,7 +2347,7 @@ version(/+$DIDE_REGION+/all) {
 		alias messages this; 
 		
 		DMDMessage[] messages; 
-		deprecated("Rename to unprocessedLines!") string[][File] pragmas; 
+		string[][File] pragmas; 
 		
 		//message filtering
 		
@@ -2389,7 +2390,7 @@ version(/+$DIDE_REGION+/all) {
 		void processDMDOutput(string str)
 		{ processDMDOutput(str.splitLines); } 
 		
-		private static keepMessage(in DMDMessage m)
+		private static bool keepMessage(in DMDMessage m)
 		{
 			foreach(f; messageFilters)
 			if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
@@ -2445,10 +2446,7 @@ version(/+$DIDE_REGION+/all) {
 			)?((cast(int)(s.length))):(0)); 
 		} 
 		static bool isColumnMarker(string s)
-		{
-			print("DCM:", decodeColumnMarker(s), s.quoted); 
-			return decodeColumnMarker(s)>0; 
-		} ; 
+		{ return decodeColumnMarker(s)>0; } ; 
 		
 		
 		static bool isDMDMessage(string s)
@@ -2488,15 +2486,14 @@ version(/+$DIDE_REGION+/all) {
 					const s = lines.back; 
 					
 					//from here, break if it's a valid ending
-					if(isColumnMarker(s)) { print("Valid ending because ColumnMarker:", s.quoted); break; }
+					if(isColumnMarker(s)) { break; }
 					else if(isDMDMessage(s))
 					{
 						const dqCnt = s.count('`'); 
 						if(
 							!dqCnt
 							/+has no quotation inside+/
-						)
-						{ print("Valid ending because no strings:", s.quoted); break; }
+						) break; 
 						if(
 							(dqCnt%2==0) && 
 							(s.count('"')==0) && 
@@ -2505,8 +2502,7 @@ version(/+$DIDE_REGION+/all) {
 								has even quotation, 
 								but no other strings
 							+/
-						)
-						{ print("Valid ending because simple strings:", s.quoted); break; }
+						) break; 
 					}
 					lines.popBack; 
 				}
@@ -2597,7 +2593,7 @@ version(/+$DIDE_REGION+/all) {
 						else
 						{
 							idx = parentMessage.subMessages.length; 
-							parentMessage.subMessages ~= msg; 
+							parentMessage.subMessages ~= msg; /+new subMessage added+/
 							parentMessage = &parentMessage.subMessages[idx]; 
 						}
 					}
@@ -2617,7 +2613,7 @@ version(/+$DIDE_REGION+/all) {
 							else
 							{
 								const idx = messages.length; 
-								messages ~= msg; 
+								messages ~= msg; /+new top level message added+/
 								messageMap[hash] = idx; 
 								parentMessage = &messages[idx]; 
 							}
@@ -2631,6 +2627,280 @@ version(/+$DIDE_REGION+/all) {
 				}
 				else
 				{ pragmas[actSourceFile] ~= lines.fetchFront; }
+			}
+			
+		} 
+	} struct DMDMessageDecoder
+	{
+		DMDMessage[] messages;  //globally accumulated messages for all modules
+		
+		//accumulators only for the last batch of std lines
+		DMDMessage*[] updatedMessages; 
+		string[] pragmas; 
+		
+		
+		//message filtering
+		
+		__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
+		//Todo: The filtered items should placed into a hidden category. Not the console output.
+		
+		//internal state
+		private
+		{
+			size_t[size_t] messageMap; 
+			FileNameFixer fileNameFixer; 
+			
+			//Manage states for many sourcefiles.  While the message array is common.
+			File _actSourceFile; 
+			DMDMessage* parentMessage, topLevelParentMessage; 
+			
+			DMDMessage*[2][File] _actSourceFileState; 
+		} 
+		
+		@property actSourceFile()
+		{ return _actSourceFile; } 
+		
+		@property void actSourceFile(File f)
+		{
+			if(f==actSourceFile) return; 
+			_actSourceFileState[_actSourceFile] = [parentMessage, topLevelParentMessage]; 
+			
+			_actSourceFile = f; print("selecting source file: ", f); 
+			
+			if(auto a = _actSourceFile in _actSourceFileState)
+			{ parentMessage = (*a)[0], topLevelParentMessage = (*a)[1]; }
+			else
+			{ parentMessage = null, topLevelParentMessage = null; }
+		} 
+		
+		
+		void createFileNameFixerIfNeeded()
+		{ if(!fileNameFixer) fileNameFixer = new FileNameFixer; } 
+		
+		@property void defaultPath(Path path)
+		{
+			createFileNameFixerIfNeeded; 
+			fileNameFixer.defaultPath = path; 
+		} 
+		
+		string sourceText() const
+		{ return messages.map!"a.sourceText".join("\n"); } 
+		
+		private static bool keepMessage(in DMDMessage m)
+		{
+			foreach(f; messageFilters)
+			if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
+			return false; 
+			
+			return true; 
+		} 
+		
+		
+		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
+			/+1:fn 2:drive       3      4        5      6       7+/
+			/+drive:\ is optional.+/; 
+		
+		static int decodeColumnMarker(string s)
+		{
+			return ((
+				s.endsWith('^') &&
+				(
+					s.length==1 || 
+					s[0..$-1].all!"a.among(' ', '\t')"
+				)
+			)?((cast(int)(s.length))):(0)); 
+		} 
+		static bool isColumnMarker(string s)
+		{ return decodeColumnMarker(s)>0; } ; 
+		
+		
+		static bool isDMDMessage(string s)
+		{
+			auto m = matchFirst(s, rxDMDMessage); 
+			return !m.empty; 
+		} 
+		
+		static bool isDMDMainMessage(string s)
+		{
+			auto m = matchFirst(s, rxDMDMessage); 
+			if(!m.empty)
+			{
+				DMDMessage msg; 
+				with(msg)
+				{
+					content = m[7]; detectType; 
+					return type!=Type.unknown; 
+				}
+			}
+			return false; 
+		} 
+		
+		void processDMDOutput_partial(ref string[] lines, bool isFinal)
+		{
+			if(isFinal)
+			{
+				processDMDOutput(lines); 
+				lines = []; 
+			}
+			else
+			{
+				auto prevLines = lines; 
+				
+				while(lines.length)
+				{
+					const s = lines.back; 
+					
+					//from here, break if it's a valid ending
+					if(isColumnMarker(s)) { break; }
+					else if(isDMDMessage(s))
+					{
+						const dqCnt = s.count('`'); 
+						if(
+							!dqCnt
+							/+has no quotation inside+/
+						) break; 
+						if(
+							(dqCnt%2==0) && 
+							(s.count('"')==0) && 
+							(s.count('\'')==0)
+							/+
+								has even quotation, 
+								but no other strings
+							+/
+						) break; 
+					}
+					lines.popBack; 
+				}
+				
+				processDMDOutput(lines); 
+				lines = prevLines[lines.length..$]; 
+			}
+		} 
+		
+		DMDMessage[] fetchUpdatedMessages()
+		{
+			auto res = (mixin(求map(q{m},q{updatedMessages.fetchAll},q{*m}))).array; 
+			
+			if(pragmas.length)
+			{ res ~= DMDMessage(CodeLocation.init, DMDMessage.Type.console, pragmas.fetchAll.join('\n')); }
+			
+			return res; 
+		} 
+		
+		void processDMDOutput(string[] lines)
+		{
+			if(lines.empty) return; 
+			
+			createFileNameFixerIfNeeded; 
+			
+			static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
+			{
+				enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
+				auto m = matchFirst(line, rx); 
+				return m.empty ? File.init : fileNameFixer(m[1]); 
+			} 
+			
+			static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
+			{
+				DMDMessage decodeDMDMessage(string s)
+				{
+					DMDMessage res; 
+					auto m = matchFirst(s, rxDMDMessage); 
+					if(!m.empty)
+					{
+						with(res)
+						{
+							location = CodeLocation(
+								fileNameFixer(m[1]).fullName, 
+								m[5].to!int.ifThrown(0), 
+								m[6].to!int.ifThrown(0), 
+								m[4].to!int.ifThrown(0)
+							); 
+							content = m[7]; 
+							detectType; 
+						}
+					}
+					
+					return res; 
+				} 
+				
+				auto msg = decodeDMDMessage(lines.front); 
+				if(msg)
+				{
+					int endIdx; 
+					foreach(i; 1 .. lines.length.to!int)
+					{
+						if(decodeColumnMarker(lines[i])==msg.col)
+						{ endIdx = i; break; }
+						if(decodeDMDMessage(lines[i])) break; 
+						if(decodeFileMarker(lines[i], fileNameFixer)) break; 
+					}
+					
+					if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
+					{
+						lines.fetchFront; //first line of a multiline message
+						foreach(i; 1..endIdx-1)
+						if(lines.length)
+						msg.content ~= "\n"~lines.fetchFront; 
+						msg.lineSource = lines.fetchFront; 
+						lines.fetchFront; //skip the marker line
+					}
+					else
+					{
+						lines.fetchFront; //slingle line message
+					}
+				}
+				return msg; 
+			} 
+			
+			while(lines.length)
+			{
+				if(auto msg = fetchDMDMessage(lines, fileNameFixer))
+				{
+					auto chg = false; 
+					if(msg.isSupplemental && parentMessage)
+					{
+						auto idx = parentMessage.subMessages.countUntil(msg); 
+						if(idx>=0)
+						{
+							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage.count++; 
+						}
+						else
+						{
+							idx = parentMessage.subMessages.length; 
+							parentMessage.subMessages ~= msg; chg = true; /+new subMessage added+/
+							parentMessage = &parentMessage.subMessages[idx]; 
+						}
+					}
+					else
+					{
+						if(msg.isSupplemental)
+						WARN("No parent message for supplemental message:", msg); 
+						
+						if(keepMessage(msg))
+						{
+							const hash = msg.hashOf; 
+							if(auto idx = hash in messageMap)
+							{
+								messages[*idx].count++; 
+								parentMessage = &messages[*idx]; 
+							}
+							else
+							{
+								const idx = messages.length; 
+								messages ~= msg; chg = true; /+new top level message added+/
+								messageMap[hash] = idx; 
+								parentMessage = &messages[idx]; 
+							}
+							topLevelParentMessage = parentMessage; 
+						}
+					}
+					if(chg && topLevelParentMessage && !updatedMessages.endsWith(topLevelParentMessage))
+					{ updatedMessages ~= topLevelParentMessage; }
+				}
+				else
+				{ pragmas ~= lines.fetchFront; }
 			}
 			
 		} 
@@ -2771,6 +3041,12 @@ version(/+$DIDE_REGION+/all) {
 						
 						outputs[f] = msg.output.splitLines; //Todo: not used anymore. Everything is in messages[]
 						remainings[f] = messages.pragmas.get(f); //Todo: rename remainings to pragmas
+					}),
+					
+					((in MsgBuildMessages msg) {
+						print("BuildMessages received------------------------------"); 
+						msg.messages.each!print; 
+						print("--------------------------------------------------"); 
 					}),
 					
 					((in MsgBuildFinished msg) {
