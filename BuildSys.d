@@ -2184,7 +2184,7 @@ version(/+$DIDE_REGION+/all) {
 	
 	
 	
-	struct DMDMessage
+	class DMDMessage
 	{
 		mixin((
 			(表([
@@ -2209,13 +2209,29 @@ version(/+$DIDE_REGION+/all) {
 		
 		DMDMessage[] subMessages; //it's a tree
 		
+		protected size_t hash_; @property hash() => hash_; 
+		
+		this(CodeLocation location_, string content_, Type type_=Type.unknown)
+		{
+			location = location_; 
+			content = content_; 
+			type = type_; 
+			
+			detectType; 
+			
+			recalculateHash; 
+		} 
+		
+		this(CodeLocation location_, Type type_, string content_)
+		{ this(location_, content_, type_); } 
+		
+		void recalculateHash()
+		{ hash_ = location.hashOf	(type.hashOf(content.hashOf)); } 
+		
 		@property col() const
 		{ return location.columnIdx; } @property line() const
 		{ return location.lineIdx; } @property mixinLine() const
 		{ return location.mixinLineIdx; } 
-		
-		bool opCast(B : bool)() const
-		{ return !!location; } 
 		
 		bool opEquals(in DMDMessage b)const
 		{
@@ -2228,10 +2244,6 @@ version(/+$DIDE_REGION+/all) {
 				.cmpChain(cmp(type, b.type))
 				.cmpChain(cmp(content, b.content)); 
 		} 
-		
-		size_t toHash()const
-		{ return 	location.hashOf	(type.hashOf(content.hashOf)); } 
-		
 		bool isSupplemental() const
 		{ return type==Type.unknown && content.startsWith(' '); } 
 		
@@ -2244,7 +2256,7 @@ version(/+$DIDE_REGION+/all) {
 			); 
 		} 
 		
-		private void detectType()
+		protected void detectType()
 		{
 			if(type!=Type.unknown) return; 
 			
@@ -2270,7 +2282,7 @@ version(/+$DIDE_REGION+/all) {
 			return res; 
 		} 
 		
-		string toString() const
+		override string toString() const
 		{ return toString_internal(0, true, "  "); } 
 		
 		
@@ -2357,9 +2369,9 @@ version(/+$DIDE_REGION+/all) {
 		//internal state
 		private
 		{
-			size_t[size_t] messageMap; 
+			DMDMessage[size_t] messageMap; 
 			public File actSourceFile; 
-			DMDMessage* parentMessage; 
+			DMDMessage parentMessage; 
 			FileNameFixer fileNameFixer; 
 		} 
 		
@@ -2424,7 +2436,7 @@ version(/+$DIDE_REGION+/all) {
 			auto s = arr.filter!`a!=""`.join('\n'); 
 			if(s!="")
 			{
-				auto m = DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
+				auto m = new DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
 				messages = m ~ messages; 
 			}
 			
@@ -2529,24 +2541,22 @@ version(/+$DIDE_REGION+/all) {
 			{
 				DMDMessage decodeDMDMessage(string s)
 				{
-					DMDMessage res; 
 					auto m = matchFirst(s, rxDMDMessage); 
 					if(!m.empty)
 					{
-						with(res)
-						{
-							location = CodeLocation(
+						return new DMDMessage
+							(
+							CodeLocation(
 								fileNameFixer(m[1]).fullName, 
 								m[5].to!int.ifThrown(0), 
 								m[6].to!int.ifThrown(0), 
 								m[4].to!int.ifThrown(0)
-							); 
-							content = m[7]; 
-							detectType; 
-						}
+							), 
+							m[7]
+						); 
 					}
 					
-					return res; 
+					return null; 
 				} 
 				
 				auto msg = decodeDMDMessage(lines.front); 
@@ -2584,17 +2594,16 @@ version(/+$DIDE_REGION+/all) {
 				{
 					if(msg.isSupplemental && parentMessage)
 					{
-						auto idx = parentMessage.subMessages.countUntil(msg); 
+						auto idx = parentMessage.subMessages.map!"a.hash".countUntil(msg.hash); 
 						if(idx>=0)
 						{
-							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage = parentMessage.subMessages[idx]; 
 							parentMessage.count++; 
 						}
 						else
 						{
-							idx = parentMessage.subMessages.length; 
 							parentMessage.subMessages ~= msg; /+new subMessage added+/
-							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage = msg; 
 						}
 					}
 					else
@@ -2604,18 +2613,17 @@ version(/+$DIDE_REGION+/all) {
 						
 						if(keepMessage(msg))
 						{
-							const hash = msg.hashOf; 
-							if(auto idx = hash in messageMap)
+							const hash = msg.hash; 
+							if(auto m = hash in messageMap)
 							{
-								messages[*idx].count++; 
-								parentMessage = &messages[*idx]; 
+								(*m).count++; /+already exists+/
+								parentMessage = *m; 
 							}
 							else
 							{
-								const idx = messages.length; 
 								messages ~= msg; /+new top level message added+/
-								messageMap[hash] = idx; 
-								parentMessage = &messages[idx]; 
+								messageMap[hash] = msg; 
+								parentMessage = msg; 
 							}
 						}
 					}
@@ -2635,7 +2643,7 @@ version(/+$DIDE_REGION+/all) {
 		DMDMessage[] messages;  //globally accumulated messages for all modules
 		
 		//accumulators only for the last batch of std lines
-		DMDMessage*[] updatedMessages; 
+		DMDMessage[] updatedMessages; 
 		string[] pragmas; 
 		
 		
@@ -2647,14 +2655,14 @@ version(/+$DIDE_REGION+/all) {
 		//internal state
 		private
 		{
-			size_t[size_t] messageMap; 
+			DMDMessage[size_t] messageMap; 
 			FileNameFixer fileNameFixer; 
 			
 			//Manage states for many sourcefiles.  While the message array is common.
 			File _actSourceFile; 
-			DMDMessage* parentMessage, topLevelParentMessage; 
+			DMDMessage parentMessage, topLevelParentMessage; 
 			
-			DMDMessage*[2][File] _actSourceFileState; 
+			DMDMessage[2][File] _actSourceFileState; 
 		} 
 		
 		@property actSourceFile()
@@ -2779,10 +2787,15 @@ version(/+$DIDE_REGION+/all) {
 		
 		DMDMessage[] fetchUpdatedMessages()
 		{
-			auto res = (mixin(求map(q{m},q{updatedMessages.fetchAll},q{*m}))).array; 
+			auto res = updatedMessages.fetchAll; 
 			
 			if(pragmas.length)
-			{ res ~= DMDMessage(CodeLocation.init, DMDMessage.Type.console, pragmas.fetchAll.join('\n')); }
+			{
+				res ~= new DMDMessage(
+					CodeLocation.init, DMDMessage.Type.console, 
+					pragmas.fetchAll.join('\n')
+				); 
+			}
 			
 			return res; 
 		} 
@@ -2804,24 +2817,22 @@ version(/+$DIDE_REGION+/all) {
 			{
 				DMDMessage decodeDMDMessage(string s)
 				{
-					DMDMessage res; 
 					auto m = matchFirst(s, rxDMDMessage); 
 					if(!m.empty)
 					{
-						with(res)
-						{
-							location = CodeLocation(
+						return new DMDMessage
+							(
+							CodeLocation(
 								fileNameFixer(m[1]).fullName, 
 								m[5].to!int.ifThrown(0), 
 								m[6].to!int.ifThrown(0), 
 								m[4].to!int.ifThrown(0)
-							); 
-							content = m[7]; 
-							detectType; 
-						}
+							), 
+							m[7]
+						); 
 					}
 					
-					return res; 
+					return null; 
 				} 
 				
 				auto msg = decodeDMDMessage(lines.front); 
@@ -2860,17 +2871,16 @@ version(/+$DIDE_REGION+/all) {
 					auto chg = false; 
 					if(msg.isSupplemental && parentMessage)
 					{
-						auto idx = parentMessage.subMessages.countUntil(msg); 
+						auto idx = parentMessage.subMessages.map!"a.hash".countUntil(msg.hash); 
 						if(idx>=0)
 						{
-							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage = parentMessage.subMessages[idx]; 
 							parentMessage.count++; 
 						}
 						else
 						{
-							idx = parentMessage.subMessages.length; 
 							parentMessage.subMessages ~= msg; chg = true; /+new subMessage added+/
-							parentMessage = &parentMessage.subMessages[idx]; 
+							parentMessage = msg; 
 						}
 					}
 					else
@@ -2880,18 +2890,17 @@ version(/+$DIDE_REGION+/all) {
 						
 						if(keepMessage(msg))
 						{
-							const hash = msg.hashOf; 
-							if(auto idx = hash in messageMap)
+							const hash = msg.hash; 
+							if(auto m = hash in messageMap)
 							{
-								messages[*idx].count++; 
-								parentMessage = &messages[*idx]; 
+								(*m).count++; /+already exists+/
+								parentMessage = *m; 
 							}
 							else
 							{
-								const idx = messages.length; 
 								messages ~= msg; chg = true; /+new top level message added+/
-								messageMap[hash] = idx; 
-								parentMessage = &messages[idx]; 
+								messageMap[hash] = msg; 
+								parentMessage = msg; 
 							}
 							topLevelParentMessage = parentMessage; 
 						}
