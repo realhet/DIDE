@@ -59,6 +59,8 @@ version(/+$DIDE_REGION+/all)
 	//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
 	
 	//Todo: \u2028 \u2029 could be the vertical tab instead.  Vertical tab \0x0b should be used for something else.
+	//Todo: hex string literals
+	//Todo: import expressions
 	
 	import het, het.ui, het.parser ,buildsys; 
 	
@@ -9712,7 +9714,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F88A7B6B4BCC).檢(expr))},
+			q{((0x3F8C57B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9726,7 +9728,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F9987B6B4BCC).檢 (expr))},
+			q{((0x3F9D37B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

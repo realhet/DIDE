@@ -257,14 +257,14 @@ a new compiler instance."}],
 					(
 						{
 							foreach(a; pipes.stdout.byLineCopy.map!((a)=>(a.withoutEnding('\r'))))
-							synchronized(this) stdOutGrouper.put(a); 
+							{ synchronized(this) stdOutGrouper.put(a); }
 						}
 					); 
 					errThread = new Thread
 					(
 						{
 							foreach(a; pipes.stderr.byLineCopy.map!((a)=>(a.withoutEnding('\r'))))
-							synchronized(this) stdErrGrouper.put(a); 
+							{ synchronized(this) stdErrGrouper.put(a); }
 						}
 					); 
 					
@@ -1481,23 +1481,15 @@ struct BuildSystem
 			}),
 			buildsys_spawnProcessMultiSettings,
 			((string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) {
-				print("FINAL", id); 
+				//foreach(a; stdErr) print("incoming>", a); 
+				msgDec.actSourceFile = File(id); 
 				if(stdOut.length)
-				{
-					DMDMessage msg; 
-					msg.type = DMDMessage.Type.console; 
-					msg.location = CodeLocation(id); 
-					msg.content = stdOut.join('\n'); 
-					msgDec.messages ~= msg; 
-					
-					stdOut = []; 
-				}
+				{ msgDec.addConsoleMessage(stdOut.fetchAll); }
 				if(stdErr.length)
-				{
-					msgDec.actSourceFile = File(id); 
-					msgDec.processDMDOutput_partial(stdErr, isFinal); 
-					msgDec.fetchUpdatedMessages.each!print; 
-				}
+				{ msgDec.processDMDOutput_partial(stdErr, isFinal); }
+				print("---printint fetches", id); 
+				msgDec.fetchUpdatedMessages.each!print; 
+				print("---end of printint fetches", id); 
 			})
 		); 
 		
@@ -2703,6 +2695,17 @@ version(/+$DIDE_REGION+/all) {
 			return true; 
 		} 
 		
+		DMDMessage addConsoleMessage(string[] lines)
+		{
+			messages ~= new DMDMessage(
+				CodeLocation(actSourceFile.fullName), 
+				DMDMessage.Type.console, 
+				lines.join('\n')
+			); 
+			updatedMessages ~= messages.back; 
+			return messages.back; 
+		} 
+		
 		
 		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
 			/+1:fn 2:drive       3      4        5      6       7+/
@@ -2787,16 +2790,10 @@ version(/+$DIDE_REGION+/all) {
 		
 		DMDMessage[] fetchUpdatedMessages()
 		{
-			auto res = updatedMessages.fetchAll; 
-			
 			if(pragmas.length)
-			{
-				res ~= new DMDMessage(
-					CodeLocation.init, DMDMessage.Type.console, 
-					pragmas.fetchAll.join('\n')
-				); 
-			}
+			{ addConsoleMessage(pragmas.fetchAll); }
 			
+			auto res = updatedMessages.fetchAll; 
 			return res; 
 		} 
 		

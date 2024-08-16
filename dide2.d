@@ -144,6 +144,9 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: int a=5//comment;   << The ; is placed on the same line as the comment.
 		
 		//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
+		
+		//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+		//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 	}
 	
 	//globals ////////////////////////////////////////
@@ -5087,530 +5090,970 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 	}
-	version(/+$DIDE_REGION Keyboard mapping+/all)
+	version(/+$DIDE_REGION+/none)
 	{
-		//! Keyboard mapping ///////////////////////////////////////
-		version(/+$DIDE_REGION Scroll and zoom view   +/all)
+		version(/+$DIDE_REGION Keyboard mapping+/all)
 		{
-			@property SEL()
-			{ return !textSelections.empty; } @property NOSEL()
-			{ return !SEL; } 
-			version(/+$DIDE_REGION press      +/all)
+			//! Keyboard mapping ///////////////////////////////////////
+			version(/+$DIDE_REGION Scroll and zoom view   +/all)
 			{
-				
-				
-				
-				@VERB("Ctrl+Up") void scrollLineUp()
-				{ scrollV(DefaultFontHeight); } 
-				@VERB("Ctrl+Down") void scrollLineDown()
-				{ scrollV(-DefaultFontHeight); } 
-				@VERB("Alt+PgUp") void scrollPageUp()
-				{ scrollV(frmMain.clientHeight*.9); } 
-				@VERB("Alt+PgDn") void scrollPageDown()
-				{ scrollV(-frmMain.clientHeight*.9); } 
-				@VERB("Ctrl+=") void zoomIn()
-				{ zoom (.5); } 
-				@VERB("Ctrl+-") void zoomOut()
-				{ zoom (-.5); } 
-			}static if(0)
-			version(/+$DIDE_REGION hold      +/all)
-			{
-				@HOLD("Ctrl+Alt+Num8") void holdScrollUp()
-				{ scrollV(scrollSpeed); } 
-				@HOLD("Ctrl+Alt+Num2") void holdScrollDown()
-				{ scrollV(-scrollSpeed); } 
-				@HOLD("Ctrl+Alt+Num4") void holdScrollLeft()
-				{ scrollH(scrollSpeed); } 
-				@HOLD("Ctrl+Alt+Num6") void holdScrollRight()
-				{ scrollH(-scrollSpeed); } 
-				@HOLD("Ctrl+Alt+Num+") void holdZoomIn()
-				{ zoom (zoomSpeed); } 
-				@HOLD("Ctrl+Alt+Num-") void holdZoomOut()
-				{ zoom (-zoomSpeed); } 
-			}static if(0)
-			version(/+$DIDE_REGION hold slow  +/all)
-			{
-				/+
-					Note: no keys for this. 
-					Ctrl+Alt+Num is used for normal speed scrolling.
-				+/
-				
-				@HOLD("Alt+Ctrl+Num8") void holdScrollUp_slow()
-				{ scrollV(scrollSpeed); } 
-				@HOLD("Alt+Ctrl+Num2") void holdScrollDown_slow()
-				{ scrollV(-scrollSpeed); } 
-				@HOLD("Alt+Ctrl+Num4") void holdScrollLeft_slow()
-				{ scrollH(scrollSpeed); } 
-				@HOLD("Alt+Ctrl+Num6") void holdScrollRight_slow()
-				{ scrollH(-scrollSpeed); } 
-				@HOLD("Alt+Ctrl+Num+") void holdZoomIn_slow()
-				{ zoom (zoomSpeed); } 
-				@HOLD("Alt+Ctrl+Num-") void holdZoomOut_slow()
-				{ zoom (-zoomSpeed); } 
-			}	version(/+$DIDE_REGION hold NoSel   +/all)
-			{
-				//Navigation when there is no textSelection
-				
-				@HOLD("W Num8 Up") void holdScrollUp2()
-				{ if(NOSEL) scrollV(scrollSpeed); } 
-				@HOLD("S Num2 Down") void holdScrollDown2()
-				{ if(NOSEL) scrollV(-scrollSpeed); } 
-				@HOLD("A Num4 Left") void holdScrollLeft2()
-				{ if(NOSEL) scrollH(scrollSpeed); } 
-				@HOLD("D Num6 Right") void holdScrollRight2()
-				{ if(NOSEL) scrollH(-scrollSpeed); } 
-				@HOLD("E Num+ PgUp") void holdZoomIn2()
-				{ if(NOSEL) zoom (zoomSpeed); } 
-				@HOLD("Q Num- PgDn") void holdZoomOut2()
-				{ if(NOSEL) zoom (-zoomSpeed); } 
-			}version(/+$DIDE_REGION hold slow NoSel+/all)
-			{
-				/+
-					Bug: When NumLockState=true && key==Num8: if the modifier is released
-					after the key, KeyCombo will NEVER detect the release and is stuck!!!
-				+/
-				@HOLD("Shift+W Shift+Up") void holdScrollUp_slow2()
-				{ if(NOSEL) scrollV(scrollSpeed/8); } 
-				@HOLD("Shift+S Shift+Down") void holdScrollDown_slow2()
-				{ if(NOSEL) scrollV(-scrollSpeed/8); } 
-				@HOLD("Shift+A Shift+Left") void holdScrollLeft_slow2()
-				{ if(NOSEL) scrollH(scrollSpeed/8); } 
-				@HOLD("Shift+D Shift+Right") void holdScrollRight_slow2()
-				{ if(NOSEL) scrollH(-scrollSpeed/8); } 
-				@HOLD("Shift+E Shift+PgUp") void holdZoomIn_slow2()
-				{ if(NOSEL) zoom (zoomSpeed/8); } 
-				@HOLD("Shift+Q Shift+PgDn") void holdZoomOut_slow2()
-				{ if(NOSEL) zoom (-zoomSpeed/8); } 
-				
-				@VERB("Home"	) void zoomAll2()
-				{ if(NOSEL) scrollInAllModules; } 
-				@VERB("Alt+Home"	) void zoomClose2()
+				@property SEL()
+				{ return !textSelections.empty; } @property NOSEL()
+				{ return !SEL; } 
+				version(/+$DIDE_REGION press      +/all)
 				{
-					frmMain.view.scale = 1; 
 					
-					if(primaryCaret.valid)
-					frmMain.view.origin = primaryCaret.worldBounds.center.dvec2; 
-				} 
+					
+					
+					@VERB("Ctrl+Up") void scrollLineUp()
+					{ scrollV(DefaultFontHeight); } 
+					@VERB("Ctrl+Down") void scrollLineDown()
+					{ scrollV(-DefaultFontHeight); } 
+					@VERB("Alt+PgUp") void scrollPageUp()
+					{ scrollV(frmMain.clientHeight*.9); } 
+					@VERB("Alt+PgDn") void scrollPageDown()
+					{ scrollV(-frmMain.clientHeight*.9); } 
+					@VERB("Ctrl+=") void zoomIn()
+					{ zoom (.5); } 
+					@VERB("Ctrl+-") void zoomOut()
+					{ zoom (-.5); } 
+				}static if(0)
+				version(/+$DIDE_REGION hold      +/all)
+				{
+					@HOLD("Ctrl+Alt+Num8") void holdScrollUp()
+					{ scrollV(scrollSpeed); } 
+					@HOLD("Ctrl+Alt+Num2") void holdScrollDown()
+					{ scrollV(-scrollSpeed); } 
+					@HOLD("Ctrl+Alt+Num4") void holdScrollLeft()
+					{ scrollH(scrollSpeed); } 
+					@HOLD("Ctrl+Alt+Num6") void holdScrollRight()
+					{ scrollH(-scrollSpeed); } 
+					@HOLD("Ctrl+Alt+Num+") void holdZoomIn()
+					{ zoom (zoomSpeed); } 
+					@HOLD("Ctrl+Alt+Num-") void holdZoomOut()
+					{ zoom (-zoomSpeed); } 
+				}static if(0)
+				version(/+$DIDE_REGION hold slow  +/all)
+				{
+					/+
+						Note: no keys for this. 
+						Ctrl+Alt+Num is used for normal speed scrolling.
+					+/
+					
+					@HOLD("Alt+Ctrl+Num8") void holdScrollUp_slow()
+					{ scrollV(scrollSpeed); } 
+					@HOLD("Alt+Ctrl+Num2") void holdScrollDown_slow()
+					{ scrollV(-scrollSpeed); } 
+					@HOLD("Alt+Ctrl+Num4") void holdScrollLeft_slow()
+					{ scrollH(scrollSpeed); } 
+					@HOLD("Alt+Ctrl+Num6") void holdScrollRight_slow()
+					{ scrollH(-scrollSpeed); } 
+					@HOLD("Alt+Ctrl+Num+") void holdZoomIn_slow()
+					{ zoom (zoomSpeed); } 
+					@HOLD("Alt+Ctrl+Num-") void holdZoomOut_slow()
+					{ zoom (-zoomSpeed); } 
+				}	version(/+$DIDE_REGION hold NoSel   +/all)
+				{
+					//Navigation when there is no textSelection
+					
+					@HOLD("W Num8 Up") void holdScrollUp2()
+					{ if(NOSEL) scrollV(scrollSpeed); } 
+					@HOLD("S Num2 Down") void holdScrollDown2()
+					{ if(NOSEL) scrollV(-scrollSpeed); } 
+					@HOLD("A Num4 Left") void holdScrollLeft2()
+					{ if(NOSEL) scrollH(scrollSpeed); } 
+					@HOLD("D Num6 Right") void holdScrollRight2()
+					{ if(NOSEL) scrollH(-scrollSpeed); } 
+					@HOLD("E Num+ PgUp") void holdZoomIn2()
+					{ if(NOSEL) zoom (zoomSpeed); } 
+					@HOLD("Q Num- PgDn") void holdZoomOut2()
+					{ if(NOSEL) zoom (-zoomSpeed); } 
+				}version(/+$DIDE_REGION hold slow NoSel+/all)
+				{
+					/+
+						Bug: When NumLockState=true && key==Num8: if the modifier is released
+						after the key, KeyCombo will NEVER detect the release and is stuck!!!
+					+/
+					@HOLD("Shift+W Shift+Up") void holdScrollUp_slow2()
+					{ if(NOSEL) scrollV(scrollSpeed/8); } 
+					@HOLD("Shift+S Shift+Down") void holdScrollDown_slow2()
+					{ if(NOSEL) scrollV(-scrollSpeed/8); } 
+					@HOLD("Shift+A Shift+Left") void holdScrollLeft_slow2()
+					{ if(NOSEL) scrollH(scrollSpeed/8); } 
+					@HOLD("Shift+D Shift+Right") void holdScrollRight_slow2()
+					{ if(NOSEL) scrollH(-scrollSpeed/8); } 
+					@HOLD("Shift+E Shift+PgUp") void holdZoomIn_slow2()
+					{ if(NOSEL) zoom (zoomSpeed/8); } 
+					@HOLD("Shift+Q Shift+PgDn") void holdZoomOut_slow2()
+					{ if(NOSEL) zoom (-zoomSpeed/8); } 
+					
+					@VERB("Home"	) void zoomAll2()
+					{ if(NOSEL) scrollInAllModules; } 
+					@VERB("Alt+Home"	) void zoomClose2()
+					{
+						frmMain.view.scale = 1; 
+						
+						if(primaryCaret.valid)
+						frmMain.view.origin = primaryCaret.worldBounds.center.dvec2; 
+					} 
+				}
+			}
+			version(/+$DIDE_REGION+/all)
+			{
+				version(/+$DIDE_REGION Cursor movement+/all)
+				{
+					@VERB("Left") void cursorLeft(bool sel=false)
+					{ cursorOp(ivec2(-1, 0), sel); } 
+					@VERB("Right") void cursorRight(bool sel=false)
+					{ cursorOp(ivec2(1, 0), sel); } 
+					
+					@VERB("Ctrl+Left") void cursorWordLeft(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
+					@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+					
+					@VERB("Home") void cursorHome(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.home, 0), sel); } 
+					@VERB("End") void cursorEnd(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.end, 0), sel); } 
+					@VERB("Up") void cursorUp(bool sel=false)
+					{ cursorOp(ivec2(0,-1), sel); } 
+					@VERB("Down") void cursorDown(bool sel=false)
+					{ cursorOp(ivec2(0, 1), sel); } 
+					
+					@VERB("PgUp") void cursorPageUp(bool sel=false)
+					{ cursorOp(ivec2(0,-pageSize	), sel); } 
+					@VERB("PgDn") void cursorPageDown(bool sel=false)
+					{ cursorOp(ivec2(0, pageSize	), sel); } 
+					@VERB("Ctrl+Home") void cursorTop(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.home), sel); } 
+					@VERB("Ctrl+End") void cursorBottom(bool sel=false)
+					{ cursorOp(ivec2(TextCursor.end), sel); } 
+				}version(/+$DIDE_REGION Cursor selection+/all)
+				{
+					@VERB("Shift+Left") void cursorLeftSelect()
+					{ cursorLeft(true); } 
+					@VERB("Shift+Right") void cursorRightSelect()
+					{ cursorRight(true); } 
+					
+					@VERB("Shift+Ctrl+Left") void cursorWordLeftSelect()
+					{ cursorWordLeft(true); } 
+					@VERB("Shift+Ctrl+Right") void cursorWordRightSelect()
+					{ cursorWordRight	(true); } 
+					
+					@VERB("Shift+Home") void cursorHomeSelect()
+					{ cursorHome(true); } 
+					@VERB("Shift+End") void cursorEndSelect()
+					{ cursorEnd	(true); } 
+					@VERB("Shift+Up Shift+Ctrl+Up") void cursorUpSelect()
+					{ cursorUp	(true); } 
+					@VERB("Shift+Down Shift+Ctrl+Down") void cursorDownSelect()
+					{ cursorDown	(true); } 
+					
+					
+					@VERB("Shift+PgUp") void cursorPageUpSelect()
+					{ cursorPageUp	(true); } 
+					@VERB("Shift+PgDn") void cursorPageDownSelect()
+					{ cursorPageDown	(true); } 
+					@VERB("Shift+Ctrl+Home") void cursorTopSelect()
+					{ cursorTop	(true); } 
+					@VERB("Shift+Ctrl+End") void cursorBottomSelect()
+					{ cursorBottom	(true); } 
+				}version(/+$DIDE_REGION Cursor through blocks+/all)
+				{
+					static if(0)
+					{
+						@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
+						{ cursorOp(ivec2(-1, 0), sel, true); } 
+						@VERB("Alt+Right") void cursorRightOut(bool sel=false)
+						{ cursorOp(ivec2(1, 0), sel, true); } 
+					}
+					
+					static if(0)
+					{
+						@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
+						{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
+						@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
+						{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
+					}
+					
+					static if(0)
+					{
+						@VERB("Shift+Alt+Left") void cursorLeftSelectOut()
+						{ cursorLeftOut(true); } 
+						@VERB("Shift+Alt+Right") void cursorRightSelectOut()
+						{ cursorRightOut(true); } 
+					}
+					
+					static if(0)
+					{
+						@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
+						{ cursorWordLeftOut(true); } 
+						@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
+						{ cursorWordRightOut(true); } 
+					}
+				}
+			}version(/+$DIDE_REGION+/all)
+			{
+				version(/+$DIDE_REGION More text selection+/all)
+				{
+					@VERB("Shift+Alt+Right") void extendSelection()
+					{ if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }} 
+					
+					@VERB("Shift+Alt+Left") void shrinkSelection()
+					{ if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }} 
+					
+					@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
+					{ textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); } 
+					@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
+					{ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); } 
+					
+					@VERB("Ctrl+A") void selectAll()
+					{
+						selectAll_impl; 
+						//textSelections = extendAll(textSelections); 
+						/+
+							textSelections = modulesWithTextSelection
+							.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
+						+/
+					} 
+					
+					@VERB("Ctrl+Shift+A") void selectAllModules()
+					{ textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; } 
+					@VERB("") void deselectAllModules()
+					{
+						modules.each!(m => m.flags.selected = false); 
+						//Note: left clicking on emptyness does this too.
+					} 
+					@VERB("Esc") void cancelSelection()
+					{ if(!im.wantKeys) cancelSelection_impl; } 
+				}version(/+$DIDE_REGION Text editing      +/all)
+				{
+					@VERB("Ctrl+C Ctrl+Ins") void copy()
+					{
+						copy_impl(textSelections.zeroLengthSelectionsToFullRows); 
+						/+
+							Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
+							Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
+							A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
+						+/
+					} 
+					@VERB("Ctrl+X Shift+Del") void cut()
+					{
+						TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2; 
+						copy_impl(s1); cut_impl2(s1, s2); textSelections = s2; 
+					} 
+					@VERB("Backspace") void deleteToLeft()
+					{
+						TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
+						cut_impl2(s1, s2); textSelections = s2; 
+						//Todo: delete all leading tabs when the cursor is right after them
+					} 
+					@VERB("Del") void deleteFromRight()
+					{
+						TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
+						cut_impl2(s1, s2); textSelections = s2; 
+						/+
+							Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
+							ha van non-readonly selecton is, akkor azt meg el is bassza. 
+						+/
+						//Bug: delete should remove the leading tabs.
+					} 
+					
+					@VERB("Ctrl+V Shift+Ins") void paste()
+					{ textSelections = paste_impl(textSelections, clipboard.text); } 
+					
+					@VERB("Tab") void insertTab()
+					{ textSelections = paste_impl(textSelections, "\t"); } 
+					
+					@VERB("Enter") void insertNewLine()
+					{
+						textSelections = paste_impl(textSelections, "\n", Yes.duplicateTabs); 
+						//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
+					} 
+					
+					@VERB("Shift+Enter") void insertNewPage()
+					{
+						/+
+							Todo: it should automatically insert at the end of the selected rows.
+							But what if the selection spans across multiple rows...
+						+/
+						textSelections = paste_impl(textSelections, "\v"); 
+						//Vertical Tab -> MultiColumn
+					} 
+					
+					@VERB("Ctrl+]") void indent()
+					{
+						insertCursorAtStartOfEachLineSelected; 
+						paste_impl(textSelections, "\t"); 
+					} 
+					@VERB("Ctrl+[") void outdent()
+					{
+						insertCursorAtStartOfEachLineSelected; 
+						auto ts = selectCharAtEachSelection(textSelections, '\t'); 
+						if(!ts.empty)
+						{
+							textSelections = ts; 
+							deleteToLeft; 
+						}
+						else
+						{ im.flashWarning("Unable to outdent."); }
+					} 
+					
+					@VERB("Alt+Up") void moveLineUp()
+					{
+						//TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2;
+						//copy_impl(s1); cut_impl2(s1, s2); textSelections = s2;
+						//Todo: moveLineUp
+					} 
+					
+					@VERB("Alt+Down") void moveLineDown()
+					{} 
+					
+					//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+					//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+					
+					@VERB("Ctrl+Z") void undo()
+					{
+						if(expectOneSelectedModule)
+						undoRedo_impl!"undo"; 
+					} @VERB("Ctrl+Y") void redo()
+					{
+						if(expectOneSelectedModule)
+						undoRedo_impl!"redo"; 
+					} 
+				}
+			}
+			version(/+$DIDE_REGION+/all)
+			{
+				version(/+$DIDE_REGION Operations  +/all)
+				{
+					@VERB("Ctrl+O") void openModule()
+					{ fileDialog.openMulti.each!(f => queueModule(f)); } 
+					@VERB("Ctrl+Shift+O") void openModuleRecursive()
+					{ fileDialog.openMulti.each!(f => queueModuleRecursive(f)); } 
+					@VERB("Ctrl+R") void revertSelectedModules()
+					{
+						preserveTextSelections
+						(
+							{
+								foreach(m; selectedModules)
+								{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
+							}
+						); 
+					} 
+					
+					@VERB("Alt+S") void saveSelectedModules()
+					{ feedAndSaveModules(selectedModules); } 
+					@VERB("Ctrl+S") void saveSelectedModulesIfChanged()
+					{ feedAndSaveModules(selectedModules.filter!"a.changed"); } 
+					@VERB("Ctrl+Alt+S") void saveSelectedModulesIfChanged_noSyntaxCheck()
+					{ feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); } 
+					@VERB("Ctrl+Shift+S") void saveAllModulesIfChanged()
+					{ feedAndSaveModules(modules.filter!"a.changed"); } 
+					
+					@VERB("Ctrl+W") void closeSelectedModules()
+					{
+						closeSelectedModules_impl; 
+						//Todo: this hsould work for selections and modules based on textSelections.empty
+					} 
+					@VERB("Ctrl+Shift+W") void closeAllModules()
+					{ closeAllModules_impl; } 
+					
+					@VERB("Ctrl+F") void searchBoxActivate()
+					{ searchBoxActivate_request = true; } 
+					@VERB("Ctrl+Shift+L") void selectSearchResults()
+					{ selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); } 
+					@VERB("F3") void gotoNextFind()
+					{ NOTIMPL; } 
+					@VERB("Shift+F3") void gotoPrevFind()
+					{ NOTIMPL; } 
+					
+					@VERB("Ctrl+G") void gotoLine()
+					{
+						if(auto m = expectOneSelectedModule)
+						{ searchBoxActivate_request = true; searchText = ":"; }
+					} 
+					
+					@VERB("F8") void gotoNextError()
+					{ NOTIMPL; } 
+					@VERB("Shift+F8") void gotoPrevError()
+					{ NOTIMPL; } 
+					
+					@VERB void feed()
+					{
+						enforce(frmMain.ready, "BuildSystem is working."); 
+						preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
+					} 
+					
+					@VERB("F9") void run()
+					{
+						with(frmMain)
+						if(ready && !running)
+						{
+							feedAndSaveModules(changedProjectModules); 
+							run; 
+						}
+					} 
+					@VERB("Shift+F9") void rebuild()
+					{
+						with(frmMain)
+						if(ready && !running)
+						{
+							feedAndSaveModules(changedProjectModules); 
+							messageUICache.clear; //Todo: This UI cache should be emptied automatically.
+							rebuild; 
+						}
+					} 
+					
+					@VERB("Ctrl+F2") void kill()
+					{
+						with(frmMain)
+						{
+							if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
+							else if(building)	{ cancelBuild; }
+							else if(running)	{ closeOrKillProcess; }
+							else if(canKillRunningConsole)	{ killRunningConsole; }
+							//Todo: Vannak ezen belul a mini buttonok. Azok alapjan kell eldonteni, hogy ez mit csinaljon.
+						}
+					} 
+					
+					//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
+					//@VERB("F10") void stepOver() { NOTIMPL; }
+					//@VERB("F11") void stepInto() { NOTIMPL; }
+				}version(/+$DIDE_REGION Stored slots+/all)
+				{
+					
+					
+					static foreach(i; iota(storedLocations.length).map!text)
+					mixin
+					(
+						q{
+							@VERB("Ctrl+Alt+Num#") void storeLocation#()
+							{ storeLocation(#); } 
+							@VERB("Ctrl+Num#"     ) void jumpToLocation#()
+							{ jumpToLocation(#); } 
+						}
+						.replace("#", i)
+					); 
+					
+					
+					static foreach(i; iota(storedMemSlots.length).map!text)
+					mixin
+					(
+						q{
+							@VERB("Ctrl+Alt+#") void copyMemSlot#()
+							{ copyMemSlot(#); 	} 
+							@VERB("Ctrl+#"	) void pasteMemSlot#()
+							{ pasteMemSlot(#); } 
+						}
+						.replace("#", i)
+					); 
+					
+					
+				}version(/+$DIDE_REGION Refactor+/all)
+				{
+					@VERB void realignVerticalTabs()
+					{
+						//Todo: This fucks up Undo/Redo and ignored edit permissions.
+						preserveTextSelections
+						(
+							{
+								visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
+								visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
+							}
+						); 
+					} 
+					
+					@VERB void removeVerticalTabs()
+					{
+						//Todo: This fucks up Undo/Redo and ignored edit permissions.
+						preserveTextSelections
+						({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
+					} 
+					
+					@VERB void addInternalNewLines()
+					{
+						//Todo: This fucks up Undo/Redo and ignored edit permissions.
+						visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 1; decl.needMeasure; }); 
+					} 
+					
+					@VERB void removeInternalNewLines()
+					{
+						//Todo: This fucks up Undo/Redo and ignored edit permissions.
+						visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 0; decl.needMeasure; }); 
+					} 
+					
+					@VERB void declarationStatistics()
+					{ declarationStatistics_impl; } 
+				}version(/+$DIDE_REGION Rich editing+/all)
+				{
+					@VERB("Shift+Alt+9") insertBraceBlock()
+					{ insertNode("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
+					{ insertNode("(\0)"); } 
+					@VERB("Alt+[") insertSquareBlock    ()
+					{ insertNode("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
+					{ insertNode("[\0]"); } 
+					@VERB("Shift+Alt+[") insertCurlyBlock ()
+					{ insertNode("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
+					{ insertNode("{\0}"); } 
+					
+					@VERB("Alt+`") insertDString()
+					{ insertNode("`\0`", 0); } @VERB("Alt+'") insertCChar()
+					{ insertNode("'\0'"); } @VERB("Shift+Alt+'") insertCString()
+					{ insertNode("\"\0\""); } 
+					
+					@VERB("Alt+/") insertDComment()
+					{ insertNode("/+\0+/", 0); } 
+					
+					@VERB("Shift+Alt+/") insertTenary()
+					{
+						insertNode("((\0)?():())", 0); 
+						//Todo: must be inserted as an expression!!!
+					} 
+					@VERB("Shift+Alt+;") insertGenericArg()
+					{
+						insertNode("((\0).genericArg!q{})", 0); 
+						//Todo: must be inserted as an expression!!!
+					} 
+				}
 			}
 		}
-		version(/+$DIDE_REGION+/all)
+	}version(/+$DIDE_REGION Keyboard mapping+/all)
+	{
+		@property SEL() => !textSelections.empty; @property NOSEL() => !SEL; 
+		version(/+$DIDE_REGION Scroll and zoom view+/all)
 		{
-			version(/+$DIDE_REGION Cursor movement+/all)
+			version(/+$DIDE_REGION Press          +/all)
 			{
-				@VERB("Left") void cursorLeft(bool sel=false)
-				{ cursorOp(ivec2(-1, 0), sel); } 
-				@VERB("Right") void cursorRight(bool sel=false)
-				{ cursorOp(ivec2(1, 0), sel); } 
-				
-				@VERB("Ctrl+Left") void cursorWordLeft(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
-				@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
-				
-				@VERB("Home") void cursorHome(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.home, 0), sel); } 
-				@VERB("End") void cursorEnd(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.end, 0), sel); } 
-				@VERB("Up") void cursorUp(bool sel=false)
-				{ cursorOp(ivec2(0,-1), sel); } 
-				@VERB("Down") void cursorDown(bool sel=false)
-				{ cursorOp(ivec2(0, 1), sel); } 
-				
-				@VERB("PgUp") void cursorPageUp(bool sel=false)
-				{ cursorOp(ivec2(0,-pageSize	), sel); } 
-				@VERB("PgDn") void cursorPageDown(bool sel=false)
-				{ cursorOp(ivec2(0, pageSize	), sel); } 
-				@VERB("Ctrl+Home") void cursorTop(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.home), sel); } 
-				@VERB("Ctrl+End") void cursorBottom(bool sel=false)
-				{ cursorOp(ivec2(TextCursor.end), sel); } 
-			}version(/+$DIDE_REGION Cursor selection+/all)
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Ctrl+Up"},q{scrollLineUp},q{scrollV(DefaultFontHeight); }],
+						[q{"Ctrl+Down"},q{scrollLineDown},q{scrollV(-DefaultFontHeight); }],
+						[q{"Alt+PgUp"},q{scrollPageUp},q{scrollV(frmMain.clientHeight*.9); }],
+						[q{"Alt+PgDn"},q{scrollPageDown},q{scrollV(-frmMain.clientHeight*.9); }],
+						[q{"Ctrl+="},q{zoomIn},q{zoom (.5); }],
+						[q{"Ctrl+-"},q{zoomOut},q{zoom (-.5); }],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION Conflicts with stored location slots+/none)
 			{
-				@VERB("Shift+Left") void cursorLeftSelect()
-				{ cursorLeft(true); } 
-				@VERB("Shift+Right") void cursorRightSelect()
-				{ cursorRight(true); } 
-				
-				@VERB("Shift+Ctrl+Left") void cursorWordLeftSelect()
-				{ cursorWordLeft(true); } 
-				@VERB("Shift+Ctrl+Right") void cursorWordRightSelect()
-				{ cursorWordRight	(true); } 
-				
-				@VERB("Shift+Home") void cursorHomeSelect()
-				{ cursorHome(true); } 
-				@VERB("Shift+End") void cursorEndSelect()
-				{ cursorEnd	(true); } 
-				@VERB("Shift+Up Shift+Ctrl+Up") void cursorUpSelect()
-				{ cursorUp	(true); } 
-				@VERB("Shift+Down Shift+Ctrl+Down") void cursorDownSelect()
-				{ cursorDown	(true); } 
-				
-				
-				@VERB("Shift+PgUp") void cursorPageUpSelect()
-				{ cursorPageUp	(true); } 
-				@VERB("Shift+PgDn") void cursorPageDownSelect()
-				{ cursorPageDown	(true); } 
-				@VERB("Shift+Ctrl+Home") void cursorTopSelect()
-				{ cursorTop	(true); } 
-				@VERB("Shift+Ctrl+End") void cursorBottomSelect()
-				{ cursorBottom	(true); } 
-			}version(/+$DIDE_REGION Cursor through blocks+/all)
+				version(/+$DIDE_REGION Hold          +/all)
+				{
+					mixin((
+						(表([
+							[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+							[q{"Ctrl+Alt+Num8"},q{holdScrollUp},q{scrollV(scrollSpeed); }],
+							[q{"Ctrl+Alt+Num2"},q{holdScrollDown},q{scrollV(-scrollSpeed); }],
+							[q{"Ctrl+Alt+Num4"},q{holdScrollLeft},q{scrollH(scrollSpeed); }],
+							[q{"Ctrl+Alt+Num6"},q{holdScrollRight},q{scrollH(-scrollSpeed); }],
+							[q{"Ctrl+Alt+Num+"},q{holdZoomIn},q{zoom (zoomSpeed); }],
+							[q{"Ctrl+Alt+Num-"},q{holdZoomOut},q{zoom (-zoomSpeed); }],
+							[],
+							[],
+							[],
+							[],
+						]))
+					) .GEN!q{GEN_verbs(Yes.hold)}); 
+				}version(/+$DIDE_REGION Hold slow      +/all)
+				{
+					mixin((
+						(表([
+							[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+							[q{"Ctrl+Alt+Num8"},q{holdScrollUp_slow},q{scrollV(scrollSpeed/8); }],
+							[q{"Ctrl+Alt+Num2"},q{holdScrollDown_slow},q{scrollV(-scrollSpeed/8); }],
+							[q{"Ctrl+Alt+Num4"},q{holdScrollLeft_slow},q{scrollH(scrollSpeed/8); }],
+							[q{"Ctrl+Alt+Num6"},q{holdScrollRight_slow},q{scrollH(-scrollSpeed/8); }],
+							[q{"Ctrl+Alt+Num+"},q{holdZoomIn_slow},q{zoom (zoomSpeed/8); }],
+							[q{"Ctrl+Alt+Num-"},q{holdZoomOut_slow},q{zoom (-zoomSpeed/8); }],
+							[q{/+
+								Note: No keys for this. 
+								Ctrl+Alt+Num is used for normal speed scrolling.
+							+/}],
+						]))
+					) .GEN!q{GEN_verbs(Yes.hold)}); 
+				}
+			}
+			version(/+$DIDE_REGION Hold NoSel   +/all)
 			{
-				static if(0)
-				{
-					@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
-					{ cursorOp(ivec2(-1, 0), sel, true); } 
-					@VERB("Alt+Right") void cursorRightOut(bool sel=false)
-					{ cursorOp(ivec2(1, 0), sel, true); } 
-				}
-				
-				static if(0)
-				{
-					@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
-					@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
-				}
-				
-				static if(0)
-				{
-					@VERB("Shift+Alt+Left") void cursorLeftSelectOut()
-					{ cursorLeftOut(true); } 
-					@VERB("Shift+Alt+Right") void cursorRightSelectOut()
-					{ cursorRightOut(true); } 
-				}
-				
-				static if(0)
-				{
-					@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
-					{ cursorWordLeftOut(true); } 
-					@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
-					{ cursorWordRightOut(true); } 
-				}
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{//Navigation when there is no textSelection
+						}],
+						[],
+						[],
+						[q{"W Num8 Up"},q{holdScrollUp2},q{if(NOSEL) scrollV(scrollSpeed); }],
+						[q{"S Num2 Down"},q{holdScrollDown2},q{if(NOSEL) scrollV(-scrollSpeed); }],
+						[q{"A Num4 Left"},q{holdScrollLeft2},q{if(NOSEL) scrollH(scrollSpeed); }],
+						[q{"D Num6 Right"},q{holdScrollRight2},q{if(NOSEL) scrollH(-scrollSpeed); }],
+						[q{"E Num+ PgUp"},q{holdZoomIn2},q{if(NOSEL) zoom (zoomSpeed); }],
+						[q{"Q Num- PgDn"},q{holdZoomOut2},q{if(NOSEL) zoom (-zoomSpeed); }],
+					]))
+				) .GEN!q{GEN_verbs(Yes.hold)}); 
+			}version(/+$DIDE_REGION hold slow NoSel+/all)
+			{
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{/+
+							Bug: When NumLockState=true && key==Num8: if the modifier is released
+							after the key, KeyCombo will NEVER detect the release and is stuck!!!
+						+/}],
+						[q{"Shift+W Shift+Up"},q{holdScrollUp_slow2},q{if(NOSEL) scrollV(scrollSpeed/8); }],
+						[q{"Shift+S Shift+Down"},q{holdScrollDown_slow2},q{if(NOSEL) scrollV(-scrollSpeed/8); }],
+						[q{"Shift+A Shift+Left"},q{holdScrollLeft_slow2},q{if(NOSEL) scrollH(scrollSpeed/8); }],
+						[q{"Shift+D Shift+Right"},q{holdScrollRight_slow2},q{if(NOSEL) scrollH(-scrollSpeed/8); }],
+						[q{"Shift+E Shift+PgUp"},q{holdZoomIn_slow2},q{if(NOSEL) zoom (zoomSpeed/8); }],
+						[q{"Shift+Q Shift+PgDn"},q{holdZoomOut_slow2},q{if(NOSEL) zoom (-zoomSpeed/8); }],
+					]))
+				) .GEN!q{GEN_verbs(Yes.hold)}); 
+			}
+			version(/+$DIDE_REGION ZoomAll/Close          +/all)
+			{
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Home"},q{zoomAll2},q{if(NOSEL) scrollInAllModules; }],
+						[q{"Alt+Home"},q{zoomClose2},q{
+							frmMain.view.scale = 1; 
+							
+							if(primaryCaret.valid)
+							frmMain.view.origin = primaryCaret.worldBounds.center.dvec2; 
+						}],
+						[],
+					]))
+				) .GEN!q{GEN_verbs}); 
 			}
 		}version(/+$DIDE_REGION+/all)
 		{
-			version(/+$DIDE_REGION More text selection+/all)
+			version(/+$DIDE_REGION Cursor  movement+/all)
 			{
-				@VERB("Shift+Alt+Right") void extendSelection()
-				{ if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }} 
-				
-				@VERB("Shift+Alt+Left") void shrinkSelection()
-				{ if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }} 
-				
-				@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
-				{ textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); } 
-				@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
-				{ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); } 
-				
-				@VERB("Ctrl+A") void selectAll()
-				{
-					selectAll_impl; 
-					//textSelections = extendAll(textSelections); 
-					/+
-						textSelections = modulesWithTextSelection
-						.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
-					+/
-				} 
-				
-				@VERB("Ctrl+Shift+A") void selectAllModules()
-				{ textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; } 
-				@VERB("") void deselectAllModules()
-				{
-					modules.each!(m => m.flags.selected = false); 
-					//Note: left clicking on emptyness does this too.
-				} 
-				@VERB("Esc") void cancelSelection()
-				{ if(!im.wantKeys) cancelSelection_impl; } 
-			}version(/+$DIDE_REGION Text editing      +/all)
-			{
-				@VERB("Ctrl+C Ctrl+Ins") void copy()
-				{
-					copy_impl(textSelections.zeroLengthSelectionsToFullRows); 
-					/+
-						Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
-						Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
-						A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
-					+/
-				} 
-				@VERB("Ctrl+X Shift+Del") void cut()
-				{
-					TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2; 
-					copy_impl(s1); cut_impl2(s1, s2); textSelections = s2; 
-				} 
-				@VERB("Backspace") void deleteToLeft()
-				{
-					TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
-					cut_impl2(s1, s2); textSelections = s2; 
-					//Todo: delete all leading tabs when the cursor is right after them
-				} 
-				@VERB("Del") void deleteFromRight()
-				{
-					TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
-					cut_impl2(s1, s2); textSelections = s2; 
-					/+
-						Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
-						ha van non-readonly selecton is, akkor azt meg el is bassza. 
-					+/
-					//Bug: delete should remove the leading tabs.
-				} 
-				
-				@VERB("Ctrl+V Shift+Ins") void paste()
-				{ textSelections = paste_impl(textSelections, clipboard.text); } 
-				
-				@VERB("Tab") void insertTab()
-				{ textSelections = paste_impl(textSelections, "\t"); } 
-				
-				@VERB("Enter") void insertNewLine()
-				{
-					textSelections = paste_impl(textSelections, "\n", Yes.duplicateTabs); 
-					//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
-				} 
-				
-				@VERB("Shift+Enter") void insertNewPage()
-				{
-					/+
-						Todo: it should automatically insert at the end of the selected rows.
-						But what if the selection spans across multiple rows...
-					+/
-					textSelections = paste_impl(textSelections, "\v"); 
-					//Vertical Tab -> MultiColumn
-				} 
-				
-				@VERB("Ctrl+]") void indent()
-				{
-					insertCursorAtStartOfEachLineSelected; 
-					paste_impl(textSelections, "\t"); 
-				} 
-				@VERB("Ctrl+[") void outdent()
-				{
-					insertCursorAtStartOfEachLineSelected; 
-					auto ts = selectCharAtEachSelection(textSelections, '\t'); 
-					if(!ts.empty)
-					{
-						textSelections = ts; 
-						deleteToLeft; 
-					}
-					else
-					{ im.flashWarning("Unable to outdent."); }
-				} 
-				
-				@VERB("Alt+Up") void moveLineUp()
-				{
-					//TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2;
-					//copy_impl(s1); cut_impl2(s1, s2); textSelections = s2;
-					//Todo: moveLineUp
-				} 
-				
-				@VERB("Alt+Down") void moveLineDown()
-				{} 
-				
-				//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
-				//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
-				
-				@VERB("Ctrl+Z") void undo()
-				{
-					if(expectOneSelectedModule)
-					undoRedo_impl!"undo"; 
-				} @VERB("Ctrl+Y") void redo()
-				{
-					if(expectOneSelectedModule)
-					undoRedo_impl!"redo"; 
-				} 
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Left"},q{cursorLeft(bool sel=false)},q{cursorOp(ivec2(-1, 0), sel); }],
+						[q{"Right"},q{cursorRight(bool sel=false)},q{cursorOp(ivec2(1, 0), sel); }],
+						[],
+						[q{"Ctrl+Left"},q{cursorWordLeft(bool sel=false)},q{cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); }],
+						[q{"Ctrl+Right"},q{cursorWordRight(bool sel=false)},q{cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); }],
+						[],
+						[q{"Home"},q{cursorHome(bool sel=false)},q{cursorOp(ivec2(TextCursor.home, 0), sel); }],
+						[q{"End"},q{cursorEnd(bool sel=false)},q{cursorOp(ivec2(TextCursor.end, 0), sel); }],
+						[q{"Up"},q{cursorUp(bool sel=false)},q{cursorOp(ivec2(0,-1), sel); }],
+						[q{"Down"},q{cursorDown(bool sel=false)},q{cursorOp(ivec2(0, 1), sel); }],
+						[],
+						[q{"PgUp"},q{cursorPageUp(bool sel=false)},q{cursorOp(ivec2(0,-pageSize), sel); }],
+						[q{"PgDn"},q{cursorPageDown(bool sel=false)},q{cursorOp(ivec2(0, pageSize), sel); }],
+						[q{"Ctrl+Home"},q{cursorTop(bool sel=false)},q{cursorOp(ivec2(TextCursor.home), sel); }],
+						[q{"Ctrl+End"},q{cursorBottom(bool sel=false)},q{cursorOp(ivec2(TextCursor.end), sel); }],
+					]))
+				) .GEN!q{GEN_verbs}); 
 			}
-		}
-		version(/+$DIDE_REGION+/all)
-		{
-			version(/+$DIDE_REGION Operations  +/all)
+			version(/+$DIDE_REGION Cursor selection+/all)
 			{
-				@VERB("Ctrl+O") void openModule()
-				{ fileDialog.openMulti.each!(f => queueModule(f)); } 
-				@VERB("Ctrl+Shift+O") void openModuleRecursive()
-				{ fileDialog.openMulti.each!(f => queueModuleRecursive(f)); } 
-				@VERB("Ctrl+R") void revertSelectedModules()
-				{
-					preserveTextSelections
-					(
-						{
-							foreach(m; selectedModules)
-							{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
-						}
-					); 
-				} 
-				
-				@VERB("Alt+S") void saveSelectedModules()
-				{ feedAndSaveModules(selectedModules); } 
-				@VERB("Ctrl+S") void saveSelectedModulesIfChanged()
-				{ feedAndSaveModules(selectedModules.filter!"a.changed"); } 
-				@VERB("Ctrl+Alt+S") void saveSelectedModulesIfChanged_noSyntaxCheck()
-				{ feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); } 
-				@VERB("Ctrl+Shift+S") void saveAllModulesIfChanged()
-				{ feedAndSaveModules(modules.filter!"a.changed"); } 
-				
-				@VERB("Ctrl+W") void closeSelectedModules()
-				{
-					closeSelectedModules_impl; 
-					//Todo: this hsould work for selections and modules based on textSelections.empty
-				} 
-				@VERB("Ctrl+Shift+W") void closeAllModules()
-				{ closeAllModules_impl; } 
-				
-				@VERB("Ctrl+F") void searchBoxActivate()
-				{ searchBoxActivate_request = true; } 
-				@VERB("Ctrl+Shift+L") void selectSearchResults()
-				{ selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); } 
-				@VERB("F3") void gotoNextFind()
-				{ NOTIMPL; } 
-				@VERB("Shift+F3") void gotoPrevFind()
-				{ NOTIMPL; } 
-				
-				@VERB("Ctrl+G") void gotoLine()
-				{
-					if(auto m = expectOneSelectedModule)
-					{ searchBoxActivate_request = true; searchText = ":"; }
-				} 
-				
-				@VERB("F8") void gotoNextError()
-				{ NOTIMPL; } 
-				@VERB("Shift+F8") void gotoPrevError()
-				{ NOTIMPL; } 
-				
-				@VERB void feed()
-				{
-					enforce(frmMain.ready, "BuildSystem is working."); 
-					preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
-				} 
-				
-				@VERB("F9") void run()
-				{
-					with(frmMain)
-					if(ready && !running)
-					{
-						feedAndSaveModules(changedProjectModules); 
-						run; 
-					}
-				} 
-				@VERB("Shift+F9") void rebuild()
-				{
-					with(frmMain)
-					if(ready && !running)
-					{
-						feedAndSaveModules(changedProjectModules); 
-						messageUICache.clear; //Todo: This UI cache should be emptied automatically.
-						rebuild; 
-					}
-				} 
-				
-				@VERB("Ctrl+F2") void kill()
-				{
-					with(frmMain)
-					{
-						if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
-						else if(building)	{ cancelBuild; }
-						else if(running)	{ closeOrKillProcess; }
-						else if(canKillRunningConsole)	{ killRunningConsole; }
-						//Todo: Vannak ezen belul a mini buttonok. Azok alapjan kell eldonteni, hogy ez mit csinaljon.
-					}
-				} 
-				
-				//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
-				//@VERB("F10") void stepOver() { NOTIMPL; }
-				//@VERB("F11") void stepInto() { NOTIMPL; }
-			}version(/+$DIDE_REGION Stored slots+/all)
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Shift+Left"},q{cursorLeftSelect},q{cursorLeft(true); }],
+						[q{"Shift+Right"},q{cursorRightSelect},q{cursorRight(true); }],
+						[],
+						[q{"Shift+Ctrl+Left"},q{cursorWordLeftSelect},q{cursorWordLeft(true); }],
+						[q{"Shift+Ctrl+Right"},q{cursorWordRightSelect},q{cursorWordRight(true); }],
+						[],
+						[q{"Shift+Home"},q{cursorHomeSelect},q{cursorHome(true); }],
+						[q{"Shift+End"},q{cursorEndSelect},q{cursorEnd(true); }],
+						[q{"Shift+Up Shift+Ctrl+Up"},q{cursorUpSelect},q{cursorUp(true); }],
+						[q{"Shift+Down Shift+Ctrl+Down"},q{cursorDownSelect},q{cursorDown(true); }],
+						[],
+						[q{"Shift+PgUp"},q{cursorPageUpSelect},q{cursorPageUp(true); }],
+						[q{"Shift+PgDn"},q{cursorPageDownSelect},q{cursorPageDown(true); }],
+						[q{"Shift+Ctrl+Home"},q{cursorTopSelect},q{cursorTop(true); }],
+						[q{"Shift+Ctrl+End"},q{cursorBottomSelect},q{cursorBottom(true); }],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION Cursor through blocks+/all)
 			{
-				
-				
-				static foreach(i; iota(storedLocations.length).map!text)
-				mixin
-				(
-					q{
-						@VERB("Ctrl+Alt+Num#") void storeLocation#()
-						{ storeLocation(#); } 
-						@VERB("Ctrl+Num#"     ) void jumpToLocation#()
-						{ jumpToLocation(#); } 
-					}
-					.replace("#", i)
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Alt+Left"},q{cursorLeftOut(bool sel=false)},q{cursorOp(ivec2(-1, 0), sel, true); }],
+						[q{"Alt+Right"},q{cursorRightOut(bool sel=false)},q{cursorOp(ivec2( 1, 0), sel, true); }],
+						[q{"Ctrl+Alt+Left"},q{cursorWordLeftOut(bool sel=false)},q{cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); }],
+						[q{"Ctrl+Alt+Right"},q{cursorWordRightOut(bool sel=false)},q{cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); }],
+						[q{"Shift+Alt+Left"},q{cursorLeftSelectOut},q{cursorLeftOut(true); }],
+						[q{"Shift+Alt+Right"},q{cursorRightSelectOut},q{cursorRightOut(true); }],
+						[q{"Shift+Ctrl+Alt+Left"},q{cursorWordLeftSelectOut},q{cursorWordLeftOut(true); }],
+						[q{"Shift+Ctrl+Alt+Right"},q{cursorWordRightSelectOut},q{cursorWordRightOut(true); }],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION More text selection  +/all)
+			{
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Shift+Alt+Right"},q{extendSelection},q{if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }}],
+						[q{"Shift+Alt+Left"},q{shrinkSelection},q{if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }}],
+						[q{"Shift+Alt+U"},q{insertCursorAtStartOfEachLineSelected},q{textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); }],
+						[q{"Shift+Alt+I"},q{insertCursorAtEndOfEachLineSelected},q{textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); }],
+						[q{"Ctrl+A"},q{selectAll},q{
+							selectAll_impl; 
+							//textSelections = extendAll(textSelections); 
+							/+
+								textSelections = modulesWithTextSelection
+								.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
+							+/
+						}],
+						[q{"Ctrl+Shift+A"},q{selectAllModules},q{textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }],
+						[q{""},q{deselectAllModules},q{
+							modules.each!(m => m.flags.selected = false); 
+							//Note: left clicking on emptyness does this too.
+						}],
+						[q{"Esc"},q{cancelSelection},q{if(!im.wantKeys) cancelSelection_impl; }],
+						[],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION Text editing      +/all)
+			{
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Ctrl+C Ctrl+Ins"},q{copy},q{
+							copy_impl(textSelections.zeroLengthSelectionsToFullRows); 
+							/+
+								Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
+								Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
+								A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
+							+/
+						}],
+						[q{"Ctrl+X Shift+Del"},q{cut},q{
+							TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2; 
+							copy_impl(s1); cut_impl2(s1, s2); textSelections = s2; 
+						}],
+						[q{"Backspace"},q{deleteToLeft},q{
+							TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
+							cut_impl2(s1, s2); textSelections = s2; 
+							//Todo: delete all leading tabs when the cursor is right after them
+						}],
+						[q{"Del"},q{deleteFromRight},q{
+							TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
+							cut_impl2(s1, s2); textSelections = s2; 
+							/+
+								Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
+								ha van non-readonly selecton is, akkor azt meg el is bassza. 
+							+/
+							//Bug: delete should remove the leading tabs.
+						}],
+						[q{"Ctrl+V Shift+Ins"},q{paste},q{textSelections = paste_impl(textSelections, clipboard.text); }],
+						[q{"Tab"},q{insertTab},q{textSelections = paste_impl(textSelections, "\t"); }],
+						[q{"Enter"},q{insertNewLine},q{
+							textSelections = paste_impl(textSelections, "\n", Yes.duplicateTabs); 
+							//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
+						}],
+						[q{"Shift+Enter"},q{insertNewPage},q{
+							/+
+								Todo: it should automatically insert at the end of the selected rows.
+								But what if the selection spans across multiple rows...
+							+/
+							textSelections = paste_impl(textSelections, "\v"); 
+							//Vertical Tab -> MultiColumn
+						}],
+						[],
+						[q{"Ctrl+]"},q{indent},q{
+							insertCursorAtStartOfEachLineSelected; 
+							paste_impl(textSelections, "\t"); 
+						}],
+						[q{"Ctrl+["},q{outdent},q{
+							insertCursorAtStartOfEachLineSelected; 
+							auto ts = selectCharAtEachSelection(textSelections, '\t'); 
+							if(!ts.empty)
+							{
+								textSelections = ts; 
+								deleteToLeft; 
+							}
+							else
+							{ im.flashWarning("Unable to outdent."); }
+						}],
+						[q{"Alt+Up"},q{moveLineUp},q{
+							//TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2;
+							//copy_impl(s1); cut_impl2(s1, s2); textSelections = s2;
+							//Todo: moveLineUp
+						}],
+						[q{"Alt+Down"},q{moveLineDown},q{/+Todo: moveLineDown+/}],
+						[q{"Ctrl+Z"},q{undo},q{if(expectOneSelectedModule) undoRedo_impl!"undo"; }],
+						[q{"Ctrl+Y"},q{redo},q{if(expectOneSelectedModule) undoRedo_impl!"redo"; }],
+						[],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION Operations       +/all)
+			{
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Ctrl+O"},q{openModule},q{fileDialog.openMulti.each!(f => queueModule(f)); }],
+						[q{"Ctrl+Shift+O"},q{openModuleRecursive},q{fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }],
+						[q{"Ctrl+R"},q{revertSelectedModules},q{
+							preserveTextSelections
+							(
+								{
+									foreach(m; selectedModules)
+									{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
+								}
+							); 
+						}],
+						[],
+						[q{"Alt+S"},q{saveSelectedModules},q{feedAndSaveModules(selectedModules); }],
+						[q{"Ctrl+S"},q{saveSelectedModulesIfChanged},q{feedAndSaveModules(selectedModules.filter!"a.changed"); }],
+						[q{"Ctrl+Alt+S"},q{saveSelectedModulesIfChanged_noSyntaxCheck},q{feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); }],
+						[q{"Ctrl+Shift+S"},q{saveAllModulesIfChanged},q{feedAndSaveModules(modules.filter!"a.changed"); }],
+						[],
+						[q{"Ctrl+W"},q{closeSelectedModules},q{
+							closeSelectedModules_impl; 
+							//Todo: this hsould work for selections and modules based on textSelections.empty
+						}],
+						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
+						[],
+						[q{"Ctrl+F"},q{searchBoxActivate},q{searchBoxActivate_request = true; }],
+						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); }],
+						[q{"F3"},q{gotoNextFind},q{NOTIMPL; }],
+						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
+						[q{"Ctrl+G"},q{gotoLine},q{
+							if(auto m = expectOneSelectedModule)
+							{ searchBoxActivate_request = true; searchText = ":"; }
+						}],
+						[q{"F8"},q{gotoNextError},q{NOTIMPL; }],
+						[q{"Shift+F8"},q{gotoPrevError},q{NOTIMPL; }],
+						[],
+						[q{""},q{feed},q{
+							enforce(frmMain.ready, "BuildSystem is working."); 
+							preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
+						}],
+						[],
+						[q{"F9"},q{run},q{
+							with(frmMain)
+							if(ready && !running)
+							{
+								feedAndSaveModules(changedProjectModules); 
+								run; 
+							}
+						}],
+						[q{"Shift+F9"},q{rebuild},q{
+							with(frmMain)
+							if(ready && !running)
+							{
+								feedAndSaveModules(changedProjectModules); 
+								messageUICache.clear; //Todo: This UI cache should be emptied automatically.
+								rebuild; 
+							}
+						}],
+						[q{"Ctrl+F2"},q{kill},q{
+							with(frmMain)
+							{
+								if(cancelling)	{
+									killCompilers; 
+									/+
+										Must check 'cancelling' 
+										right before checking 'building'!
+									+/
+								}
+								else if(building)	{ cancelBuild; }
+								else if(running)	{ closeOrKillProcess; }
+								else if(canKillRunningConsole)	{ killRunningConsole; }
+								/+
+									Todo: Vannak ezen belul a mini buttonok. 
+									Azok alapjan kell eldonteni, hogy ez mit csinaljon.
+								+/
+							}
+						}],
+						[q{//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
+						}],
+						[q{//@VERB("F10") void stepOver() { NOTIMPL; }
+						}],
+						[q{//@VERB("F11") void stepInto() { NOTIMPL; }
+						}],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			version(/+$DIDE_REGION Stored slots+/all)
+			{
+				static foreach(idx; iota(10))
+				mixin(
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Ctrl+Alt+Numₙ"},q{storeLocationₙ},q{storeLocation(ₙ); }],
+						[q{"Ctrl+Numₙ"},q{jumpToLocationₙ},q{jumpToLocation(ₙ); }],
+						[],
+						[q{"Ctrl+Alt+ₙ"},q{copyMemSlotₙ},q{copyMemSlot(ₙ); }],
+						[q{"Ctrl+ₙ"},q{pasteMemSlotₙ},q{pasteMemSlot(ₙ); }],
+					]))
+					.GEN_verbs.replace("ₙ", idx.text)
 				); 
-				
-				
-				static foreach(i; iota(storedMemSlots.length).map!text)
-				mixin
-				(
-					q{
-						@VERB("Ctrl+Alt+#") void copyMemSlot#()
-						{ copyMemSlot(#); 	} 
-						@VERB("Ctrl+#"	) void pasteMemSlot#()
-						{ pasteMemSlot(#); } 
-					}
-					.replace("#", i)
-				); 
-				
-				
-			}version(/+$DIDE_REGION Refactor+/all)
+			}
+			
+			version(/+$DIDE_REGION Refactor     +/all)
 			{
-				@VERB void realignVerticalTabs()
-				{
-					//Todo: This fucks up Undo/Redo and ignored edit permissions.
-					preserveTextSelections
-					(
-						{
-							visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
-							visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
-						}
-					); 
-				} 
-				
-				@VERB void removeVerticalTabs()
-				{
-					//Todo: This fucks up Undo/Redo and ignored edit permissions.
-					preserveTextSelections
-					({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
-				} 
-				
-				@VERB void addInternalNewLines()
-				{
-					//Todo: This fucks up Undo/Redo and ignored edit permissions.
-					visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 1; decl.needMeasure; }); 
-				} 
-				
-				@VERB void removeInternalNewLines()
-				{
-					//Todo: This fucks up Undo/Redo and ignored edit permissions.
-					visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 0; decl.needMeasure; }); 
-				} 
-				
-				@VERB void declarationStatistics()
-				{ declarationStatistics_impl; } 
-			}version(/+$DIDE_REGION Rich editing+/all)
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{""},q{realignVerticalTabs},q{
+							//Todo: This fucks up Undo/Redo and ignored edit permissions.
+							preserveTextSelections
+							(
+								{
+									visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
+									visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
+								}
+							); 
+						}],
+						[q{""},q{removeVerticalTabs},q{
+							//Todo: This fucks up Undo/Redo and ignored edit permissions.
+							preserveTextSelections
+							({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
+						}],
+						[q{""},q{addInternalNewLines},q{
+							//Todo: This fucks up Undo/Redo and ignored edit permissions.
+							visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 1; decl.needMeasure; }); 
+						}],
+						[q{""},q{removeInternalNewLines},q{
+							//Todo: This fucks up Undo/Redo and ignored edit permissions.
+							visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 0; decl.needMeasure; }); 
+						}],
+						[q{""},q{declarationStatistics},q{declarationStatistics_impl; }],
+					]))
+				) .GEN!q{GEN_verbs}); 
+			}
+			
+			version(/+$DIDE_REGION Rich editing+/all)
 			{
-				@VERB("Shift+Alt+9") insertBraceBlock()
-				{ insertNode("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
-				{ insertNode("(\0)"); } 
-				@VERB("Alt+[") insertSquareBlock    ()
-				{ insertNode("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
-				{ insertNode("[\0]"); } 
-				@VERB("Shift+Alt+[") insertCurlyBlock ()
-				{ insertNode("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
-				{ insertNode("{\0}"); } 
-				
-				@VERB("Alt+`") insertDString()
-				{ insertNode("`\0`", 0); } @VERB("Alt+'") insertCChar()
-				{ insertNode("'\0'"); } @VERB("Shift+Alt+'") insertCString()
-				{ insertNode("\"\0\""); } 
-				
-				@VERB("Alt+/") insertDComment()
-				{ insertNode("/+\0+/", 0); } 
-				
-				@VERB("Shift+Alt+/") insertTenary()
-				{
-					insertNode("((\0)?():())", 0); 
-					//Todo: must be inserted as an expression!!!
-				} 
-				@VERB("Shift+Alt+;") insertGenericArg()
-				{
-					insertNode("((\0).genericArg!q{})", 0); 
-					//Todo: must be inserted as an expression!!!
-				} 
+				mixin((
+					(表([
+						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
+						[q{"Shift+Alt+9"},q{insertBraceBlock},q{insertNode("(\0)", 0); }],
+						[q{"Shift+Alt+0"},q{insertBraceBlock_closing},q{insertNode("(\0)"); }],
+						[q{"Alt+["},q{insertSquareBlock},q{insertNode("[\0]", 0); }],
+						[q{"Alt+]"},q{insertSquareBlock_closing},q{insertNode("[\0]"); }],
+						[q{"Shift+Alt+["},q{insertCurlyBlock},q{insertNode("{\0}", 0); }],
+						[q{"Shift+Alt+]"},q{insertCurlyBlock_closing},q{insertNode("{\0}"); }],
+						[q{"Alt+`"},q{insertDString},q{insertNode("`\0`", 0); }],
+						[q{"Alt+'"},q{insertCChar},q{insertNode("'\0'"); }],
+						[q{"Shift+Alt+'"},q{insertCString},q{insertNode("\"\0\""); }],
+						[q{"Alt+/"},q{insertDComment},q{insertNode("/+\0+/", 0); }],
+						[q{"Shift+Alt+/"},q{insertTenary},q{
+							insertNode("((\0)?():())", 0); 
+							//Todo: must be inserted as an expression!!!
+						}],
+						[q{"Shift+Alt+;"},q{insertGenericArg},q{
+							insertNode("((\0).genericArg!q{})", 0); 
+							//Todo: must be inserted as an expression!!!
+						}],
+					]))
+				) .GEN!q{GEN_verbs}); 
 			}
 		}
 	}version(/+$DIDE_REGION UI                 +/all)
@@ -6749,8 +7192,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30B6035B2D627).檢(expr)) ((0x30B7E35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30BCC35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3586A35B2D627).檢(expr)) ((0x3588835B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x358D635B2D627).檢((update間(_間)))); }],
 				]))
 			}
 		},
