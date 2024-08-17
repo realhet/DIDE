@@ -6607,7 +6607,10 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
 					[q{"debug inspector"},q{((0x3087E35B2D627).檢(expr)) ((0x3089C35B2D627).檢 (expr))}],
 					[q{"stop watch"},q{auto _間=init間; ((0x308EA35B2D627).檢((update間(_間)))); }],
-					[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
+					[q{"interactive literals"},q{/+
+						Todo: It throws ->
+						(常!(bool)(0)) (常!(bool)(1))
+					+/}],
 				]))
 			}
 		},
