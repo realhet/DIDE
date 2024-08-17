@@ -147,6 +147,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 		//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+		//Bug: multiselect.copy -> items are in RANDOM order
 	}
 	
 	//globals ////////////////////////////////////////
@@ -322,6 +323,9 @@ version(/+$DIDE_REGION main+/all)
 			void updateBuildSystem()
 			{
 				buildResult.receiveBuildMessages; 
+				
+				if(buildResult.incomingMessages.length)
+				workspace.processBuildMessages(buildResult.incomingMessages.fetchAll); 
 				
 				//Note: These operations are fast: only 0.015 ms
 				
@@ -1381,167 +1385,161 @@ version(/+$DIDE_REGION main+/all)
 	
 }class Workspace : Container, WorkspaceInterface
 {
-	version(/+$DIDE_REGION Workspace+/all)
+	version(/+$DIDE_REGION Workspace things+/all)
 	{
-		//! Module handling ///////////////////////////////////////
-		version(/+$DIDE_REGION+/all)
+		//A workspace is a collection of opened modules
+		
+		enum CodeLocationPrefix 	= "CodeLocation:",
+		MatchPrefix	= "Match:"; 
+		
+		File file; //the file of the workspace
+		enum defaultExt = ".dide"; 
+		
+		File[] openQueue; 
+		Module[] modules; 
+		Module[uint] moduleByHash; 
+		
+		@STORED File mainModuleFile; 
+		@property
 		{
-			//A workspace is a collection of opened modules
-			
-			enum CodeLocationPrefix 	= "CodeLocation:",
-			MatchPrefix	= "Match:"; 
-			
-			File file; //the file of the workspace
-			enum defaultExt = ".dide"; 
-			
-			File[] openQueue; 
-			Module[] modules; 
-			Module[uint] moduleByHash; 
-			
-			@STORED File mainModuleFile; 
-			@property
+			Module mainModule()
+			{ return findModule(mainModuleFile); } void mainModule(Module m)
 			{
-				Module mainModule()
-				{ return findModule(mainModuleFile); } void mainModule(Module m)
-				{
-					enforce(modules.canFind(m), "Invalid module."); 
-					enforce(m.isMain, "This module can't be selected as main module."); 
-					mainModuleFile = m.file; 
-				} 
+				enforce(modules.canFind(m), "Invalid module."); 
+				enforce(m.isMain, "This module can't be selected as main module."); 
+				mainModuleFile = m.file; 
 			} 
-			
-			ContainerSelectionManager!Module moduleSelectionManager; 
-			TextSelectionManager textSelectionManager; 
-			
-			protected TextSelection[] textSelections_internal; 
-			bool mustValidateTextSelections; 
-			@property
-			{
-				auto textSelections()
-				{
-					validateTextSelectionsIfNeeded; 
-					return textSelections_internal; 
-				} void textSelections()(TextSelection[] ts)
-				{
-					textSelections_internal = ts; 
-					invalidateTextSelections; 
-				} 
-			} 
-			
-			size_t textSelectionsHash; 
-			
-			string[] extendSelectionStack; 
-			
-			bool searchBoxVisible, searchBoxActivate_request; 
-			string searchText; 
-			
-			@STORED bool showErrorList; 
-			Module errorModule; 
-			
-			
-			struct MarkerLayer {
-				const DMDMessage.Type type; 
-				Container.SearchResult[] searchResults; 
-				bool visible = true; 
-			} 
-			
-			auto markerLayers = (()=>[EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array)(); 
-			//Note: compiler drops weird error. this also works:
-			//Writing Explicit type also works:
-			//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
-			
-			@STORED vec2[size_t] lastModulePositions; 
-			
-			
-			//Restrict convertBuildResultToSearchResults calls.
-			size_t lastBuildStateHash; 
-			bool buildStateChanged; 
-			
-			FileDialog fileDialog; 
-			
-			Nullable!bounds2 scrollInBoundsRequest; 
-			
-			struct ResyntaxEntry {
-				CodeColumn what; 
-				DateTime when; 
-			} 
-			ResyntaxEntry[] resyntaxQueue; 
-			
-			SyntaxHighlightWorker syntaxHighlightWorker; 
-			
-			StructureMap structureMap; 
-			
-			@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted; 
-			
-		}version(/+$DIDE_REGION+/all)
+		} 
+		
+		ContainerSelectionManager!Module moduleSelectionManager; 
+		TextSelectionManager textSelectionManager; 
+		
+		protected TextSelection[] textSelections_internal; 
+		bool mustValidateTextSelections; 
+		@property
 		{
-			struct AutoReloader
+			auto textSelections()
 			{
-				@STORED bool enabled; 
+				validateTextSelectionsIfNeeded; 
+				return textSelections_internal; 
+			} void textSelections()(TextSelection[] ts)
+			{
+				textSelections_internal = ts; 
+				invalidateTextSelections; 
+			} 
+		} 
+		
+		size_t textSelectionsHash; 
+		
+		string[] extendSelectionStack; 
+		
+		bool searchBoxVisible, searchBoxActivate_request; 
+		string searchText; 
+		
+		@STORED bool showErrorList; 
+		Module errorModule; 
+		
+		
+		struct MarkerLayer {
+			const DMDMessage.Type type; 
+			Container.SearchResult[] searchResults; 
+			bool visible = true; 
+		} 
+		
+		auto markerLayers = (()=>[EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array)(); 
+		//Note: compiler drops weird error. this also works:
+		//Writing Explicit type also works:
+		//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
+		
+		@STORED vec2[size_t] lastModulePositions; 
+		
+		
+		//Restrict convertBuildResultToSearchResults calls.
+		size_t lastBuildStateHash; 
+		bool buildStateChanged; 
+		
+		FileDialog fileDialog; 
+		
+		Nullable!bounds2 scrollInBoundsRequest; 
+		
+		struct ResyntaxEntry {
+			CodeColumn what; 
+			DateTime when; 
+		} 
+		ResyntaxEntry[] resyntaxQueue; 
+		
+		SyntaxHighlightWorker syntaxHighlightWorker; 
+		
+		StructureMap structureMap; 
+		
+		@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted; 
+		
+		struct AutoReloader
+		{
+			@STORED bool enabled; 
+			
+			size_t idx; 
+			
+			void update(Module[] modules)
+			{
+				if(!enabled) return; 
+				if(modules.empty) return; 
 				
-				size_t idx; 
+				version(/+$DIDE_REGION advance idx+/all)
+				{ idx ++;  if(idx>=modules.length) idx = 0; }
 				
-				void update(Module[] modules)
-				{
-					if(!enabled) return; 
-					if(modules.empty) return; 
-					
-					version(/+$DIDE_REGION advance idx+/all)
-					{ idx ++;  if(idx>=modules.length) idx = 0; }
-					
-					auto m = modules[idx]; 
-					if(typeid(m) is typeid(Module) /+Opt: It takes 120us for a file.  It is problematic with the stickers...+/)
-					if(!m.changed && m.fileModified < m.file.modified)
-					m.reload(m.structureLevel); 
-				} 
+				auto m = modules[idx]; 
+				if(typeid(m) is typeid(Module) /+Opt: It takes 120us for a file.  It is problematic with the stickers...+/)
+				if(!m.changed && m.fileModified < m.file.modified)
+				m.reload(m.structureLevel); 
 			} 
-			
-			@STORED AutoReloader autoReloader; 
-			
-			this()
+		} 
+		
+		@STORED AutoReloader autoReloader; 
+		
+		this()
+		{
+			flags.targetSurface = 0; 
+			flags.noBackground = true; 
+			fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)"); 
+			syntaxHighlightWorker = new SyntaxHighlightWorker; 
+			structureMap = new StructureMap; 
+			needMeasure; 
+		} 
+		
+		~this()
+		{ syntaxHighlightWorker.destroy; } 
+		
+		override @property bool isReadOnly()
+		{
+			//return frmMain.building;
+			return false; 
+			//Note: it's making me angly if I can't modify while it's compiling.
+			//Bug: deleting from a readonly module loses its selections.
+		} 
+		
+		override void rearrange()
+		{
+			super.rearrange; 
+			static if(rearrangeLOG)
+			LOG("rearranging", this); 
+		} 
+		
+		@STORED @property
+		{
+			//Note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
+			size_t markerLayerHideMask() const
 			{
-				flags.targetSurface = 0; 
-				flags.noBackground = true; 
-				fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)"); 
-				syntaxHighlightWorker = new SyntaxHighlightWorker; 
-				structureMap = new StructureMap; 
-				needMeasure; 
+				size_t res; 
+				foreach(idx, const layer; markerLayers)
+				if(!layer.visible)
+				res |= 1 << idx; 
+				
+				return res; 
 			} 
-					
-			~this()
-			{ syntaxHighlightWorker.destroy; } 
-					
-			override @property bool isReadOnly()
-			{
-				//return frmMain.building;
-				return false; 
-				//Note: it's making me angly if I can't modify while it's compiling.
-				//Bug: deleting from a readonly module loses its selections.
-			} 
-					
-			override void rearrange()
-			{
-				super.rearrange; 
-				static if(rearrangeLOG)
-				LOG("rearranging", this); 
-			} 
-			
-			@STORED @property
-			{
-				//Note: toJson: this can't be protected. But an array can (mixin() vs. __traits(member, ...).
-				size_t markerLayerHideMask() const
-				{
-					size_t res; 
-					foreach(idx, const layer; markerLayers)
-					if(!layer.visible)
-					res |= 1 << idx; 
-					
-					return res; 
-				} 
-				void markerLayerHideMask(size_t v)
-				{ foreach(idx, ref layer; markerLayers) layer.visible = ((1<<idx)&v)==0; } 
-			} 
-		}
+			void markerLayerHideMask(size_t v)
+			{ foreach(idx, ref layer; markerLayers) layer.visible = ((1<<idx)&v)==0; } 
+		} 
 	}version(/+$DIDE_REGION Module handling+/all)
 	{
 		//! Module handling ///////////////////////////////////////
@@ -1930,7 +1928,7 @@ version(/+$DIDE_REGION main+/all)
 				visitNode(node); 
 			} 
 		} 
-		
+		
 		
 		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
 		{
@@ -1967,7 +1965,6 @@ version(/+$DIDE_REGION main+/all)
 					}
 					else
 					{ ERR("Gave up locate:", loc); }
-					//if(optimized) 
 				}
 				
 				return res; 
@@ -2193,6 +2190,15 @@ version(/+$DIDE_REGION main+/all)
 			
 		} 
 		
+		void processBuildMessages(DMDMessage[] messages)
+		{
+			print("--------------BuildMessages received in workspace------------------"); 
+			messages.each!print; 
+			print("--------------------------------------------------------------"); 
+		} 
+		
+		
+		
 		//Todo: since all the code containers have parents, location() is not needed anymore
 		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
@@ -2271,7 +2277,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return st; 
 		} 
-		
+		
 		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
 		{
 			CodeLocation res; 
@@ -2344,7 +2350,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return res; 
 		} 
-		
+		
 		static CellLocation[] findLastCodeRow(CellLocation[] st)
 		{
 			foreach_reverse(i; 0..st.length) {
@@ -3419,26 +3425,6 @@ version(/+$DIDE_REGION main+/all)
 		
 		void insertNode(string source, int subColumnIdx=-1)
 		{
-			/+
-				void insertStatementNode(string source, int subColumnIdx=-1)
-					{
-						textSelections = paste_impl(
-							textSelections, source, No.duplicateTabs, 
-							Yes.isObject, subColumnIdx, TextFormat.managed_block
-						); 
-					} 
-					void insertExpressionNode(string source, int subColumnIdx=-1)
-					{
-						textSelections = paste_impl(
-							textSelections, source, No.duplicateTabs, 
-							Yes.isObject, subColumnIdx, TextFormat.managed_goInside
-						); 
-					} 
-					
-					const isStatement = source.length && source.back.among(';', ':', '}'); 
-					((isStatement)?(insertStatementNode(source, subColumnIdx)) :(insertExpressionNode(source, subColumnIdx))); 
-			+/
-			
 			textSelections = paste_impl(
 				textSelections, source, No.duplicateTabs, 
 				Yes.isObject, subColumnIdx, TextFormat.managed_optionalBlock
@@ -4420,7 +4406,7 @@ version(/+$DIDE_REGION main+/all)
 				{ jumpTo(hs.back.id); }
 			}
 		} 
-		
+		
 		Nullable!vec2 jumpRequest; 
 		
 		void jumpTo(in CodeLocation loc)
@@ -4580,7 +4566,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 				scrollInBoundsRequest.nullify; 
 				jumpRequest.nullify; 
-				
+				
 				//animate cursors
 				version(AnimatedCursors)
 				{
@@ -5089,536 +5075,6 @@ version(/+$DIDE_REGION main+/all)
 				
 			}
 		} 
-	}
-	version(/+$DIDE_REGION+/none)
-	{
-		version(/+$DIDE_REGION Keyboard mapping+/all)
-		{
-			//! Keyboard mapping ///////////////////////////////////////
-			version(/+$DIDE_REGION Scroll and zoom view   +/all)
-			{
-				@property SEL()
-				{ return !textSelections.empty; } @property NOSEL()
-				{ return !SEL; } 
-				version(/+$DIDE_REGION press      +/all)
-				{
-					
-					
-					
-					@VERB("Ctrl+Up") void scrollLineUp()
-					{ scrollV(DefaultFontHeight); } 
-					@VERB("Ctrl+Down") void scrollLineDown()
-					{ scrollV(-DefaultFontHeight); } 
-					@VERB("Alt+PgUp") void scrollPageUp()
-					{ scrollV(frmMain.clientHeight*.9); } 
-					@VERB("Alt+PgDn") void scrollPageDown()
-					{ scrollV(-frmMain.clientHeight*.9); } 
-					@VERB("Ctrl+=") void zoomIn()
-					{ zoom (.5); } 
-					@VERB("Ctrl+-") void zoomOut()
-					{ zoom (-.5); } 
-				}static if(0)
-				version(/+$DIDE_REGION hold      +/all)
-				{
-					@HOLD("Ctrl+Alt+Num8") void holdScrollUp()
-					{ scrollV(scrollSpeed); } 
-					@HOLD("Ctrl+Alt+Num2") void holdScrollDown()
-					{ scrollV(-scrollSpeed); } 
-					@HOLD("Ctrl+Alt+Num4") void holdScrollLeft()
-					{ scrollH(scrollSpeed); } 
-					@HOLD("Ctrl+Alt+Num6") void holdScrollRight()
-					{ scrollH(-scrollSpeed); } 
-					@HOLD("Ctrl+Alt+Num+") void holdZoomIn()
-					{ zoom (zoomSpeed); } 
-					@HOLD("Ctrl+Alt+Num-") void holdZoomOut()
-					{ zoom (-zoomSpeed); } 
-				}static if(0)
-				version(/+$DIDE_REGION hold slow  +/all)
-				{
-					/+
-						Note: no keys for this. 
-						Ctrl+Alt+Num is used for normal speed scrolling.
-					+/
-					
-					@HOLD("Alt+Ctrl+Num8") void holdScrollUp_slow()
-					{ scrollV(scrollSpeed); } 
-					@HOLD("Alt+Ctrl+Num2") void holdScrollDown_slow()
-					{ scrollV(-scrollSpeed); } 
-					@HOLD("Alt+Ctrl+Num4") void holdScrollLeft_slow()
-					{ scrollH(scrollSpeed); } 
-					@HOLD("Alt+Ctrl+Num6") void holdScrollRight_slow()
-					{ scrollH(-scrollSpeed); } 
-					@HOLD("Alt+Ctrl+Num+") void holdZoomIn_slow()
-					{ zoom (zoomSpeed); } 
-					@HOLD("Alt+Ctrl+Num-") void holdZoomOut_slow()
-					{ zoom (-zoomSpeed); } 
-				}	version(/+$DIDE_REGION hold NoSel   +/all)
-				{
-					//Navigation when there is no textSelection
-					
-					@HOLD("W Num8 Up") void holdScrollUp2()
-					{ if(NOSEL) scrollV(scrollSpeed); } 
-					@HOLD("S Num2 Down") void holdScrollDown2()
-					{ if(NOSEL) scrollV(-scrollSpeed); } 
-					@HOLD("A Num4 Left") void holdScrollLeft2()
-					{ if(NOSEL) scrollH(scrollSpeed); } 
-					@HOLD("D Num6 Right") void holdScrollRight2()
-					{ if(NOSEL) scrollH(-scrollSpeed); } 
-					@HOLD("E Num+ PgUp") void holdZoomIn2()
-					{ if(NOSEL) zoom (zoomSpeed); } 
-					@HOLD("Q Num- PgDn") void holdZoomOut2()
-					{ if(NOSEL) zoom (-zoomSpeed); } 
-				}version(/+$DIDE_REGION hold slow NoSel+/all)
-				{
-					/+
-						Bug: When NumLockState=true && key==Num8: if the modifier is released
-						after the key, KeyCombo will NEVER detect the release and is stuck!!!
-					+/
-					@HOLD("Shift+W Shift+Up") void holdScrollUp_slow2()
-					{ if(NOSEL) scrollV(scrollSpeed/8); } 
-					@HOLD("Shift+S Shift+Down") void holdScrollDown_slow2()
-					{ if(NOSEL) scrollV(-scrollSpeed/8); } 
-					@HOLD("Shift+A Shift+Left") void holdScrollLeft_slow2()
-					{ if(NOSEL) scrollH(scrollSpeed/8); } 
-					@HOLD("Shift+D Shift+Right") void holdScrollRight_slow2()
-					{ if(NOSEL) scrollH(-scrollSpeed/8); } 
-					@HOLD("Shift+E Shift+PgUp") void holdZoomIn_slow2()
-					{ if(NOSEL) zoom (zoomSpeed/8); } 
-					@HOLD("Shift+Q Shift+PgDn") void holdZoomOut_slow2()
-					{ if(NOSEL) zoom (-zoomSpeed/8); } 
-					
-					@VERB("Home"	) void zoomAll2()
-					{ if(NOSEL) scrollInAllModules; } 
-					@VERB("Alt+Home"	) void zoomClose2()
-					{
-						frmMain.view.scale = 1; 
-						
-						if(primaryCaret.valid)
-						frmMain.view.origin = primaryCaret.worldBounds.center.dvec2; 
-					} 
-				}
-			}
-			version(/+$DIDE_REGION+/all)
-			{
-				version(/+$DIDE_REGION Cursor movement+/all)
-				{
-					@VERB("Left") void cursorLeft(bool sel=false)
-					{ cursorOp(ivec2(-1, 0), sel); } 
-					@VERB("Right") void cursorRight(bool sel=false)
-					{ cursorOp(ivec2(1, 0), sel); } 
-					
-					@VERB("Ctrl+Left") void cursorWordLeft(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
-					@VERB("Ctrl+Right") void cursorWordRight(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
-					
-					@VERB("Home") void cursorHome(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.home, 0), sel); } 
-					@VERB("End") void cursorEnd(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.end, 0), sel); } 
-					@VERB("Up") void cursorUp(bool sel=false)
-					{ cursorOp(ivec2(0,-1), sel); } 
-					@VERB("Down") void cursorDown(bool sel=false)
-					{ cursorOp(ivec2(0, 1), sel); } 
-					
-					@VERB("PgUp") void cursorPageUp(bool sel=false)
-					{ cursorOp(ivec2(0,-pageSize	), sel); } 
-					@VERB("PgDn") void cursorPageDown(bool sel=false)
-					{ cursorOp(ivec2(0, pageSize	), sel); } 
-					@VERB("Ctrl+Home") void cursorTop(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.home), sel); } 
-					@VERB("Ctrl+End") void cursorBottom(bool sel=false)
-					{ cursorOp(ivec2(TextCursor.end), sel); } 
-				}version(/+$DIDE_REGION Cursor selection+/all)
-				{
-					@VERB("Shift+Left") void cursorLeftSelect()
-					{ cursorLeft(true); } 
-					@VERB("Shift+Right") void cursorRightSelect()
-					{ cursorRight(true); } 
-					
-					@VERB("Shift+Ctrl+Left") void cursorWordLeftSelect()
-					{ cursorWordLeft(true); } 
-					@VERB("Shift+Ctrl+Right") void cursorWordRightSelect()
-					{ cursorWordRight	(true); } 
-					
-					@VERB("Shift+Home") void cursorHomeSelect()
-					{ cursorHome(true); } 
-					@VERB("Shift+End") void cursorEndSelect()
-					{ cursorEnd	(true); } 
-					@VERB("Shift+Up Shift+Ctrl+Up") void cursorUpSelect()
-					{ cursorUp	(true); } 
-					@VERB("Shift+Down Shift+Ctrl+Down") void cursorDownSelect()
-					{ cursorDown	(true); } 
-					
-					
-					@VERB("Shift+PgUp") void cursorPageUpSelect()
-					{ cursorPageUp	(true); } 
-					@VERB("Shift+PgDn") void cursorPageDownSelect()
-					{ cursorPageDown	(true); } 
-					@VERB("Shift+Ctrl+Home") void cursorTopSelect()
-					{ cursorTop	(true); } 
-					@VERB("Shift+Ctrl+End") void cursorBottomSelect()
-					{ cursorBottom	(true); } 
-				}version(/+$DIDE_REGION Cursor through blocks+/all)
-				{
-					static if(0)
-					{
-						@VERB("Alt+Left") void cursorLeftOut(bool sel=false)
-						{ cursorOp(ivec2(-1, 0), sel, true); } 
-						@VERB("Alt+Right") void cursorRightOut(bool sel=false)
-						{ cursorOp(ivec2(1, 0), sel, true); } 
-					}
-					
-					static if(0)
-					{
-						@VERB("Ctrl+Alt+Left") void cursorWordLeftOut(bool sel=false)
-						{ cursorOp(ivec2(TextCursor.wordLeft, 0), sel, true); } 
-						@VERB("Ctrl+Alt+Right") void cursorWordRightOut(bool sel=false)
-						{ cursorOp(ivec2(TextCursor.wordRight, 0), sel, true); } 
-					}
-					
-					static if(0)
-					{
-						@VERB("Shift+Alt+Left") void cursorLeftSelectOut()
-						{ cursorLeftOut(true); } 
-						@VERB("Shift+Alt+Right") void cursorRightSelectOut()
-						{ cursorRightOut(true); } 
-					}
-					
-					static if(0)
-					{
-						@VERB("Shift+Ctrl+Alt+Left") void cursorWordLeftSelectOut()
-						{ cursorWordLeftOut(true); } 
-						@VERB("Shift+Ctrl+Alt+Right") void cursorWordRightSelectOut()
-						{ cursorWordRightOut(true); } 
-					}
-				}
-			}version(/+$DIDE_REGION+/all)
-			{
-				version(/+$DIDE_REGION More text selection+/all)
-				{
-					@VERB("Shift+Alt+Right") void extendSelection()
-					{ if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }} 
-					
-					@VERB("Shift+Alt+Left") void shrinkSelection()
-					{ if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }} 
-					
-					@VERB("Shift+Alt+U") void insertCursorAtStartOfEachLineSelected()
-					{ textSelections = insertCursorAtStartOfEachLineSelected_impl(textSelections); } 
-					@VERB("Shift+Alt+I") void insertCursorAtEndOfEachLineSelected()
-					{ textSelections = insertCursorAtEndOfEachLineSelected_impl(textSelections); } 
-					
-					@VERB("Ctrl+A") void selectAll()
-					{
-						selectAll_impl; 
-						//textSelections = extendAll(textSelections); 
-						/+
-							textSelections = modulesWithTextSelection
-							.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
-						+/
-					} 
-					
-					@VERB("Ctrl+Shift+A") void selectAllModules()
-					{ textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; } 
-					@VERB("") void deselectAllModules()
-					{
-						modules.each!(m => m.flags.selected = false); 
-						//Note: left clicking on emptyness does this too.
-					} 
-					@VERB("Esc") void cancelSelection()
-					{ if(!im.wantKeys) cancelSelection_impl; } 
-				}version(/+$DIDE_REGION Text editing      +/all)
-				{
-					@VERB("Ctrl+C Ctrl+Ins") void copy()
-					{
-						copy_impl(textSelections.zeroLengthSelectionsToFullRows); 
-						/+
-							Bug: selection.isZeroLength Ctrl+C then Ctrl+V	It breaks the line. 
-							Ez megjegyzi, hogy volt-e selection extension es	ha igen, akkor sorokon dolgozik. 
-							A sorokon dolgozas feltetele az, hogy a target is zeroLength legyen. 
-						+/
-					} 
-					@VERB("Ctrl+X Shift+Del") void cut()
-					{
-						TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2; 
-						copy_impl(s1); cut_impl2(s1, s2); textSelections = s2; 
-					} 
-					@VERB("Backspace") void deleteToLeft()
-					{
-						TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
-						cut_impl2(s1, s2); textSelections = s2; 
-						//Todo: delete all leading tabs when the cursor is right after them
-					} 
-					@VERB("Del") void deleteFromRight()
-					{
-						TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
-						cut_impl2(s1, s2); textSelections = s2; 
-						/+
-							Bug: ha readonly, akkor NE tunjon el a kurzor! Sot, 
-							ha van non-readonly selecton is, akkor azt meg el is bassza. 
-						+/
-						//Bug: delete should remove the leading tabs.
-					} 
-					
-					@VERB("Ctrl+V Shift+Ins") void paste()
-					{ textSelections = paste_impl(textSelections, clipboard.text); } 
-					
-					@VERB("Tab") void insertTab()
-					{ textSelections = paste_impl(textSelections, "\t"); } 
-					
-					@VERB("Enter") void insertNewLine()
-					{
-						textSelections = paste_impl(textSelections, "\n", Yes.duplicateTabs); 
-						//Todo: Must fix the tabCount on the current line first, and after that it can duplicate.
-					} 
-					
-					@VERB("Shift+Enter") void insertNewPage()
-					{
-						/+
-							Todo: it should automatically insert at the end of the selected rows.
-							But what if the selection spans across multiple rows...
-						+/
-						textSelections = paste_impl(textSelections, "\v"); 
-						//Vertical Tab -> MultiColumn
-					} 
-					
-					@VERB("Ctrl+]") void indent()
-					{
-						insertCursorAtStartOfEachLineSelected; 
-						paste_impl(textSelections, "\t"); 
-					} 
-					@VERB("Ctrl+[") void outdent()
-					{
-						insertCursorAtStartOfEachLineSelected; 
-						auto ts = selectCharAtEachSelection(textSelections, '\t'); 
-						if(!ts.empty)
-						{
-							textSelections = ts; 
-							deleteToLeft; 
-						}
-						else
-						{ im.flashWarning("Unable to outdent."); }
-					} 
-					
-					@VERB("Alt+Up") void moveLineUp()
-					{
-						//TextSelection[] s1 = textSelections.zeroLengthSelectionsToFullRows, s2;
-						//copy_impl(s1); cut_impl2(s1, s2); textSelections = s2;
-						//Todo: moveLineUp
-					} 
-					
-					@VERB("Alt+Down") void moveLineDown()
-					{} 
-					
-					//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
-					//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
-					
-					@VERB("Ctrl+Z") void undo()
-					{
-						if(expectOneSelectedModule)
-						undoRedo_impl!"undo"; 
-					} @VERB("Ctrl+Y") void redo()
-					{
-						if(expectOneSelectedModule)
-						undoRedo_impl!"redo"; 
-					} 
-				}
-			}
-			version(/+$DIDE_REGION+/all)
-			{
-				version(/+$DIDE_REGION Operations  +/all)
-				{
-					@VERB("Ctrl+O") void openModule()
-					{ fileDialog.openMulti.each!(f => queueModule(f)); } 
-					@VERB("Ctrl+Shift+O") void openModuleRecursive()
-					{ fileDialog.openMulti.each!(f => queueModuleRecursive(f)); } 
-					@VERB("Ctrl+R") void revertSelectedModules()
-					{
-						preserveTextSelections
-						(
-							{
-								foreach(m; selectedModules)
-								{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
-							}
-						); 
-					} 
-					
-					@VERB("Alt+S") void saveSelectedModules()
-					{ feedAndSaveModules(selectedModules); } 
-					@VERB("Ctrl+S") void saveSelectedModulesIfChanged()
-					{ feedAndSaveModules(selectedModules.filter!"a.changed"); } 
-					@VERB("Ctrl+Alt+S") void saveSelectedModulesIfChanged_noSyntaxCheck()
-					{ feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); } 
-					@VERB("Ctrl+Shift+S") void saveAllModulesIfChanged()
-					{ feedAndSaveModules(modules.filter!"a.changed"); } 
-					
-					@VERB("Ctrl+W") void closeSelectedModules()
-					{
-						closeSelectedModules_impl; 
-						//Todo: this hsould work for selections and modules based on textSelections.empty
-					} 
-					@VERB("Ctrl+Shift+W") void closeAllModules()
-					{ closeAllModules_impl; } 
-					
-					@VERB("Ctrl+F") void searchBoxActivate()
-					{ searchBoxActivate_request = true; } 
-					@VERB("Ctrl+Shift+L") void selectSearchResults()
-					{ selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); } 
-					@VERB("F3") void gotoNextFind()
-					{ NOTIMPL; } 
-					@VERB("Shift+F3") void gotoPrevFind()
-					{ NOTIMPL; } 
-					
-					@VERB("Ctrl+G") void gotoLine()
-					{
-						if(auto m = expectOneSelectedModule)
-						{ searchBoxActivate_request = true; searchText = ":"; }
-					} 
-					
-					@VERB("F8") void gotoNextError()
-					{ NOTIMPL; } 
-					@VERB("Shift+F8") void gotoPrevError()
-					{ NOTIMPL; } 
-					
-					@VERB void feed()
-					{
-						enforce(frmMain.ready, "BuildSystem is working."); 
-						preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
-					} 
-					
-					@VERB("F9") void run()
-					{
-						with(frmMain)
-						if(ready && !running)
-						{
-							feedAndSaveModules(changedProjectModules); 
-							run; 
-						}
-					} 
-					@VERB("Shift+F9") void rebuild()
-					{
-						with(frmMain)
-						if(ready && !running)
-						{
-							feedAndSaveModules(changedProjectModules); 
-							messageUICache.clear; //Todo: This UI cache should be emptied automatically.
-							rebuild; 
-						}
-					} 
-					
-					@VERB("Ctrl+F2") void kill()
-					{
-						with(frmMain)
-						{
-							if(cancelling)	{ killCompilers; /+Must check 'cancelling' before checking 'building'!+/}
-							else if(building)	{ cancelBuild; }
-							else if(running)	{ closeOrKillProcess; }
-							else if(canKillRunningConsole)	{ killRunningConsole; }
-							//Todo: Vannak ezen belul a mini buttonok. Azok alapjan kell eldonteni, hogy ez mit csinaljon.
-						}
-					} 
-					
-					//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
-					//@VERB("F10") void stepOver() { NOTIMPL; }
-					//@VERB("F11") void stepInto() { NOTIMPL; }
-				}version(/+$DIDE_REGION Stored slots+/all)
-				{
-					
-					
-					static foreach(i; iota(storedLocations.length).map!text)
-					mixin
-					(
-						q{
-							@VERB("Ctrl+Alt+Num#") void storeLocation#()
-							{ storeLocation(#); } 
-							@VERB("Ctrl+Num#"     ) void jumpToLocation#()
-							{ jumpToLocation(#); } 
-						}
-						.replace("#", i)
-					); 
-					
-					
-					static foreach(i; iota(storedMemSlots.length).map!text)
-					mixin
-					(
-						q{
-							@VERB("Ctrl+Alt+#") void copyMemSlot#()
-							{ copyMemSlot(#); 	} 
-							@VERB("Ctrl+#"	) void pasteMemSlot#()
-							{ pasteMemSlot(#); } 
-						}
-						.replace("#", i)
-					); 
-					
-					
-				}version(/+$DIDE_REGION Refactor+/all)
-				{
-					@VERB void realignVerticalTabs()
-					{
-						//Todo: This fucks up Undo/Redo and ignored edit permissions.
-						preserveTextSelections
-						(
-							{
-								visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
-								visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
-							}
-						); 
-					} 
-					
-					@VERB void removeVerticalTabs()
-					{
-						//Todo: This fucks up Undo/Redo and ignored edit permissions.
-						preserveTextSelections
-						({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
-					} 
-					
-					@VERB void addInternalNewLines()
-					{
-						//Todo: This fucks up Undo/Redo and ignored edit permissions.
-						visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 1; decl.needMeasure; }); 
-					} 
-					
-					@VERB void removeInternalNewLines()
-					{
-						//Todo: This fucks up Undo/Redo and ignored edit permissions.
-						visitSelectedNestedDeclarations((decl){ decl.internalNewLineCount = 0; decl.needMeasure; }); 
-					} 
-					
-					@VERB void declarationStatistics()
-					{ declarationStatistics_impl; } 
-				}version(/+$DIDE_REGION Rich editing+/all)
-				{
-					@VERB("Shift+Alt+9") insertBraceBlock()
-					{ insertNode("(\0)", 0); } @VERB("Shift+Alt+0") insertBraceBlock_closing()
-					{ insertNode("(\0)"); } 
-					@VERB("Alt+[") insertSquareBlock    ()
-					{ insertNode("[\0]", 0); } @VERB("Alt+]") insertSquareBlock_closing    ()
-					{ insertNode("[\0]"); } 
-					@VERB("Shift+Alt+[") insertCurlyBlock ()
-					{ insertNode("{\0}", 0); } @VERB("Shift+Alt+]") insertCurlyBlock_closing ()
-					{ insertNode("{\0}"); } 
-					
-					@VERB("Alt+`") insertDString()
-					{ insertNode("`\0`", 0); } @VERB("Alt+'") insertCChar()
-					{ insertNode("'\0'"); } @VERB("Shift+Alt+'") insertCString()
-					{ insertNode("\"\0\""); } 
-					
-					@VERB("Alt+/") insertDComment()
-					{ insertNode("/+\0+/", 0); } 
-					
-					@VERB("Shift+Alt+/") insertTenary()
-					{
-						insertNode("((\0)?():())", 0); 
-						//Todo: must be inserted as an expression!!!
-					} 
-					@VERB("Shift+Alt+;") insertGenericArg()
-					{
-						insertNode("((\0).genericArg!q{})", 0); 
-						//Todo: must be inserted as an expression!!!
-					} 
-				}
-			}
-		}
 	}version(/+$DIDE_REGION Keyboard mapping+/all)
 	{
 		@property SEL() => !textSelections.empty; @property NOSEL() => !SEL; 
@@ -6056,7 +5512,8 @@ version(/+$DIDE_REGION main+/all)
 				) .GEN!q{GEN_verbs}); 
 			}
 		}
-	}version(/+$DIDE_REGION UI                 +/all)
+	}
+	version(/+$DIDE_REGION UI                 +/all)
 	{
 		deprecated void UI_ModuleBtns()
 		{
@@ -6438,7 +5895,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		
 		auto findErrorListItemByLocation(string locStr)
-		{ if(auto mod = errorModule) if(auto col = mod.content) {}} 
+		{ if(auto mod = errorModule) if(auto col = mod.content) { NOTIMPL; }} 
 		
 		string lastNearestSearchResultReference; 
 		
@@ -6454,50 +5911,6 @@ version(/+$DIDE_REGION main+/all)
 					
 					if(nearestSearchResult.reference!="")
 					{
-						
-						//Todo: this is dead code. ErrorModule has changed a lot.
-						/+
-							if(auto mod = errorModule)
-								if(auto col = mod.content)
-								{
-									const locationRef = nearestSearchResult.reference;
-									foreach(row; col.rows)
-									{
-										bool found = false;
-										void visitLocations(.Container act)
-										{
-											//Todo: visitor pattern for cells/containers. 
-											//Similar to the allParents() thing.
-											if(!act) return;
-											
-											if(auto row = cast(.Row)act)
-											{ if(row.id==locationRef) { found = true; } }
-											foreach(sc; act.subContainers)
-											visitLocations(sc); //recursive
-										}
-										
-										visitLocations(row);
-										
-										if(found)
-										{
-											Container(
-												{
-													border = row.border;
-													padding = row.padding;
-													bkColor = row.bkColor;
-													outerSize = row.outerSize;
-													
-													actContainer.subCells = row.subCells;
-												}
-											);
-											mouseOverHintCntr = removeLastContainer;
-											break;
-										}
-									}
-								}
-						+/
-						
-						//Note: This is the new buildMessage hint
 						if(!mouseOverHintCntr)
 						if(
 							nearestSearchResult.reference.isWild(CodeLocationPrefix~"*") 
@@ -6527,7 +5940,7 @@ version(/+$DIDE_REGION main+/all)
 				actContainer.append(mouseOverHintCntr); 
 			}
 		} 
-		
+		
 		void UI_Popup()
 		{
 			version(/+$DIDE_REGION Popup menu+/all)
@@ -7192,8 +6605,9 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3586A35B2D627).檢(expr)) ((0x3588835B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x358D635B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3087E35B2D627).檢(expr)) ((0x3089C35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x308EA35B2D627).檢((update間(_間)))); }],
+					[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 				]))
 			}
 		},

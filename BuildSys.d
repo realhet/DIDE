@@ -890,7 +890,7 @@ struct BuildSystem
 		in string[] todos, in SourceStats sourceStats
 	) onBuildStarted; 
 		void delegate(File f, int result, string output) onCompileProgress; 
-		void delegate (immutable DMDMessage[] messages) onBuildMessages; 
+		void delegate (DMDMessage[] messages) onBuildMessages; 
 		bool delegate(int inFlight, int justStartedIdx) onIdle; //returns true if IDE wants to cancel.
 	
 		//logging
@@ -1487,14 +1487,19 @@ struct BuildSystem
 				{ msgDec.addConsoleMessage(stdOut.fetchAll); }
 				if(stdErr.length)
 				{ msgDec.processDMDOutput_partial(stdErr, isFinal); }
-				print("---printint fetches", id); 
-				msgDec.fetchUpdatedMessages.each!print; 
-				print("---end of printint fetches", id); 
+				
+				auto messages = msgDec.fetchUpdatedMessages.map!"a.dup".array; 
+				/+Note: dup needed for thread safety, because msg.subMessages array can grow.+/
+				
+				if(onBuildMessages)
+				onBuildMessages(messages); 
 			})
 		); 
 		
-		print("=========================================="); 
-		msgDec.messages.each!print; 
+		/+
+			print("=========================================="); 
+			msgDec.messages.each!print; 
+		+/
 		
 		logln; 
 		logln; 
@@ -2053,7 +2058,7 @@ version(/+$DIDE_REGION+/all) {
 	} 
 	
 	struct MsgBuildMessages
-	{ immutable DMDMessage[] messages; } 
+	{ shared DMDMessage[] messages; } 
 	
 	
 	
@@ -2127,8 +2132,8 @@ version(/+$DIDE_REGION+/all) {
 		} 
 		buildSystem.onIdle = &onIdle; 
 		
-		void onBuildMessages(immutable DMDMessage[] messages)
-		{ ownerTid.send(MsgBuildMessages(messages)); } 
+		void onBuildMessages(DMDMessage[] messages)
+		{ ownerTid.send(MsgBuildMessages(cast(shared)messages)); } 
 		buildSystem.onBuildMessages = &onBuildMessages; 
 		
 		//main worker loop
@@ -2195,7 +2200,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		CodeLocation location; 
 		Type type; 
-		string content, lineSource; 
+		string content, lineSource;  //Todo: lineSource is not needed, also sometimes it's bogus in LDC
 		
 		int count = 1; //occurences of this message in the multi-module build
 		
@@ -2203,19 +2208,34 @@ version(/+$DIDE_REGION+/all) {
 		
 		protected size_t hash_; @property hash() => hash_; 
 		
-		this(CodeLocation location_, string content_, Type type_=Type.unknown)
-		{
+		this(
+			CodeLocation location_, 
+			string content_, 
+			Type type_=Type.unknown
+		) {
 			location = location_; 
 			content = content_; 
-			type = type_; 
-			
+			type = type_; 
 			detectType; 
-			
 			recalculateHash; 
 		} 
 		
 		this(CodeLocation location_, Type type_, string content_)
 		{ this(location_, content_, type_); } 
+		
+		this(DMDMessage m)
+		{
+			location = m.location; 
+			content = m.content; 
+			type = m.type; 
+			lineSource = m.lineSource; 
+			count = m.count; 
+			hash_ = m.hash; 
+			subMessages = (mixin(求map(q{s},q{m.subMessages},q{s.dup}))).array; 
+		} 
+		
+		auto dup()
+		{ return new DMDMessage(this); } 
 		
 		void recalculateHash()
 		{ hash_ = location.hashOf	(type.hashOf(content.hashOf)); } 
@@ -2259,8 +2279,7 @@ version(/+$DIDE_REGION+/all) {
 				type = cast(Type) i; 
 				break; 
 			}
-		} 
-		
+		} 
 		string toString_internal(int level, bool enableColor, string indentStr) const
 		{
 			auto res = 	indentStr.replicate(level) ~
@@ -2277,7 +2296,6 @@ version(/+$DIDE_REGION+/all) {
 		override string toString() const
 		{ return toString_internal(0, true, "  "); } 
 		
-		
 		private static
 		{
 			static withEndingColon(string s)
@@ -2346,7 +2364,7 @@ version(/+$DIDE_REGION+/all) {
 	} 
 	
 	
-	struct DMDMessages
+	deprecated("Use DMDMessageDecoder only!") struct DMDMessages
 	{
 		alias messages this; 
 		
@@ -2665,7 +2683,7 @@ version(/+$DIDE_REGION+/all) {
 			if(f==actSourceFile) return; 
 			_actSourceFileState[_actSourceFile] = [parentMessage, topLevelParentMessage]; 
 			
-			_actSourceFile = f; print("selecting source file: ", f); 
+			_actSourceFile = f; //print("selecting source file: ", f); 
 			
 			if(auto a = _actSourceFile in _actSourceFileState)
 			{ parentMessage = (*a)[0], topLevelParentMessage = (*a)[1]; }
@@ -2925,6 +2943,8 @@ version(/+$DIDE_REGION+/all) {
 		
 		DMDMessages messages; 
 		
+		DMDMessage[] incomingMessages; 
+		
 		SourceStats sourceStats; 
 		
 		DateTime lastUpdateTime; 
@@ -2996,7 +3016,7 @@ version(/+$DIDE_REGION+/all) {
 						filesToCompile = msg.filesToCompile.dup; 
 						filesInCache = msg.filesInCache.dup; 
 						
-						allFiles = (filesToCompile~filesInCache); 
+						allFiles = filesToCompile ~ filesInCache; 
 						allFiles.each!((f){
 							filesInProject[f] = true; 
 							//Todo: initialize fileNameFixer with these correct names
@@ -3050,9 +3070,10 @@ version(/+$DIDE_REGION+/all) {
 					}),
 					
 					((in MsgBuildMessages msg) {
-						print("BuildMessages received------------------------------"); 
-						msg.messages.each!print; 
-						print("--------------------------------------------------"); 
+						auto messages = (cast(DMDMessage[])(msg.messages)); 
+						/+Note: Safe to cast, it's not used anywhere else.+/
+						
+						incomingMessages ~= messages; //DIDE will poll this.
 					}),
 					
 					((in MsgBuildFinished msg) {

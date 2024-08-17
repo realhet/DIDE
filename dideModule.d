@@ -9742,7 +9742,7 @@ version(/+$DIDE_REGION+/all)
 			NET.castOp,
 			skIdentifier1,
 			NodeStyle.dim,
-			q{(常!(bool)(1))},
+			q{(常!(bool)(0))(常!(bool)(1))},
 			
 			"常!",
 			q{
