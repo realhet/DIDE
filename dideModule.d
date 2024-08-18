@@ -5131,6 +5131,15 @@ version(/+$DIDE_REGION+/all)
 			dr.fontHeight = 1.25; 
 			dr.textOut(outerPos, format!"%sN"(lineIdx)); 
 		}
+		
+		if(canAcceptBuildMessages)
+		{
+			dr.color = clWhite; 
+			dr.alpha = blink; 
+			dr.lineWidth = -2; 
+			dr.drawRect(outerBounds); 
+			dr.alpha = 1; 
+		}
 	} 
 	
 	void fillSyntax(SyntaxKind sk)
@@ -9714,7 +9723,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F8C57B6B4BCC).檢(expr))},
+			q{((0x3F96B7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9728,7 +9737,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F9D37B6B4BCC).檢 (expr))},
+			q{((0x3FA797B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

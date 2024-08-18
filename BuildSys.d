@@ -1443,7 +1443,6 @@ struct BuildSystem
 			srcFiles, cmdLines, null, 
 			/*working dir=*/mainFile.path, /*log path=*/workPath, outputs, 
 			((idx, result, output) {
-				
 				//logln(bold("COMPILED("~result.text~"): ")~joinCommandLine(cmdLines[idx]));
 				log(
 					" \33#*\33\7 "	.replace("#", result ? "\14" : "\12")
@@ -1474,12 +1473,14 @@ struct BuildSystem
 					cancelled = true; 
 					return true; //continue
 				}
-			}), 
+			}),
 			((int inFlight, int justStartedIdx) {
 				cancelled |= onIdle ? onIdle(inFlight, justStartedIdx) : false; 
 				return cancelled; 
 			}),
+			
 			buildsys_spawnProcessMultiSettings,
+			
 			((string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) {
 				//foreach(a; stdErr) print("incoming>", a); 
 				msgDec.actSourceFile = File(id); 
@@ -1588,7 +1589,7 @@ struct BuildSystem
 		}
 	} 
 	
-		void link(string[] linkArgs, string[] ldcLinkArgs)//Link ////////////////////////
+		void link(string[] linkArgs, string[] ldcLinkArgs)
 	{
 		mixin(perf("link")); 
 		if(modules.empty)
@@ -1647,8 +1648,8 @@ struct BuildSystem
 			Note: LDC 1.20.0: "msvcrt.lib": gives a warning in the linker.
 						https://stackoverflow.com/questions/3007312/resolving-lnk4098-defaultlib-msvcrt-conflicts-with
 							libcmt.lib: static CRT link library for a release build (/MT)
-							msvcrt.lib: import library for the	release DLL version of the CRT (/MD)
-						LDC 1.28: no need to add manually.	--mscrtlib=...
+							msvcrt.lib: import library for the release DLL version of the CRT (/MD)
+						LDC 1.28: no need to add manually. --mscrtlib=...
 		+/
 		
 		
@@ -1722,7 +1723,7 @@ struct BuildSystem
 		} 
 	+/
 		//Errors returned in exceptions
-		void build(in File mainFile_, in BuildSettings originalSettings) //Build //////////////////////
+		void build(in File mainFile_, in BuildSettings originalSettings)
 	{
 		{
 			//build /////////////////////////////////////////////////
@@ -2992,13 +2993,12 @@ version(/+$DIDE_REGION+/all) {
 		string sourceText()
 		{ return only(unprocessedSourceTexts, messages.sourceText).join('\n'); } 
 		
-		
 		void insertSyntaxCheckOutput(string output)
 		{
 			messages.processDMDOutput(output); 
 			messages.finalizePragmas(""); 
 		} 
-		
+		
 		void receiveBuildMessages()
 		{
 			while(
@@ -3040,7 +3040,7 @@ version(/+$DIDE_REGION+/all) {
 						assert(f); 
 						filesInFlight[f] = true; 
 					}),
-					
+					
 					((in MsgCompileProgress msg) {
 						auto f = msg.file; 
 						filesInFlight.remove(f); 
@@ -3068,7 +3068,7 @@ version(/+$DIDE_REGION+/all) {
 						outputs[f] = msg.output.splitLines; //Todo: not used anymore. Everything is in messages[]
 						remainings[f] = messages.pragmas.get(f); //Todo: rename remainings to pragmas
 					}),
-					
+					
 					((in MsgBuildMessages msg) {
 						auto messages = (cast(DMDMessage[])(msg.messages)); 
 						/+Note: Safe to cast, it's not used anywhere else.+/
