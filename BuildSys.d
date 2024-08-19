@@ -225,7 +225,10 @@ a new compiler instance."}],
 					pendingOutLines 	~= o,
 					pendingErrLines 	~= e; 
 					if(o.length || e.length || isFinal)
-					onStdLineReceived(id, pendingOutLines, pendingErrLines, isFinal); 
+					{
+						onStdLineReceived(id, pendingOutLines, pendingErrLines, isFinal); 
+						output ~= chain(o, e).map!`a~"\n"`.join; 
+					}
 				} 
 			} 
 			
@@ -1492,7 +1495,7 @@ struct BuildSystem
 				auto messages = msgDec.fetchUpdatedMessages.map!"a.dup".array; 
 				/+Note: dup needed for thread safety, because msg.subMessages array can grow.+/
 				
-				if(onBuildMessages)
+				if(messages.length && onBuildMessages)
 				onBuildMessages(messages); 
 			})
 		); 
@@ -2207,7 +2210,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		DMDMessage[] subMessages; //it's a tree
 		
-		protected size_t hash_; @property hash() => hash_; 
+		protected uint hash_; @property hash() => hash_; 
 		
 		this(
 			CodeLocation location_, 
@@ -2239,7 +2242,10 @@ version(/+$DIDE_REGION+/all) {
 		{ return new DMDMessage(this); } 
 		
 		void recalculateHash()
-		{ hash_ = location.hashOf	(type.hashOf(content.hashOf)); } 
+		{
+			const h = location.hashOf	(type.hashOf(content.hashOf)); 
+			hash_ = (cast(uint)(h)) + (cast(uint)(h>>32)); 
+		} 
 		
 		@property col() const
 		{ return location.columnIdx; } @property line() const
@@ -2380,7 +2386,7 @@ version(/+$DIDE_REGION+/all) {
 		//internal state
 		private
 		{
-			DMDMessage[size_t] messageMap; 
+			DMDMessage[uint] messageMap; 
 			public File actSourceFile; 
 			DMDMessage parentMessage; 
 			FileNameFixer fileNameFixer; 
@@ -2666,7 +2672,7 @@ version(/+$DIDE_REGION+/all) {
 		//internal state
 		private
 		{
-			DMDMessage[size_t] messageMap; 
+			DMDMessage[uint] messageMap; 
 			FileNameFixer fileNameFixer; 
 			
 			//Manage states for many sourcefiles.  While the message array is common.

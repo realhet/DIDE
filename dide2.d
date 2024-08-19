@@ -505,7 +505,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -527,7 +527,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -611,7 +611,7 @@ version(/+$DIDE_REGION main+/all)
 										); 
 										//Opt: Img.autoRefresh is slow. It should update Img.stIdx
 										
-										addInspectorParticle(ne, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -1615,10 +1615,12 @@ version(/+$DIDE_REGION main+/all)
 			
 			Module findModule(File file)
 			{
+				if(auto m = file.fullName.xxh32 in moduleByHash)
+				return *m; 
+				
 				foreach(m; modules)
 				if(sameText(m.file.fullName, file.fullName))
-				return m; 
-				
+				{ WARN("slow find", file); return m; }
 				//Opt: hash table with fileName.lc...
 				
 				return null; 
@@ -2081,7 +2083,7 @@ version(/+$DIDE_REGION main+/all)
 										
 										if(auto rootNode = rootPath.backOrNull)
 										{
-											rootNode.addBuildMessage(src, msgNode); 
+											rootNode.processBuildMessage(src, msgNode); 
 											/+Todo: only add once, not always!+/
 										}
 									}
@@ -2089,7 +2091,7 @@ version(/+$DIDE_REGION main+/all)
 							}
 						}
 						catch(Exception e)
-						{ ERR("Cand build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
+						{ ERR("Can't build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
 					}
 					
 					auto msgRow = messageUICache[src]; 
@@ -2191,10 +2193,54 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		void processBuildMessages(DMDMessage[] messages)
+		{ (mixin(求each(q{m},q{messages},q{processBuildMessage(m)}))); } 
+		
+		void processBuildMessage(DMDMessage msg)
 		{
-			print("--------------BuildMessages received in workspace------------------"); 
-			messages.each!print; 
-			print("--------------------------------------------------------------"); 
+			static bool disable = false; 
+			
+			try
+			{
+				auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
+					msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
+					msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
+				
+				msgNode.buildMessageHash = ((msg.type.among(DMDMessage.Type.console))?(0):(msg.hash)); 
+				msgNode.measure; /+
+					It's required to initialize bkColor. 
+					Animation effect needs to know the color.
+				+/
+				
+				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
+				{
+					auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
+					CodeNode[] getNodePath(Container.SearchResult sr)
+					{
+						return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
+							.filter!((a)=>(a && a.canAcceptBuildMessages))
+							.array.retro.array; 
+					} 
+					auto paths = srs.map!((a)=>(getNodePath(a))); 
+					if(!paths.empty) return paths.fold!commonPrefix.backOrNull; 
+					return fallbackNode; 
+				} 
+				
+				CodeNode getContainerModule(lazy CodeNode fallbackNode=null)
+				{
+					if(auto m = findModule(msg.location.file)) return m; 
+					return fallbackNode; 
+				} 
+				
+				if(auto node = getContainerNode(getContainerModule(mainModule)))
+				{
+					node.addBuildMessage(msgNode); 
+					/+Todo: only add once, not always!+/
+				}
+				else
+				raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
+				
+			}
+			catch(Exception e) { ERR(e.simpleMsg~"\n"~msg.text); }
 		} 
 		
 		
@@ -6605,8 +6651,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3087E35B2D627).檢(expr)) ((0x3089C35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x308EA35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30EFA35B2D627).檢(expr)) ((0x30F1835B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30F6635B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

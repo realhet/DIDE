@@ -181,7 +181,7 @@ version(/+$DIDE_REGION+/all)
 		struct InspectorParticle
 		{
 			vec2 center, size; 
-			float life=0; 
+			float life=0; RGB color; 
 			void updateAndDraw(Drawing dr)
 			{
 				enum scale = 10; 
@@ -194,14 +194,15 @@ version(/+$DIDE_REGION+/all)
 					
 					dr.lineWidth = -1-sqLife*10; 
 					dr.alpha = 1 - sqLife; 
-					dr.color = mix(clWhite, clAqua, life); 
+					dr.color = color; 
 					dr.drawRect(b); 
 					dr.alpha = 1; 
 				}
 			} 
 			
-			void setup(CodeNode node, float initialLife = 1)
+			void setup(CodeNode node, RGB color_, float initialLife = 1)
 			{
+				color = color_; 
 				life = initialLife; 
 				auto b = node.worldOuterBounds; 
 				center = b.center; 
@@ -210,15 +211,15 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		__gshared {
-			InspectorParticle[1024] inspectorParticles; 
+			InspectorParticle[2<<10] inspectorParticles; 
 			size_t inspectorParticleIdx = 0; 
 		} 
 		
-		void addInspectorParticle(CodeNode node, float initialLife=1)
+		void addInspectorParticle(CodeNode node, RGB color, float initialLife=1)
 		{
 			inspectorParticleIdx++; 
 			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-			inspectorParticles[inspectorParticleIdx].setup(node, initialLife); 
+			inspectorParticles[inspectorParticleIdx].setup(node, color, initialLife); 
 		} 
 	}
 	
@@ -238,7 +239,7 @@ version(/+$DIDE_REGION+/all)
 				{ w.value = ""; }
 			} 
 			
-			struct Watch
+			deprecated struct Watch
 			{
 				string id; 
 				
@@ -844,16 +845,15 @@ version(/+$DIDE_REGION+/all)
 		if(!parent) return "?NullParent?"; 
 		if(!child) return "?NullChild?"; 
 		
-		if(auto col = cast(CodeColumn)child)
+		if(auto col = (cast(CodeColumn)(child)))
 		{
 			if(!cast(CodeNode)parent) return "?WrongColumnParent?"; 
-			assert(cast(CodeNode)parent);  //Todo: put these assertions elsewhere
-			const indexAmongCodeColumns = parent.subCells.map!(a => cast(CodeColumn)a).filter!"a".countUntil(child); 
+			const indexAmongCodeColumns = (mixin(求map(q{a},q{parent.subCells},q{(cast(CodeColumn)(a))}))).filter!"a".countUntil(child); 
 			if(indexAmongCodeColumns<0) return "?CantFindColumn?"; 
 			return format!"C%d|"(indexAmongCodeColumns); 
 		}
 		
-		if(auto row = cast(CodeRow)child)
+		if(auto row = (cast(CodeRow)(child)))
 		{
 			if(!cast(CodeColumn)parent) return "?WrongRowParent?"; 
 			const idx = parent.subCellIndex(child); 
@@ -861,13 +861,13 @@ version(/+$DIDE_REGION+/all)
 			return idx.format!"R%d|"; 
 		}
 		
-		if(auto mod = cast(Module)child)
+		if(auto mod = (cast(Module)(child)))
 		{
 			if(!typeid(parent).name.endsWith(".Workspace")) return "?WrongModuleParent?"; 
 			return mod.file.fullName ~ "|"; 
 		}
 		
-		if(auto node = cast(CodeNode)child)
+		if(auto node = (cast(CodeNode)(child)))
 		{
 			if(!cast(CodeRow)parent) return "?WrongNodeParent?"; 
 			const idx = parent.subCellIndex(child); 
@@ -4922,6 +4922,10 @@ version(/+$DIDE_REGION+/all)
 		The tokenstring should have normal background, not string-like background.
 	+/; 
 	
+	uint buildMessageHash; /+
+		Todo: This is only used if this node is a buildMessage. 
+		Currently there is a linear search to find duplicated messages.
+	+/
 	
 	auto subColumns()
 	{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
@@ -5064,9 +5068,6 @@ version(/+$DIDE_REGION+/all)
 		return res; 
 	} 
 	
-	final void rearrangeRow()
-	{ super.rearrange; } 
-	
 	final void rearrangeNode()
 	{
 		innerSize = vec2(0); 
@@ -5132,7 +5133,7 @@ version(/+$DIDE_REGION+/all)
 			dr.textOut(outerPos, format!"%sN"(lineIdx)); 
 		}
 		
-		if(canAcceptBuildMessages)
+		if(0 && canAcceptBuildMessages)
 		{
 			dr.color = clWhite; 
 			dr.alpha = blink; 
@@ -5201,24 +5202,41 @@ version(/+$DIDE_REGION+/all)
 				const oldSize = innerSize; 
 				innerSize = vec2(max(oldSize.x, siz.x), oldSize.y + siz.y); 
 				
-				subCells ~= col; 
-				col.outerPos = vec2(0, oldSize.y); 
+				static if(0 /+no need for a newline here. It's only needed for Row.rearrange, but that's skipped..+/)
+				{
+					auto ts = tsNormal; applySyntax(ts, skWhitespace	); 
+					auto nl = new Glyph('\n', ts); //Todo: cache newline glyph
+					subCells ~= nl; 	nl.outerPos = vec2(0, oldSize.y); 
+				}
+				
+				subCells ~= col; 	col.outerPos = vec2(0, oldSize.y); 
+				
+				strictCellOrder = false; //there are multiple lines, the order is not linear anymore
 			}
 		} 
 		
-		void addBuildMessage(string src, CodeNode msgNode)
+		void addBuildMessage(CodeNode msgNode)
 		{
-			enforce(canAcceptBuildMessages, typeid(this).name ~ " Can't accept BuildMessages."); 
 			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
-			
-			
-			if(!msgNode) return; 
-			/+Todo: This does nothing →+/addInspectorParticle(this); 
-			
-			bkColor = border.color = clRed; 
+			enforce(msgNode, "msgNode is null"); 
 			
 			if(!*col) *col = new CodeColumn(this); 
-			(*col).appendCell(new CodeRow(*col, [msgNode])); 
+			
+			const idx = ((msgNode.buildMessageHash==0)?(-1L) : (
+				(*col).rows	.map!((r)=>(r.singleNodeOrNull.buildMessageHash))
+					.countUntil(msgNode.buildMessageHash)
+			)); 
+			
+			if(idx>=0)	{
+				auto row = (*col).rows[idx]; 
+				row.subCells[0] = msgNode; 
+				msgNode.setParent(row); 
+			}
+			else	{ (*col).appendCell(new CodeRow(*col, [msgNode])); }
+			
+			msgNode.needMeasure; 
+			
+			addInspectorParticle(this, msgNode.bkColor); 
 		} 
 	}
 	
@@ -9723,7 +9741,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3F96B7B6B4BCC).檢(expr))},
+			q{((0x3FC427B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9737,7 +9755,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FA797B6B4BCC).檢 (expr))},
+			q{((0x3FD507B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -10575,7 +10593,13 @@ version(/+$DIDE_REGION+/all)
 					style.fontColor = sk.syntaxBkColor; 
 					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
 					
-					if(operands[0].isDLangIdentifier)
+					if(
+						operands[0].isDLangIdentifier
+						/+
+							operands[0].rowCount==1 &&
+							operands[0].rows[0].subCells.all!((c)=>((cast(Glyph)(c)) !is null))
+						+/
+					)
 					with(operands[0]) {
 						fillColor(style.fontColor, style.bkColor); 
 						applyHalfSize; 
