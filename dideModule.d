@@ -5716,6 +5716,47 @@ version(/+$DIDE_REGION+/all)
 	
 	override void rearrange()
 	{
+		void defaultRearrange()
+		{
+			if(isCustom)
+			{
+				with(nodeBuilder(syntax, isDirective ? NodeStyle.bright : NodeStyle.dim))
+				{
+					content.bkColor = darkColor; 
+					
+					if(isHidden)
+					{
+						margin.set(.5); border.width /= 3; padding.set(1); 
+						style.fontHeight = DefaultFontHeight/4; 
+						style.italic = false; 
+						put(typePrefix[type].back); 
+					}
+					else
+					{
+						//Remove underlined style
+						const origUnderline = style.underline; style.underline = false; 
+						
+						if(!isCode && !isNote)
+						put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
+						
+						style.underline = origUnderline; 
+						
+						put(content); 
+						
+						if(isDirective && content.empty)
+						content.bkColor = mix(darkColor, brightColor, 0.75f); 
+					}
+					
+					rearrangeNode; 
+				}
+			}
+			else
+			super.rearrange; 
+			
+			verify!true; 
+		} 
+		
+		
 		if(isSpecialComment)
 		{
 			//Todo: use CommandLine here too
@@ -5780,7 +5821,7 @@ version(/+$DIDE_REGION+/all)
 					
 					rearrangeNode; 
 				}
-					return; 
+					break; 
 				case "LOC": 
 					with(nodeBuilder(skIdentifier1, NodeStyle.bright))
 				{
@@ -5800,7 +5841,7 @@ version(/+$DIDE_REGION+/all)
 					put(loc.mixinText ~ loc.lineColText); 
 					rearrangeNode; 
 				}
-					return; 
+					break; 
 				case "MSG": 
 					{
 					with(nodeBuilder(skIdentifier1, NodeStyle.bright))
@@ -5816,49 +5857,16 @@ version(/+$DIDE_REGION+/all)
 						rearrangeNode; 
 					}
 				}
-					return; 
+					break; 
 				default: 
 				//nothing. process it normally like a comment
+				defaultRearrange; 
 			}
 		}
+		else
+		defaultRearrange; 
 		
-		if(isCustom)	rearrangeCustomComment; 
-		else	super.rearrange; 
-		
-		verify!true; 
-	} 
-	
-	protected void rearrangeCustomComment()
-	{
-		with(nodeBuilder(syntax, isDirective ? NodeStyle.bright : NodeStyle.dim))
-		{
-			content.bkColor = darkColor; 
-			
-			if(isHidden)
-			{
-				margin.set(.5); border.width /= 3; padding.set(1); 
-				style.fontHeight = DefaultFontHeight/4; 
-				style.italic = false; 
-				put(typePrefix[type].back); 
-			}
-			else
-			{
-				//Remove underlined style
-				const origUnderline = style.underline; style.underline = false; 
-				
-				if(!isCode && !isNote)
-				put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
-				
-				style.underline = origUnderline; 
-				
-				put(content); 
-				
-				if(isDirective && content.empty)
-				content.bkColor = mix(darkColor, brightColor, 0.75f); 
-			}
-			
-			rearrangeNode; 
-		}
+		rearrange_appendBuildMessages; 
 	} 
 	
 	override void buildSourceText(ref SourceTextBuilder builder)
@@ -5866,6 +5874,14 @@ version(/+$DIDE_REGION+/all)
 		enforce(verify, "Invalid comment format"); 
 		builder.put(commentPrefix, customPrefix, content, postfix); 
 	} 
+	
+	version(/+$DIDE_REGION BuildMessage handling+/all)
+	{
+		CodeColumn buildMessageColumn; 
+		
+		override CodeColumn* accessBuildMessageColumn()
+		{ return &buildMessageColumn; } 
+	}
 } class CodeString : CodeContainer
 {
 	mixin((
@@ -6074,7 +6090,16 @@ version(/+$DIDE_REGION+/all)
 	{
 		super.rearrange; 
 		verify!true; 
+		rearrange_appendBuildMessages; 
 	} 
+	
+	version(/+$DIDE_REGION BuildMessage handling+/all)
+	{
+		CodeColumn buildMessageColumn; 
+		
+		override CodeColumn* accessBuildMessageColumn()
+		{ return &buildMessageColumn; } 
+	}
 	
 	override void buildSourceText(ref SourceTextBuilder builder)
 	{
@@ -9741,7 +9766,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FC427B6B4BCC).檢(expr))},
+			q{((0x3FE647B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9755,7 +9780,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FD507B6B4BCC).檢 (expr))},
+			q{((0x3FF727B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -10896,9 +10921,19 @@ version(/+$DIDE_REGION+/all)
 						//If super.rearrange() is not called in the plugins, this will call now.
 						super.rearrange; 
 					}
+					
+					rearrange_appendBuildMessages; 
 				}
 			}
 		} 
+		
+		version(/+$DIDE_REGION BuildMessage handling+/all)
+		{
+			CodeColumn buildMessageColumn; 
+			
+			override CodeColumn* accessBuildMessageColumn()
+			{ return &buildMessageColumn; } 
+		}
 		
 		override void buildSourceText(ref SourceTextBuilder builder)
 		{
