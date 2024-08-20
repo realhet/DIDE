@@ -95,7 +95,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		plain, highlighted, cChar, cString, dString, comment, 
 		
-		managed, managed_block, managed_enum, managed_statement, managed_goInside, managed_optionalBlock,
+		managed, managed_block, managed_statement, managed_goInside, managed_optionalBlock,
 		managed_first = managed, managed_last = managed_optionalBlock
 	} 
 	
@@ -3210,7 +3210,9 @@ class CodeRow: Row
 	
 	bool edited; //this column is marked, so it can be syntax checked before saving.
 	
-	bool 	halfSize; 
+	bool halfSize; 
+	
+	bool containsBuildMessages; 
 	
 	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
@@ -5215,28 +5217,40 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		void addBuildMessage(CodeNode msgNode)
+		bool addBuildMessage(CodeNode msgNode)
 		{
 			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
 			enforce(msgNode, "msgNode is null"); 
 			
-			if(!*col) *col = new CodeColumn(this); 
+			if(!*col)
+			{
+				*col = new CodeColumn(this); 
+				(*col).containsBuildMessages = true; 
+			}
+			
 			
 			const idx = ((msgNode.buildMessageHash==0)?(-1L) : (
 				(*col).rows	.map!((r)=>(r.singleNodeOrNull.buildMessageHash))
 					.countUntil(msgNode.buildMessageHash)
 			)); 
 			
+			bool isNewMessage = false; 
+			
 			if(idx>=0)	{
 				auto row = (*col).rows[idx]; 
 				row.subCells[0] = msgNode; 
 				msgNode.setParent(row); 
 			}
-			else	{ (*col).appendCell(new CodeRow(*col, [msgNode])); }
+			else	{
+				(*col).appendCell(new CodeRow(*col, [msgNode])); 
+				isNewMessage = true; 
+			}
 			
 			msgNode.needMeasure; 
 			
 			addInspectorParticle(this, msgNode.bkColor); 
+			
+			return isNewMessage; 
 		} 
 	}
 	
@@ -7169,15 +7183,17 @@ version(/+$DIDE_REGION+/all)
 		//RECURSIVE!!!
 		if(isBlock)
 		{
-			if(keyword=="enum")
-			processHighLevelPatterns_enum(block); 
-			else {
+			if(keyword=="enum")	processHighLevelPatterns_goInside(block); 
+			else	{
 				if(header) processHighLevelPatterns_goInside(header); 
 				processHighLevelPatterns_block(block); 
 			}
 		}
 		else if(isStatement)
-		{ if(keyword=="") { processHighLevelPatterns_statement(header); }}
+		{
+			if(keyword=="enum")	processHighLevelPatterns_goInside(header); 
+			else if(keyword=="")	processHighLevelPatterns_statement(header); 
+		}
 		else if(isPreposition)
 		{
 			foreach(p; allJoinedPrepositionsFromThis)
@@ -8716,22 +8732,6 @@ version(/+$DIDE_REGION+/all)
 		//Todo: Can't detect structure initializer here: VkClearValue clearColor = { color: { float32: [ 0.8f, 0.2f, 0.6f, 1.0f ]}}; 
 	} 
 	
-	void processHighLevelPatterns_enum(CodeColumn col_)
-	{
-		//Note: it's called from Declaration.this() for every highlevel enums
-		
-		if(!col_) return; 
-		
-		processHighLevelPatterns_goInside(col_); 
-		
-		if(0)
-		{
-			print("enum block: "~col_.extractThisLevelDString.text); 
-			foreach(row; col_.rows)
-			foreach(g; row.glyphs) if(g) g.bkColor = clAqua; 
-		}
-	} 
-	
 	void processHighLevelPatterns_statement(CodeColumn col)
 	{
 		//Note: it's called from Declaration.this() for every highlevel statement
@@ -8841,7 +8841,6 @@ version(/+$DIDE_REGION+/all)
 		switch(textFormat)
 		{
 			case TextFormat.managed_block: 	processHighLevelPatterns_block(col_); break; 
-			case TextFormat.managed_enum: 	processHighLevelPatterns_enum(col_); break; 
 			case TextFormat.managed_statement: 	processHighLevelPatterns_statement(col_); break; 
 			case TextFormat.managed_goInside: 	processHighLevelPatterns_goInside(col_); break; 
 			case 	TextFormat.managed_optionalBlock,
@@ -9766,7 +9765,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FE647B6B4BCC).檢(expr))},
+			q{((0x3FDA27B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9780,7 +9779,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FF727B6B4BCC).檢 (expr))},
+			q{((0x3FEB07B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

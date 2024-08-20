@@ -1858,21 +1858,18 @@ version(/+$DIDE_REGION main+/all)
 			bool optimized = true; 
 			
 			Container.SearchResult[] searchResults; 
-			
-			/+
-				void log(A...)(A a)
-					{ print(a); } 
-			+/
+			Container.SearchResult[] searchResults_nodes;  //Fallback to nodes when there is no glyps on line
 			
 			void visitNode(CodeNode node)
 			{
-				//if(lineIdx==3050) log("node:", node.lineIdx, node, node.sourceText.take(30)); 
-				foreach(col; node.subCells.map!(a => cast(CodeColumn) a).filter!"a")
+				foreach(col; node.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a")
 				visitColumn(col); 
 			} 
 			
 			void visitColumn(CodeColumn col)
 			{
+				if(col.containsBuildMessages) return; 
+				
 				auto rows = col.rows; 
 				
 				//ignore trailing empty rows
@@ -1881,53 +1878,57 @@ version(/+$DIDE_REGION main+/all)
 				
 				//Todo: must do something with the fucking lineIdx==0 rows at the end...
 				
-				if(!optimized)
+				if(optimized)
 				{
-					if(!rows.map!"a.lineIdx".isSorted) ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
-					rows.each!((r){ visitRow(r); }); 
-					return; 
+					//ignore all rows higher than lineIdx
+					rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length]; 
+					
+					//process same lines
+					while(rows.length && rows.back.lineIdx==lineIdx)
+					{
+						visitRow(rows.back); 
+						rows.popBack; 
+					}
+					
+					//process one more row which can contain lineIdx, but starts earlier
+					if(rows.length) visitRow(rows.back); 
 				}
-				
-				//ignore all rows higher than lineIdx
-				rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length]; 
-				
-				//process same lines
-				while(rows.length && rows.back.lineIdx==lineIdx)
+				else
 				{
-					visitRow(rows.back); 
-					rows.popBack; 
+					static if((常!(bool)(0))/+Note: verify sort order+/)
+					if(!rows.map!"a.lineIdx".isSorted)
+					ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
+					
+					(mixin(求each(q{r},q{rows},q{visitRow(r)}))); 
 				}
-				
-				//process one more row whick can contain lineIdx, but starts earlier
-				if(rows.length) visitRow(rows.back); 
-				
-				//unpotimized version -> foreach(row; col.rows) visitRow(row);
 			} 
 			
 			void visitRow(CodeRow row)
 			{
-				bool glyphIsOnLine(Cell cell)
+				void collectCells(T, R)(ref R res)
 				{
-					if(auto g = cast(Glyph)cell)
-					return g.lineIdx && g.lineIdx == lineIdx; 
-					
-					return false; 
+					auto cells = row.subCells.filter!((cell){
+						if(auto a = (cast(T)(cell)))
+						return a.lineIdx == lineIdx; 
+						else return false; 
+					}).array; 
+					/+Opt: binary search+/
+					if(cells.length)
+					{
+						res ~= (mixin(體!((Container.SearchResult),q{
+							cells 	: cells,
+							container	: row,
+							absInnerPos	: row.worldInnerPos,
+							reference	: reference
+						}))); 
+						//Opt: appender
+					}
 				} 
 				
-				Container.SearchResult res; 
-				res.cells = row.subCells.filter!glyphIsOnLine.array; //Opt: binary search
-				if(res.cells.length)
-				{
-					res.container = row; 
-					
-					res.absInnerPos = worldInnerPos(res.container); 
-					res.reference = reference; 
-					
-					searchResults ~= res; //Opt: appender
-				}
+				collectCells!Glyph(searchResults); 
+				if(searchResults.empty) collectCells!CodeNode(searchResults_nodes); 
 				
-				foreach(node; row.subCells.map!(a => cast(CodeNode) a).filter!"a")
-				visitNode(node); 
+				row.byNode.each!((n){ visitNode(n); }); /+Opt: early exit+/
 			} 
 		} 
 		
@@ -1953,21 +1954,21 @@ version(/+$DIDE_REGION main+/all)
 				locator.optimized = optimized; 
 				locator.visitNode(mod); 
 				
-				auto res = locator.searchResults; 
+				auto res = ((locator.searchResults.length) ?(locator.searchResults) :(locator.searchResults_nodes /+Note: When no glyphs at all, fallback to nodes.+/)); 
 				
-				if(res.length>1) foreach(ref a; res[1..$]) a.showArrow = false; 
-				
-				version(none)
+				static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
 				if(res.empty)
 				{
 					if(optimized)
 					{
-						WARN("Unable to locate:", loc); 
+						WARN("Optimized LineIdxLocator failed:", loc); 
 						return codeLocationToSearchResults(loc, false); 
 					}
 					else
-					{ ERR("Gave up locate:", loc); }
+					{ ERR("Standard LineLocator failed:", loc); }
 				}
+				
+				if(res.length>1) (mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false}))); 
 				
 				return res; 
 			}
@@ -2176,6 +2177,7 @@ version(/+$DIDE_REGION main+/all)
 				module change, module move.
 			+/
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
+			if(1)
 			foreach(t; EnumMembers!(DMDMessage.Type))
 			if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
 			{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
@@ -2211,16 +2213,18 @@ version(/+$DIDE_REGION main+/all)
 					Animation effect needs to know the color.
 				+/
 				
+				Container.SearchResult[] searchResults; 
+				
 				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
 				{
-					auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
+					searchResults = codeLocationToSearchResults(msg.location); //Todo: slow
 					CodeNode[] getNodePath(Container.SearchResult sr)
 					{
 						return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
 							.filter!((a)=>(a && a.canAcceptBuildMessages))
 							.array.retro.array; 
 					} 
-					auto paths = srs.map!((a)=>(getNodePath(a))); 
+					auto paths = searchResults.map!((a)=>(getNodePath(a))); 
 					if(!paths.empty) return paths.fold!commonPrefix.backOrNull; 
 					return fallbackNode; 
 				} 
@@ -2233,8 +2237,11 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(auto node = getContainerNode(getContainerModule(mainModule)))
 				{
-					node.addBuildMessage(msgNode); 
-					/+Todo: only add once, not always!+/
+					const isNewMessage = node.addBuildMessage(msgNode); 
+					
+					static if(0/+Note: Nem lehet menet kozben hozzaadni mert folyamatosan valtozik a layout!!!!+/)
+					if(isNewMessage && searchResults.length)
+					{ markerLayers[msg.type].searchResults ~= searchResults; }
 				}
 				else
 				raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
@@ -6651,8 +6658,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30EFA35B2D627).檢(expr)) ((0x30F1835B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30F6635B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3116735B2D627).檢(expr)) ((0x3118535B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x311D335B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
