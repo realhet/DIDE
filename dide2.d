@@ -505,7 +505,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -527,7 +527,7 @@ version(/+$DIDE_REGION main+/all)
 									if(auto ne = cast(NiceExpression)node)
 									{
 										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -611,7 +611,7 @@ version(/+$DIDE_REGION main+/all)
 										); 
 										//Opt: Img.autoRefresh is slow. It should update Img.stIdx
 										
-										addInspectorParticle(ne, clWhite, ne.debugValueDiminisingIntensity); 
+										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
 										return; 
 									}
 								}
@@ -1187,27 +1187,13 @@ version(/+$DIDE_REGION main+/all)
 													a.capt, a.icon, 4, a.en, 
 													{
 														theme = "tool"; 
-														const m = Margin(0, .5, 0, .5); 
-														if(canKillCompilers)
-														{
-															if(Btn("LDC", enable(true), { margin = m; }))
-															killCompilers; 
-														}
-														if(canKillRunningProcess)
-														{
-															if(Btn("PID", enable(true), { margin = m; }))
-															killRunningProcess; 
-														}
-														if(canCloseRunningWindow)
-														{
-															if(Btn("WND", enable(true), { margin = m; }))
-															closeRunningWindow; 
-														}
-														if(canKillRunningConsole)
-														{
-															if(Btn("CON", enable(true), { margin = m; }))
-															killRunningConsole; 
-														}
+														auto B(string capt, bool vis, void delegate() fun)
+														{ if(vis && Btn(capt, ((capt).genericArg!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
+														
+														B("LDC", canKillCompilers, &killCompilers); 
+														B("PID", canKillRunningProcess, &killRunningProcess); 
+														B("WND", canCloseRunningWindow, &closeRunningWindow); 
+														B("CON", canKillRunningConsole, &killRunningConsole); 
 														
 														//Todo: Ha a window es a console open, de a nagy button disabled, akkor ezek sem hasznalhatoak.
 														//Todo: ha csak a console window marad, azt is be lehessen zarni.🖥🗔
@@ -1444,9 +1430,10 @@ version(/+$DIDE_REGION main+/all)
 			const DMDMessage.Type type; 
 			Container.SearchResult[] searchResults; 
 			bool visible = true; 
+			bounds2 btnWorldBounds; //screen gounds of the button.
 		} 
 		
-		auto markerLayers = (()=>[EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array)(); 
+		auto markerLayers = [EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array; 
 		//Note: compiler drops weird error. this also works:
 		//Writing Explicit type also works:
 		//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
@@ -2217,7 +2204,17 @@ version(/+$DIDE_REGION main+/all)
 				
 				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
 				{
-					searchResults = codeLocationToSearchResults(msg.location); //Todo: slow
+					searchResults = codeLocationToSearchResults(msg.location); 
+					
+					if(
+						/+Note: Special case: There's only one node is in the searchresults.+/
+						searchResults.length==1 && searchResults[0].cells.length==1
+					)
+					if(auto n = (cast(CodeNode)(searchResults[0].cells[0])))
+					if(n.canAcceptBuildMessages)
+					{ return n; }
+					
+					
 					CodeNode[] getNodePath(Container.SearchResult sr)
 					{
 						return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
@@ -2237,11 +2234,26 @@ version(/+$DIDE_REGION main+/all)
 				
 				if(auto node = getContainerNode(getContainerModule(mainModule)))
 				{
-					const isNewMessage = node.addBuildMessage(msgNode); 
-					
-					static if(0/+Note: Nem lehet menet kozben hozzaadni mert folyamatosan valtozik a layout!!!!+/)
-					if(isNewMessage && searchResults.length)
-					{ markerLayers[msg.type].searchResults ~= searchResults; }
+					if(msg.isPersistent && !(cast(Module)(node)))
+					{
+						//Todo: put it on a markerlayer
+					}
+					else
+					{
+						if(msg.isPersistent)
+						{
+							print("------------MSG is persistent and found on a loaded module--------------"); 
+							msg.print; 
+							
+						}
+						
+						const isNewMessage = node.addBuildMessage(msgNode, markerLayers[msg.type].btnWorldBounds); 
+						
+						//Todo: put it on a markerlayer
+						static if(0/+Note: Nem lehet menet kozben hozzaadni mert folyamatosan valtozik a layout!!!!+/)
+						if(isNewMessage && searchResults.length)
+						{ markerLayers[msg.type].searchResults ~= searchResults; }
+					}
 				}
 				else
 				raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
@@ -5692,11 +5704,13 @@ version(/+$DIDE_REGION main+/all)
 									}
 								}
 							); 
+							
+							markerLayers[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
 						},
 						((bmt).genericArg!q{id})
 					)
 				)
-				markerLayers[bmt].visible.toggle; ; 
+				markerLayers[bmt].visible.toggle; 
 			}
 		} 
 		
@@ -5993,7 +6007,7 @@ version(/+$DIDE_REGION main+/all)
 				actContainer.append(mouseOverHintCntr); 
 			}
 		} 
-		
+		
 		void UI_Popup()
 		{
 			version(/+$DIDE_REGION Popup menu+/all)
@@ -6549,6 +6563,26 @@ version(/+$DIDE_REGION main+/all)
 			markerLayers[DMDMessage.Type.unknown].visible = false; 
 			markerLayers[DMDMessage.Type.console].visible = true; 
 			
+			if(0) {
+				auto _間=init間; 
+				foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
+				if(markerLayers[t].visible)
+				foreach(ref sr; markerLayers[t].searchResults)
+				sr.container.worldOuterPos; 
+				((0x3082A35B2D627).檢((update間(_間)))); //only 2ms
+			}
+			
+			if(1) {
+				auto _間=init間; 
+				foreach_reverse(mod; modules)
+				foreach(col; mod.buildMessageColumns)
+				{
+					dr.color = clWhite; dr.lineWidth = -3; 
+					dr.drawRect(col.worldOuterBounds); 
+				}
+				((0x3094A35B2D627).檢((update間(_間)))); 
+			}
+			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
 			if(markerLayers[t].visible)
 			drawSearchResults(dr, markerLayers[t].searchResults, DMDMessage.typeSyntax[t].syntaxBkColor); 
@@ -6658,8 +6692,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3116735B2D627).檢(expr)) ((0x3118535B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x311D335B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x315F435B2D627).檢(expr)) ((0x3161235B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3166035B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

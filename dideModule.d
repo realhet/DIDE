@@ -178,9 +178,9 @@ version(/+$DIDE_REGION+/all)
 	
 	version(/+$DIDE_REGION InspectorFX+/all)
 	{
-		struct InspectorParticle
+		struct InspectorParticle_shrinkingRect
 		{
-			vec2 center, size; 
+			vec2 dst, size; 
 			float life=0; RGB color; 
 			void updateAndDraw(Drawing dr)
 			{
@@ -190,7 +190,7 @@ version(/+$DIDE_REGION+/all)
 					life *= .91f; 
 					const sqLife = ((life)^^(2)); 
 					
-					auto b = bounds2(((center).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
+					auto b = bounds2(((dst).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
 					
 					dr.lineWidth = -1-sqLife*10; 
 					dr.alpha = 1 - sqLife; 
@@ -200,26 +200,82 @@ version(/+$DIDE_REGION+/all)
 				}
 			} 
 			
-			void setup(CodeNode node, RGB color_, float initialLife = 1)
+			void setup(CodeNode node, RGB color_, bounds2 srcRect, float initialLife = 1)
 			{
 				color = color_; 
 				life = initialLife; 
 				auto b = node.worldOuterBounds; 
-				center = b.center; 
+				dst = b.center; 
 				size = b.size; 
 			} 
+		} struct InspectorParticle_shoot
+		{
+			vec2 pos, velocity, dst; 
+			float life=0; float size=1; RGB color; 
+			void updateAndDraw(Drawing dr)
+			{
+				if(life>.5f)
+				{
+					life -= 0.01f; 
+					
+					pos += velocity; 
+					velocity += vec2(0, 1); //gravity
+					
+					
+					dr.pointSize = -5; 
+					dr.color = color; 
+					dr.point(mix(pos, dst, ((life.remap(1, .5f, 0, 1))^^(4)))); 
+				}
+				else if(life>0)
+				{
+					life -= 0.01f; 
+					const 	f = life.remap(.5f, 0, 0, 1),
+						a = (1-((1-f)^^(2))),
+						r = a*size*4; 
+					dr.alpha = a; dr.color = mix(color, clWhite, ((f)^^(2))); dr.pointSize = (1-f)*-12; 
+					foreach(i; 0..50)
+					{
+						auto α = dst.x+dst.y*6+i*123; 
+						auto v = dst + r * vec2(sin(α), cos(α))*sin(dst.x*7+dst.y*3+i*23); 
+						dr.point(v); 
+					}
+					dr.alpha = 1; 
+				}
+			} 
+			
+			void setup(CodeNode node, RGB color_, bounds2 srcRect, float initialLife = 1)
+			{
+				color = color_; 
+				life = initialLife; 
+				{
+					auto b = node.worldOuterBounds; 
+					dst = b.center; 
+				}
+				{
+					auto b = srcRect; 
+					auto rg = randomGaussPair; 
+					pos = b.center; 
+					size = b.height; 
+					velocity = vec2(size*(rg[0]*0.2f), -size*(1+rg[1]*0.2f))*0.3f; 
+				}
+			} 
 		} 
+		
+		alias InspectorParticle = 
+		/+InspectorParticle_shrinkingRect+/
+		/+InspectorParticle_shoot+/
+		InspectorParticle_shoot; 
 		
 		__gshared {
 			InspectorParticle[2<<10] inspectorParticles; 
 			size_t inspectorParticleIdx = 0; 
 		} 
 		
-		void addInspectorParticle(CodeNode node, RGB color, float initialLife=1)
+		void addInspectorParticle(CodeNode node, RGB color, bounds2 srcWorldBounds, float initialLife=1)
 		{
 			inspectorParticleIdx++; 
 			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-			inspectorParticles[inspectorParticleIdx].setup(node, color, initialLife); 
+			inspectorParticles[inspectorParticleIdx].setup(node, color, srcWorldBounds, initialLife); 
 		} 
 	}
 	
@@ -5217,7 +5273,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		bool addBuildMessage(CodeNode msgNode)
+		bool addBuildMessage(CodeNode msgNode, bounds2 srcWorldBounds)
 		{
 			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
 			enforce(msgNode, "msgNode is null"); 
@@ -5226,6 +5282,9 @@ version(/+$DIDE_REGION+/all)
 			{
 				*col = new CodeColumn(this); 
 				(*col).containsBuildMessages = true; 
+				
+				auto mod = moduleOf(*col).enforce("addBuildMessage: Can't find parent module."); 
+				mod.buildMessageColumns ~= *col; 
 			}
 			
 			
@@ -5248,7 +5307,7 @@ version(/+$DIDE_REGION+/all)
 			
 			msgNode.needMeasure; 
 			
-			addInspectorParticle(this, msgNode.bkColor); 
+			addInspectorParticle(this, msgNode.bkColor, srcWorldBounds); 
 			
 			return isNewMessage; 
 		} 
@@ -6188,6 +6247,8 @@ version(/+$DIDE_REGION+/all)
 		
 		UndoManager undoManager; 
 		
+		uint rearrangeCounter; 
+		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
 		override string prefix() const
@@ -6306,6 +6367,9 @@ version(/+$DIDE_REGION+/all)
 			
 			override CodeColumn* accessBuildMessageColumn()
 			{ return &buildMessageColumn; } 
+			
+			
+			CodeColumn[] buildMessageColumns; 
 		}
 		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 		{
@@ -6452,6 +6516,7 @@ version(/+$DIDE_REGION+/all)
 		override void rearrange()
 		{
 			detectModuleTypeFlags; 
+			rearrangeCounter++; print("REARR>", file.nameWithoutExt, rearrangeCounter); 
 			super.rearrange; 
 			rearrange_appendBuildMessages; 
 		} 
@@ -7396,7 +7461,6 @@ version(/+$DIDE_REGION+/all)
 					{ put(';'); if(autoSpaceAfterDeclarations) put(' '); }
 					else
 					{
-						
 						if(internalNewLineCount > hasJoinedNewLine) { putUi(' '); putNLIndent; }
 						else put(internalTabCount > hasJoinedTab ? '\t' : ' '); 
 						
@@ -7420,6 +7484,24 @@ version(/+$DIDE_REGION+/all)
 					
 					if(nextJoinedPreposition)
 					{
+						/+
+							Bug: This bug fucks up line indexing, it add 2 exra to it.
+							Test code in a .d file:
+							/+
+								Code: if(1) if(1)
+									a; 
+								//This should be line 3, but it's line 5!
+							+/
+							After copying it becomes:
+							/+
+								Code: if(1) 
+									if(1)
+									a; 
+								
+								//This should be line 3, but it's line 5!
+							+/
+						+/
+						
 						if(nextJoinedPreposition.hasJoinedNewLine) { putUi(' '); putNL; }
 						else if(nextJoinedPreposition.hasJoinedTab) put('\t'); 
 						
@@ -9765,7 +9847,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FDA27B6B4BCC).檢(expr))},
+			q{((0x4063E7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9779,7 +9861,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x3FEB07B6B4BCC).檢 (expr))},
+			q{((0x4074C7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
