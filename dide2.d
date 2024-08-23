@@ -406,6 +406,11 @@ version(/+$DIDE_REGION main+/all)
 			{
 				clearDebugImageBlobs; 
 				resetGlobalWatches; 
+				workspace.modules.each!((m){
+					m.resetBuildMessages; 
+					m.resetBuildMessageMarkerLayers; 
+				}); 
+				workspace.modules.each!((m){ m.resetInspectors; }); 
 				dbgsrv.resetBeforeRun; 
 			} 
 			
@@ -1427,16 +1432,19 @@ version(/+$DIDE_REGION main+/all)
 		
 		
 		struct MarkerLayer {
-			const DMDMessage.Type type; 
-			Container.SearchResult[] searchResults; 
-			bool visible = true; 
-			bounds2 btnWorldBounds; //screen gounds of the button.
+			const DMDMessage.Type type; //this is the identity
+			bool visible = true; //this is the settings
+			bounds2 btnWorldBounds; //Screen bounds of the button, for particle effect.
+			
+			auto searchResults()
+			{ return frmMain.workspace.modules.map!((m)=>(m.markerLayers[type])).joiner; } 
+			@property searchResultCount()
+			{ return frmMain.workspace.modules.map!((m)=>(m.markerLayers[type].length)).sum; } 
+			void clear()
+			{ foreach(m; frmMain.workspace.modules) m.markerLayers[type] = []; } 
 		} 
 		
 		auto markerLayers = [EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array; 
-		//Note: compiler drops weird error. this also works:
-		//Writing Explicit type also works:
-		//auto markerLayers = (() =>  [EnumMembers!BuildMessageType].map!((BuildMessageType t) => MarkerLayer(t)).array  )();
 		
 		@STORED vec2[size_t] lastModulePositions; 
 		
@@ -1968,6 +1976,15 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
+		auto nodeToSearchResult(CodeNode node)
+		{
+			return (mixin(體!((Container.SearchResult),q{
+				cells 	: [node],
+				container	: node.parent,
+				absInnerPos	: node.parent.worldInnerPos
+				//reference	: reference
+			}))); 
+		} 
 		
 		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
@@ -2164,7 +2181,7 @@ version(/+$DIDE_REGION main+/all)
 				module change, module move.
 			+/
 			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
-			if(1)
+			static if(0)
 			foreach(t; EnumMembers!(DMDMessage.Type))
 			if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
 			{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
@@ -2186,6 +2203,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		void processBuildMessage(DMDMessage msg)
 		{
+			if(!mainModule) return; 
+			
 			static bool disable = false; 
 			
 			try
@@ -2226,33 +2245,21 @@ version(/+$DIDE_REGION main+/all)
 					return fallbackNode; 
 				} 
 				
-				CodeNode getContainerModule(lazy CodeNode fallbackNode=null)
+				auto containerModule = findModule(msg.location.file).ifnull(mainModule); 
+				if(auto containerNode = getContainerNode(containerModule))
 				{
-					if(auto m = findModule(msg.location.file)) return m; 
-					return fallbackNode; 
-				} 
-				
-				if(auto node = getContainerNode(getContainerModule(mainModule)))
-				{
-					if(msg.isPersistent && !(cast(Module)(node)))
-					{
-						//Todo: put it on a markerlayer
-					}
+					if(msg.isPersistent && !(cast(Module)(containerNode)))
+					{ containerModule.markerLayers[msg.type] ~= searchResults; }
 					else
 					{
-						if(msg.isPersistent)
+						const isNewMessage = 
+							containerNode.addBuildMessage(msgNode, markerLayers[msg.type].btnWorldBounds); 
+						if(isNewMessage)
 						{
-							print("------------MSG is persistent and found on a loaded module--------------"); 
-							msg.print; 
-							
+							containerModule.markerLayers[msg.type] ~= nodeToSearchResult(msgNode); 
+							if(searchResults.length)
+							{ containerModule.markerLayers[msg.type] ~= searchResults; }
 						}
-						
-						const isNewMessage = node.addBuildMessage(msgNode, markerLayers[msg.type].btnWorldBounds); 
-						
-						//Todo: put it on a markerlayer
-						static if(0/+Note: Nem lehet menet kozben hozzaadni mert folyamatosan valtozik a layout!!!!+/)
-						if(isNewMessage && searchResults.length)
-						{ markerLayers[msg.type].searchResults ~= searchResults; }
 					}
 				}
 				else
@@ -2710,7 +2717,7 @@ version(/+$DIDE_REGION main+/all)
 				.map!(
 				//create cursors in every lines at the start of the line
 				sel => 	iota(sel.start.pos.y, sel.end.pos.y+1)
-					.map!(y => TextCursor(sel.codeColumn, ivec2(0, y)))
+					.map!((y)=>(TextCursor(sel.codeColumn, ivec2(0, y))))
 			)
 				.joiner
 				.map!((c){
@@ -2753,7 +2760,8 @@ version(/+$DIDE_REGION main+/all)
 				.merge; 
 		} 
 		
-		void selectSearchResults(SearchResult[] arr)
+		void selectSearchResults(R)(R arr)
+		if(isInputRange!(R, Container.SearchResult))
 		{
 			//selectSearchResults ///////////////////////////
 			//Todo: use this as a revalidator after the modules were changed under the search results.
@@ -2966,8 +2974,12 @@ version(/+$DIDE_REGION main+/all)
 				//Todo: constness
 				assert(col); 
 				if(isReadOnly) return false; 
-				auto m = moduleOf(col); 
-				return !m.isReadOnly; 
+				foreach(a; col.thisAndAllParents)
+				{
+					if(auto c = (cast(CodeColumn)(a))) if(c.containsBuildMessages) return false; 
+					if(auto m = (cast(Module)(a))) return !m.isReadOnly; 
+				}
+				return false; 
 			} 
 			
 			bool requestDeletePermission(TextSelection ts)
@@ -4832,55 +4844,6 @@ version(/+$DIDE_REGION main+/all)
 		void visitSelectedNestedDeclarations(void delegate(Declaration) fun)
 		{ visitSelectedNestedCodeNodes((node){ if(auto decl = cast(Declaration) node) fun(decl); }); } 
 		
-		static bool removeVerticalTabs(CodeColumn col)
-		{
-			bool anyVT; 
-			foreach(row; col.rows)
-			if(row.chars.endsWith('\x0b'))
-			{
-				row.subCells = row.subCells[0 .. $-1]; 
-				row.refreshTabIdx; 
-				row.needMeasure; 
-				anyVT = true; 
-			}
-			if(anyVT) col.measure; 
-			return anyVT; 
-		} 
-		
-		static bool addVerticalTabs(CodeColumn col, float targetHeight, float targetAspect)
-		{
-			bool anyVT; 
-			float y0 = 0; 
-			
-			auto pageHeight = targetHeight; 
-			//pageHeight.maximize(col.outerSize.area.sqrt / targetAspect);
-			const totalHeight = col.rows.map!(r => r.outerHeight).sum; 
-			const numPages = (totalHeight / pageHeight).iceil.max(1); 
-			if(numPages<=1) return false; 
-			
-			pageHeight = totalHeight / numPages; 
-			
-			int actPages; 
-			foreach(row; col.rows)
-			if(row.outerBottom - y0 >= pageHeight)
-			{
-				static TextStyle tsVT; 
-				static bool initialized; 
-				if(initialized.chkSet) tsVT.applySyntax(skIdentifier1); //style for vertical tab
-				
-				y0 = row.outerBottom; 
-				row.appendChar('\x0b', tsVT); 
-				row.refreshTabIdx; 
-				row.needMeasure; 
-				anyVT = true; 
-				
-				actPages++; 
-				if(actPages > numPages-1) break; 
-			}
-			if(anyVT) col.measure; 
-			return anyVT; 
-		} 
-		
 		enum syntaxCheckTempFile = File(`z:\temp\__syntax.d`); 
 		
 		void syntaxCheck(File moduleFile, string source, int lineIdx=1)
@@ -5360,6 +5323,7 @@ version(/+$DIDE_REGION main+/all)
 							TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneLeft , s2; 
 							cut_impl2(s1, s2); textSelections = s2; 
 							//Todo: delete all leading tabs when the cursor is right after them
+							/+Todo: Ctrl+Backspace = deletes words+/
 						}],
 						[q{"Del"},q{deleteFromRight},q{
 							TextSelection[] s1 = textSelections.zeroLengthSelectionsToOneRight, s2; 
@@ -5369,6 +5333,7 @@ version(/+$DIDE_REGION main+/all)
 								ha van non-readonly selecton is, akkor azt meg el is bassza. 
 							+/
 							//Bug: delete should remove the leading tabs.
+							/+Todo: Ctrl+Del = deletes words+/
 						}],
 						[q{"Ctrl+V Shift+Ins"},q{paste},q{textSelections = paste_impl(textSelections, clipboard.text); }],
 						[q{"Tab"},q{insertTab},q{textSelections = paste_impl(textSelections, "\t"); }],
@@ -5498,6 +5463,22 @@ version(/+$DIDE_REGION main+/all)
 						}],
 						[q{//@VERB("F11") void stepInto() { NOTIMPL; }
 						}],
+						[],
+						[q{//Experimental
+						}],
+						[q{"F1"},q{resetBMSG},q{modules.each!((m){ m.resetBuildMessages; }); }],
+						[q{"F2"},q{searchCodeLines},q{
+							foreach(i; 1..20_000)
+							processBuildMessage
+							(
+								new DMDMessage
+								(
+									CodeLocation(`c:\D\libs\het\package.d`, i, 1), 
+									DMDMessage.Type.warning, 
+									"This is code line "~i.text
+								)
+							); 
+						}],
 					]))
 				) .GEN!q{GEN_verbs}); 
 			}
@@ -5527,15 +5508,15 @@ version(/+$DIDE_REGION main+/all)
 							preserveTextSelections
 							(
 								{
-									visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); 
-									visitSelectedNestedCodeColumns((col){ addVerticalTabs(col, 2160, 16.0/9); }); 
+									visitSelectedNestedCodeColumns((col){ col.removeVerticalTabs; }); 
+									visitSelectedNestedCodeColumns((col){ col.addVerticalTabs(1400); }); 
 								}
 							); 
 						}],
 						[q{""},q{removeVerticalTabs},q{
 							//Todo: This fucks up Undo/Redo and ignored edit permissions.
 							preserveTextSelections
-							({ visitSelectedNestedCodeColumns((col){ removeVerticalTabs(col); }); }); 
+							({ visitSelectedNestedCodeColumns((col){ col.removeVerticalTabs; }); }); 
 						}],
 						[q{""},q{addInternalNewLines},q{
 							//Todo: This fucks up Undo/Redo and ignored edit permissions.
@@ -5694,7 +5675,7 @@ version(/+$DIDE_REGION main+/all)
 									theme = "tool"; 
 									const m = Margin(0, .5, 0, .5); 
 									
-									if(const len = markerLayers[bmt].searchResults.length)
+									if(const len = markerLayers[bmt].searchResultCount)
 									{
 										if(Btn(len.text))
 										{
@@ -5714,13 +5695,8 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		void UI_SearchBox(View2D view)
-		{
-			//UI_SearchBox /////////////////////////////////////////////
-			UI_SearchBox(view, markerLayers[DMDMessage.Type.find].searchResults); 
-		} 
-		
-		void zoomAt(View2D view, in Container.SearchResult[] searchResults)
+		void zoomAt(R)(View2D view, R searchResults)
+		if(isInputRange!(R, Container.SearchResult))
 		{
 			if(searchResults.empty) return; 
 			const maxScale = max(view.scale, 1); 
@@ -5728,12 +5704,14 @@ version(/+$DIDE_REGION main+/all)
 			view.scale = min(view.scale, maxScale); 
 		} 
 		
-		void UI_SearchBox(View2D view, ref Container.SearchResult[] searchResults)
+		void UI_SearchBox(View2D view)
 		{
 			with(im)
 			Row
 			(
 				{
+					auto layer = &markerLayers[DMDMessage.Type.find]; 
+					
 					//Keyboard shortcuts
 					auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
 						kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
@@ -5762,7 +5740,7 @@ version(/+$DIDE_REGION main+/all)
 								//Todo: Ctrl+G not works inside Edit
 								//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
 								//Todo: ez ugorhatna regionra is.
-								searchResults = []; 
+								layer.clear; 
 								textSelections = []; 
 								if(auto mod = expectOneSelectedModule)
 								if(auto line = searchText[1..$].to!int.ifThrown(0))
@@ -5773,11 +5751,14 @@ version(/+$DIDE_REGION main+/all)
 								
 							}
 							else
-							{ searchResults = selectedModulesOrAll.map!(m => m.search(searchText)).join; }
+							{
+								layer.clear; 
+								foreach(m; selectedModulesOrAll) m.markerLayers[DMDMessage.Type.find] = m.search(searchText); 
+							}
 						}
 						
 						//display the number of matches. Also save the location of that number on the screen.
-						const matchCnt = searchResults.length; 
+						const matchCnt = layer.searchResultCount; 
 						Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
 						
 						if(
@@ -5786,20 +5767,20 @@ version(/+$DIDE_REGION main+/all)
 								enable(matchCnt>0), hint("Zoom screen on search results.")
 							)
 						)
-						{ zoomAt(view, searchResults); }
+						{ zoomAt(view, layer.searchResults); }
 						if(
 							Btn(
 								"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
 								enable(matchCnt>0), hint("Select search results.")
 							)
 						)
-						{ selectSearchResults(searchResults); }
+						{ selectSearchResults(layer.searchResults); }
 						
 						if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
 						{
 							searchBoxVisible = false; 
 							searchText = ""; 
-							searchResults = []; 
+							layer.clear; 
 						}
 					}
 					else
@@ -6108,10 +6089,11 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		void drawSearchResults(
-			Drawing dr, in SearchResult[] searchResults, 
+		void drawSearchResults(R)(
+			Drawing dr, R searchResults, 
 			RGB clSearchHighLight, float extraThickness = 0
 		)
+		if(isInputRange!(R, Container.SearchResult))
 		{
 			with(dr) {
 				const 	arrowSize = 12+3*blink,
@@ -6569,18 +6551,18 @@ version(/+$DIDE_REGION main+/all)
 				if(markerLayers[t].visible)
 				foreach(ref sr; markerLayers[t].searchResults)
 				sr.container.worldOuterPos; 
-				((0x3082A35B2D627).檢((update間(_間)))); //only 2ms
+				((0x306FB35B2D627).檢((update間(_間)))); //only 2ms
 			}
 			
 			if(1) {
 				auto _間=init間; 
 				foreach_reverse(mod; modules)
-				foreach(col; mod.buildMessageColumns)
+				foreach(col; mod.moduleBuildMessageColumns)
 				{
 					dr.color = clWhite; dr.lineWidth = -3; 
 					dr.drawRect(col.worldOuterBounds); 
 				}
-				((0x3094A35B2D627).檢((update間(_間)))); 
+				((0x3082135B2D627).檢((update間(_間)))); 
 			}
 			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
@@ -6692,8 +6674,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x315F435B2D627).檢(expr)) ((0x3161235B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3166035B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x314CB35B2D627).檢(expr)) ((0x314E935B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3153735B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

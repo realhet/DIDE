@@ -2218,6 +2218,12 @@ class CodeRow: Row
 	auto singleNodeOrNull()
 	{ return (cast(CodeNode)(singleCellOrNull)); } 
 	
+	auto firstCellOrNull()
+	{ return subCells.get(0); } 
+	
+	auto firstNodeOrNull()
+	{ return (cast(CodeNode)(firstCellOrNull)); } 
+	
 	auto byCell()
 	{ return subCells.map!"a"; } 
 	
@@ -2484,6 +2490,30 @@ class CodeRow: Row
 		
 		//Opt: Row.flexSum <- ezt opcionalisan ki kell kiiktatni, lassu.
 	} 
+	
+	@property hasVerticalTab() => chars.endsWith('\x0b'); 
+	
+	void removeVerticalTab()
+	{
+		if(hasVerticalTab)
+		{
+			subCells = subCells[0 .. $-1]; 
+			needMeasure; 
+		}
+	} 
+	
+	void addVerticalTab()
+	{
+		if(!hasVerticalTab)
+		{
+			static TextStyle tsVT; 
+			static bool initialized; if(initialized.chkSet) tsVT.applySyntax(skIdentifier1); 
+			
+			appendChar('\x0b', tsVT); 
+			needMeasure; 
+		}
+	} 
+	
 	
 	protected int findRowLineIdx_min()
 	{
@@ -3330,6 +3360,12 @@ class CodeRow: Row
 		}
 	} 
 	
+	version(/+$DIDE_REGION Associative Array support+/none)
+	{
+		override size_t toHash() { return (cast(size_t)(&this)); } 
+		override bool opEquals(Object o) { return o is this; } 
+	}
+	
 	bool empty() const
 	{ return !rows.length || rows.length==1 && rows[0].empty; } 
 	
@@ -4133,6 +4169,40 @@ class CodeRow: Row
 	
 	
 	
+	void removeVerticalTabs()
+	{
+		foreach(row; rows) row.removeVerticalTab; 
+		//Todo: These are raw operations, trashing the undo buffer.
+		//Todo: must refactor to sequence of editing commands.
+	} 
+	
+	bool addVerticalTabs(float targetHeight)
+	{
+		bool anyChg; 
+		float y0 = 0; 
+		
+		auto pageHeight = targetHeight; 
+		const totalHeight = rows.map!((r)=>(r.outerHeight)).sum; 
+		const numPages = (iceil(totalHeight / pageHeight)).max(1); 
+		if(numPages<=1) return anyChg; 
+		
+		pageHeight = totalHeight / numPages; 
+		
+		int actPages; 
+		foreach(row; rows)
+		if(row.outerBottom - y0 >= pageHeight)
+		{
+			y0 = row.outerBottom; 
+			row.addVerticalTab; 
+			
+			actPages++; 
+			if(actPages > numPages-1) break; 
+		}
+		return anyChg; 
+		
+		//Todo: These are raw operations, trashing the undo buffer.
+	} 
+	
 	static void selfTest()
 	{
 		void test_RowCount(string src, int rowCount, string dst="*")
@@ -5284,28 +5354,49 @@ version(/+$DIDE_REGION+/all)
 				(*col).containsBuildMessages = true; 
 				
 				auto mod = moduleOf(*col).enforce("addBuildMessage: Can't find parent module."); 
-				mod.buildMessageColumns ~= *col; 
+				mod.moduleBuildMessageColumns ~= *col; 
 			}
 			
 			
-			const idx = ((msgNode.buildMessageHash==0)?(-1L) : (
-				(*col).rows	.map!((r)=>(r.singleNodeOrNull.buildMessageHash))
+			const 	idx = ((msgNode.buildMessageHash==0)?(-1L) : (
+				(*col).rows	.map!((r)=>(r.firstNodeOrNull.buildMessageHash))
 					.countUntil(msgNode.buildMessageHash)
-			)); 
+			)),
+				isNewMessage = idx<0; 
 			
-			bool isNewMessage = false; 
-			
-			if(idx>=0)	{
-				auto row = (*col).rows[idx]; 
-				row.subCells[0] = msgNode; 
-				msgNode.setParent(row); 
+			with(*col)
+			{
+				if(isNewMessage)
+				{
+					version(/+$DIDE_REGION Split into multiple columns.  Only for modules.+/all)
+					{
+						enum maxColumnHeight = 1400; 
+						static if(maxColumnHeight>0)
+						if((cast(Module)(this/+The receiver node of the message(!)+/)))
+						if(
+							rowCount>=1 && 
+							(
+								rows.retro	.until!((r)=>(r.hasVerticalTab))
+									.map!((r)=>(r.outerHeight)).sum
+							)>maxColumnHeight
+							//Opt: Accumulate the size in a variable.
+						)
+						rows.back.addVerticalTab; 
+					}
+					
+					appendCell(new CodeRow(*col, [msgNode])); 
+					rows.back.measure /+must measure the row for the multi-column splitter.+/; 
+				}
+				else
+				{
+					auto row = rows[idx]; 
+					row.subCells[0] = msgNode; 
+					msgNode.setParent(row); 
+					row.measure; 
+				}
+				
+				needMeasure;  //The row is already measured.  Later the column needs to measured too.
 			}
-			else	{
-				(*col).appendCell(new CodeRow(*col, [msgNode])); 
-				isNewMessage = true; 
-			}
-			
-			msgNode.needMeasure; 
 			
 			addInspectorParticle(this, msgNode.bkColor, srcWorldBounds); 
 			
@@ -6249,6 +6340,8 @@ version(/+$DIDE_REGION+/all)
 		
 		uint rearrangeCounter; 
 		
+		SearchResult[][EnumMembers!(DMDMessage.Type).length] markerLayers; 
+		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
 		override string prefix() const
@@ -6363,14 +6456,44 @@ version(/+$DIDE_REGION+/all)
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
-			CodeColumn buildMessageColumn; 
+			CodeColumn buildMessageColumn/+This module's own buildMessageColumn+/; 
 			
 			override CodeColumn* accessBuildMessageColumn()
 			{ return &buildMessageColumn; } 
 			
 			
-			CodeColumn[] buildMessageColumns; 
-		}
+			CodeColumn[] moduleBuildMessageColumns/+All the buildMessageColumns in the module goes here.+/; 
+			
+			void resetBuildMessages()
+			{
+				/+
+					Note: /+Code: moduleBuildMessageColumns+/ contains all the columns inside this module.
+					It doesn't always include the buildMessageColumn of this module.
+				+/
+				
+				foreach(col; moduleBuildMessageColumns)
+				{
+					col.parent.needMeasure; //Mark all the nodes to measure later.
+					*((cast(CodeNode)(col.parent)).accessBuildMessageColumn) = null; //Remove reference.
+				}
+				moduleBuildMessageColumns = []; /+
+					Remove central column references from the module.
+					GC will do the rest for the rowss and messages..
+				+/
+				measure; //Immediately do the actual realign without the buildMessages.
+			} 
+		}
+		
+		void resetBuildMessageMarkerLayers()
+		{
+			foreach(dmt; EnumMembers!(DMDMessage.Type))
+			if(dmt != DMDMessage.Type.find)
+			markerLayers[dmt].clear; 
+		} 
+		
+		void resetInspectors()
+		{ NOTIMPL; } 
+		
 		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 		{
 			fileModified = file.modified; 
@@ -6516,9 +6639,9 @@ version(/+$DIDE_REGION+/all)
 		override void rearrange()
 		{
 			detectModuleTypeFlags; 
-			rearrangeCounter++; print("REARR>", file.nameWithoutExt, rearrangeCounter); 
 			super.rearrange; 
 			rearrange_appendBuildMessages; 
+			rearrangeCounter++; 
 		} 
 		
 		void save()
@@ -9847,7 +9970,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x4063E7B6B4BCC).檢(expr))},
+			q{((0x413227B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9861,7 +9984,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x4074C7B6B4BCC).檢 (expr))},
+			q{((0x414307B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
