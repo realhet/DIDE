@@ -5343,7 +5343,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		bool addBuildMessage(CodeNode msgNode, bounds2 srcWorldBounds)
+		bool addBuildMessage(CodeNode msgNode, bounds2 srcWorldBounds, bool showAnimation)
 		{
 			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
 			enforce(msgNode, "msgNode is null"); 
@@ -5357,12 +5357,12 @@ version(/+$DIDE_REGION+/all)
 				mod.moduleBuildMessageColumns ~= *col; 
 			}
 			
-			
-			const 	idx = ((msgNode.buildMessageHash==0)?(-1L) : (
+			const 	idx = (
 				(*col).rows	.map!((r)=>(r.firstNodeOrNull.buildMessageHash))
 					.countUntil(msgNode.buildMessageHash)
-			)),
+			),
 				isNewMessage = idx<0; 
+			//Opt: slow linear search
 			
 			with(*col)
 			{
@@ -5392,13 +5392,14 @@ version(/+$DIDE_REGION+/all)
 					auto row = rows[idx]; 
 					row.subCells[0] = msgNode; 
 					msgNode.setParent(row); 
-					row.measure; 
+					
+					row.needMeasure; row.measure; 
 				}
 				
 				needMeasure;  //The row is already measured.  Later the column needs to measured too.
 			}
 			
-			addInspectorParticle(this, msgNode.bkColor, srcWorldBounds); 
+			if(showAnimation) addInspectorParticle(this, msgNode.bkColor, srcWorldBounds); 
 			
 			return isNewMessage; 
 		} 
@@ -6338,9 +6339,8 @@ version(/+$DIDE_REGION+/all)
 		
 		UndoManager undoManager; 
 		
-		uint rearrangeCounter; 
-		
-		SearchResult[][EnumMembers!(DMDMessage.Type).length] markerLayers; 
+		protected uint 	_rearrangeCounter,
+			_updateSearchResults_state; 
 		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
@@ -6457,12 +6457,37 @@ version(/+$DIDE_REGION+/all)
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
 			CodeColumn buildMessageColumn/+This module's own buildMessageColumn+/; 
-			
 			override CodeColumn* accessBuildMessageColumn()
 			{ return &buildMessageColumn; } 
+		}
+		
+		version(/+$DIDE_REGION BuildMessage database+/all)
+		{
+			static class Message
+			{
+				//aggregate class for all these things
+				version(/+$DIDE_REGION+/all) {
+					DMDMessage message; 
+					CodeNode node; 
+					SearchResult[] searchResults; 
+					this(
+						DMDMessage message, 
+						CodeNode node, 
+						SearchResult[] searchResults
+					) {
+						this.message 	= message,
+						this.node 	= node,
+						this.searchResults 	= searchResults; 
+					} 
+				}
+				alias this = message; 
+			} 
 			
+			Message[uint] messageByHash; 
+			Message[][EnumMembers!(DMDMessage.Type).length] messagesByType; 
+			CodeColumn[] moduleBuildMessageColumns; //all columns containing buildmessages
 			
-			CodeColumn[] moduleBuildMessageColumns/+All the buildMessageColumns in the module goes here.+/; 
+			SearchResult[] findSearchResults; //this is for the text search
 			
 			void resetBuildMessages()
 			{
@@ -6480,15 +6505,45 @@ version(/+$DIDE_REGION+/all)
 					Remove central column references from the module.
 					GC will do the rest for the rowss and messages..
 				+/
+				messageByHash.clear; 
+				foreach(ref msgs; messagesByType) msgs = []; 
+				
 				measure; //Immediately do the actual realign without the buildMessages.
+			} 
+			
+			auto addModuleMessage(bool isNew, DMDMessage msg, CodeNode node, SearchResult[] searchResults)
+			{
+				auto mm = new Message(msg, node, searchResults); 
+				
+				if(mm.hash) messageByHash[mm.hash] = mm; 
+				
+				ref auto mta() { return messagesByType[mm.type]; } 
+				if(isNew)
+				{ mta ~= mm; }
+				else
+				{
+					const idx = mta.map!"a.hash".countUntil(mm.hash); //Opt: linear search
+					if(idx>=0)	{ mta[idx] = mm; }
+					else	{
+						mta ~= mm; 
+						WARN("BuildMessage marked as non new, but found.\n"~mm.message.text); 
+					}
+				}
+				
+				return mm; 
 			} 
 		}
 		
-		void resetBuildMessageMarkerLayers()
+		void updateSearchResults()
 		{
-			foreach(dmt; EnumMembers!(DMDMessage.Type))
-			if(dmt != DMDMessage.Type.find)
-			markerLayers[dmt].clear; 
+			if(_updateSearchResults_state.chkSet(_rearrangeCounter + [outerPos].xxh32))
+			{
+				void doit(ref SearchResult[] srs)
+				{ foreach(ref sr; srs) sr.absInnerPos = sr.container.worldInnerPos; } 
+				
+				foreach(msg; messageByHash.byValue) doit(msg.searchResults); 
+				doit(findSearchResults); 
+			}
 		} 
 		
 		void resetInspectors()
@@ -6641,7 +6696,7 @@ version(/+$DIDE_REGION+/all)
 			detectModuleTypeFlags; 
 			super.rearrange; 
 			rearrange_appendBuildMessages; 
-			rearrangeCounter++; 
+			_rearrangeCounter++; 
 		} 
 		
 		void save()
@@ -9970,7 +10025,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x413227B6B4BCC).檢(expr))},
+			q{((0x419407B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9984,7 +10039,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x414307B6B4BCC).檢 (expr))},
+			q{((0x41A4E7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

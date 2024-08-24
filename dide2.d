@@ -406,10 +406,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				clearDebugImageBlobs; 
 				resetGlobalWatches; 
-				workspace.modules.each!((m){
-					m.resetBuildMessages; 
-					m.resetBuildMessageMarkerLayers; 
-				}); 
+				workspace.modules.each!((m){ m.resetBuildMessages; }); 
 				workspace.modules.each!((m){ m.resetInspectors; }); 
 				dbgsrv.resetBeforeRun; 
 			} 
@@ -1007,17 +1004,19 @@ version(/+$DIDE_REGION main+/all)
 				); 
 				
 				
-				//error list
-				if(workspace.showErrorList)
-				with(im)
-				Panel(
-					PanelPosition.bottomClient,
-					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						outerHeight = 200; 
-						workspace.UI_ErrorList; 
-					}
-				); 
+				version(/+$DIDE_REGION+/none) {
+					//error list
+					if(workspace.showErrorList)
+					with(im)
+					Panel(
+						PanelPosition.bottomClient,
+						{
+							margin = "0"; padding = "0"; //border = "1 normal gray";
+							outerHeight = 200; 
+							workspace.UI_ErrorList; 
+						}
+					); 
+				}
 				
 				
 				void VLine()
@@ -1243,9 +1242,11 @@ version(/+$DIDE_REGION main+/all)
 								
 								Row(
 									{
-										 margin = "0 3"; flags.vAlign = VAlign.center; 
-										if(Btn("ErrorList")) workspace.showErrorList.toggle; 
-										if(Btn("Calc size")) print(workspace.allocatedSize); 
+										margin = "0 3"; flags.vAlign = VAlign.center; 
+										version(/+$DIDE_REGION+/none) {
+											if(Btn("ErrorList")) workspace.showErrorList.toggle; 
+											if(Btn("Calc size")) print(workspace.allocatedSize); 
+										}
 										Text(now.text); 
 										Text(" "~log2(lod.pixelSize).format!"%.2f"); 
 									}
@@ -1427,24 +1428,18 @@ version(/+$DIDE_REGION main+/all)
 		bool searchBoxVisible, searchBoxActivate_request; 
 		string searchText; 
 		
-		@STORED bool showErrorList; 
-		Module errorModule; 
+		version(/+$DIDE_REGION+/none) {
+			@STORED bool showErrorList; 
+			Module errorModule; 
+		}
 		
-		
-		struct MarkerLayer {
+		struct MarkerLayerSettings {
 			const DMDMessage.Type type; //this is the identity
 			bool visible = true; //this is the settings
 			bounds2 btnWorldBounds; //Screen bounds of the button, for particle effect.
-			
-			auto searchResults()
-			{ return frmMain.workspace.modules.map!((m)=>(m.markerLayers[type])).joiner; } 
-			@property searchResultCount()
-			{ return frmMain.workspace.modules.map!((m)=>(m.markerLayers[type].length)).sum; } 
-			void clear()
-			{ foreach(m; frmMain.workspace.modules) m.markerLayers[type] = []; } 
 		} 
 		
-		auto markerLayers = [EnumMembers!(DMDMessage.Type)].map!MarkerLayer.array; 
+		auto markerLayerSettings = [EnumMembers!(DMDMessage.Type)].map!MarkerLayerSettings.array; 
 		
 		@STORED vec2[size_t] lastModulePositions; 
 		
@@ -1526,14 +1521,11 @@ version(/+$DIDE_REGION main+/all)
 			size_t markerLayerHideMask() const
 			{
 				size_t res; 
-				foreach(idx, const layer; markerLayers)
-				if(!layer.visible)
-				res |= 1 << idx; 
-				
+				foreach(idx, const layer; markerLayerSettings) if(!layer.visible) res |= 1 << idx; 
 				return res; 
 			} 
 			void markerLayerHideMask(size_t v)
-			{ foreach(idx, ref layer; markerLayers) layer.visible = ((1<<idx)&v)==0; } 
+			{ foreach(idx, ref layer; markerLayerSettings) layer.visible = ((1<<idx)&v)==0; } 
 		} 
 	}version(/+$DIDE_REGION Module handling+/all)
 	{
@@ -1976,13 +1968,13 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		auto nodeToSearchResult(CodeNode node)
+		auto nodeToSearchResult(CodeNode node, string reference)
 		{
 			return (mixin(體!((Container.SearchResult),q{
 				cells 	: [node],
 				container	: node.parent,
-				absInnerPos	: node.parent.worldInnerPos
-				//reference	: reference
+				absInnerPos	: node.parent.worldInnerPos,
+				reference	: reference
 			}))); 
 		} 
 		
@@ -2029,173 +2021,174 @@ version(/+$DIDE_REGION main+/all)
 		
 		void convertBuildMessagesToSearchResults(ref BuildResult br)
 		{
-			T0; 
-			
-			const outFile = File(`virtual:\__compilerOutput.d`); 
-			
-			outFile.write(br.sourceText); 
-			
-			const tAccessBuildMessages = DT;  //40 ms
-			
-			errorModule = new Module(null, "", StructureLevel.structured); 
-			messageSourceTextByLocation.clear; 
-			
-			messageConnectionArrows.clear; 
-			
-			if(1)
-			{
-				//load all messages through a cache
-				float y = 0; 
-				errorModule.content.subCells = []; 
-				foreach(msg; br.messages)
+			version(/+$DIDE_REGION+/none) {
+				T0; 
+				
+				const outFile = File(`virtual:\__compilerOutput.d`); 
+				
+				outFile.write(br.sourceText); 
+				
+				const tAccessBuildMessages = DT;  //40 ms
+				
+				errorModule = new Module(null, "", StructureLevel.structured); 
+				messageSourceTextByLocation.clear; 
+				
+				messageConnectionArrows.clear; 
+				
+				if(1)
 				{
-					//hide messages of unselected markerLayers
-					const messageIsVisible = markerLayers[msg.type].visible; 
-					
-					if(!messageIsVisible) continue; 
-					
-					const src = msg.sourceText; 
-					//extract all locations from the message.
-					msg.allLocations.each!((in loc){ messageSourceTextByLocation[loc.text] = src; }); 
-					
-					buildMessageConnectionArrows(msg); 
-					
-					if(src !in messageUICache)
+					//load all messages through a cache
+					float y = 0; 
+					errorModule.content.subCells = []; 
+					foreach(msg; br.messages)
 					{
-						//Todo: use CodeColumn here!
-						auto tempModule = new Module(null, msg.sourceText, StructureLevel.structured); 
-						try
+						//hide messages of unselected markerLayers
+						const messageIsVisible = markerLayerSettings[msg.type].visible; 
+						
+						if(!messageIsVisible) continue; 
+						
+						const src = msg.sourceText; 
+						//extract all locations from the message.
+						msg.allLocations.each!((in loc){ messageSourceTextByLocation[loc.text] = src; }); 
+						
+						buildMessageConnectionArrows(msg); 
+						
+						if(src !in messageUICache)
 						{
-							auto msgCol = new CodeColumn(null, msg.sourceText, TextFormat.managed_block); 
-							auto msgRow = msgCol.rows.frontOrNull.enforce("Can't get builMsgRow."); 
-							msgRow.measure; 
-							messageUICache[src] = msgRow; 
-							
-							version(none)
+							//Todo: use CodeColumn here!
+							auto tempModule = new Module(null, msg.sourceText, StructureLevel.structured); 
+							try
 							{
-								version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
+								auto msgCol = new CodeColumn(null, msg.sourceText, TextFormat.managed_block); 
+								auto msgRow = msgCol.rows.frontOrNull.enforce("Can't get builMsgRow."); 
+								msgRow.measure; 
+								messageUICache[src] = msgRow; 
+								
+								version(none)
 								{
+									version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
 									{
-										auto msgNode = msgRow.singleNodeOrNull.enforce("Unable to get single buildMessageNode."); 
-										auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
-										CodeNode[] getNodePath(Container.SearchResult sr)
 										{
-											return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
-												.filter!((a)=>(a && a.canAcceptBuildMessages))
-												.array.retro.array; 
-										} 
-										auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
-										
-										if(auto rootNode = rootPath.backOrNull)
-										{
-											rootNode.processBuildMessage(src, msgNode); 
-											/+Todo: only add once, not always!+/
+											auto msgNode = msgRow.singleNodeOrNull.enforce("Unable to get single buildMessageNode."); 
+											auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
+											CodeNode[] getNodePath(Container.SearchResult sr)
+											{
+												return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
+													.filter!((a)=>(a && a.canAcceptBuildMessages))
+													.array.retro.array; 
+											} 
+											auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
+											
+											if(auto rootNode = rootPath.backOrNull)
+											{
+												rootNode.processBuildMessage(src, msgNode); 
+												/+Todo: only add once, not always!+/
+											}
 										}
 									}
 								}
 							}
+							catch(Exception e)
+							{ ERR("Can't build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
 						}
-						catch(Exception e)
-						{ ERR("Can't build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
+						
+						auto msgRow = messageUICache[src]; 
+						errorModule.content.subCells ~= msgRow; 
+						
+						with(msgRow)
+						{
+							setParent(errorModule.content); 
+							outerPos = vec2(0, y); 
+							y += outerHeight; 
+						}
+						
+						//Todo: Why I need to spread this shit manually? Why errorModule.measure dont do this?
+						//Bug: this cache is never emptied, it keeps growing.
 					}
-					
-					auto msgRow = messageUICache[src]; 
-					errorModule.content.subCells ~= msgRow; 
-					
-					with(msgRow)
-					{
-						setParent(errorModule.content); 
-						outerPos = vec2(0, y); 
-						y += outerHeight; 
-					}
-					
-					//Todo: Why I need to spread this shit manually? Why errorModule.measure dont do this?
-					//Bug: this cache is never emptied, it keeps growing.
 				}
-			}
-			
-			const tLoadErrorModule = DT; //110 ms
-			
-			errorModule.measure; 
-			//Note: This calculates the height and width of the module. It fails to spread the rows vertically.
-			
-			const tMeasureErrorModule = DT; //0 ms (because of the messageUICache[])
-			
-			auto buildMessagesAsSearchResults(DMDMessage.Type type)
-			{
-				//Todo: opt
-				//Todo: Build DIDE -> Some error messages has NO PATH.
-				Container.SearchResult[] arr; 
 				
-				foreach(msgIdx, const msg; br.messages)
-				if(msg.type==type)
+				const tLoadErrorModule = DT; //110 ms
+				
+				errorModule.measure; 
+				//Note: This calculates the height and width of the module. It fails to spread the rows vertically.
+				
+				const tMeasureErrorModule = DT; //0 ms (because of the messageUICache[])
+				
+				auto buildMessagesAsSearchResults(DMDMessage.Type type)
 				{
-					auto sr = codeLocationToSearchResults(msg.location); 
+					//Todo: opt
+					//Todo: Build DIDE -> Some error messages has NO PATH.
+					Container.SearchResult[] arr; 
 					
-					//Todo: Must fix this crap.  Many rows are is unable to find.  Especially the rows on the surfaces of the fucking Nodes.
-					
-					static if(0)
-					if(sr.empty && msg.location.lineIdx>1)
+					foreach(msgIdx, const msg; br.messages)
+					if(msg.type==type)
 					{
-						auto loc2 = cast()msg.location; 
-						loc2.lineIdx--; 
-						sr = codeLocationToSearchResults(loc2, false); 
-						//WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-						/+
-							Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
-							It is on the surface of the Node which has no updated lineIdx.
-						+/
-					}
-					
-					
-					static if(0)
-					if(sr.empty)
-					{
-						WARN("Unable to find line for BuildMessage:\n"~msg.text); 
-						sr = codeLocationToSearchResults(msg.location, false); 
+						auto sr = codeLocationToSearchResults(msg.location); 
+						
+						//Todo: Must fix this crap.  Many rows are is unable to find.  Especially the rows on the surfaces of the fucking Nodes.
+						
+						static if(0)
+						if(sr.empty && msg.location.lineIdx>1)
+						{
+							auto loc2 = cast()msg.location; 
+							loc2.lineIdx--; 
+							sr = codeLocationToSearchResults(loc2, false); 
+							//WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+							/+
+								Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
+								It is on the surface of the Node which has no updated lineIdx.
+							+/
+						}
+						
+						
+						static if(0)
 						if(sr.empty)
 						{
-							WARN("Skipping binary search:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-							
-							if(msg.location.lineIdx>1)
+							WARN("Unable to find line for BuildMessage:\n"~msg.text); 
+							sr = codeLocationToSearchResults(msg.location, false); 
+							if(sr.empty)
 							{
-								auto loc2 = cast()msg.location; 
-								loc2.lineIdx--; 
-								sr = codeLocationToSearchResults(loc2, false); 
-								WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-								/+
-									Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
-									It is on the surface of the Node which has no updated lineIdx.
-								+/
+								WARN("Skipping binary search:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+								
+								if(msg.location.lineIdx>1)
+								{
+									auto loc2 = cast()msg.location; 
+									loc2.lineIdx--; 
+									sr = codeLocationToSearchResults(loc2, false); 
+									WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
+									/+
+										Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
+										It is on the surface of the Node which has no updated lineIdx.
+									+/
+								}
 							}
 						}
+						arr ~= sr; 
 					}
-					arr ~= sr; 
-				}
+					
+					return arr; 
+				} 
 				
-				return arr; 
-			} 
-			
-			/+
-				Opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
-				module change, module move.
-			+/
-			//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
-			static if(0)
-			foreach(t; EnumMembers!(DMDMessage.Type))
-			if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
-			{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
-			
-			
-			const tBuildSearchResults = DT; //60 ms
-			
-			//performance timing
-			if(0)
-			LOG(
-				[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
-				.map!(a => a.value(milli(second))).format!"%(%.0f %)"
-			); 
-			
+				/+
+					Opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
+					module change, module move.
+				+/
+				//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
+				static if(0)
+				foreach(t; EnumMembers!(DMDMessage.Type))
+				if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
+				{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
+				
+				
+				const tBuildSearchResults = DT; //60 ms
+				
+				//performance timing
+				if(0)
+				LOG(
+					[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
+					.map!(a => a.value(milli(second))).format!"%(%.0f %)"
+				); 
+			}
 		} 
 		
 		void processBuildMessages(DMDMessage[] messages)
@@ -2213,7 +2206,7 @@ version(/+$DIDE_REGION main+/all)
 					msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
 					msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
 				
-				msgNode.buildMessageHash = ((msg.type.among(DMDMessage.Type.console))?(0):(msg.hash)); 
+				msgNode.buildMessageHash = msg.hash; 
 				msgNode.measure; /+
 					It's required to initialize bkColor. 
 					Animation effect needs to know the color.
@@ -2248,18 +2241,23 @@ version(/+$DIDE_REGION main+/all)
 				auto containerModule = findModule(msg.location.file).ifnull(mainModule); 
 				if(auto containerNode = getContainerNode(containerModule))
 				{
+					
+					void addMessageToModule(bool isNew)
+					{ containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); } 
+					
 					if(msg.isPersistent && !(cast(Module)(containerNode)))
-					{ containerModule.markerLayers[msg.type] ~= searchResults; }
+					{
+						//persistent message at it's designated place. -> no need to insert anywhere.
+						addMessageToModule(true); 
+					}
 					else
 					{
-						const isNewMessage = 
-							containerNode.addBuildMessage(msgNode, markerLayers[msg.type].btnWorldBounds); 
-						if(isNewMessage)
-						{
-							containerModule.markerLayers[msg.type] ~= nodeToSearchResult(msgNode); 
-							if(searchResults.length)
-							{ containerModule.markerLayers[msg.type] ~= searchResults; }
-						}
+						ref auto layer() => markerLayerSettings[msg.type]; 
+						const isNewMessage = 	containerNode.addBuildMessage(msgNode, layer.btnWorldBounds, layer.visible); 
+						
+						searchResults = searchResults ~ nodeToSearchResult(msgNode, searchResults.get(0).reference); 
+						searchResults.map!((a)=>(a.reference)).print; 
+						addMessageToModule(isNewMessage); 
 					}
 				}
 				else
@@ -2268,6 +2266,31 @@ version(/+$DIDE_REGION main+/all)
 			}
 			catch(Exception e) { ERR(e.simpleMsg~"\n"~msg.text); }
 		} 
+		
+		auto getMarkerLayerCount(DMDMessage.Type type)
+		{ return (mixin(求sum(q{mod},q{modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
+		
+		auto getMarkerLayer_find()
+		{ return modules.map!((m)=>(m.findSearchResults)).joiner; } 
+		
+		auto getMarkerLayer(DMDMessage.Type type)
+		{
+			enforce(type!=DMDMessage.Type.find); 
+			return modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
+		} 
+		
+		version(/+$DIDE_REGION+/none) {
+			auto visitMarkerLayer(DMDMessage.Type type, void delegate(ref SearchResult sr) fun)
+			{
+				if(type==DMDMessage.Type.find)
+				{ foreach(m; modules) foreach(ref sr; m.findSearchResults) fun(sr); }
+				else
+				{ foreach(m; modules) foreach(msg; m.messagesByType[type]) foreach(ref sr; msg.searchResults) fun(sr); }
+			} 
+		}
+		
+		auto clearMarkerLayer_find()
+		{ foreach(m; modules) m.findSearchResults = []; } 
 		
 		
 		
@@ -5406,7 +5429,7 @@ version(/+$DIDE_REGION main+/all)
 						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
 						[],
 						[q{"Ctrl+F"},q{searchBoxActivate},q{searchBoxActivate_request = true; }],
-						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(markerLayers[DMDMessage.Type.find].searchResults); }],
+						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(getMarkerLayer(DMDMessage.Type.find)); }],
 						[q{"F3"},q{gotoNextFind},q{NOTIMPL; }],
 						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
 						[q{"Ctrl+G"},q{gotoLine},q{
@@ -5654,7 +5677,7 @@ version(/+$DIDE_REGION main+/all)
 				if(
 					Btn(
 						{
-							const hidden = markerLayers[bmt].visible ? 0 : .75f; 
+							const hidden = markerLayerSettings[bmt].visible ? 0 : .75f; 
 							
 							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
 							
@@ -5675,23 +5698,24 @@ version(/+$DIDE_REGION main+/all)
 									theme = "tool"; 
 									const m = Margin(0, .5, 0, .5); 
 									
-									if(const len = markerLayers[bmt].searchResultCount)
+									if(const len = getMarkerLayerCount(bmt))
 									{
 										if(Btn(len.text))
 										{
-											markerLayers[bmt].visible = true; 
-											zoomAt(view, markerLayers[bmt].searchResults); 
+											markerLayerSettings[bmt].visible = true; 
+											if(bmt==DMDMessage.Type.find)	zoomAt(view, getMarkerLayer_find); 
+											else	zoomAt(view, getMarkerLayer(bmt)); 
 										}
 									}
 								}
 							); 
 							
-							markerLayers[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
+							markerLayerSettings[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
 						},
 						((bmt).genericArg!q{id})
 					)
 				)
-				markerLayers[bmt].visible.toggle; 
+				markerLayerSettings[bmt].visible.toggle; 
 			}
 		} 
 		
@@ -5710,8 +5734,6 @@ version(/+$DIDE_REGION main+/all)
 			Row
 			(
 				{
-					auto layer = &markerLayers[DMDMessage.Type.find]; 
-					
 					//Keyboard shortcuts
 					auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
 						kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
@@ -5740,7 +5762,7 @@ version(/+$DIDE_REGION main+/all)
 								//Todo: Ctrl+G not works inside Edit
 								//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
 								//Todo: ez ugorhatna regionra is.
-								layer.clear; 
+								clearMarkerLayer_find; 
 								textSelections = []; 
 								if(auto mod = expectOneSelectedModule)
 								if(auto line = searchText[1..$].to!int.ifThrown(0))
@@ -5752,13 +5774,13 @@ version(/+$DIDE_REGION main+/all)
 							}
 							else
 							{
-								layer.clear; 
-								foreach(m; selectedModulesOrAll) m.markerLayers[DMDMessage.Type.find] = m.search(searchText); 
+								clearMarkerLayer_find; 
+								foreach(m; selectedModulesOrAll) m.findSearchResults = m.search(searchText); 
 							}
 						}
 						
 						//display the number of matches. Also save the location of that number on the screen.
-						const matchCnt = layer.searchResultCount; 
+						const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
 						Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
 						
 						if(
@@ -5767,20 +5789,20 @@ version(/+$DIDE_REGION main+/all)
 								enable(matchCnt>0), hint("Zoom screen on search results.")
 							)
 						)
-						{ zoomAt(view, layer.searchResults); }
+						{ zoomAt(view, getMarkerLayer_find); }
 						if(
 							Btn(
 								"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
 								enable(matchCnt>0), hint("Select search results.")
 							)
 						)
-						{ selectSearchResults(layer.searchResults); }
+						{ selectSearchResults(getMarkerLayer_find); }
 						
 						if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
 						{
 							searchBoxVisible = false; 
 							searchText = ""; 
-							layer.clear; 
+							clearMarkerLayer_find; 
 						}
 					}
 					else
@@ -5877,73 +5899,51 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		auto UI_ErrorList()
-		{
-			with(im) {
-				//UI_ErrorList ////////////////////////////
-				auto siz = innerSize; 
-				Container
-				(
-					{
-						outerSize = siz; 
-						with(flags) {
-							clipSubCells = true; 
-							vScrollState = ScrollState.auto_; 
-							hScrollState = ScrollState.auto_; 
-						}
-						
-						if(auto mod = errorModule)
+		version(/+$DIDE_REGION+/none) {
+			auto UI_ErrorList()
+			{
+				with(im) {
+					//UI_ErrorList ////////////////////////////
+					auto siz = innerSize; 
+					Container
+					(
 						{
-							if(auto col = mod.content)
-							{
-								//total size placeholder
-								Container({ outerPos = col.outerSize; outerSize = vec2(0); }); 
-								
-								flags.saveVisibleBounds = true; 
-								if(auto visibleBounds = imstVisibleBounds(actId))
-								{
-									CodeRow[] visibleRows = col.rows.filter!(
-										r => r.outerBounds.overlaps(visibleBounds)
-										&& r.subCells.length
-									).array; 
-									//Opt: binary search
-									
-									actContainer.append(cast(Cell[])visibleRows); 
-									//Note: append is important because it already has the spaceHolder Container.
-									
-									/+
-										print("-------------------------------");
-										
-										//print(frmMain.viewGUI.mousePos-hit.hitBounds.topLeft);
-										
-										void visitLocations(.Container act){
-											if(!act) return;
-											
-											if(auto row = cast(.Row)act){
-												enum prefix = "CodeLocation:";
-												if(row.id.isWild(prefix~"*")){
-													print("LOC:", wild[0]);
-												}
-											}
-											foreach(sc; act.subContainers)
-												visitLocations(sc); //recursive
-										}
-										visitLocations(actContainer);
-										print("-------------------------------");
-									+/
-								}
+							outerSize = siz; 
+							with(flags) {
+								clipSubCells = true; 
+								vScrollState = ScrollState.auto_; 
+								hScrollState = ScrollState.auto_; 
 							}
-							else
-							WARN("Invalid errorList"); 
+							
+							if(auto mod = errorModule)
+							{
+								if(auto col = mod.content)
+								{
+									//total size placeholder
+									Container({ outerPos = col.outerSize; outerSize = vec2(0); }); 
+									
+									flags.saveVisibleBounds = true; 
+									if(auto visibleBounds = imstVisibleBounds(actId))
+									{
+										CodeRow[] visibleRows = col.rows.filter!(
+											r => r.outerBounds.overlaps(visibleBounds)
+											&& r.subCells.length
+										).array; 
+										//Opt: binary search
+										
+										actContainer.append(cast(Cell[])visibleRows); 
+										//Note: append is important because it already has the spaceHolder Container.
+									}
+								}
+								else
+								WARN("Invalid errorList"); 
+							}
 						}
-					}
-				); 
-			}
-		} 
+					); 
+				}
+			} 
+		}
 		
-		
-		auto findErrorListItemByLocation(string locStr)
-		{ if(auto mod = errorModule) if(auto col = mod.content) { NOTIMPL; }} 
 		
 		string lastNearestSearchResultReference; 
 		
@@ -6542,19 +6542,11 @@ version(/+$DIDE_REGION main+/all)
 			
 			resetNearestSearchResult; 
 			
-			markerLayers[DMDMessage.Type.unknown].visible = false; 
-			markerLayers[DMDMessage.Type.console].visible = true; 
+			markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
+			markerLayerSettings[DMDMessage.Type.console].visible = true; 
+			{ auto _間=init間; foreach(m; modules) m.updateSearchResults; ((0x3086D35B2D627).檢((update間(_間)))); }
 			
 			if(0) {
-				auto _間=init間; 
-				foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
-				if(markerLayers[t].visible)
-				foreach(ref sr; markerLayers[t].searchResults)
-				sr.container.worldOuterPos; 
-				((0x306FB35B2D627).檢((update間(_間)))); //only 2ms
-			}
-			
-			if(1) {
 				auto _間=init間; 
 				foreach_reverse(mod; modules)
 				foreach(col; mod.moduleBuildMessageColumns)
@@ -6562,12 +6554,16 @@ version(/+$DIDE_REGION main+/all)
 					dr.color = clWhite; dr.lineWidth = -3; 
 					dr.drawRect(col.worldOuterBounds); 
 				}
-				((0x3082135B2D627).檢((update間(_間)))); 
+				((0x3098435B2D627).檢((update間(_間)))); 
 			}
 			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
-			if(markerLayers[t].visible)
-			drawSearchResults(dr, markerLayers[t].searchResults, DMDMessage.typeSyntax[t].syntaxBkColor); 
+			if(markerLayerSettings[t].visible)
+			{
+				void doit(R)(R sr) { drawSearchResults(dr, sr, DMDMessage.typeSyntax[t].syntaxBkColor); } 
+				if(t==DMDMessage.Type.find)	doit(getMarkerLayer_find); 
+				else	doit(getMarkerLayer(t)); 
+			}
 			
 			if(nearestSearchResult_dist > frmMain.view.invScale*24)
 			nearestSearchResult = SearchResult.init; 
@@ -6674,8 +6670,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x314CB35B2D627).檢(expr)) ((0x314E935B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3153735B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3169F35B2D627).檢(expr)) ((0x316BD35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x3170B35B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

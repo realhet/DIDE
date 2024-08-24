@@ -2262,7 +2262,11 @@ version(/+$DIDE_REGION+/all) {
 		
 		void recalculateHash()
 		{
-			const h = location.hashOf	(type.hashOf(content.hashOf)); 
+			ulong h = location.hashOf	(type.hashOf(content.hashOf)); 
+			
+			//make every console message different
+			if(type==Type.console) h += (cast(ulong)((cast(void*)(this)))); 
+			
 			hash_ = (cast(uint)(h)) + (cast(uint)(h>>32)); 
 		} 
 		
