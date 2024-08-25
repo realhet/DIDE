@@ -4755,7 +4755,7 @@ version(/+$DIDE_REGION main+/all)
 						firstErrorMessageArrived.chkSet
 					)
 					{
-						view.animSpeed = .98f; 
+						view.animSpeed = .96f; 
 						jumpTo(mm); 
 						im.flashError("Compile Error"/+ ~ mm.message.content.splitLines.get(0)+/); 
 					}
