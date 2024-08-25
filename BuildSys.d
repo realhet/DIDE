@@ -2209,12 +2209,11 @@ version(/+$DIDE_REGION+/all) {
 				[q{error},q{"Error: "},q{"Err"},q{"\33\14"},q{clRed},q{skError}],
 				[q{warning},q{"Warning: "},q{"Warn"},q{"\33\16"},q{clYellow},q{skWarning}],
 				[q{deprecation},q{"Deprecation: "},q{"Depr"},q{"\33\13"},q{clAqua},q{skDeprecation}],
+				[q{console},q{"Console: "},q{"Con"},q{""},q{clWhite},q{skConsole}],
 				[],
 				[q{todo},q{"Todo: "},q{"Todo"},q{"\33\11"},q{clBlue},q{skTodo}],
 				[q{opt},q{"Opt: "},q{"Opt"},q{"\33\15"},q{clFuchsia},q{skOpt}],
 				[q{bug},q{"Bug: "},q{"Bug"},q{"\33\6"},q{clOrange},q{skBug}],
-				[],
-				[q{console},q{"Console: "},q{"Con"},q{""},q{clWhite},q{skConsole}],
 				[],
 				[q{//Order is important: it defines paint order
 				}],

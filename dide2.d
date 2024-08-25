@@ -148,6 +148,21 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 		//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 		//Bug: multiselect.copy -> items are in RANDOM order
+		
+		/+
+			Todo: 240825
+			[x] Hint, CodeLocationPrefix -> BuildMessageHash:module/hash
+			[ ] ScrollBox kezdemeny kiszedese a regi ErrorListBol
+			[ ] Az elso errorra azonnal ugorjon rá!
+			[x] JumpTo megcsinalasa object-re
+			[ ] Arrows
+			[ ] NearestMessage priority: Errors first
+			[x] MMB click on CodeLocations inside the source codes
+			[ ] Display less CodeLocationComments: omit repeating ones.
+			
+			
+			[ ] Minden regi szar kitorlese, sorok szama megfigyelve
+		+/
 	}
 	
 	//globals ////////////////////////////////////////
@@ -406,6 +421,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				clearDebugImageBlobs; 
 				resetGlobalWatches; 
+				workspace.firstErrorMessageArrived = false; 
 				workspace.modules.each!((m){ m.resetBuildMessages; }); 
 				workspace.modules.each!((m){ m.resetInspectors; }); 
 				dbgsrv.resetBeforeRun; 
@@ -802,6 +818,7 @@ version(/+$DIDE_REGION main+/all)
 					&& !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
 				+/
 				view.updateSmartScroll; 
+				view.animSpeed = mix(view.animSpeed, 0.3f, .01f); //slowly goes to it.
 				setLod(view.scale_anim); 
 				
 				if(canProcessUserInput) callVerbs(this); 
@@ -1233,7 +1250,7 @@ version(/+$DIDE_REGION main+/all)
 									{
 										margin = "0 3"; flags.yAlign = YAlign.center; 
 										foreach(t; [EnumMembers!(DMDMessage.Type)]) {
-											if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.console))
+											if(!t.among(DMDMessage.Type.unknown))
 											workspace.UI_BuildMessageType(t, view); 
 										}
 									}
@@ -1247,8 +1264,13 @@ version(/+$DIDE_REGION main+/all)
 											if(Btn("ErrorList")) workspace.showErrorList.toggle; 
 											if(Btn("Calc size")) print(workspace.allocatedSize); 
 										}
-										Text(now.text); 
-										Text(" "~log2(lod.pixelSize).format!"%.2f"); 
+										Text(now.text); NL; 
+										Text(
+											i"FPS=$(FPS
+.format!"%.0f")  Z=$(log2(lod.pixelSize)
+.format!"%.2f")  A=$(view.animSpeed
+.format!"%.2f")".text
+										); 
 									}
 								); 
 								
@@ -1296,6 +1318,7 @@ version(/+$DIDE_REGION main+/all)
 									{
 										case "bool": {
 											//Todo: edit permission
+											//Todo: put this next to niceexpression
 											const b1 = !!n.controlValue; 
 											bool b2 = b1; 
 											style.bkColor = n.bkColor; 
@@ -1841,7 +1864,7 @@ version(/+$DIDE_REGION main+/all)
 		struct LineIdxLocator
 		{
 			int lineIdx; 
-			string reference; 
+			Object reference; 
 			bool optimized = true; 
 			
 			Container.SearchResult[] searchResults; 
@@ -1920,7 +1943,7 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		
-		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
+		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, Object reference, bool optimized = true)
 		{
 			//Opt: unoptimal to return a dynamic array
 			
@@ -1937,11 +1960,16 @@ version(/+$DIDE_REGION main+/all)
 					return []; 
 				}
 				
-				auto locator = LineIdxLocator(loc.lineIdx, CodeLocationPrefix ~ loc.text); 
+				auto locator = LineIdxLocator(loc.lineIdx, reference); 
 				locator.optimized = optimized; 
 				locator.visitNode(mod); 
 				
-				auto res = ((locator.searchResults.length) ?(locator.searchResults) :(locator.searchResults_nodes /+Note: When no glyphs at all, fallback to nodes.+/)); 
+				auto res = ((locator.searchResults.length) ?(locator.searchResults) :(
+					locator.searchResults_nodes /+
+						Note: When no glyphs at all, fallback to nodes.
+						This founds multiline messages.
+					+/
+				)); 
 				
 				static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
 				if(res.empty)
@@ -1949,7 +1977,7 @@ version(/+$DIDE_REGION main+/all)
 					if(optimized)
 					{
 						WARN("Optimized LineIdxLocator failed:", loc); 
-						return codeLocationToSearchResults(loc, false); 
+						return codeLocationToSearchResults(loc, reference, false); 
 					}
 					else
 					{ ERR("Standard LineLocator failed:", loc); }
@@ -1968,7 +1996,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		auto nodeToSearchResult(CodeNode node, string reference)
+		auto nodeToSearchResult(CodeNode node, Object reference)
 		{
 			return (mixin(體!((Container.SearchResult),q{
 				cells 	: [node],
@@ -2003,7 +2031,7 @@ version(/+$DIDE_REGION main+/all)
 				{
 					auto conv(ref DMDMessage msg)
 					{
-						auto sr = codeLocationToSearchResults(msg.location); 
+						auto sr = codeLocationToSearchResults(msg.location, null); 
 						if(sr.empty) return vec2(0); 
 						return sum(sr.map!(s => s.bounds.center))/sr.length; ; 
 					} 
@@ -2194,6 +2222,22 @@ version(/+$DIDE_REGION main+/all)
 		void processBuildMessages(DMDMessage[] messages)
 		{ (mixin(求each(q{m},q{messages},q{processBuildMessage(m)}))); } 
 		
+		static CodeNode renderBuildMessage(DMDMessage msg)
+		{
+			auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
+				msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
+				msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
+			msgNode.buildMessageHash = msg.hash; 
+			msgNode.measure; /+
+				It's required to initialize bkColor. 
+				For example: Animation effect needs to know the color.
+			+/
+			return msgNode; 
+		} 
+		
+		Module.Message[] incomingVisibleModuleMessageQueue; 
+		bool firstErrorMessageArrived; 
+		
 		void processBuildMessage(DMDMessage msg)
 		{
 			if(!mainModule) return; 
@@ -2202,21 +2246,15 @@ version(/+$DIDE_REGION main+/all)
 			
 			try
 			{
-				auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
-					msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
-					msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
+				auto 	msgNode 	= renderBuildMessage(msg),
+					layer 	= &markerLayerSettings[msg.type]; 
 				
-				msgNode.buildMessageHash = msg.hash; 
-				msgNode.measure; /+
-					It's required to initialize bkColor. 
-					Animation effect needs to know the color.
-				+/
 				
 				Container.SearchResult[] searchResults; 
 				
 				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
 				{
-					searchResults = codeLocationToSearchResults(msg.location); 
+					searchResults = codeLocationToSearchResults(msg.location, null); 
 					
 					if(
 						/+Note: Special case: There's only one node is in the searchresults.+/
@@ -2241,22 +2279,66 @@ version(/+$DIDE_REGION main+/all)
 				auto containerModule = findModule(msg.location.file).ifnull(mainModule); 
 				if(auto containerNode = getContainerNode(containerModule))
 				{
-					
 					void addMessageToModule(bool isNew)
-					{ containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); } 
+					{
+						auto mm = containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); 
+						
+						if(layer.visible && isNew) incomingVisibleModuleMessageQueue ~= mm; 
+					} 
 					
 					if(msg.isPersistent && !(cast(Module)(containerNode)))
 					{
 						//persistent message at it's designated place. -> no need to insert anywhere.
+						
+						CodeComment locateActualComment()
+						{
+							//find the actual comment in searchResults
+							bool isMatchingComment(CodeComment cmt)
+							{
+								return	(cmt.customPrefix==msg.type.text.capitalize~':') && 
+									equal(
+									cmt.content.rows[0].chars!'`'	.until!((ch)=>(!ch.among('`'))),
+									msg.content	.until!((ch)=>(!ch.among('`', '\r', '\n')))
+								); 
+								/+It's not perfect, it only checks the first line before any `code` references.+/
+							} 
+							
+							foreach(sr; searchResults)
+							if(auto row = (cast(CodeRow)(sr.container)) /+multiline messages can be found in rows+/)
+							{
+								
+								//single line comments
+								if(auto col = row.parent)
+								if(auto cmt = (cast(CodeComment)(col.parent)))
+								if(isMatchingComment(cmt))
+								{ return cmt; }
+								
+								/+multiline comments+/
+								if(sr.cells.length==1)
+								if(auto cmt = (cast(CodeComment)(sr.cells[0])))
+								if(isMatchingComment(cmt))
+								{ return cmt; }
+							}
+							
+							WARN("Can't find buildMessage in code:\n"~msg.text); //these are the problematic ones
+							return null; 
+						} 
+						
+						if(auto cmt = locateActualComment)
+						{
+							//only a single searchResult remains, and with the actual persistent message
+							msgNode = cmt; 
+							searchResults = [nodeToSearchResult(cmt, null)]; 
+						}
+						
 						addMessageToModule(true); 
+						//Todo: firework effect
 					}
 					else
 					{
-						ref auto layer() => markerLayerSettings[msg.type]; 
-						const isNewMessage = 	containerNode.addBuildMessage(msgNode, layer.btnWorldBounds, layer.visible); 
-						
-						searchResults = searchResults ~ nodeToSearchResult(msgNode, searchResults.get(0).reference); 
-						searchResults.map!((a)=>(a.reference)).print; 
+						//This buildMessage is injected at the bottom of a node.
+						const isNewMessage = containerNode.addBuildMessage(msgNode); 
+						searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
 						addMessageToModule(isNewMessage); 
 					}
 				}
@@ -2298,7 +2380,6 @@ version(/+$DIDE_REGION main+/all)
 		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
 		{
-			//locate ////////////////////////////////
 			ofs += innerPos; 
 			foreach_reverse(m; modules) {
 				auto st = m.locate(mouse, ofs); 
@@ -4494,54 +4575,6 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		void updateCodeLocationJump()
-		{
-			//jump to locations. A fucking nasty hack.
-			
-			if(MMBReleasedWithoutScrolling)
-			{
-				//T0; scope(exit) DT.LOG;
-				auto hs = hitTestManager.lastHitStack; 
-				if(!hs.empty)
-				{ jumpTo(hs.back.id); }
-			}
-		} 
-		
-		Nullable!vec2 jumpRequest; 
-		
-		void jumpTo(in CodeLocation loc)
-		{
-			if(!loc) return; 
-			
-			if(auto mod = findModule(loc.file))
-			{
-				//Todo: load the module automatically
-				
-				auto searchResults = codeLocationToSearchResults(loc); 
-				if(searchResults.length)
-				{
-					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
-					{
-						with(frmMain.view) if(scale<0.3f) scale = 1; 
-						jumpRequest = nullable(vec2(bnd.center)); 
-						return; 
-					}
-				}
-			}
-			
-			im.flashWarning("Unable to jump to: "~loc.text); 
-		} 
-		
-		void jumpTo(string id)
-		{
-			if(id.empty) return; 
-			
-			if(id.startsWith(CodeLocationPrefix))
-			{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
-			else if(id.startsWith(MatchPrefix))
-			{ NOTIMPL; }
-		} 
-		
 		void handleXBox()
 		{
 			static DateTime t0; 
@@ -4575,7 +4608,113 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		const mouseMappings = MouseMappings.init; 
+		
+		
+		Nullable!vec2 jumpRequest; 
+		
+		void jumpTo(vec2 pos)
+		{
+			with(frmMain.view) if(scale<0.3f) scale = 1; 
+			jumpRequest = nullable(vec2(pos)); 
+		} 
+		
+		void jumpTo(bounds2 bnd)
+		{
+			if(bnd) jumpTo(bnd.center); 
+			//Todo: restrict Zoom in to fit the whole rect inside!
+		} 
+		
+		void jumpTo(R)(R searchResults)
+		if(isInputRange!(R, SearchResult))
+		{ if(!searchResults.empty) jumpTo(searchResults.map!((r)=>(r.bounds)).fold!"a|b"); } 
+		
+		void jumpTo(Object obj)
+		{
+			if(!obj) return; 
+			if(auto mm = (cast(Module.Message)(obj)))
+			{
+				if(mm.searchResults.length)	jumpTo(mm.searchResults); 
+				else	jumpTo(mm.node.worldOuterBounds); 
+				return; 
+			}
+		} 
+		
+		void jumpTo(in CodeLocation loc)
+		{
+			if(!loc) return; 
+			
+			if(auto mod = findModule(loc.file))
+			{
+				//Todo: load the module automatically
+				
+				auto searchResults = codeLocationToSearchResults(loc, null); 
+				if(searchResults.length)
+				{
+					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
+					{ jumpTo(bnd.center); return; }
+				}
+			}
+			
+			im.flashWarning("Unable to jump to: "~loc.text); 
+		} 
+		
+		void jumpTo(string id)
+		{
+			if(id.empty) return; 
+			
+			if(id.startsWith(CodeLocationPrefix))
+			{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
+			else if(id.startsWith(MatchPrefix))
+			{ NOTIMPL; }
+		} 
+		
+		void handleJumps(View2D view)
+		{
+			if(MMBReleasedWithoutScrolling)
+			{
+				void doit()
+				{
+					//check something in the IMGUI that has a codeLocation id.
+					{
+						auto hs = hitTestManager.lastHitStack; 
+						if(!hs.empty && hs.back.id.startsWith(CodeLocationPrefix))
+						{ jumpTo(hs.back.id); return; }
+					}
+					
+					//check a codeLocation CodeComment under mouse
+					if(view.isMouseInside)
+					{
+						auto st = locate(view.mousePos.vec2); 
+						//last thing can be a Glyph or an Img. Just skip it.
+						if(st.length && !(cast(CodeComment)(st.back.cell))) st = st[0..$-1]; 
+						if(st.length)
+						if(auto cmt = (cast(CodeComment)(st.back.cell)))
+						if(cmt.isCodeLocationComment)
+						{
+							if(auto loc = cmt.content.sourceText.withoutStarting("$DIDE_LOC ").CodeLocation)
+							{
+								if(!findModule(loc.file) && inputs["Shift"].down)
+								{
+									if(!loc.file.exists)
+									{ im.flashWarning(i"File not found $(loc.file.fullName.quoted).".text); return; }
+									loadModule(loc.file); 
+									//Todo: move all buildMessages from mainFile to the newly opened file.
+								}
+								jumpTo(loc); return; 
+							}
+						}
+					}
+					
+					//check the nearest searchresult
+					if(view.isMouseInside)
+					jumpTo(nearestSearchResult.reference); 
+				} 
+				doit; 
+			}
+		} 
+		
+		const mouseMappings = MouseMappings.init; 
+		
 		void update(
 			View2D view, 
 			ref BuildResult buildResult/+
@@ -4594,19 +4733,6 @@ version(/+$DIDE_REGION main+/all)
 				handleXBox; 
 				handleKeyboard; 
 				
-				{
-					updateCodeLocationJump; 
-					
-					if(MMBReleasedWithoutScrolling)
-					{
-						if(nearestSearchResult.reference!="")
-						{
-							jumpTo(nearestSearchResult.reference); 
-							//Todo: only do this when there was no lmouseTravelSinceLastPress
-						}
-					}
-				}
-				
 				{ autoReloader.enabled = true; autoReloader.update(modules); }
 				
 				updateOpenQueue(1); 
@@ -4618,6 +4744,24 @@ version(/+$DIDE_REGION main+/all)
 				
 				//From here every positions and sizes are correct -----------------------------------------
 				
+				
+				//particle effects for incoming messages
+				foreach(mm; incomingVisibleModuleMessageQueue.fetchAll)
+				{
+					auto layer = &markerLayerSettings[mm.type]; 
+					addInspectorParticle(mm.node, mm.node.bkColor, layer.btnWorldBounds); 
+					if(
+						mm.type==DMDMessage.Type.error && 
+						firstErrorMessageArrived.chkSet
+					)
+					{
+						view.animSpeed = .98f; 
+						jumpTo(mm); 
+						im.flashError("Compile Error"/+ ~ mm.message.content.splitLines.get(0)+/); 
+					}
+				}
+				
+				handleJumps(view); //jumping to locations with MMB 
 				
 				//Ctrl+Click handling
 				if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
@@ -5889,10 +6033,14 @@ version(/+$DIDE_REGION main+/all)
 								}
 							*/
 							
-							if(textSelections.length>1)
-							{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
-							else if(textSelections.length==1)
-							{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+							if(textSelections.length)
+							{
+								NL; 
+								if(textSelections.length>1)
+								{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
+								else if(textSelections.length==1)
+								{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+							}
 						}
 					); 
 				}
@@ -5904,6 +6052,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				with(im) {
 					//UI_ErrorList ////////////////////////////
+					//Todo: extract this as ScrollBox
 					auto siz = innerSize; 
 					Container
 					(
@@ -5953,34 +6102,42 @@ version(/+$DIDE_REGION main+/all)
 		void UI_mouseOverHint()
 		{
 			with(im) {
-				if(lastNearestSearchResultReference.chkSet(nearestSearchResult.reference))
+				if(lastNearestSearchResultReference.chkSet((cast(size_t)((cast(void*)(nearestSearchResult.reference)))).text))
 				{
 					mouseOverHintCntr = null; 
 					
-					if(nearestSearchResult.reference!="")
+					if(nearestSearchResult.reference)
 					{
 						if(!mouseOverHintCntr)
-						if(
-							nearestSearchResult.reference.isWild(CodeLocationPrefix~"*") 
-							&& wild[0] in messageSourceTextByLocation
-						)
+						if(auto mm = (cast(Module.Message)(nearestSearchResult.reference)))
 						{
-							auto msgSrc = messageSourceTextByLocation[wild[0]]; 
-							if(msgSrc in messageUICache)
-							{
-								mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]); 
-								//Todo: Highlight the CodeLocation comment which is nerest to the mouse
-								//Todo: show bezier arrows from the message hint's codelocations
-								//Todo: a way to lock the message hint to be able to interact with it using the mouse
-								//Todo: a way to scroll errorlist over the hovered item
+							auto msgNode = renderBuildMessage(mm.message); 
+							with(msgNode) {
+								outerWidth 	= min(outerWidth, max(this.outerWidth-50, 50)),
+								outerHeight 	= min(outerHeight, DefaultFontHeight * 3); 
 							}
+							if(0/+Todo: most letiltom a hintet, de optionsba ki kell rakni...+/) mouseOverHintCntr = msgNode; 
+							
+							/+
+								auto msgSrc = messageSourceTextByLocation[wild[0]]; 
+								if(msgSrc in messageUICache)
+								{
+									mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]); 
+									//Todo: Highlight the CodeLocation comment which is nerest to the mouse
+									//Todo: show bezier arrows from the message hint's codelocations
+									//Todo: a way to lock the message hint to be able to interact with it using the mouse
+									//Todo: a way to scroll errorlist over the hovered item
+								}
+							+/
 						}
 						
 						//if unable to generate a hint, display the SearchResult.reference:
+						static if(0)
 						if(!mouseOverHintCntr) {
 							Text(nearestSearchResult.reference); 
 							mouseOverHintCntr = removeLastContainer; 
 						}
+						
 					}
 				}
 				
@@ -6029,10 +6186,8 @@ version(/+$DIDE_REGION main+/all)
 										scope(exit) popupModule = null; 
 										
 										const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
-										format	!`/+
-		Note:
-		+/
-		/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
+										format	!`/+Note:+/
+/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
 											(popupWorldPos.x, popupWorldPos.y)
 											.saveTo(f); 
 										
@@ -6543,8 +6698,8 @@ version(/+$DIDE_REGION main+/all)
 			resetNearestSearchResult; 
 			
 			markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
-			markerLayerSettings[DMDMessage.Type.console].visible = true; 
-			{ auto _間=init間; foreach(m; modules) m.updateSearchResults; ((0x3086D35B2D627).檢((update間(_間)))); }
+			//markerLayerSettings[DMDMessage.Type.console].visible = true; 
+			{ auto _間=init間; foreach(m; modules) m.updateSearchResults; ((0x31BC835B2D627).檢((update間(_間)))); }
 			
 			if(0) {
 				auto _間=init間; 
@@ -6554,7 +6709,7 @@ version(/+$DIDE_REGION main+/all)
 					dr.color = clWhite; dr.lineWidth = -3; 
 					dr.drawRect(col.worldOuterBounds); 
 				}
-				((0x3098435B2D627).檢((update間(_間)))); 
+				((0x31CDF35B2D627).檢((update間(_間)))); 
 			}
 			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
@@ -6670,8 +6825,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3169F35B2D627).檢(expr)) ((0x316BD35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x3170B35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x329FA35B2D627).檢(expr)) ((0x32A1835B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x32A6635B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

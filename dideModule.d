@@ -5343,7 +5343,7 @@ version(/+$DIDE_REGION+/all)
 			}
 		} 
 		
-		bool addBuildMessage(CodeNode msgNode, bounds2 srcWorldBounds, bool showAnimation)
+		bool addBuildMessage(CodeNode msgNode)
 		{
 			auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
 			enforce(msgNode, "msgNode is null"); 
@@ -5398,8 +5398,6 @@ version(/+$DIDE_REGION+/all)
 				
 				needMeasure;  //The row is already measured.  Later the column needs to measured too.
 			}
-			
-			if(showAnimation) addInspectorParticle(this, msgNode.bkColor, srcWorldBounds); 
 			
 			return isNewMessage; 
 		} 
@@ -5749,6 +5747,8 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isSpecialComment(string keyword)
 	{ return extractSpecialComment.wordAt(0)==keyword; } 
+	
+	@property isCodeLocationComment() => isSpecialComment("LOC"); 
 	
 	bool verify(bool markErrors = false)()
 	{
@@ -6514,6 +6514,7 @@ version(/+$DIDE_REGION+/all)
 			auto addModuleMessage(bool isNew, DMDMessage msg, CodeNode node, SearchResult[] searchResults)
 			{
 				auto mm = new Message(msg, node, searchResults); 
+				foreach(ref sr; mm.searchResults) sr.reference = mm; //own all searchResults
 				
 				if(mm.hash) messageByHash[mm.hash] = mm; 
 				
@@ -10025,7 +10026,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x419407B6B4BCC).檢(expr))},
+			q{((0x419517B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -10039,7 +10040,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x41A4E7B6B4BCC).檢 (expr))},
+			q{((0x41A5F7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
