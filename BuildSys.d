@@ -1426,17 +1426,6 @@ struct BuildSystem
 		
 		log(bold("Compiling: ")); 
 		
-		foreach(srcFile; cachedFiles)
-		{
-			const 	objHash 	= findModule(srcFile).objHash,
-				output	= outputCache[objHash]; 
-			
-			if(onCompileProgress)
-			onCompileProgress(srcFile, 0/+success+/, outputCache[objHash]); 
-			
-			accumulateOutput(output, srcFile); 
-		}
-		
 		DMDMessageDecoder msgDec; 
 		msgDec.defaultPath = mainFile.path; 
 		
@@ -1453,6 +1442,24 @@ struct BuildSystem
 			actSourceFile = mainFile; 
 			processDMDOutput(todos); 
 			fetchAndCall_onBuildMessages; 
+		}
+		
+		foreach(srcFile; cachedFiles)
+		{
+			const 	objHash 	= findModule(srcFile).objHash,
+				output	= outputCache[objHash]; 
+			
+			if(onCompileProgress)
+			onCompileProgress(srcFile, 0/+success+/, outputCache[objHash]); 
+			
+			accumulateOutput(output, srcFile); 
+			
+			{
+				msgDec.actSourceFile = srcFile; 
+				auto lines = output.splitLines; //Todo: Find a way to distinguish stdout and stderr.
+				msgDec.processDMDOutput_partial(lines, true); 
+				fetchAndCall_onBuildMessages; 
+			}
 		}
 		
 		bool cancelled; 
@@ -3147,6 +3154,11 @@ version(/+$DIDE_REGION+/all) {
 							sourceStats.totalModules,
 							sourceStats.totalLines,
 							sourceStats.totalBytes
+						); 
+						
+						incomingMessages ~= new DMDMessage(
+							CodeLocation(mainFile.fullName), 
+							DMDMessage.type.console, buildStatText
 						); 
 						
 						messages.finalizePragmas(

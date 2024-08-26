@@ -184,7 +184,7 @@ version(/+$DIDE_REGION+/all)
 			float life=0; RGB color; 
 			void updateAndDraw(Drawing dr)
 			{
-				enum scale = 10; 
+				enum scale = 14; 
 				if(life>=.05f)
 				{
 					life *= .91f; 
@@ -262,9 +262,8 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		alias InspectorParticle = 
-		/+InspectorParticle_shrinkingRect+/
-		/+InspectorParticle_shoot+/
-		InspectorParticle_shoot; 
+		InspectorParticle_shrinkingRect
+		/+InspectorParticle_shoot+/; 
 		
 		__gshared {
 			InspectorParticle[2<<10] inspectorParticles; 
@@ -6339,8 +6338,10 @@ version(/+$DIDE_REGION+/all)
 		
 		UndoManager undoManager; 
 		
-		protected uint 	_rearrangeCounter,
+		uint 	_rearrangeCounter,
 			_updateSearchResults_state; 
+		
+		SearchResult[][CodeLocation] searchResultsByCodeLocation; 
 		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
@@ -6544,6 +6545,9 @@ version(/+$DIDE_REGION+/all)
 				
 				foreach(msg; messageByHash.byValue) doit(msg.searchResults); 
 				doit(findSearchResults); 
+				
+				
+				foreach(ref sr; searchResultsByCodeLocation.byValue) doit(sr); 
 			}
 		} 
 		
@@ -10026,7 +10030,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x419517B6B4BCC).檢(expr))},
+			q{((0x419BB7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -10040,7 +10044,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x41A5F7B6B4BCC).檢 (expr))},
+			q{((0x41AC97B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

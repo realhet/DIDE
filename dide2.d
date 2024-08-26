@@ -153,12 +153,12 @@ version(/+$DIDE_REGION main+/all)
 			Todo: 240825
 			[x] Hint, CodeLocationPrefix -> BuildMessageHash:module/hash
 			[ ] ScrollBox kezdemeny kiszedese a regi ErrorListBol
-			[ ] Az elso errorra azonnal ugorjon rá!
+			[x] Az elso errorra azonnal ugorjon rá!
 			[x] JumpTo megcsinalasa object-re
-			[ ] Arrows
-			[ ] NearestMessage priority: Errors first
+			[x] Arrows
+			[-] NearestMessage priority: Errors first  Too complicated.
 			[x] MMB click on CodeLocations inside the source codes
-			[ ] Display less CodeLocationComments: omit repeating ones.
+			[-] Display less CodeLocationComments: omit repeating ones. Arrows -> solved. Hints -> disabled.
 			
 			
 			[ ] Minden regi szar kitorlese, sorok szama megfigyelve
@@ -417,7 +417,7 @@ version(/+$DIDE_REGION main+/all)
 				//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
 			} 
 			
-			void resetDbg()
+			void resetBuildState()
 			{
 				clearDebugImageBlobs; 
 				resetGlobalWatches; 
@@ -430,14 +430,14 @@ version(/+$DIDE_REGION main+/all)
 			void run()
 			{
 				if(!running) killRunningConsole; 
-				resetDbg; 
+				resetBuildState; 
 				launchBuildSystem!"run"; 
 			} 
 			
 			void rebuild()
 			{
 				if(!running) killRunningConsole; 
-				resetDbg; 
+				resetBuildState; 
 				launchBuildSystem!"rebuild"; 
 			} 
 			
@@ -752,9 +752,19 @@ version(/+$DIDE_REGION main+/all)
 				*/
 			} 
 			
+			float bloodScreenIntensity = 0; 
+			
 			override void afterPaint()
 			{
-				//afterPaint //////////////////////////////////
+				if(bloodScreenIntensity)
+				{
+					with(scoped!Drawing)
+					{
+						color = clRed; alpha = 1-(1-bloodScreenIntensity)^^2; 
+						fillRect(clientBounds); 
+						glDraw(viewGUI); 
+					}
+				}
 			} 
 			
 		}version(/+$DIDE_REGION+/all)
@@ -783,6 +793,7 @@ version(/+$DIDE_REGION main+/all)
 				{ im.focusNothing; }
 				
 				updateBlink; 
+				bloodScreenIntensity.follow(0, calcAnimationT(deltaTime.value(second), .9, .2), .05f); 
 				
 				updateBuildSystem; 
 				
@@ -1285,6 +1296,8 @@ version(/+$DIDE_REGION main+/all)
 									measure; 
 									foreach(c; cast(.Container[])subCells) c.measure; 
 								}
+								
+								
 								
 							}
 						); 
@@ -1942,8 +1955,7 @@ version(/+$DIDE_REGION main+/all)
 			} 
 		} 
 		
-		
-		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, Object reference, bool optimized = true)
+		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
 		{
 			//Opt: unoptimal to return a dynamic array
 			
@@ -1951,41 +1963,47 @@ version(/+$DIDE_REGION main+/all)
 			
 			if(auto mod = findModule(loc.file))
 			{
-				//Opt: bottleneck! linear search
-				//Todo: return the whole module if the line is unspecified, or unable to find
-				
-				if(!loc.lineIdx)
+				Container.SearchResult[] doit()
 				{
-					//Todo: mark the whole module
-					return []; 
-				}
-				
-				auto locator = LineIdxLocator(loc.lineIdx, reference); 
-				locator.optimized = optimized; 
-				locator.visitNode(mod); 
-				
-				auto res = ((locator.searchResults.length) ?(locator.searchResults) :(
-					locator.searchResults_nodes /+
-						Note: When no glyphs at all, fallback to nodes.
-						This founds multiline messages.
-					+/
-				)); 
-				
-				static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
-				if(res.empty)
-				{
-					if(optimized)
+					//Opt: bottleneck! linear search
+					//Todo: return the whole module if the line is unspecified, or unable to find
+					
+					if(!loc.lineIdx)
 					{
-						WARN("Optimized LineIdxLocator failed:", loc); 
-						return codeLocationToSearchResults(loc, reference, false); 
+						//Todo: mark the whole module
+						return []; 
 					}
-					else
-					{ ERR("Standard LineLocator failed:", loc); }
-				}
+					
+					auto locator = LineIdxLocator(loc.lineIdx, null); 
+					locator.optimized = optimized; 
+					locator.visitNode(mod); 
+					
+					auto res = ((locator.searchResults.length) ?(locator.searchResults) :(
+						locator.searchResults_nodes /+
+							Note: When no glyphs at all, fallback to nodes.
+							This founds multiline messages.
+						+/
+					)); 
+					
+					static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
+					if(res.empty)
+					{
+						if(optimized)
+						{
+							WARN("Optimized LineIdxLocator failed:", loc); 
+							return codeLocationToSearchResults(loc, reference, false); 
+						}
+						else
+						{ ERR("Standard LineLocator failed:", loc); }
+					}
+					
+					if(res.length>1) (mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false}))); 
+					
+					return res; 
+				} 
 				
-				if(res.length>1) (mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false}))); 
-				
-				return res; 
+				if(auto a = loc in mod.searchResultsByCodeLocation) return *a; 
+				else return mod.searchResultsByCodeLocation[loc] = doit; 
 			}
 			else
 			{
@@ -1995,6 +2013,7 @@ version(/+$DIDE_REGION main+/all)
 				return []; 
 			}
 		} 
+		
 		
 		auto nodeToSearchResult(CodeNode node, Object reference)
 		{
@@ -2009,42 +2028,41 @@ version(/+$DIDE_REGION main+/all)
 		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
 		
-		struct MessageConnectionArrow
+		static struct MessageConnectionArrow
 		{
 			vec2 p1, p2; 
-			RGB color; 
+			DMDMessage.Type type; 
 		} 
 		bool[MessageConnectionArrow] messageConnectionArrows; 
 		
-		void buildMessageConnectionArrows(ref DMDMessage rootMessage)
+		void buildMessageConnectionArrows(DMDMessage rootMessage)
 		{
-			const msgColor = DMDMessage.typeColor[rootMessage.type]; 
-			
-			void visit(DMDMessage*[] path)
+			void visit(DMDMessage[] path)
 			{
 				if(path.back.subMessages.length)
 				{
-					foreach(ref sm; path.back.subMessages)
-					visit(path ~ &sm); 
+					foreach(sm; path.back.subMessages)
+					visit(path ~ sm); 
 				}
 				else
 				{
-					auto conv(ref DMDMessage msg)
+					auto conv(DMDMessage msg)
 					{
-						auto sr = codeLocationToSearchResults(msg.location, null); 
+						auto sr = codeLocationToSearchResults(msg.location); 
 						if(sr.empty) return vec2(0); 
-						return sum(sr.map!(s => s.bounds.center))/sr.length; ; 
+						return 	/+sum(sr.map!(s => s.bounds.center))/sr.length+/
+							sr.front.bounds.leftCenter + vec2(-6, 0); ; 
 					} 
 					
-					auto p = path.map!(a => conv(*a)).filter!"a".array; 
-					p.slide!(No.withPartial)(2).each!((a){
-						auto mca = MessageConnectionArrow(a[0], a[1], msgColor); 
+					auto segments = path.map!((a)=>(conv(a))).filter!"a".cache.uniq.array.slide!(No.withPartial)(2); 
+					foreach(a; segments)
+					{
+						auto mca = MessageConnectionArrow(a[1], a[0], rootMessage.type); 
 						messageConnectionArrows[mca] = true; 
-					}); 
+					}
 				}
 			} 
-			
-			visit([&rootMessage]); 
+			visit([rootMessage]); 
 		} 
 		
 		void convertBuildMessagesToSearchResults(ref BuildResult br)
@@ -2254,7 +2272,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
 				{
-					searchResults = codeLocationToSearchResults(msg.location, null); 
+					searchResults = codeLocationToSearchResults(msg.location); 
 					
 					if(
 						/+Note: Special case: There's only one node is in the searchresults.+/
@@ -2295,7 +2313,7 @@ version(/+$DIDE_REGION main+/all)
 							//find the actual comment in searchResults
 							bool isMatchingComment(CodeComment cmt)
 							{
-								return	(cmt.customPrefix==msg.type.text.capitalize~':') && 
+								return	cmt && (cmt.customPrefix==msg.type.text.capitalize~':') && 
 									equal(
 									cmt.content.rows[0].chars!'`'	.until!((ch)=>(!ch.among('`'))),
 									msg.content	.until!((ch)=>(!ch.among('`', '\r', '\n')))
@@ -2318,9 +2336,20 @@ version(/+$DIDE_REGION main+/all)
 								if(auto cmt = (cast(CodeComment)(sr.cells[0])))
 								if(isMatchingComment(cmt))
 								{ return cmt; }
+								
+								//problematic: The message is at the very end of a line. It tries to escape 2 times.
+								/+
+									Todo: This is a bug in the LineIdxLocator. It should be fixed there.
+									The LineIdxLocator only finds other cells on the line, but not the comment itself.
+									If it's fixet there, this workaround is not needed anymore.
+								+/
+								foreach(r; row.allParents!CodeRow.take(2))
+								foreach(cmt; r.subCells.map!((c)=>((cast(CodeComment)(c)))))
+								if(isMatchingComment(cmt))
+								return cmt; 
 							}
 							
-							WARN("Can't find buildMessage in code:\n"~msg.text); //these are the problematic ones
+							WARN("Can't find buildMessage in code:\n"~msg.text~"\n"~searchResults.text); //these are the problematic ones
 							return null; 
 						} 
 						
@@ -4647,7 +4676,7 @@ version(/+$DIDE_REGION main+/all)
 			{
 				//Todo: load the module automatically
 				
-				auto searchResults = codeLocationToSearchResults(loc, null); 
+				auto searchResults = codeLocationToSearchResults(loc); 
 				if(searchResults.length)
 				{
 					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
@@ -4713,7 +4742,25 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
+		
+		void updateMessageConnectionArrows()
+		{
+			if(_messageConnectionArrows_hash.chkSet((mixin(求sum(q{m},q{modules},q{m._updateSearchResults_state})))))
+			{
+				messageConnectionArrows.clear; 
+				foreach(t; [EnumMembers!(DMDMessage.Type)])
+				if(!t.among(DMDMessage.Type.find, DMDMessage.Type.console))
+				{
+					foreach(mod; modules)
+					foreach(mm; mod.messagesByType[t])
+					buildMessageConnectionArrows(mm.message); 
+				}
+				//5.6ms, not bad
+			}
+		} 
+		
 		const mouseMappings = MouseMappings.init; 
+		uint _messageConnectionArrows_hash; 
 		
 		void update(
 			View2D view, 
@@ -4758,6 +4805,7 @@ version(/+$DIDE_REGION main+/all)
 						view.animSpeed = .96f; 
 						jumpTo(mm); 
 						im.flashError("Compile Error"/+ ~ mm.message.content.splitLines.get(0)+/); 
+						frmMain.bloodScreenIntensity = 1; 
 					}
 				}
 				
@@ -4867,6 +4915,8 @@ version(/+$DIDE_REGION main+/all)
 				
 				updateLastKnownModulePositions; 
 				
+				foreach(m; modules) m.updateSearchResults; 
+				updateMessageConnectionArrows; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -5618,10 +5668,7 @@ version(/+$DIDE_REGION main+/all)
 								else if(building)	{ cancelBuild; }
 								else if(running)	{ closeOrKillProcess; }
 								else if(canKillRunningConsole)	{ killRunningConsole; }
-								/+
-									Todo: Vannak ezen belul a mini buttonok. 
-									Azok alapjan kell eldonteni, hogy ez mit csinaljon.
-								+/
+								else	{ resetBuildState; }
 							}
 						}],
 						[q{//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
@@ -5633,19 +5680,10 @@ version(/+$DIDE_REGION main+/all)
 						[],
 						[q{//Experimental
 						}],
-						[q{"F1"},q{resetBMSG},q{modules.each!((m){ m.resetBuildMessages; }); }],
-						[q{"F2"},q{searchCodeLines},q{
-							foreach(i; 1..20_000)
-							processBuildMessage
-							(
-								new DMDMessage
-								(
-									CodeLocation(`c:\D\libs\het\package.d`, i, 1), 
-									DMDMessage.Type.warning, 
-									"This is code line "~i.text
-								)
-							); 
-						}],
+						[q{"F1"},q{function1},q{}],
+						[q{"F2"},q{function2},q{}],
+						[q{"F3"},q{function3},q{}],
+						[q{"F4"},q{function4},q{}],
 					]))
 				) .GEN!q{GEN_verbs}); 
 			}
@@ -6355,12 +6393,40 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
+		
 		void drawMessageConnectionArrows(Drawing dr)
 		{
-			dr.lineWidth = -4; 
-			dr.lineStyle = LineStyle.dot; 
-			(mixin(求each(q{a},q{messageConnectionArrows.keys},q{dr.color = a.color; dr.line(a.p1, a.p2); }))); 
-			dr.lineStyle = LineStyle.normal; 
+			dr.lineWidth = -1.5; 
+			dr.pointSize = -5; 
+			//dr.lineStyle = LineStyle.dash; 
+			/+
+				Todo: animated dashed line is only going one direction on the screen. 
+				Must rewrite that part completely.
+			+/
+			dr.arrowStyle = ArrowStyle.arrow; 
+			dr.alpha = blink.remap(0, 1, .5, 1); 
+			foreach(const ref a; messageConnectionArrows.keys)
+			{
+				with(a)
+				{
+					auto layer = &markerLayerSettings[type]; 
+					if(layer.visible)
+					{
+						dr.color = DMDMessage.typeColor[type]; 
+						static if((常!(bool)(0))) dr.line(p1, p2); 
+						static if((常!(bool)(1))) {
+							auto pc = mix(p1, p2, .5f) + vec2(0, -(magnitude(p2-p1)))*.125f; 
+							dr.bezier2(p1, pc, p2); 
+							//lame: arrow not included in bezier
+							dr.line(p2 - (normalize(p2-pc))*4, p2); 
+						}
+						static if((常!(bool)(0))) dr.bezier2(p1, p2 - vec2((magnitude(p2-p1))*.125f, 0), p2); 
+					}
+				}
+			}
+			//dr.lineStyle = LineStyle.normal; 
+			dr.arrowStyle = ArrowStyle.none; 
+			dr.alpha = 1; 
 		} 
 		
 		void drawTextSelections(Drawing dr, View2D view)
@@ -6699,18 +6765,6 @@ version(/+$DIDE_REGION main+/all)
 			
 			markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
 			//markerLayerSettings[DMDMessage.Type.console].visible = true; 
-			{ auto _間=init間; foreach(m; modules) m.updateSearchResults; ((0x31BC835B2D627).檢((update間(_間)))); }
-			
-			if(0) {
-				auto _間=init間; 
-				foreach_reverse(mod; modules)
-				foreach(col; mod.moduleBuildMessageColumns)
-				{
-					dr.color = clWhite; dr.lineWidth = -3; 
-					dr.drawRect(col.worldOuterBounds); 
-				}
-				((0x31CDF35B2D627).檢((update間(_間)))); 
-			}
 			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
 			if(markerLayerSettings[t].visible)
@@ -6825,8 +6879,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x329FA35B2D627).檢(expr)) ((0x32A1835B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x32A6635B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3316735B2D627).檢(expr)) ((0x3318535B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x331D335B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
