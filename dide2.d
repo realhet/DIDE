@@ -3307,7 +3307,7 @@ version(/+$DIDE_REGION main+/all)
 					//Todo: update caret
 				}
 				else
-				assert("Row out if range"); 
+				assert(0, "Row out if range"); 
 			} 
 			
 			///insert all lines into the selection
@@ -3365,8 +3365,10 @@ version(/+$DIDE_REGION main+/all)
 	{
 		version(/+$DIDE_REGION+/all)
 		{
+			//Todo: Combine and refactor this with the one inside het.ui
+			
 			//T must have some bool properties:
-			static if(0)
+			static if(1)
 			static assert(
 				__traits(
 					compiles, {
@@ -3591,182 +3593,6 @@ version(/+$DIDE_REGION main+/all)
 					mouseOp = MouseOp.idle; 
 					accumulatedMoveStartDelta = 0; 
 				}
-			}
-		} 
-	} class OriginalSelectionManager(T : Cell)
-	{
-		//Todo: Combine and refactor this with the one inside DIDE
-		
-		//T must have some bool properties:
-		static assert(
-			__traits(
-				compiles, {
-					T a; 
-					a.isSelected = true; 
-					a.oldSelected = true; 
-				}
-			), "Field requirements not met."
-		); 
-		
-		bounds2 getBounds(T item)
-		{ return item.outerBounds; } 
-		
-		T hoveredItem; 
-		
-		enum MouseOp
-		{ idle, move, rectSelect} MouseOp mouseOp; 
-		
-		vec2 mouseLast; 
-		
-		enum SelectOp
-		{ none, add, sub, toggle, clearAdd} SelectOp selectOp; 
-		
-		vec2 dragSource; 
-		bounds2 dragBounds; 
-		
-		bounds2 selectionBounds()
-		{
-			if(mouseOp == MouseOp.rectSelect)
-			return dragBounds; 
-			else return bounds2.init; 
-		} 
-		
-		//notification functions: the manager must know when an item is deleted
-		void notifyRemove(T cell)
-		{
-			if(hoveredItem && hoveredItem is cell)
-			hoveredItem = null; 
-		} 
-		void notifyRemove(T[] cells)
-		{
-			if(hoveredItem)
-			cells.each!(c => notifyRemove(c)); 
-		} 
-		void notifyRemoveAll()
-		{ hoveredItem = null; } 
-		
-		T[] delegate() onBringToFront; //Use bringSelectedItemsToFront() for default behavior
-		bool deselectBelow; 
-		
-		void update(bool mouseEnabled, View2D view, T[] items)
-		{
-			
-			void selectNone()
-			{
-				foreach(a; items)
-				a.isSelected = false; 
-			} 	void selectOnly(T item)
-			{
-				selectNone; if(item)
-				item.isSelected = true; 
-			} 
-			void selectHoveredOnly()
-			{ selectOnly(hoveredItem); } 	void saveOldSelected()
-			{
-				foreach(a; items)
-				a.oldSelected = a.isSelected; 
-			} 
-			
-			//acquire mouse positions
-			auto mouseAct = view.mousePos.vec2; 
-			auto mouseDelta = mouseAct-mouseLast; 
-			scope(exit) mouseLast = mouseAct; 
-			
-			const 	LMB	= inputs.LMB.down,
-				LMB_pressed	= inputs.LMB.pressed,
-				LMB_released 	= inputs.LMB.released,
-				Shift	= inputs.Shift.down,
-				Ctrl	= inputs.Ctrl.down; 	const 	modNone	= !Shift 	&& !Ctrl,
-				modShift	= Shift	&& !Ctrl,
-				modCtrl	= !Shift	&& Ctrl,
-				modShiftCtrl 	= Shift	&& Ctrl; 
-			
-			const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed; 
-			
-			//update current selection mode
-			if(modNone)
-			selectOp = SelectOp.clearAdd; 	if(modShift)
-			selectOp = SelectOp.add; 
-			if(modCtrl)
-			selectOp = SelectOp.sub; 	if(modShiftCtrl)
-			selectOp = SelectOp.toggle; 
-			
-			//update dragBounds
-			if(LMB_pressed)
-			dragSource = mouseAct; 
-			if(LMB)
-			dragBounds = bounds2(dragSource, mouseAct).sorted; 
-			
-			//update hovered item
-			hoveredItem = null; 
-			foreach(item; items)
-			if(getBounds(item).contains!"[)"(mouseAct))
-			hoveredItem = item; 
-			
-			if(LMB_pressed && mouseEnabled)
-			{
-				//Left Mouse pressed //
-				if(hoveredItem)
-				{
-					if(modNone)
-					{
-						if(!hoveredItem.isSelected) selectHoveredOnly; 
-						mouseOp = MouseOp.move; 
-						if(deselectBelow) .deselectBelow(items, hoveredItem); 
-						if(onBringToFront) items = onBringToFront(); 
-					}
-					if(modShift || modCtrl || modShiftCtrl)
-					hoveredItem.isSelected.toggle; 
-				}
-				else
-				{
-					mouseOp = MouseOp.rectSelect; 
-					saveOldSelected; 
-				}
-			}
-			
-			{
-				//update ongoing things //
-				if(mouseOp == MouseOp.rectSelect && inputChanged)
-				{
-					foreach(a; items)
-					if(dragBounds.contains!"[]"(getBounds(a)))
-					{
-						final switch(selectOp)
-						{
-							case 	SelectOp.add,
-								SelectOp.clearAdd: 	a.isSelected = true; 	break; 
-							case SelectOp.sub: 	a.isSelected = false; 	break; 
-							case SelectOp.toggle: 	a.isSelected = !a.oldSelected; 	break; 
-							case SelectOp.none: 		break; 
-						}
-					}
-					else
-					{ a.isSelected = (selectOp == SelectOp.clearAdd) ? false : a.oldSelected; }
-					
-				}
-			}
-			
-			if(mouseOp == MouseOp.move && mouseDelta)
-			{
-				foreach(a; items)
-				if(a.isSelected)
-				{
-					a.outerPos += mouseDelta; 
-					static if(__traits(compiles, { a.cachedDrawing.free; }))
-					a.cachedDrawing.free; 
-				}
-				
-			}
-			
-			
-			if(LMB_released)
-			{
-				 //left mouse released //
-				
-				//...
-				
-				mouseOp = MouseOp.idle; 
 			}
 		} 
 	} struct TextSelectionManager
@@ -4062,30 +3888,9 @@ version(/+$DIDE_REGION main+/all)
 		
 	} version(/+$DIDE_REGION Resyntax+/all)
 	{
-		class BackgroundWorker(Obj, alias transformFun, alias keyFun = "a")
-		{
-			//Todo: make this work
-			
-			alias Result = ResultType!(unaryFun!transformFun); 
-			
-			private int destroyLevel; 
-			private Obj[] inputQueue; 
-			private Result[] outputQueue; 
-			
-			void put(Obj obj)
-			{
-				synchronized(this)
-					inputQueue = 	inputQueue.remove!(a => unaryFun!keyFun(a) == unaryFun!keyFun(obj)) 
-						~ obj; 
-			} 
-			
-			int update(bool delegate(Result) onResult)
-			{ return 0; } 
-			
-		} 
 		class SyntaxHighlightWorker
 		{
-			//SyntaxHighlightWorker ////////////////////////////////////////////
+			//Todo: Make a BackgroundWorker pattern template
 			static struct Job
 			{
 				DateTime changeId; //must be a globally unique id, also sorted by chronology
@@ -6550,8 +6355,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30BAD35B2D627).檢(expr)) ((0x30BCB35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30C1935B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x2F92A35B2D627).檢(expr)) ((0x2F94835B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x2F99635B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

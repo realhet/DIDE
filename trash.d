@@ -1,289 +1,3 @@
-deprecated("Use DMDMessageDecoder only!") struct DMDMessages
-{
-	alias messages this; 
-	
-	DMDMessage[] messages; 
-	string[][File] pragmas; 
-	
-	//message filtering
-	
-	__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
-	//Todo: The filtered items should placed into a hidden category. Not the console output.
-	
-	//internal state
-	private
-	{
-		DMDMessage[uint] messageMap; 
-		public File actSourceFile; 
-		DMDMessage parentMessage; 
-		FileNameFixer fileNameFixer; 
-	} 
-	
-	
-	
-	void dump()
-	{
-		void bar() { "-".replicate(80).print; } 
-		messages.each!((m){ m.print; bar; }); 
-		pragmas.keys.sort.each!((k){
-			print(k.fullName, ": Pragma messages:"); 
-			pragmas[k].each!((a){ print(a); }); bar; 
-		}); 
-	} 
-	
-	void createFileNameFixerIfNeeded()
-	{ if(!fileNameFixer) fileNameFixer = new FileNameFixer; } 
-	
-	@property void defaultPath(Path path)
-	{
-		createFileNameFixerIfNeeded; 
-		fileNameFixer.defaultPath = path; 
-	} 
-	
-	string sourceText() const
-	{ return messages.map!"a.sourceText".join("\n"); } 
-	
-	void processDMDOutput(string str)
-	{ processDMDOutput(str.splitLines); } 
-	
-	private static bool keepMessage(in DMDMessage m)
-	{
-		foreach(f; messageFilters)
-		if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
-		return false; 
-		
-		return true; 
-	} 
-	
-	void finalizePragmas(string extraText)
-	{
-		string[] arr; 
-		foreach(f; pragmas.keys.sort)
-		{
-			auto list = pragmas[f]; 
-			
-			//remove empty lines
-			while(list.length && list.front.empty) list.popFront; 
-			while(list.length && list.back.empty) list.popBack; 
-			
-			auto s = list.join('\n'); 
-			if(s.length) arr ~= s; 
-		}
-		
-		foreach(i; 0..arr.length)
-		foreach(j; 0..arr.length)
-		if(i!=j && arr[i]!="" && arr[j]!="" && arr[j].canFind(arr[i]))
-		arr[i] = ""; 
-		
-		if(extraText.length) arr = extraText ~ arr; 
-		
-		auto s = arr.filter!`a!=""`.join('\n'); 
-		if(s!="")
-		{
-			auto m = new DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
-			messages = m ~ messages; 
-		}
-		
-		pragmas.clear; 
-	} 
-	
-	private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
-		/+1:fn 2:drive       3      4        5      6       7+/
-		/+drive:\ is optional.+/; 
-	
-	static int decodeColumnMarker(string s)
-	{
-		return ((
-			s.endsWith('^') &&
-			(
-				s.length==1 || 
-				s[0..$-1].all!"a.among(' ', '\t')"
-			)
-		)?((cast(int)(s.length))):(0)); 
-	} 
-	static bool isColumnMarker(string s)
-	{ return decodeColumnMarker(s)>0; } ; 
-	
-	
-	static bool isDMDMessage(string s)
-	{
-		auto m = matchFirst(s, rxDMDMessage); 
-		return !m.empty; 
-	} 
-	
-	static bool isDMDMainMessage(string s)
-	{
-		auto m = matchFirst(s, rxDMDMessage); 
-		if(!m.empty)
-		{
-			DMDMessage msg; 
-			with(msg)
-			{
-				content = m[7]; detectType; 
-				return type!=Type.unknown; 
-			}
-		}
-		return false; 
-	} 
-	
-	void processDMDOutput_partial(ref string[] lines, bool isFinal)
-	{
-		if(isFinal)
-		{
-			processDMDOutput(lines); 
-			lines = []; 
-		}
-		else
-		{
-			auto prevLines = lines; 
-			
-			while(lines.length)
-			{
-				const s = lines.back; 
-				
-				//from here, break if it's a valid ending
-				if(isColumnMarker(s)) { break; }
-				else if(isDMDMessage(s))
-				{
-					const dqCnt = s.count('`'); 
-					if(
-						!dqCnt
-						/+has no quotation inside+/
-					) break; 
-					if(
-						(dqCnt%2==0) && 
-						(s.count('"')==0) && 
-						(s.count('\'')==0)
-						/+
-							has even quotation, 
-							but no other strings
-						+/
-					) break; 
-				}
-				lines.popBack; 
-			}
-			
-			processDMDOutput(lines); 
-			lines = prevLines[lines.length..$]; 
-		}
-	} 
-	
-	void processDMDOutput(string[] lines)
-	{
-		if(lines.empty) return; 
-		
-		createFileNameFixerIfNeeded; 
-		
-		static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
-		{
-			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
-			auto m = matchFirst(line, rx); 
-			return m.empty ? File.init : fileNameFixer(m[1]); 
-		} 
-		
-		static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
-		{
-			DMDMessage decodeDMDMessage(string s)
-			{
-				auto m = matchFirst(s, rxDMDMessage); 
-				if(!m.empty)
-				{
-					return new DMDMessage
-						(
-						CodeLocation(
-							fileNameFixer(m[1]).fullName, 
-							m[5].to!int.ifThrown(0), 
-							m[6].to!int.ifThrown(0), 
-							m[4].to!int.ifThrown(0)
-						), 
-						m[7]
-					); 
-				}
-				
-				return null; 
-			} 
-			
-			auto msg = decodeDMDMessage(lines.front); 
-			if(msg)
-			{
-				int endIdx; 
-				foreach(i; 1 .. lines.length.to!int)
-				{
-					if(decodeColumnMarker(lines[i])==msg.col)
-					{ endIdx = i; break; }
-					if(decodeDMDMessage(lines[i])) break; 
-					if(decodeFileMarker(lines[i], fileNameFixer)) break; 
-				}
-				
-				if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
-				{
-					lines.fetchFront; //first line of a multiline message
-					foreach(i; 1..endIdx-1)
-					if(lines.length)
-					msg.content ~= "\n"~lines.fetchFront; 
-					msg.lineSource = lines.fetchFront; 
-					lines.fetchFront; //skip the marker line
-				}
-				else
-				{
-					lines.fetchFront; //slingle line message
-				}
-			}
-			return msg; 
-		} 
-		
-		while(lines.length)
-		{
-			if(auto msg = fetchDMDMessage(lines, fileNameFixer))
-			{
-				if(msg.isSupplemental && parentMessage)
-				{
-					auto idx = parentMessage.subMessages.map!"a.hash".countUntil(msg.hash); 
-					if(idx>=0)
-					{
-						parentMessage = parentMessage.subMessages[idx]; 
-						parentMessage.count++; 
-					}
-					else
-					{
-						parentMessage.subMessages ~= msg; /+new subMessage added+/
-						parentMessage = msg; 
-					}
-				}
-				else
-				{
-					if(msg.isSupplemental)
-					WARN("No parent message for supplemental message:", msg); 
-					
-					if(keepMessage(msg))
-					{
-						const hash = msg.hash; 
-						if(auto m = hash in messageMap)
-						{
-							(*m).count++; /+already exists+/
-							parentMessage = *m; 
-						}
-						else
-						{
-							messages ~= msg; /+new top level message added+/
-							messageMap[hash] = msg; 
-							parentMessage = msg; 
-						}
-					}
-				}
-			}
-			else if(auto f = decodeFileMarker(lines.front, fileNameFixer))
-			{
-				lines.popFront; 
-				actSourceFile = f; 
-			}
-			else
-			{ pragmas[actSourceFile] ~= lines.fetchFront; }
-		}
-		
-	} 
-} 
-
 
 void convertBuildMessagesToSearchResults(ref BuildResult br)
 {
@@ -1025,4 +739,352 @@ struct Textures {
 	if(clear) br.messages.clear; 
 	br.insertSyntaxCheckOutput(output); 
 	br.lastUpdateTime = now; //This trigger workspace.update()
+} 
+	/// Error collection ///////////////////////////////////
+/+
+	
+	c:\d\libs\het\tokenizer.d(792,41): Deprecation: use `{ }` for an empty statement, not `;`
+	c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
+	
+	C:\D\projects\DIDE\dide2.d(383,22): Error:	constructor `dide2.Label.this(int height, bool bold, Vector!(float, 2) pos, string str, bool alignRight, float parentWidth = 0.0F)` is not callable using argument types `(int, bool, string, bool, const(float))`
+	C:\D\projects\DIDE\dide2.d(383,22):	cannot pass argument `src.bigComments[k]` of type `string` to parameter `Vector!(float, 2) pos`
+	
+	C:\D\projects\DIDE\dide2.d(338,28): Error: undefined identifier `r`
+	
+	C:\D\projects\DIDE\dide2.d(324,7): Error: no property `height` for type `het.uibase.TextStyle`
+		//todo: no property for type: missleading when the property name is correct but it's private or protected.
+	
+	C:\D\projects\DIDE\dide2.d(383,59): Error: found `src` when expecting `)`
+	C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` when expecting `;` following statement
+	C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` instead of statement
+	
+	C:\D\projects\DIDE\dide2.d(331,20): Error: cannot implicitly convert expression `isRegion` of type `const(uint)` to `bool`
+	
+	C:\D\testGetAssociatedIcon.d(29,15): Error: undefined identifier `DestroyIcon`
+	
+	C:\D\projects\DIDE\dide2.d(51,2): Error: `@identifier` or `@(ArgumentList)` expected, not `@{`
+	
+	C:\D\projects\DIDE\dide2.d(103,24): Error: found `cmd` when expecting `)`
+	
+	C:\D\projects\DIDE\dide2.d(103,28): Error: found `{` when expecting `;` following statement
+	
+	C:\D\projects\DIDE\dide2.d(104,5): Error: found `)` instead of statement
+	
+	C:\D\projects\DIDE\dide2.d(107,1): Error: unrecognized declaration
++/
+deprecated("Use DMDMessageDecoder only!") struct DMDMessages
+{
+	alias messages this; 
+	
+	DMDMessage[] messages; 
+	string[][File] pragmas; 
+	
+	//message filtering
+	
+	__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
+	//Todo: The filtered items should placed into a hidden category. Not the console output.
+	
+	//internal state
+	private
+	{
+		DMDMessage[uint] messageMap; 
+		public File actSourceFile; 
+		DMDMessage parentMessage; 
+		FileNameFixer fileNameFixer; 
+	} 
+	
+	
+	
+	void dump()
+	{
+		void bar() { "-".replicate(80).print; } 
+		messages.each!((m){ m.print; bar; }); 
+		pragmas.keys.sort.each!((k){
+			print(k.fullName, ": Pragma messages:"); 
+			pragmas[k].each!((a){ print(a); }); bar; 
+		}); 
+	} 
+	
+	void createFileNameFixerIfNeeded()
+	{ if(!fileNameFixer) fileNameFixer = new FileNameFixer; } 
+	
+	@property void defaultPath(Path path)
+	{
+		createFileNameFixerIfNeeded; 
+		fileNameFixer.defaultPath = path; 
+	} 
+	
+	string sourceText() const
+	{ return messages.map!"a.sourceText".join("\n"); } 
+	
+	void processDMDOutput(string str)
+	{ processDMDOutput(str.splitLines); } 
+	
+	private static bool keepMessage(in DMDMessage m)
+	{
+		foreach(f; messageFilters)
+		if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
+		return false; 
+		
+		return true; 
+	} 
+	
+	void finalizePragmas(string extraText)
+	{
+		string[] arr; 
+		foreach(f; pragmas.keys.sort)
+		{
+			auto list = pragmas[f]; 
+			
+			//remove empty lines
+			while(list.length && list.front.empty) list.popFront; 
+			while(list.length && list.back.empty) list.popBack; 
+			
+			auto s = list.join('\n'); 
+			if(s.length) arr ~= s; 
+		}
+		
+		foreach(i; 0..arr.length)
+		foreach(j; 0..arr.length)
+		if(i!=j && arr[i]!="" && arr[j]!="" && arr[j].canFind(arr[i]))
+		arr[i] = ""; 
+		
+		if(extraText.length) arr = extraText ~ arr; 
+		
+		auto s = arr.filter!`a!=""`.join('\n'); 
+		if(s!="")
+		{
+			auto m = new DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
+			messages = m ~ messages; 
+		}
+		
+		pragmas.clear; 
+	} 
+	
+	private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
+		/+1:fn 2:drive       3      4        5      6       7+/
+		/+drive:\ is optional.+/; 
+	
+	static int decodeColumnMarker(string s)
+	{
+		return ((
+			s.endsWith('^') &&
+			(
+				s.length==1 || 
+				s[0..$-1].all!"a.among(' ', '\t')"
+			)
+		)?((cast(int)(s.length))):(0)); 
+	} 
+	static bool isColumnMarker(string s)
+	{ return decodeColumnMarker(s)>0; } ; 
+	
+	
+	static bool isDMDMessage(string s)
+	{
+		auto m = matchFirst(s, rxDMDMessage); 
+		return !m.empty; 
+	} 
+	
+	static bool isDMDMainMessage(string s)
+	{
+		auto m = matchFirst(s, rxDMDMessage); 
+		if(!m.empty)
+		{
+			DMDMessage msg; 
+			with(msg)
+			{
+				content = m[7]; detectType; 
+				return type!=Type.unknown; 
+			}
+		}
+		return false; 
+	} 
+	
+	void processDMDOutput_partial(ref string[] lines, bool isFinal)
+	{
+		if(isFinal)
+		{
+			processDMDOutput(lines); 
+			lines = []; 
+		}
+		else
+		{
+			auto prevLines = lines; 
+			
+			while(lines.length)
+			{
+				const s = lines.back; 
+				
+				//from here, break if it's a valid ending
+				if(isColumnMarker(s)) { break; }
+				else if(isDMDMessage(s))
+				{
+					const dqCnt = s.count('`'); 
+					if(
+						!dqCnt
+						/+has no quotation inside+/
+					) break; 
+					if(
+						(dqCnt%2==0) && 
+						(s.count('"')==0) && 
+						(s.count('\'')==0)
+						/+
+							has even quotation, 
+							but no other strings
+						+/
+					) break; 
+				}
+				lines.popBack; 
+			}
+			
+			processDMDOutput(lines); 
+			lines = prevLines[lines.length..$]; 
+		}
+	} 
+	
+	void processDMDOutput(string[] lines)
+	{
+		if(lines.empty) return; 
+		
+		createFileNameFixerIfNeeded; 
+		
+		static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
+		{
+			enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
+			auto m = matchFirst(line, rx); 
+			return m.empty ? File.init : fileNameFixer(m[1]); 
+		} 
+		
+		static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
+		{
+			DMDMessage decodeDMDMessage(string s)
+			{
+				auto m = matchFirst(s, rxDMDMessage); 
+				if(!m.empty)
+				{
+					return new DMDMessage
+						(
+						CodeLocation(
+							fileNameFixer(m[1]).fullName, 
+							m[5].to!int.ifThrown(0), 
+							m[6].to!int.ifThrown(0), 
+							m[4].to!int.ifThrown(0)
+						), 
+						m[7]
+					); 
+				}
+				
+				return null; 
+			} 
+			
+			auto msg = decodeDMDMessage(lines.front); 
+			if(msg)
+			{
+				int endIdx; 
+				foreach(i; 1 .. lines.length.to!int)
+				{
+					if(decodeColumnMarker(lines[i])==msg.col)
+					{ endIdx = i; break; }
+					if(decodeDMDMessage(lines[i])) break; 
+					if(decodeFileMarker(lines[i], fileNameFixer)) break; 
+				}
+				
+				if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
+				{
+					lines.fetchFront; //first line of a multiline message
+					foreach(i; 1..endIdx-1)
+					if(lines.length)
+					msg.content ~= "\n"~lines.fetchFront; 
+					msg.lineSource = lines.fetchFront; 
+					lines.fetchFront; //skip the marker line
+				}
+				else
+				{
+					lines.fetchFront; //slingle line message
+				}
+			}
+			return msg; 
+		} 
+		
+		while(lines.length)
+		{
+			if(auto msg = fetchDMDMessage(lines, fileNameFixer))
+			{
+				if(msg.isSupplemental && parentMessage)
+				{
+					auto idx = parentMessage.subMessages.map!"a.hash".countUntil(msg.hash); 
+					if(idx>=0)
+					{
+						parentMessage = parentMessage.subMessages[idx]; 
+						parentMessage.count++; 
+					}
+					else
+					{
+						parentMessage.subMessages ~= msg; /+new subMessage added+/
+						parentMessage = msg; 
+					}
+				}
+				else
+				{
+					if(msg.isSupplemental)
+					WARN("No parent message for supplemental message:", msg); 
+					
+					if(keepMessage(msg))
+					{
+						const hash = msg.hash; 
+						if(auto m = hash in messageMap)
+						{
+							(*m).count++; /+already exists+/
+							parentMessage = *m; 
+						}
+						else
+						{
+							messages ~= msg; /+new top level message added+/
+							messageMap[hash] = msg; 
+							parentMessage = msg; 
+						}
+					}
+				}
+			}
+			else if(auto f = decodeFileMarker(lines.front, fileNameFixer))
+			{
+				lines.popFront; 
+				actSourceFile = f; 
+			}
+			else
+			{ pragmas[actSourceFile] ~= lines.fetchFront; }
+		}
+		
+	} 
+} 
+class BuildResult
+{
+	string unprocessedSourceTexts()
+	{
+		string[] res; 
+		
+		foreach(f; remainings.keys.sort)
+		{
+			if(f in remainings && remainings[f].length)
+			{
+				auto act = "/+Output:/+$DIDE_LOC "~f.fullName~"+/\n/+"; 
+				foreach(a; remainings[f])
+				act ~= safeDCommentBody(a)~'\n'; 
+				act ~= "+/+/"; 
+				
+				res ~= act; 
+			}
+		}
+		
+		return res.join('\n'); 
+	} 
+	
+	string sourceText()
+	{ return only(unprocessedSourceTexts, messages.sourceText).join('\n'); } 
+	
+	void insertSyntaxCheckOutput(string output)
+	{
+		messages.processDMDOutput(output); 
+		messages.finalizePragmas(""); 
+	} 
 } 

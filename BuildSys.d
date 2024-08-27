@@ -52,10 +52,23 @@ version(/+$DIDE_REGION+/all) {
 	
 	enum LDCVER = 128
 	/+The targeted LDC version by this builder.  Valid versions: 120, 128+/; 
-	
+	
+	mixin((
+		(表([
+			[q{/+Note: ModuleBuildState+/},q{/+Note: Colors+/}],
+			[q{notInProject},q{clBlack}],
+			[q{queued},q{clWhite}],
+			[q{compiling},q{clWhite}],
+			[q{aborted},q{clGray}],
+			[q{hasErrors},q{clRed}],
+			[q{hasWarnings},q{(RGB(128, 255, 0))}],
+			[q{hasDeprecations},q{(RGB(64, 255, 0))}],
+			[q{flawless},q{clLime}],
+		]))
+	) .GEN!q{GEN_enumTable}); 
 	
 	
-	
+	
 	class GlobalPidList
 	{
 		import std.process; 
@@ -113,7 +126,7 @@ between consequtive compiler launches."}],
 concurrent compilers running."}],
 				[q{uint},q{maxCpuUsage_percent},q{90},q{10, 100},q{"Max CPU usage %"},q{"Maximum CPU usage % allowed 
 when launching a new compiler instance."}],
-				[q{uint},q{minAvalilableRam_MB},q{2048},q{10, 100},q{"Min free RAM (MB)"},q{"RAM requirement to launch 
+				[q{uint},q{minAvalilableRam_GB},q{2},q{0, 100},q{"Min free RAM (GB)"},q{"RAM requirement to launch 
 a new compiler instance."}],
 				[q{uint},q{stdLineGroupungInterval_ms},q{500},q{0, 10_000},q{"Grouping Interval (ms)"},q{"Group consequtive incoming text lines from stdOut and stdErr.  
 	0	:  Disable.
@@ -376,13 +389,13 @@ a new compiler instance."}],
 					(now-lastLaunchTime).value(milli(second)) >= minLatency_ms
 					&& runningCnt < maxThreads.clamp(0, GetNumberOfCores)
 					&& GetCPULoadPercent <= maxCpuUsage_percent 
-					&& GetMemAvailMB >= minAvalilableRam_MB
+					&& GetMemAvailMB >= minAvalilableRam_GB*1024
 				); 
 			} 
 			
-			int justStartedIdx = -1; 
+			sizediff_t justStartedIdx = -1; 
 			if(!cancelled && canLaunchNow)
-			foreach(int i, e; executors)
+			foreach(i, e; executors)
 			if(e.isIdle)
 			{
 				e.start; 
@@ -392,7 +405,7 @@ a new compiler instance."}],
 			}
 			
 			if(onIdle)
-			cancelled |= onIdle(runningCnt, justStartedIdx); 
+			cancelled |= onIdle(runningCnt, justStartedIdx.to!int); 
 			if(cancelled && runningCnt==0)
 			break; 
 			
@@ -516,12 +529,13 @@ Experimental:
 	//Todo: editor: amikor higlightolja a szot, amin allok, akkor .-al egyutt is meg . nelkul is kene csinalni.
 	//Todo: info/error logging kozpontositasa.
 	
-	deprecated struct EditorFile
+	struct EditorFile
 	{
-		 align(1): 	 //Editor sends it's modified files using this struct
+		align(1): 	 //Editor sends it's modified files using this struct
 			char* fileName, source; 	 //align1 for Delphi compatibility
 			int length; 
 			DateTime dateTime; 
+		//Note: 240827 Currently it isn't used: All edited files are saved in the editor before the build process.
 	} 
 	
 	struct BuildSettings
@@ -587,7 +601,7 @@ Experimental:
 	} 
 	
 	
-	deprecated 	private struct MSVCEnv
+	private struct MSVCEnv
 	{
 		static
 		{
@@ -1001,7 +1015,7 @@ Experimental:
 			int[] findQuotePairIndices(string s)
 			{
 				int[] indices; 
-				foreach(int i, char ch; s) if(ch=='`') indices ~= i/+.to!int <- not needed in new LDC+/; 
+				foreach(i, char ch; s) if(ch=='`') indices ~= i.to!int; 
 				
 				if(indices.length & 1)
 				{
@@ -1091,8 +1105,14 @@ Experimental:
 		
 		//message filtering
 		
-		__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
-		//Todo: The filtered items should placed into a hidden category. Not the console output.
+		__gshared string[] messageFilters = [
+			//"Warning: C preprocessor directive ", 
+			"Deprecation: token string requires valid D tokens, not"
+		]; 
+		/+
+			Todo: Put these filters in the main DIDE/settings!
+			Counters would be usefull for every hits in the recent build.
+		+/
 		
 		//internal state
 		private
@@ -1372,6 +1392,277 @@ Experimental:
 		dec.actSourceFile = file; 
 		dec.processDMDOutput(err.splitLines); 
 		return dec.fetchUpdatedMessages; 
+	} 
+	version(/+$DIDE_REGION BuildSystemWorker+/all)
+	{
+		import core.thread, std.concurrency; 
+		
+		
+		//messages sent to buildSystemWorker
+		
+		enum MsgBuildCommand
+		{ cancel, shutDown} 
+		
+		struct MsgBuildRequest
+		{
+			File mainFile; 
+			BuildSettings settings; 
+		} 
+		
+		
+		//messages received from buildSystemWorker
+		
+		struct MsgBuildStarted
+		{
+			File mainFile; 
+			immutable File[] filesToCompile, filesInCache; 
+			immutable string[] todos; 
+			SourceStats sourceStats; 
+		} 
+		
+		struct MsgCompileStarted
+		{
+			int fileIdx=-1;    //indexes MsgBuildStarted.filesToCompile
+		} 
+		
+		struct MsgCompileProgress
+		{
+			File file; 
+			int result; 
+			string output; 
+		} 
+		
+		struct MsgBuildFinished
+		{
+			File mainFile; 
+			string error; 
+			string output; 
+		} 
+		
+		struct MsgBuildMessages
+		{ shared DMDMessage[] messages; } 
+		
+		
+		
+		struct BuildSystemWorkerState
+		{
+			//BuildSystemWorkerState /////////////////////////////////
+			//worker state that don't need synching.
+			bool building, cancelling; 
+			int totalModules, compiledModules, inFlight; 
+		} 
+		
+		__gshared const BuildSystemWorkerState buildSystemWorkerState; 
+		
+		__gshared SpawnProcessMultiSettings buildsys_spawnProcessMultiSettings; //controls multithreaded compilation behavior
+		
+		void buildSystemWorker()
+		{
+			BuildSystem buildSystem; 
+			auto state = &cast()buildSystemWorkerState; 
+			bool isDone = false; 
+			
+			//register events
+			
+			void onBuildStarted(
+				File mainFile, in File[] filesToCompile, in File[] filesInCache, 
+				in string[] todos, in SourceStats sourceStats
+			)
+			{
+				//Todo: rename to buildStart
+				with(state)
+				{
+					totalModules = (filesToCompile.length + filesInCache.length).to!int; 
+					compiledModules = inFlight = 0; 
+				}
+				
+				//LOG(mainFile, filesToCompile, filesInCache);
+				ownerTid.send(MsgBuildStarted(mainFile, filesToCompile.idup, filesInCache.idup, todos.idup, sourceStats)); 
+			} 
+			buildSystem.onBuildStarted = &onBuildStarted; 
+			
+			void onCompileProgress(File file, int result, string output)
+			{
+				state.compiledModules++; 
+				//LOG("######################", file, result, output);
+				ownerTid.send(MsgCompileProgress(file, result, output)); 
+			} 
+			buildSystem.onCompileProgress = &onCompileProgress; 
+			
+			bool onIdle(int inFlight, int justStartedIdx)
+			{
+				state.inFlight = inFlight; 
+				
+				if(justStartedIdx>=0)
+				ownerTid.send(MsgCompileStarted(justStartedIdx)); 
+				
+				//receive commands from mainThread
+				bool cancelRequest = false; 
+				receiveTimeout
+				(
+					0.msecs,
+					((MsgBuildCommand cmd) {
+						if(cmd==MsgBuildCommand.shutDown)
+						{ cancelRequest = true; isDone = true; 	state.cancelling = true; }
+						else if(cmd==MsgBuildCommand.cancel) { cancelRequest = true; 	state.cancelling = true; }
+					}),
+					
+					((immutable MsgBuildRequest req) { WARN("Build request ignored: already building..."); })
+				); 
+				
+				return cancelRequest; 
+			} 
+			buildSystem.onIdle = &onIdle; 
+			
+			void onBuildMessages(DMDMessage[] messages)
+			{ ownerTid.send(MsgBuildMessages(cast(shared)messages)); } 
+			buildSystem.onBuildMessages = &onBuildMessages; 
+			
+			//main worker loop
+			while(!isDone)
+			{
+				receive
+				(
+					((MsgBuildCommand cmd) {
+						if(cmd==MsgBuildCommand.shutDown)
+						isDone = true; 
+					}),
+					
+					((immutable MsgBuildRequest req) {
+						string error; 
+						try
+						{
+							state.building = true; 
+							//Todo: onIdle
+							buildSystem.build(req.mainFile, req.settings); 
+						}
+						catch(Exception e)
+						{ error = e.simpleMsg; }
+						ownerTid.send(MsgBuildFinished(req.mainFile, error, buildSystem.sLog)); 
+					})
+				); 
+				
+				state.clear; //must be the last thing in loop to clear this.
+			}
+			
+		} 
+	}
+	
+	class BuildResult
+	{
+		File mainFile; 
+		File[] filesToCompile, filesInCache; 
+		File[] allFiles; 
+		bool[File] filesInProject, filesInFlight; 
+		
+		int[File] results; //command line console exit codes
+		DMDMessage[] incomingMessages; //incoming from the MessageDecoder. Must be polled and fetched.
+		SourceStats sourceStats; 
+		
+		DateTime lastUpdateTime, buildStarted, buildFinished; 
+		
+		mixin ClassMixin_clear; 
+		
+		auto getBuildStateOfFile(File f) const
+		{
+			with(ModuleBuildState)
+			{
+				if(f !in filesInProject)
+				return notInProject; 
+				if(auto r = f in results)
+				{
+					if(*r)
+					return hasErrors; 
+					return hasWarnings; //Todo: detect hasDeprecations, flawless
+				}
+				return f in filesInFlight ? compiling : queued; 
+			}
+		} 
+		
+		
+		void receiveBuildMessages()
+		{
+			while(
+				receiveTimeout
+				(
+					0.msecs,
+					((in MsgBuildStarted msg) {
+						clear; 
+						
+						buildStarted = now; 
+						sourceStats = msg.sourceStats; 
+						
+						mainFile = msg.mainFile; 
+						
+						filesToCompile = msg.filesToCompile.dup; 
+						filesInCache = msg.filesInCache.dup; 
+						
+						allFiles = filesToCompile ~ filesInCache; 
+						allFiles.each!((f){
+							filesInProject[f] = true; 
+							//Todo: initialize fileNameFixer with these correct names
+						}); 
+						
+						foreach(f; filesInCache)
+						{
+							//generate valid outputs of cached files.
+							results[f] = 0;  //0 = success
+						}
+					}),
+					
+					((in MsgCompileStarted msg) {
+						auto f = filesToCompile.get(msg.fileIdx); 
+						assert(f); 
+						filesInFlight[f] = true; 
+					}),
+					
+					((in MsgCompileProgress msg) {
+						auto f = msg.file; 
+						filesInFlight.remove(f); 
+						results[f] = msg.result; 
+					}),
+					
+					((in MsgBuildMessages msg) {
+						auto messages = (cast(DMDMessage[])(msg.messages)); 
+						/+Note: Safe to cast, it's not used anywhere else.+/
+						
+						incomingMessages ~= messages; //DIDE will poll this.
+					}),
+					
+					((in MsgBuildFinished msg) {
+						buildFinished = now; 
+						
+						filesInFlight.clear; 
+						
+						if(msg.error!="")
+						{
+							incomingMessages ~= new DMDMessage(
+								CodeLocation(mainFile.fullName), 
+								DMDMessage.type.error, "BuildSys: "~msg.error
+							); 
+						}
+						
+						{
+							const buildStatText = format!
+								"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
+								(
+								(buildFinished-buildStarted).value(second), 
+								sourceStats.totalModules,
+								sourceStats.totalLines,
+								sourceStats.totalBytes
+							); 
+							incomingMessages ~= new DMDMessage(
+								CodeLocation(mainFile.fullName), 
+								DMDMessage.type.console, buildStatText
+							); 
+						}
+					})
+					
+				)
+			)
+			{ lastUpdateTime = now; }
+		} 
+		
 	} 
 	
 }
@@ -2196,10 +2487,7 @@ struct BuildSystem
 		
 		auto line = joinCommandLine(cmd); 
 		logln(bold("LINKING: "), line); 
-		auto link = executeShell(line, MSVCEnv.getEnv(is64bit), Config.suppressConsole | Config.newEnv, size_t.max, mainFile.path.fullPath); 
-		//Todo: I think MSVCENV not needed anymore
-		
-		//Todo: Linker error is not processed at all!!!
+		auto link = executeShell(line, null/+MSVCEnv.getEnv(is64bit)+/, Config.suppressConsole | Config.newEnv, size_t.max, mainFile.path.fullPath); 
 		
 		if(printCommands) print(line); 
 		
@@ -2515,678 +2803,8 @@ struct BuildSystem
 	
 } 
 version(/+$DIDE_REGION+/all) {
-	mixin((
-		(表([
-			[q{/+Note: ModuleBuildState+/},q{/+Note: Colors+/}],
-			[q{notInProject},q{clBlack}],
-			[q{queued},q{clWhite}],
-			[q{compiling},q{clWhite}],
-			[q{aborted},q{clGray}],
-			[q{hasErrors},q{clRed}],
-			[q{hasWarnings},q{(RGB(128, 255, 0))}],
-			[q{hasDeprecations},q{(RGB(64, 255, 0))}],
-			[q{flawless},q{clLime}],
-		]))
-	) .GEN!q{GEN_enumTable}); 
-	
-	
-	
 	
 	
 	
 	
-	
-	version(/+$DIDE_REGION BuildSystemWorker+/all)
-	{
-		import core.thread, std.concurrency; 
-		
-		
-		//messages sent to buildSystemWorker
-		
-		enum MsgBuildCommand
-		{ cancel, shutDown} 
-		
-		struct MsgBuildRequest
-		{
-			File mainFile; 
-			BuildSettings settings; 
-		} 
-		
-		
-		//messages received from buildSystemWorker
-		
-		struct MsgBuildStarted
-		{
-			File mainFile; 
-			immutable File[] filesToCompile, filesInCache; 
-			immutable string[] todos; 
-			SourceStats sourceStats; 
-		} 
-		
-		struct MsgCompileStarted
-		{
-			int fileIdx=-1;    //indexes MsgBuildStarted.filesToCompile
-		} 
-		
-		struct MsgCompileProgress
-		{
-			File file; 
-			int result; 
-			string output; 
-		} 
-		
-		struct MsgBuildFinished
-		{
-			File mainFile; 
-			string error; 
-			string output; 
-		} 
-		
-		struct MsgBuildMessages
-		{ shared DMDMessage[] messages; } 
-		
-		
-		
-		struct BuildSystemWorkerState
-		{
-			//BuildSystemWorkerState /////////////////////////////////
-			//worker state that don't need synching.
-			bool building, cancelling; 
-			int totalModules, compiledModules, inFlight; 
-		} 
-		
-		__gshared const BuildSystemWorkerState buildSystemWorkerState; 
-		
-		__gshared SpawnProcessMultiSettings buildsys_spawnProcessMultiSettings; //controls multithreaded compilation behavior
-		
-		void buildSystemWorker()
-		{
-			BuildSystem buildSystem; 
-			auto state = &cast()buildSystemWorkerState; 
-			bool isDone = false; 
-			
-			//register events
-			
-			void onBuildStarted(
-				File mainFile, in File[] filesToCompile, in File[] filesInCache, 
-				in string[] todos, in SourceStats sourceStats
-			)
-			{
-				//Todo: rename to buildStart
-				with(state)
-				{
-					totalModules = (filesToCompile.length + filesInCache.length).to!int; 
-					compiledModules = inFlight = 0; 
-				}
-				
-				//LOG(mainFile, filesToCompile, filesInCache);
-				ownerTid.send(MsgBuildStarted(mainFile, filesToCompile.idup, filesInCache.idup, todos.idup, sourceStats)); 
-			} 
-			buildSystem.onBuildStarted = &onBuildStarted; 
-			
-			void onCompileProgress(File file, int result, string output)
-			{
-				state.compiledModules++; 
-				//LOG("######################", file, result, output);
-				ownerTid.send(MsgCompileProgress(file, result, output)); 
-			} 
-			buildSystem.onCompileProgress = &onCompileProgress; 
-			
-			bool onIdle(int inFlight, int justStartedIdx)
-			{
-				state.inFlight = inFlight; 
-				
-				if(justStartedIdx>=0)
-				ownerTid.send(MsgCompileStarted(justStartedIdx)); 
-				
-				//receive commands from mainThread
-				bool cancelRequest = false; 
-				receiveTimeout
-				(
-					0.msecs,
-					((MsgBuildCommand cmd) {
-						if(cmd==MsgBuildCommand.shutDown)
-						{ cancelRequest = true; isDone = true; 	state.cancelling = true; }
-						else if(cmd==MsgBuildCommand.cancel) { cancelRequest = true; 	state.cancelling = true; }
-					}),
-					
-					((immutable MsgBuildRequest req) { WARN("Build request ignored: already building..."); })
-				); 
-				
-				return cancelRequest; 
-			} 
-			buildSystem.onIdle = &onIdle; 
-			
-			void onBuildMessages(DMDMessage[] messages)
-			{ ownerTid.send(MsgBuildMessages(cast(shared)messages)); } 
-			buildSystem.onBuildMessages = &onBuildMessages; 
-			
-			//main worker loop
-			while(!isDone)
-			{
-				receive
-				(
-					((MsgBuildCommand cmd) {
-						if(cmd==MsgBuildCommand.shutDown)
-						isDone = true; 
-					}),
-					
-					((immutable MsgBuildRequest req) {
-						string error; 
-						try
-						{
-							state.building = true; 
-							//Todo: onIdle
-							buildSystem.build(req.mainFile, req.settings); 
-						}
-						catch(Exception e)
-						{ error = e.simpleMsg; }
-						ownerTid.send(MsgBuildFinished(req.mainFile, error, buildSystem.sLog)); 
-					})
-				); 
-				
-				state.clear; //must be the last thing in loop to clear this.
-			}
-			
-		} 
-	}
-	
-	class BuildResult
-	{
-		File mainFile; 
-		File[] filesToCompile, filesInCache; 
-		File[] allFiles; 
-		bool[File] filesInProject, filesInFlight; 
-		
-		int[File] results; //command line console exit codes
-		string[][File] outputs, remainings; //raw output lines, remaining output lines after processing
-		
-		deprecated DMDMessages messages; 
-		
-		DMDMessage[] incomingMessages; 
-		
-		SourceStats sourceStats; 
-		
-		DateTime lastUpdateTime; 
-		
-		DateTime buildStarted, buildFinished; 
-		
-		mixin ClassMixin_clear; 
-		
-		auto getBuildStateOfFile(File f) const
-		{
-			with(ModuleBuildState)
-			{
-				if(f !in filesInProject)
-				return notInProject; 
-				if(auto r = f in results)
-				{
-					if(*r)
-					return hasErrors; 
-					return hasWarnings; //Todo: detect hasDeprecations, flawless
-				}
-				return f in filesInFlight ? compiling : queued; 
-			}
-		} 
-		
-		string unprocessedSourceTexts()
-		{
-			string[] res; 
-			
-			foreach(f; remainings.keys.sort)
-			{
-				if(f in remainings && remainings[f].length)
-				{
-					auto act = "/+Output:/+$DIDE_LOC "~f.fullName~"+/\n/+"; 
-					foreach(a; remainings[f])
-					act ~= safeDCommentBody(a)~'\n'; 
-					act ~= "+/+/"; 
-					
-					res ~= act; 
-				}
-			}
-			
-			return res.join('\n'); 
-		} 
-		
-		string sourceText()
-		{ return only(unprocessedSourceTexts, messages.sourceText).join('\n'); } 
-		
-		void insertSyntaxCheckOutput(string output)
-		{
-			messages.processDMDOutput(output); 
-			messages.finalizePragmas(""); 
-		} 
-		
-		void receiveBuildMessages()
-		{
-			while(
-				receiveTimeout
-				(
-					0.msecs,
-					((in MsgBuildStarted msg) {
-						clear; 
-						
-						buildStarted = now; 
-						sourceStats = msg.sourceStats; 
-						
-						mainFile = msg.mainFile; 
-						
-						filesToCompile = msg.filesToCompile.dup; 
-						filesInCache = msg.filesInCache.dup; 
-						
-						allFiles = filesToCompile ~ filesInCache; 
-						allFiles.each!((f){
-							filesInProject[f] = true; 
-							//Todo: initialize fileNameFixer with these correct names
-						}); 
-						
-						messages.defaultPath = mainFile.path; //fixed: Some filesnames has no paths
-						messages.processDMDOutput(cast(string[]) msg.todos); 
-						
-						foreach(f; filesInCache)
-						{
-							//generate valid outputs of cached files.
-							results[f] = 0; 
-							outputs[f] = []; 
-							remainings[f] = []; 
-							//Todo: Maybe the successful result should be saved with all the warnindg.
-						}
-					}),
-					
-					((in MsgCompileStarted msg) {
-						auto f = filesToCompile.get(msg.fileIdx); 
-						assert(f); 
-						filesInFlight[f] = true; 
-					}),
-					
-					((in MsgCompileProgress msg) {
-						auto f = msg.file; 
-						filesInFlight.remove(f); 
-						results[f] = msg.result; 
-						
-						//LOG(f, msg.result);
-						
-						/+
-							lines = msg.output.splitLines;
-							string[] remaining; //this is the output messages
-							foreach(line; lines){
-								if(_processLine(line)) continue;
-								remaining ~= line;
-							}
-							
-							if(remaining.length && remaining[$-1]=="") remaining = remaining[0..$-1]; 
-							//todo: something puts an extra newline on it...*/
-							
-							outputs[f] = lines;
-							remainings[f] = remaining;
-						+/
-						
-						messages.processDMDOutput(msg.output); 
-						
-						outputs[f] = msg.output.splitLines; //Todo: not used anymore. Everything is in messages[]
-						remainings[f] = messages.pragmas.get(f); //Todo: rename remainings to pragmas
-					}),
-					
-					((in MsgBuildMessages msg) {
-						auto messages = (cast(DMDMessage[])(msg.messages)); 
-						/+Note: Safe to cast, it's not used anywhere else.+/
-						
-						incomingMessages ~= messages; //DIDE will poll this.
-					}),
-					
-					((in MsgBuildFinished msg) {
-						buildFinished = now; 
-						
-						filesInFlight.clear; 
-						
-						if(msg.error!="")
-						{
-							incomingMessages ~= new DMDMessage(
-								CodeLocation(mainFile.fullName), 
-								DMDMessage.type.error, "BuildSys: "~msg.error
-							); 
-						}
-						
-						{
-							const buildStatText = format!
-								"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
-								(
-								(buildFinished-buildStarted).value(second), 
-								sourceStats.totalModules,
-								sourceStats.totalLines,
-								sourceStats.totalBytes
-							); 
-							incomingMessages ~= new DMDMessage(
-								CodeLocation(mainFile.fullName), 
-								DMDMessage.type.console, buildStatText
-							); 
-						}
-					})
-					
-				)
-			)
-			{ lastUpdateTime = now; }
-		} 
-		
-	} 
-	
-	
-	/// Error collection ///////////////////////////////////
-	/+
-		
-		c:\d\libs\het\tokenizer.d(792,41): Deprecation: use `{ }` for an empty statement, not `;`
-		c:\d\libs\quantities\internal\dimensions.d(101,5): Deprecation: Usage of the `body` keyword is deprecated. Use `do` instead.
-		
-		C:\D\projects\DIDE\dide2.d(383,22): Error:	constructor `dide2.Label.this(int height, bool bold, Vector!(float, 2) pos, string str, bool alignRight, float parentWidth = 0.0F)` is not callable using argument types `(int, bool, string, bool, const(float))`
-		C:\D\projects\DIDE\dide2.d(383,22):	cannot pass argument `src.bigComments[k]` of type `string` to parameter `Vector!(float, 2) pos`
-		
-		C:\D\projects\DIDE\dide2.d(338,28): Error: undefined identifier `r`
-		
-		C:\D\projects\DIDE\dide2.d(324,7): Error: no property `height` for type `het.uibase.TextStyle`
-			//todo: no property for type: missleading when the property name is correct but it's private or protected.
-		
-		C:\D\projects\DIDE\dide2.d(383,59): Error: found `src` when expecting `)`
-		C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` when expecting `;` following statement
-		C:\D\projects\DIDE\dide2.d(383,104): Error: found `)` instead of statement
-		
-		C:\D\projects\DIDE\dide2.d(331,20): Error: cannot implicitly convert expression `isRegion` of type `const(uint)` to `bool`
-		
-		C:\D\testGetAssociatedIcon.d(29,15): Error: undefined identifier `DestroyIcon`
-		
-		C:\D\projects\DIDE\dide2.d(51,2): Error: `@identifier` or `@(ArgumentList)` expected, not `@{`
-		
-		C:\D\projects\DIDE\dide2.d(103,24): Error: found `cmd` when expecting `)`
-		
-		C:\D\projects\DIDE\dide2.d(103,28): Error: found `{` when expecting `;` following statement
-		
-		C:\D\projects\DIDE\dide2.d(104,5): Error: found `)` instead of statement
-		
-		C:\D\projects\DIDE\dide2.d(107,1): Error: unrecognized declaration
-	+/
-	deprecated("Use DMDMessageDecoder only!") struct DMDMessages
-	{
-		alias messages this; 
-		
-		DMDMessage[] messages; 
-		string[][File] pragmas; 
-		
-		//message filtering
-		
-		__gshared string[] messageFilters = ["Warning: C preprocessor directive "]; 
-		//Todo: The filtered items should placed into a hidden category. Not the console output.
-		
-		//internal state
-		private
-		{
-			DMDMessage[uint] messageMap; 
-			public File actSourceFile; 
-			DMDMessage parentMessage; 
-			FileNameFixer fileNameFixer; 
-		} 
-		
-		
-		
-		void dump()
-		{
-			void bar() { "-".replicate(80).print; } 
-			messages.each!((m){ m.print; bar; }); 
-			pragmas.keys.sort.each!((k){
-				print(k.fullName, ": Pragma messages:"); 
-				pragmas[k].each!((a){ print(a); }); bar; 
-			}); 
-		} 
-		
-		void createFileNameFixerIfNeeded()
-		{ if(!fileNameFixer) fileNameFixer = new FileNameFixer; } 
-		
-		@property void defaultPath(Path path)
-		{
-			createFileNameFixerIfNeeded; 
-			fileNameFixer.defaultPath = path; 
-		} 
-		
-		string sourceText() const
-		{ return messages.map!"a.sourceText".join("\n"); } 
-		
-		void processDMDOutput(string str)
-		{ processDMDOutput(str.splitLines); } 
-		
-		private static bool keepMessage(in DMDMessage m)
-		{
-			foreach(f; messageFilters)
-			if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
-			return false; 
-			
-			return true; 
-		} 
-		
-		void finalizePragmas(string extraText)
-		{
-			string[] arr; 
-			foreach(f; pragmas.keys.sort)
-			{
-				auto list = pragmas[f]; 
-				
-				//remove empty lines
-				while(list.length && list.front.empty) list.popFront; 
-				while(list.length && list.back.empty) list.popBack; 
-				
-				auto s = list.join('\n'); 
-				if(s.length) arr ~= s; 
-			}
-			
-			foreach(i; 0..arr.length)
-			foreach(j; 0..arr.length)
-			if(i!=j && arr[i]!="" && arr[j]!="" && arr[j].canFind(arr[i]))
-			arr[i] = ""; 
-			
-			if(extraText.length) arr = extraText ~ arr; 
-			
-			auto s = arr.filter!`a!=""`.join('\n'); 
-			if(s!="")
-			{
-				auto m = new DMDMessage(CodeLocation.init, DMDMessage.Type.console, s); 
-				messages = m ~ messages; 
-			}
-			
-			pragmas.clear; 
-		} 
-		
-		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
-			/+1:fn 2:drive       3      4        5      6       7+/
-			/+drive:\ is optional.+/; 
-		
-		static int decodeColumnMarker(string s)
-		{
-			return ((
-				s.endsWith('^') &&
-				(
-					s.length==1 || 
-					s[0..$-1].all!"a.among(' ', '\t')"
-				)
-			)?((cast(int)(s.length))):(0)); 
-		} 
-		static bool isColumnMarker(string s)
-		{ return decodeColumnMarker(s)>0; } ; 
-		
-		
-		static bool isDMDMessage(string s)
-		{
-			auto m = matchFirst(s, rxDMDMessage); 
-			return !m.empty; 
-		} 
-		
-		static bool isDMDMainMessage(string s)
-		{
-			auto m = matchFirst(s, rxDMDMessage); 
-			if(!m.empty)
-			{
-				DMDMessage msg; 
-				with(msg)
-				{
-					content = m[7]; detectType; 
-					return type!=Type.unknown; 
-				}
-			}
-			return false; 
-		} 
-		
-		void processDMDOutput_partial(ref string[] lines, bool isFinal)
-		{
-			if(isFinal)
-			{
-				processDMDOutput(lines); 
-				lines = []; 
-			}
-			else
-			{
-				auto prevLines = lines; 
-				
-				while(lines.length)
-				{
-					const s = lines.back; 
-					
-					//from here, break if it's a valid ending
-					if(isColumnMarker(s)) { break; }
-					else if(isDMDMessage(s))
-					{
-						const dqCnt = s.count('`'); 
-						if(
-							!dqCnt
-							/+has no quotation inside+/
-						) break; 
-						if(
-							(dqCnt%2==0) && 
-							(s.count('"')==0) && 
-							(s.count('\'')==0)
-							/+
-								has even quotation, 
-								but no other strings
-							+/
-						) break; 
-					}
-					lines.popBack; 
-				}
-				
-				processDMDOutput(lines); 
-				lines = prevLines[lines.length..$]; 
-			}
-		} 
-		
-		void processDMDOutput(string[] lines)
-		{
-			if(lines.empty) return; 
-			
-			createFileNameFixerIfNeeded; 
-			
-			static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
-			{
-				enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
-				auto m = matchFirst(line, rx); 
-				return m.empty ? File.init : fileNameFixer(m[1]); 
-			} 
-			
-			static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
-			{
-				DMDMessage decodeDMDMessage(string s)
-				{
-					auto m = matchFirst(s, rxDMDMessage); 
-					if(!m.empty)
-					{
-						return new DMDMessage
-							(
-							CodeLocation(
-								fileNameFixer(m[1]).fullName, 
-								m[5].to!int.ifThrown(0), 
-								m[6].to!int.ifThrown(0), 
-								m[4].to!int.ifThrown(0)
-							), 
-							m[7]
-						); 
-					}
-					
-					return null; 
-				} 
-				
-				auto msg = decodeDMDMessage(lines.front); 
-				if(msg)
-				{
-					int endIdx; 
-					foreach(i; 1 .. lines.length.to!int)
-					{
-						if(decodeColumnMarker(lines[i])==msg.col)
-						{ endIdx = i; break; }
-						if(decodeDMDMessage(lines[i])) break; 
-						if(decodeFileMarker(lines[i], fileNameFixer)) break; 
-					}
-					
-					if(endIdx>=2 /+Note: endIdx==1 is invalid, that's  the cited line.+/)
-					{
-						lines.fetchFront; //first line of a multiline message
-						foreach(i; 1..endIdx-1)
-						if(lines.length)
-						msg.content ~= "\n"~lines.fetchFront; 
-						msg.lineSource = lines.fetchFront; 
-						lines.fetchFront; //skip the marker line
-					}
-					else
-					{
-						lines.fetchFront; //slingle line message
-					}
-				}
-				return msg; 
-			} 
-			
-			while(lines.length)
-			{
-				if(auto msg = fetchDMDMessage(lines, fileNameFixer))
-				{
-					if(msg.isSupplemental && parentMessage)
-					{
-						auto idx = parentMessage.subMessages.map!"a.hash".countUntil(msg.hash); 
-						if(idx>=0)
-						{
-							parentMessage = parentMessage.subMessages[idx]; 
-							parentMessage.count++; 
-						}
-						else
-						{
-							parentMessage.subMessages ~= msg; /+new subMessage added+/
-							parentMessage = msg; 
-						}
-					}
-					else
-					{
-						if(msg.isSupplemental)
-						WARN("No parent message for supplemental message:", msg); 
-						
-						if(keepMessage(msg))
-						{
-							const hash = msg.hash; 
-							if(auto m = hash in messageMap)
-							{
-								(*m).count++; /+already exists+/
-								parentMessage = *m; 
-							}
-							else
-							{
-								messages ~= msg; /+new top level message added+/
-								messageMap[hash] = msg; 
-								parentMessage = msg; 
-							}
-						}
-					}
-				}
-				else if(auto f = decodeFileMarker(lines.front, fileNameFixer))
-				{
-					lines.popFront; 
-					actSourceFile = f; 
-				}
-				else
-				{ pragmas[actSourceFile] ~= lines.fetchFront; }
-			}
-			
-		} 
-	} 
 }
