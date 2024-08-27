@@ -740,4 +740,289 @@ version(/+$DIDE_REGION Probes+/all)
 			}
 		} 
 	} 
-}
+}
+//LOG("GCycle", garbageCycle);
+
+//megaTextures[mtIdx].bin.dump;
+//infoDump;
+
+//auto allInfos = collectSubTexInfo2.filter!(i => i.info.texIdx==mtIdx); //on the current megatexture
+
+//auto infosToUnload	= allInfos.filter!(i =>  i.canUnload).array;
+//auto infosToSave	= allInfos.filter!(i => !i.canUnload).array;
+
+//no need to wait pending because they are not allocated yet in the bins and update() only called from main thread, also it can start a GC
+/+
+	while(allInfos.map!(i => isPending(i.idx)).any){
+		LOG("Waiting for pending textures...");
+		sleep(10);
+	}
++/
+
+struct Textures {
+	bool update()
+	{
+		auto _ = PROBE("Textures.Update"); 
+		bool inv; 
+		
+		auto t0 = QPS; 
+		
+		enum UploadTextureMaxTime = 1.0*second/60; 
+		size_t uploadedSize; 
+		enum TextureFlushLimit = 8 << 20; 
+		do
+		{
+			
+			Bitmap bmp; 
+			synchronized
+			{
+				if(synchLog)
+				LOG("bmpQueue.popFirst(null) before"); 
+				bmp = bmpQueue.popFirst(null); 
+				if(synchLog)
+				LOG("bmpQueue.popFirst(null) after"); 
+			} 
+			
+			if(!bmp)
+			break; 
+			
+			auto idx = bmp.tag; 
+			
+			pendingIndices.remove(idx); //not pending anymore so it can be reinvalidated
+			
+			if(idx in invalidateAgain)
+			{
+				//WARN("Delayed loaded bmp is in invalidateAgain.", idx);
+				
+				uploadSubTex(idx, bmp, true); 
+				//this is here to finalize the allocation of the texture before the invalidation
+				//Opt: disable the upload of this texture data
+				
+				invalidateAgain.remove(idx); 
+				foreach(f, i; byFileName)
+				if(i == idx)
+				{
+					 //Opt: slow linear search
+					//WARN("Reinvalidating", f, idx);
+					invalidate(f); 
+					break; 
+				}
+				
+			}
+			else {
+				uploadSubTex(idx, bmp); 
+				
+				//flush at every N megabytes so the transfer time of this particular upload can be measured and limited.
+				uploadedSize += bmp.sizeBytes; 
+				if(uploadedSize >= TextureFlushLimit)
+				{
+					uploadedSize -= TextureFlushLimit; 
+					gl.flush; 
+				}
+			}
+			
+			inv = true; 
+			
+		}
+		while(QPS-t0<UploadTextureMaxTime/*sec*/); 
+		
+		return inv; 
+	} 
+} 
+
+
+	struct BitmapTransformation
+{
+	//BitmapTransformation (thumb) ////////////////////////////////////
+	enum thumbKeyword = "?thumbOld"; 
+	//?thumb32w		 specifies maximum width
+	//?thumb32h		 specifies maximum height
+	//?thumb32wh	  specifies maximum width and maximum height
+	//?thumb32	  ditto
+	//Todo: ?thumb32x24  different maxwidth and maxheight
+	//Todo: keep aspect or not
+	/+
+		Todo: ?thumb=32w is not possible because processMarkupCommandLine() 
+			uses the = pro parameters and it can't passed into this filename.
+	+/
+	//Todo: cache decoded full size image
+	//Todo: turboJpeg small size extract
+	
+	File originalFile, transformedFile; 
+	int thumbMaxSize; 
+	bool maxWidthSpecified, maxHeightSpecified; 
+	
+	size_t sizeBytes; //used by bitmapQuery/detailed stats
+	
+	deprecated bool isThumb() const { return thumbMaxSize>0; } 
+	
+	bool isHistogram, isGrayHistogram; 
+	//Todo: this is lame. This should be solved by registered plugins.
+	
+	bool isEffect; 
+	
+	this(File file)
+	{
+		transformedFile = file; 
+		
+		//try to decode thumbnail params
+		string thumbDef, orig; 
+		if(file.fullName.split2(thumbKeyword, orig, thumbDef, false/+must not strip!+/))
+		{
+			originalFile = File(orig); 
+			
+			//get width/height posfixes
+			while(1) {
+				if(thumbDef.endsWith("w")) { maxWidthSpecified	= true; thumbDef.popBack; continue; }
+				if(thumbDef.endsWith("h")) { maxHeightSpecified	= true; thumbDef.popBack; continue; }
+				break; 
+			}
+			const maxAllSpecified = maxWidthSpecified == maxHeightSpecified; 
+			if(maxAllSpecified)
+			maxWidthSpecified = maxHeightSpecified = true; 
+			
+			ignoreExceptions({ thumbMaxSize = thumbDef.to!int; }); 
+		}
+		else if(file.fullName.canFind("?histogramOld"))	{
+			originalFile = File(orig[0..orig.countUntil('?')]); 
+			isHistogram = true; 
+		}
+		else if(file.fullName.canFind("?grayHistogramOld"))	{
+			originalFile = File(orig[0..orig.countUntil('?')]); 
+			isGrayHistogram = true; 
+		}
+		else {/+...+/}
+	} 
+	
+	alias needTransform this; 
+	bool needTransform()
+	{ return isThumb|| isHistogram || isGrayHistogram || isEffect; } 
+	
+	Bitmap transform(Bitmap orig)
+	{
+		if(!orig || !orig.valid) return newErrorBitmap("Invalid source for BitmapTransform."); 
+		
+		sizeBytes = orig.sizeBytes; //used by bitmapQuery/detailed stats
+		
+		Bitmap doIt()
+		{
+			try
+			{
+				if(isThumb)
+				{
+					float minScale = 1; 
+					if(maxWidthSpecified) minScale.minimize(float(thumbMaxSize) / orig.size.x); 
+					if(maxHeightSpecified) minScale.minimize(float(thumbMaxSize) / orig.size.y); 
+					
+					if(minScale < 1) {
+						ivec2 newSize = round(orig.size*minScale); 
+						//print("THUMB", fn, thumbDef, "oldSize", orig.size, "newSize", newSize);
+						return orig.resize_nearest(newSize); //Todo: mipmapped bilinear/trilinear
+					}
+				}
+				else if(isHistogram)
+				{
+					auto img = orig.get!RGB; 
+					int[3][256] histogram; 
+					foreach(p; img.asArray) foreach(i; 0..3) histogram[p[i]][i]++; 
+					int histogramMax = histogram[].map!(h => h[].max).array.max; 
+					float sc = 255.0f/histogramMax; 
+					return new Bitmap(image2D(256, 1, histogram[].map!(p => RGB(p[0]*sc, p[1]*sc, p[2]*sc)))); 
+				}
+				else if(isGrayHistogram)
+				{
+					auto img = orig.get!ubyte; 
+					int[256] histogram; 
+					foreach(p; img.asArray) histogram[p]++; 
+					int histogramMax = histogram[].max; 
+					float sc = 255.0f/histogramMax; 
+					return new Bitmap(image2D(256, 1, histogram[].map!(p => cast(ubyte)((p*sc).iround)))); 
+				}
+				else if(isEffect)
+				{ return orig.applyEffects(transformedFile); }
+			}
+			catch(Exception e) WARN(e.simpleMsg); 
+			
+			//Todo: handle errors
+			return orig.dup; 
+		} 
+		
+		//set filename and copy the modified time
+		auto res = doIt; 
+		res.file = transformedFile; 
+		res.modified = orig.modified; 
+		return res; 
+	} 
+	
+} 
+	class Texture
+{
+	//this holds all the info to access a subTexture
+	private
+	{
+		int idx; 
+		File file; 
+		
+		this(int idx)
+		{
+			//this is unnamed and empty
+			this.idx = idx; 
+		} 
+	} 
+	
+	this(int idx, File file, bool delayed = false)
+	{
+		this(idx); 
+		this.file = file; 
+	} 
+	
+	override string toString() const
+	{ return "Texture(#%d, %s)".format(idx, file); } 
+} 
+	deprecated(`Use bitmaps("name", bitmap)")`) class CustomTexture
+{
+	 //CustomTexture ///////////////////////////////
+	const string name; 
+	protected
+	{
+		Bitmap bmp; 
+		bool mustUpload; 
+	} 
+	
+	this(string name="")
+	{ this.name = name.strip.length ? name : this.identityStr; } 
+	
+	void clear()
+	{ bmp.destroy; mustUpload = false; } 
+	void update()
+	{ mustUpload = true; } 
+	void update(Bitmap bmp)
+	{ this.bmp = bmp; mustUpload = true; } 
+	
+	int texIdx()
+	{
+		if(bmp is null)
+		return -1; //nothing to draw
+		if(!textures.isCustomExists(name))
+		mustUpload = true; //prepare for megaTexture GC
+		Bitmap b = chkClear(mustUpload) ? bmp : null; 
+		return textures.custom(name, b); 
+	} 
+	
+	ivec2 size()const
+	{ return bmp ? bmp.size : ivec2(0); } 
+	
+	auto getFile()
+	{ return File(`custom:\`~name); } 
+	auto getBmp()
+	{ return bmp; } 
+} 
+	
+	void overrideBuildResult(string output, bool clear=true)
+{
+	if(!ready) WARN("overrideBuildResult() while BuildSys is not ready."); 
+	auto br = &buildResult; 
+	if(clear) br.messages.clear; 
+	br.insertSyntaxCheckOutput(output); 
+	br.lastUpdateTime = now; //This trigger workspace.update()
+} 

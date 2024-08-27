@@ -647,15 +647,6 @@ version(/+$DIDE_REGION main+/all)
 				LOG("DBGLOG:", s); 
 			} 
 			
-			void overrideBuildResult(string output, bool clear=true)
-			{
-				if(!ready) WARN("overrideBuildResult() while BuildSys is not ready."); 
-				auto br = &buildResult; 
-				if(clear) br.messages.clear; 
-				br.insertSyntaxCheckOutput(output); 
-				br.lastUpdateTime = now; //This trigger workspace.update()
-			} 
-			
 			void onDebugException(string message)
 			{
 				LOG("DBGEXC:\n"~message); 
@@ -670,27 +661,30 @@ version(/+$DIDE_REGION main+/all)
 				
 				const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
 				string lastPrefix; 
-				string[] processed; 
+				string[] processedLines; 
 				foreach(s; message.splitLines)
 				{
 					if(s.isWild(`?:\?*.d*(?*): *`)) {
 						lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
-						processed ~= s; 
+						processedLines ~= s; 
 					}
 					else
 					{
 						s = s.strip; 
 						if(s!="")
-						processed ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
+						processedLines ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
 					}
 				}
+				auto processedText = processedLines.join('\n'); 
 				
-				LOG("PROCESSED:\n"~processed.join('\n')); 
+				LOG("PROCESSED:\n"~processedText); 
 				
 				//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
 				
-				overrideBuildResult(processed.join('\n'), false); 
-				im.flashError(processed.frontOr("Exception without message.")); 
+				auto messages = decodeDMDMessages(processedText, workspace.mainModuleFile); 
+				workspace.processBuildMessages(messages); 
+				
+				im.flashError(processedLines.frontOr("Exception without message.")); 
 			} 
 			
 			////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2012,6 +2006,12 @@ version(/+$DIDE_REGION main+/all)
 		
 		static CodeNode renderBuildMessage(DMDMessage msg)
 		{
+			/+
+				Todo: An option to not render all codeLocations.
+				- When the next line's location is same as the precceding line's.
+				- When the message is at it's designated location.
+			+/
+			
 			auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
 				msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
 				msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
@@ -3242,7 +3242,7 @@ version(/+$DIDE_REGION main+/all)
 					savedSelections ~= ts.toReference; 
 				}
 				else
-				assert("Row out if range"); 
+				assert(0, "Row out if range"); 
 			} 
 			
 			void insertMultiLine(ref TextSelection ts, string[] lines )
@@ -4816,10 +4816,11 @@ version(/+$DIDE_REGION main+/all)
 				}
 				
 				assert(frmMain.ready); 
-				frmMain.overrideBuildResult(output); 
+				auto messages = decodeDMDMessages(output, moduleFile); 
+				processBuildMessages(messages); 
 				
-				if(frmMain.buildResult.messages.map!(m=>m.type==DMDMessage.Type.error).any)
-				raise("LDC2 Syntax Check failed"); 
+				if(messages.any!((m)=>(m.type==DMDMessage.Type.error)))
+				raise(output.splitLines.front); 
 			}
 		} 
 		
@@ -4904,7 +4905,7 @@ version(/+$DIDE_REGION main+/all)
 				node.replaceWith(newNode); 
 			}
 			
-			frmMain.overrideBuildResult(""); 
+			//Todo: Remove the errors previously inserted by syntaxCheck
 		} 
 		
 		void feedCursor(TextCursor cursor, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
@@ -4932,8 +4933,9 @@ version(/+$DIDE_REGION main+/all)
 			
 			enforce(frmMain.ready, "BuildSystem is currently working."); 
 			
-			foreach(n; editedBreadcrumbNodes(mod))
-			feedNode(n, syntaxCheck); 
+			mod.resetBuildMessages; firstErrorMessageArrived = true; 
+			
+			foreach(n; editedBreadcrumbNodes(mod)) feedNode(n, syntaxCheck); 
 		} 
 		
 		void feedAndSaveModules(R)(R modules, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
@@ -5385,7 +5387,7 @@ version(/+$DIDE_REGION main+/all)
 								else if(building)	{ cancelBuild; }
 								else if(running)	{ closeOrKillProcess; }
 								else if(canKillRunningConsole)	{ killRunningConsole; }
-								else	{ resetBuildState; }
+								else	{/+resetBuildState; +/}
 							}
 						}],
 						[q{//@VERB("F5") void toggleBreakpoint() { NOTIMPL; }
@@ -5483,7 +5485,7 @@ version(/+$DIDE_REGION main+/all)
 	}
 	version(/+$DIDE_REGION UI                 +/all)
 	{
-		deprecated void UI_ModuleBtns()
+		void UI_ModuleBtns()
 		{
 			with(im) {
 				File fileToClose; 
@@ -6548,8 +6550,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30B2335B2D627).檢(expr)) ((0x30B4135B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30B8F35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30BAD35B2D627).檢(expr)) ((0x30BCB35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30C1935B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

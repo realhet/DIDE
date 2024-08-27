@@ -646,7 +646,7 @@ version(/+$DIDE_REGION+/all)
 		
 		//! UI ///////////////////////////////
 		
-		deprecated void UI(in CodeLocation cl)
+		void UI(in CodeLocation cl)
 		{
 			with(cl)
 			with(im)
@@ -6330,8 +6330,11 @@ version(/+$DIDE_REGION+/all)
 				messageByHash.clear; 
 				foreach(ref msgs; messagesByType) msgs = []; 
 				
-				measure; //Immediately do the actual realign without the buildMessages.
+				//measure; //Immediately do the actual realign without the buildMessages.
 			} 
+			
+			void resetSearchResults()
+			{ findSearchResults = []; } 
 			
 			auto addModuleMessage(bool isNew, DMDMessage msg, CodeNode node, SearchResult[] searchResults)
 			{
@@ -6377,6 +6380,8 @@ version(/+$DIDE_REGION+/all)
 		
 		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 		{
+			resetBuildMessages; resetSearchResults; 
+			
 			fileModified = file.modified; 
 			sizeBytes = file.size; 
 			resetModuleTypeFlags; 
@@ -6654,7 +6659,7 @@ version(/+$DIDE_REGION+/all)
 			bkColor = clWhite; 
 		} 
 		
-		override void rebuild(R)(R scanner) if(isScannerRange!R)
+		void rebuild(R)(R scanner) if(isScannerRange!R)
 		{
 			//completely igniore content
 			return; 
@@ -9829,7 +9834,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x403B87B6B4BCC).檢(expr))},
+			q{((0x4041C7B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9843,7 +9848,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x404C67B6B4BCC).檢 (expr))},
+			q{((0x4052A7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

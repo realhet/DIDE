@@ -136,7 +136,7 @@ a new compiler instance."}],
 		void delegate(string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) onStdLineReceived
 	)
 	{
-		class Executor/+_new+/
+		class Executor
 		{
 			import std.process, std.file : chdir; 
 			
@@ -155,9 +155,9 @@ a new compiler instance."}],
 				pendingErrLines; 
 			
 			//output data
-			deprecated string output; 
 			int result; 
 			bool ended; 
+			string output; 
 			
 			enum State
 			{ idle, running, finished} 
@@ -171,6 +171,14 @@ a new compiler instance."}],
 			
 			this()
 			{} 
+			
+			protected void appendOutput(string s)
+			{
+				if(s.length) {
+					if(output.length) output ~= '\n'; 
+					output ~= s; 
+				}
+			} 
 			
 			void setup(string id, in string[] cmd, in string[string] env = null, Path workPath = Path.init)
 			{
@@ -208,6 +216,7 @@ a new compiler instance."}],
 			
 			protected void killPipeReader(alias thr)()
 			{ thr.free; } 
+			
 			protected void waitPipeReader(alias thr)()
 			{
 				ignoreExceptions({ if(thr) thr.join; }); 
@@ -227,7 +236,7 @@ a new compiler instance."}],
 					if(o.length || e.length || isFinal)
 					{
 						onStdLineReceived(id, pendingOutLines, pendingErrLines, isFinal); 
-						output ~= chain(o, e).map!`a~"\n"`.join; 
+						appendOutput(chain(o, e).join('\n')); 
 					}
 				} 
 			} 
@@ -238,19 +247,12 @@ a new compiler instance."}],
 			
 			void start()
 			{
-				if(isRunning) ERR("already running"); 
+				if(isRunning) { ERR("already running"); return; }
 				
-				try {
-					pipes = pipeProcess(
-						cmd, Redirect.stdout | Redirect.stderr, env, 
-						Config.suppressConsole, workPath.fullPath
-					); 
-				}
-				catch(Exception e) {
-					output = "Error: " ~ e.simpleMsg; 
-					setEndResult(-1); 
-					return; 
-				}
+				pipes = pipeProcess(
+					cmd, Redirect.stdout | Redirect.stderr, env, 
+					Config.suppressConsole, workPath.fullPath
+				); 
 				
 				version(/+$DIDE_REGION Start listening to stdOut and stdErr+/all)
 				{
@@ -326,7 +328,6 @@ a new compiler instance."}],
 							maybe because it's already dead, so just ignore.
 						+/
 					}
-					output ~= "\nError: Process has been killed."; 
 					setEndResult(-1); 
 				}
 			} 
@@ -1363,6 +1364,14 @@ Experimental:
 			}
 			
 		} 
+	} 
+	
+	DMDMessage[] decodeDMDMessages(string err, File file = File.init)
+	{
+		DMDMessageDecoder dec; 
+		dec.actSourceFile = file; 
+		dec.processDMDOutput(err.splitLines); 
+		return dec.fetchUpdatedMessages; 
 	} 
 	
 }
@@ -2669,7 +2678,8 @@ version(/+$DIDE_REGION+/all) {
 							state.building = true; 
 							//Todo: onIdle
 							buildSystem.build(req.mainFile, req.settings); 
-						}catch(Exception e)
+						}
+						catch(Exception e)
 						{ error = e.simpleMsg; }
 						ownerTid.send(MsgBuildFinished(req.mainFile, error, buildSystem.sLog)); 
 					})
@@ -2826,45 +2836,32 @@ version(/+$DIDE_REGION+/all) {
 					}),
 					
 					((in MsgBuildFinished msg) {
-						filesInFlight.clear; 
+						buildFinished = now; 
 						
-						string errorText; 
+						filesInFlight.clear; 
 						
 						if(msg.error!="")
 						{
-							beep; ERR("BUILDERROR", msg.error); 
-							errorText = msg.error; 
+							incomingMessages ~= new DMDMessage(
+								CodeLocation(mainFile.fullName), 
+								DMDMessage.type.error, "BuildSys: "~msg.error
+							); 
 						}
 						
-						buildFinished = now; 
-						const buildStatText = format!
-							"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
-							(
-							(buildFinished-buildStarted).value(second), 
-							sourceStats.totalModules,
-							sourceStats.totalLines,
-							sourceStats.totalBytes
-						); 
-						
-						incomingMessages ~= new DMDMessage(
-							CodeLocation(mainFile.fullName), 
-							DMDMessage.type.console, buildStatText
-						); 
-						
-						messages.finalizePragmas(
-							only(
-								errorText,
-								buildStatText
-							).filter!`a!=""`.join('\n')
-						); 
-						
-						//decide the global success of the build procedure
-						/+
-							Todo: There are errors whose source are not specified or not loaded, 
-							those must be displayed too. Also the compiler output.
-						+/
-						
-						//dump.print;
+						{
+							const buildStatText = format!
+								"BuildStats:  %.3f seconds,  %d modules,  %d source lines,  %d source bytes"
+								(
+								(buildFinished-buildStarted).value(second), 
+								sourceStats.totalModules,
+								sourceStats.totalLines,
+								sourceStats.totalBytes
+							); 
+							incomingMessages ~= new DMDMessage(
+								CodeLocation(mainFile.fullName), 
+								DMDMessage.type.console, buildStatText
+							); 
+						}
 					})
 					
 				)
