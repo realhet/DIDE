@@ -175,7 +175,7 @@ version(/+$DIDE_REGION+/all)
 			
 		} 
 	}
-	
+	
 	version(/+$DIDE_REGION InspectorFX+/all)
 	{
 		struct InspectorParticle_shrinkingRect
@@ -275,185 +275,6 @@ version(/+$DIDE_REGION+/all)
 			inspectorParticleIdx++; 
 			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
 			inspectorParticles[inspectorParticleIdx].setup(node, color, srcWorldBounds, initialLife); 
-		} 
-	}
-	
-	version(/+$DIDE_REGION Probes+/all)
-	{
-		deprecated("Use inspectors!")
-		{
-			version(none) { auto _testProbe() { return ((now).PR!()); } }
-			const _testProbeId = format!"%s(%s)"(__FILE__.lc, __LINE__-1); 
-			
-			void _updateTestProbe()
-			{ globalWatches.require(_testProbeId, Watch(_testProbeId)).update(now.text); } 
-			
-			void resetGlobalWatches()
-			{
-				foreach(ref w; globalWatches.byValue)
-				{ w.value = ""; }
-			} 
-			
-			deprecated struct Watch
-			{
-				string id; 
-				
-				string value; 
-				
-				vec2 relativePos; //vector from srcBounds.center to dstBounds.center
-				
-				private string _lastValue; 
-				private Container _container; 
-				
-				void update(string value)
-				{
-					this.value = value; 
-					
-					if(_lastValue.chkSet(value)) _container = null; 
-				} 
-				
-				void draw(Drawing dr, bounds2 srcBounds)
-				{
-					//this looks like a workspace with lots of modules on top of it.  
-					//A second layer over the real modules.
-					
-					if(!_container)
-					{
-						with(im)
-						{
-							Column(
-								{
-									outerPos = pos; 
-									flags.targetSurface = 0; 
-									padding = "2"; 
-									style.applySyntax(skConsole); bkColor = style.bkColor; 
-									border = Border(1, BorderStyle.normal, style.fontColor); 
-									Text(value); 
-								}  
-							); 
-							_container = removeLastContainer; 
-							_container.measure; 
-						}
-					}
-					
-					//Todo: no clipping yet
-					if(auto c = _container)
-					{
-						enum shadowSize = 6, shadowAlpha=.33f; 
-						
-						/+if(!relativePos) +/relativePos = vec2(120, 0).rotate(QPS_local.value(second)); 
-						c.outerPos = srcBounds.center + relativePos - c.outerSize/2; 
-						
-						const dstBounds = c.outerBounds; 
-						
-						//shadow
-						if(shadowSize)
-						{
-							dr.alpha = shadowAlpha; 
-							dr.color = clBlack; 
-							dr.fillRect(c.outerBounds + shadowSize); 
-							dr.alpha = 1; 
-						}
-						
-						//line
-						{
-							dr.lineWidth = 1; 
-							
-							void doit(bool horiz, float x0, float y0, float x1, float y1)
-							{
-								void doit(bool shadow)
-								{
-									enum triangularThickness = 4; 
-									
-									const p0 = vec2(x0, y0); 
-									const p1 = vec2(x1, y1) + (shadow ? shadowSize : 0); 
-									
-									if(triangularThickness)
-									{
-										const sh = (horiz ? vec2(0, 1) : vec2(1, 0)) * triangularThickness; 
-										dr.fillTriangle(p0, p1+sh, p1-sh); 
-										dr.fillTriangle(p0, p1-sh, p1+sh); 
-									}
-									else
-									dr.line(p0, p1); 
-								} 
-								
-								if(shadowSize)
-								{
-									dr.color = clBlack; 
-									dr.alpha = shadowAlpha; 
-									doit(true); 
-									dr.alpha = 1; 
-								}
-								
-								dr.color = clWhite; 
-								doit(false); 
-							} 
-							
-							const d = (normalize(dstBounds.center - srcBounds.center)); 
-							if((magnitude(d.x))>(magnitude(d.y)))
-							{
-								if(d.x>0)	doit(1, srcBounds.x1, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x0, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-								else	doit(1, srcBounds.x0, d.y.remap(-1, 1, srcBounds.top, srcBounds.bottom), dstBounds.x1, d.y.remap(1, -1, dstBounds.top, dstBounds.bottom)); 
-							}
-							else
-							{
-								if(d.y>0)	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y1, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y0); 
-								else	doit(0, d.x.remap(-1, 1, srcBounds.left, srcBounds.right), srcBounds.y0, d.x.remap(1, -1, dstBounds.left, dstBounds.right), dstBounds.y1); 
-							}
-						}
-						
-						c.draw(dr); 
-					}
-				} 
-			} 
-			
-			Watch[string] globalWatches; 
-			
-			struct Probe
-			{
-				string id; 
-				NiceExpression node; 
-				bounds2 bounds; //the bounds of the expression in world coods
-			} 
-			
-			Probe[string] globalVisibleProbes; 
-			
-			string calcProbeId(NiceExpression node)
-			{ return format!"%s(%s)"(node.moduleOf.file.fullName.lc, node.lineIdx.text); } 
-			
-			void addGlobalProbe(Drawing dr, NiceExpression node)
-			{
-				const id = calcProbeId(node); 
-				globalVisibleProbes[id] = Probe(id, node, dr.inputTransform(node.innerBounds)); 
-			} 
-			
-			void drawProbes(Drawing dr)
-			{
-				foreach(id, const probe; globalVisibleProbes)
-				{
-					//print("Visible:", probe); 
-					/+
-						dr.lineWidth = 4; 
-						dr.color = clWhite; 
-						dr.drawRect(probe.bounds); 
-						dr.lineWidth = 1.333; 
-						dr.color = clBlack; 
-						dr.drawRect(probe.bounds); 
-					+/
-					
-					dr.color = clYellow; dr.lineWidth = -5; dr.drawRect(probe.bounds); 
-					dr.color = clBlack; dr.lineWidth = -2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-					dr.color = clYellow; dr.lineWidth = 5; dr.drawRect(probe.bounds); 
-					dr.color = clBlack; dr.lineWidth = 2.5; dr.lineStyle = LineStyle.dash; dr.drawRect(probe.bounds); dr.lineStyle = LineStyle.normal; 
-					
-					if(auto watch = id in globalWatches)
-					{
-						//print("Found:", *watch); 
-						watch.draw(dr, probe.bounds); 
-					}
-				}
-			} 
 		} 
 	}
 }version(/+$DIDE_REGION Utility+/all)
@@ -9561,28 +9382,6 @@ version(/+$DIDE_REGION+/all)
 			q{op(0); put(operator); op(1); },
 			q{op(0); put('\u2A2F'); op(1); }
 		},
-		
-		
-		{
-			"probe", 
-			NET.binaryOp, 
-			skIdentifier1, 
-			NodeStyle.dim,
-			q{((a).PR!(b))},
-			".PR!",
-			q{op(0); put(operator); op(1); },
-			q{
-				style.bkColor = bkColor = operands[0].bkColor; 
-				style.fontColor = clWhite; 
-				style.bold = false; 
-				put(operands[0]); 
-				/+
-					put('▶'); 
-					put(operands[1]); 
-				+/
-			},
-			q{addGlobalProbe(dr, this); }
-		},
 		
 		
 		{
@@ -10030,7 +9829,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x419BB7B6B4BCC).檢(expr))},
+			q{((0x403B87B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -10044,7 +9843,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x41AC97B6B4BCC).檢 (expr))},
+			q{((0x404C67B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

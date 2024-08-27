@@ -152,7 +152,7 @@ version(/+$DIDE_REGION main+/all)
 		/+
 			Todo: 240825
 			[x] Hint, CodeLocationPrefix -> BuildMessageHash:module/hash
-			[ ] ScrollBox kezdemeny kiszedese a regi ErrorListBol
+			[x] ScrollBox kezdemeny kiszedese a regi ErrorListBol
 			[x] Az elso errorra azonnal ugorjon rá!
 			[x] JumpTo megcsinalasa object-re
 			[x] Arrows
@@ -162,6 +162,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			
 			[ ] Minden regi szar kitorlese, sorok szama megfigyelve
+			[ ] memory leak
 		+/
 	}
 	
@@ -266,6 +267,8 @@ version(/+$DIDE_REGION main+/all)
 					string _settings_launchRequirements() const { return buildsys_spawnProcessMultiSettings.toJson; } 
 					void _settings_launchRequirements(string s) { buildsys_spawnProcessMultiSettings.fromJson(s); } 
 				} 
+				
+				bool showModuleButtons, showHitTest, showUndoStack, showResyntaxQueue; 
 			} 
 			
 			Workspace workspace; 
@@ -420,7 +423,6 @@ version(/+$DIDE_REGION main+/all)
 			void resetBuildState()
 			{
 				clearDebugImageBlobs; 
-				resetGlobalWatches; 
 				workspace.firstErrorMessageArrived = false; 
 				workspace.modules.each!((m){ m.resetBuildMessages; }); 
 				workspace.modules.each!((m){ m.resetInspectors; }); 
@@ -641,14 +643,6 @@ version(/+$DIDE_REGION main+/all)
 					catch(Exception e)
 					{ ERR("Inspection exception: "~e.simpleMsg); }
 				}
-				else if(s.isWild("PR(?*(?*)):*"))
-				{
-					const id = wild[0]~'('~wild[1]~')'; 
-					const value = (cast(string)(wild[2].fromBase64)).ifThrown("BASE64 Error"); 
-					globalWatches.require(id, Watch(id)).update(value); 
-					
-					//print("Received:", globalWatches[id]); 
-				}
 				else
 				LOG("DBGLOG:", s); 
 			} 
@@ -787,7 +781,6 @@ version(/+$DIDE_REGION main+/all)
 				dbgsrv.onDebugException = &onDebugException; 
 				
 				dbgsrv.update; 
-				_updateTestProbe; 
 				
 				if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
 				{ im.focusNothing; }
@@ -862,37 +855,14 @@ version(/+$DIDE_REGION main+/all)
 										
 										Grp!Column
 										(
-											"Watches",
+											"Show Debug Info",
 											{
-												static float maxLocationWidth; 
-												foreach(ref w; globalWatches.byValue)
-												{
-													auto 	sc = DLangScanner("//$DIDE_LOC "~w.id),
-														loc = new CodeComment(null); 
-													loc.rebuild(sc); 
-													loc.measure; 
-													maxLocationWidth.maximize(loc.outerWidth); 
-													Row(
-														{
-															Row(
-																{
-																	width = maxLocationWidth; 
-																	actContainer.appendCell(loc); 
-																}
-															); 
-															Spacer; 
-															Row({ Text(w.value); }); 
-														}
-													); 
-												}
+												ChkBox(showModuleButtons, "Module buttons"); 
+												ChkBox(showHitTest, "HitTest"); 
+												ChkBox(showUndoStack, "Undo stack"); 
+												ChkBox(showResyntaxQueue, "Resyntax Queue"); 
 											}
 										); 
-										/*
-											if(B("F1", "autoRealign"	)) test_autoRealign;
-											if(B("F2", "StructureMap"	)) test_structureMap;
-											if(B("F3", "resyntax"	)) test_resyntax;
-											if(B("F4", "declaration"	)) test_declarationStatistics;
-										*/
 									}
 									break; 
 									case MenuPage.Palette: 
@@ -951,8 +921,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 				); 
 				
-				
-				if(0)
+				if(showModuleButtons)
 				with(im)
 				Panel(
 					PanelPosition.topClient,
@@ -966,8 +935,6 @@ version(/+$DIDE_REGION main+/all)
 						); 
 					}
 				); 
-					
-				
 				
 				with(im)
 				Panel(
@@ -978,8 +945,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 				); 
 				
-				
-				if(0)
+				if(showHitTest)
 				with(im)
 				Panel(
 					PanelPosition.bottomClient,
@@ -996,11 +962,8 @@ version(/+$DIDE_REGION main+/all)
 						); 
 					}
 				); 
-					
 				
-				
-				//undo debug
-				if(0)
+				if(showUndoStack)
 				with(im)
 				with(workspace)
 				Panel(
@@ -1019,8 +982,7 @@ version(/+$DIDE_REGION main+/all)
 					}
 				); 
 				
-				
-				if(0)
+				if(showResyntaxQueue)
 				with(im)
 				with(workspace)
 				Panel(
@@ -1031,26 +993,8 @@ version(/+$DIDE_REGION main+/all)
 					}
 				); 
 				
-				
-				version(/+$DIDE_REGION+/none) {
-					//error list
-					if(workspace.showErrorList)
-					with(im)
-					Panel(
-						PanelPosition.bottomClient,
-						{
-							margin = "0"; padding = "0"; //border = "1 normal gray";
-							outerHeight = 200; 
-							workspace.UI_ErrorList; 
-						}
-					); 
-				}
-				
-				
 				void VLine()
 				{ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); } 
-				
-				
 				
 				//StatusBar
 				with(im)
@@ -2024,7 +1968,7 @@ version(/+$DIDE_REGION main+/all)
 				reference	: reference
 			}))); 
 		} 
-		
+		
 		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
 		
@@ -2063,178 +2007,6 @@ version(/+$DIDE_REGION main+/all)
 				}
 			} 
 			visit([rootMessage]); 
-		} 
-		
-		void convertBuildMessagesToSearchResults(ref BuildResult br)
-		{
-			version(/+$DIDE_REGION+/none) {
-				T0; 
-				
-				const outFile = File(`virtual:\__compilerOutput.d`); 
-				
-				outFile.write(br.sourceText); 
-				
-				const tAccessBuildMessages = DT;  //40 ms
-				
-				errorModule = new Module(null, "", StructureLevel.structured); 
-				messageSourceTextByLocation.clear; 
-				
-				messageConnectionArrows.clear; 
-				
-				if(1)
-				{
-					//load all messages through a cache
-					float y = 0; 
-					errorModule.content.subCells = []; 
-					foreach(msg; br.messages)
-					{
-						//hide messages of unselected markerLayers
-						const messageIsVisible = markerLayerSettings[msg.type].visible; 
-						
-						if(!messageIsVisible) continue; 
-						
-						const src = msg.sourceText; 
-						//extract all locations from the message.
-						msg.allLocations.each!((in loc){ messageSourceTextByLocation[loc.text] = src; }); 
-						
-						buildMessageConnectionArrows(msg); 
-						
-						if(src !in messageUICache)
-						{
-							//Todo: use CodeColumn here!
-							auto tempModule = new Module(null, msg.sourceText, StructureLevel.structured); 
-							try
-							{
-								auto msgCol = new CodeColumn(null, msg.sourceText, TextFormat.managed_block); 
-								auto msgRow = msgCol.rows.frontOrNull.enforce("Can't get builMsgRow."); 
-								msgRow.measure; 
-								messageUICache[src] = msgRow; 
-								
-								version(none)
-								{
-									version(/+$DIDE_REGION Inject the error message into the nearest surrounding CodeNode+/all)
-									{
-										{
-											auto msgNode = msgRow.singleNodeOrNull.enforce("Unable to get single buildMessageNode."); 
-											auto srs = codeLocationToSearchResults(msg.location); //Todo: slow
-											CodeNode[] getNodePath(Container.SearchResult sr)
-											{
-												return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
-													.filter!((a)=>(a && a.canAcceptBuildMessages))
-													.array.retro.array; 
-											} 
-											auto rootPath = srs.map!((a)=>(getNodePath(a))).fold!commonPrefix; 
-											
-											if(auto rootNode = rootPath.backOrNull)
-											{
-												rootNode.processBuildMessage(src, msgNode); 
-												/+Todo: only add once, not always!+/
-											}
-										}
-									}
-								}
-							}
-							catch(Exception e)
-							{ ERR("Can't build buildMessage: "~e.simpleMsg~"\nmsg: "~msg.sourceText~"\n"); }
-						}
-						
-						auto msgRow = messageUICache[src]; 
-						errorModule.content.subCells ~= msgRow; 
-						
-						with(msgRow)
-						{
-							setParent(errorModule.content); 
-							outerPos = vec2(0, y); 
-							y += outerHeight; 
-						}
-						
-						//Todo: Why I need to spread this shit manually? Why errorModule.measure dont do this?
-						//Bug: this cache is never emptied, it keeps growing.
-					}
-				}
-				
-				const tLoadErrorModule = DT; //110 ms
-				
-				errorModule.measure; 
-				//Note: This calculates the height and width of the module. It fails to spread the rows vertically.
-				
-				const tMeasureErrorModule = DT; //0 ms (because of the messageUICache[])
-				
-				auto buildMessagesAsSearchResults(DMDMessage.Type type)
-				{
-					//Todo: opt
-					//Todo: Build DIDE -> Some error messages has NO PATH.
-					Container.SearchResult[] arr; 
-					
-					foreach(msgIdx, const msg; br.messages)
-					if(msg.type==type)
-					{
-						auto sr = codeLocationToSearchResults(msg.location); 
-						
-						//Todo: Must fix this crap.  Many rows are is unable to find.  Especially the rows on the surfaces of the fucking Nodes.
-						
-						static if(0)
-						if(sr.empty && msg.location.lineIdx>1)
-						{
-							auto loc2 = cast()msg.location; 
-							loc2.lineIdx--; 
-							sr = codeLocationToSearchResults(loc2, false); 
-							//WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-							/+
-								Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
-								It is on the surface of the Node which has no updated lineIdx.
-							+/
-						}
-						
-						
-						static if(0)
-						if(sr.empty)
-						{
-							WARN("Unable to find line for BuildMessage:\n"~msg.text); 
-							sr = codeLocationToSearchResults(msg.location, false); 
-							if(sr.empty)
-							{
-								WARN("Skipping binary search:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-								
-								if(msg.location.lineIdx>1)
-								{
-									auto loc2 = cast()msg.location; 
-									loc2.lineIdx--; 
-									sr = codeLocationToSearchResults(loc2, false); 
-									WARN("Trying previous line:", sr.empty ? EgaColor.ltRed("still a FAIL") : "success"); 
-									/+
-										Todo: "Unable to find line" error can reproduced when the problem is at the block closing '}'. 
-										It is on the surface of the Node which has no updated lineIdx.
-									+/
-								}
-							}
-						}
-						arr ~= sr; 
-					}
-					
-					return arr; 
-				} 
-				
-				/+
-					Opt: it is a waste of time. this should be called only at buildStart, and at buildProgress, 
-					module change, module move.
-				+/
-				//1.5ms, (45ms if not sameText but sameFile(!!!) is used in the linear findModule.)
-				static if(0)
-				foreach(t; EnumMembers!(DMDMessage.Type))
-				if(!t.among(DMDMessage.Type.unknown, DMDMessage.Type.find, DMDMessage.Type.console))
-				{ markerLayers[t].searchResults = buildMessagesAsSearchResults(t); }
-				
-				
-				const tBuildSearchResults = DT; //60 ms
-				
-				//performance timing
-				if(0)
-				LOG(
-					[tAccessBuildMessages, tLoadErrorModule, tMeasureErrorModule, tBuildSearchResults]
-					.map!(a => a.value(milli(second))).format!"%(%.0f %)"
-				); 
-			}
 		} 
 		
 		void processBuildMessages(DMDMessage[] messages)
@@ -2349,7 +2121,7 @@ version(/+$DIDE_REGION main+/all)
 								return cmt; 
 							}
 							
-							WARN("Can't find buildMessage in code:\n"~msg.text~"\n"~searchResults.text); //these are the problematic ones
+							WARN("Can't find buildMessage in code:\n"~msg.text~"\n"~searchResults.text); 
 							return null; 
 						} 
 						
@@ -2389,16 +2161,6 @@ version(/+$DIDE_REGION main+/all)
 			enforce(type!=DMDMessage.Type.find); 
 			return modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
 		} 
-		
-		version(/+$DIDE_REGION+/none) {
-			auto visitMarkerLayer(DMDMessage.Type type, void delegate(ref SearchResult sr) fun)
-			{
-				if(type==DMDMessage.Type.find)
-				{ foreach(m; modules) foreach(ref sr; m.findSearchResults) fun(sr); }
-				else
-				{ foreach(m; modules) foreach(msg; m.messagesByType[type]) foreach(ref sr; msg.searchResults) fun(sr); }
-			} 
-		}
 		
 		auto clearMarkerLayer_find()
 		{ foreach(m; modules) m.findSearchResults = []; } 
@@ -2486,76 +2248,36 @@ version(/+$DIDE_REGION main+/all)
 		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
 		{
 			CodeLocation res; 
-			if(0)
-			{
-				//Note: this works only at the first dept level
-				//Todo: deprecate this code
-				auto a(T)(void delegate(T) f)
-				{ if(auto x = cast(T)st.get(0).cell) { st.popFront; f(x); }} 
-				a(
-					(Module m)
-					{
-						res.file = m.file; 
-						a(
-							(CodeColumn col)
-							{
-								a(
-									(CodeRow row)
-									{
-										if(auto lineIdx = col.subCells.countUntil(row)+1)
-										{
-											//Todo: parent.subcellindex/child.index
-											res.lineIdx = lineIdx.to!int; 
-											a(
-												(Cell cell)
-												{
-													if(auto columnIdx = row.subCells.countUntil(cell)+1)
-													{
-														//Todo: parent.subcellindex/child.index
-														res.columnIdx = columnIdx.to!int; 
-													}
-												}
-											); 
-										}
-									}
-								); 
-							}
-						); 
-					}
-				); 
-			}
-			else
-			{
-				//Todo: it's only detects the lineIdx
-				while(st.length) {
-					void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; } 
-					auto cell = st.back.cell; 
+			
+			//Todo: it's only detects the lineIdx
+			while(st.length) {
+				void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; } 
+				auto cell = st.back.cell; 
+				
+				if(auto glyph = cast(Glyph)cell)
+				setLineIdx(glyph.lineIdx); 
+				else if(auto node = cast(CodeNode)cell)
+				setLineIdx(node.lineIdx); 
+				else if(auto row = cast(CodeRow)cell)
+				{
+					setLineIdx(row.lineIdx); 
+					/+
+						Todo: this should be row.findLineIdx_max,
+						because the mouse is at the end of the row
+					+/
 					
-					if(auto glyph = cast(Glyph)cell)
-					setLineIdx(glyph.lineIdx); 
-					else if(auto node = cast(CodeNode)cell)
-					setLineIdx(node.lineIdx); 
-					else if(auto row = cast(CodeRow)cell)
-					{
-						setLineIdx(row.lineIdx); 
-						/+
-							Todo: this should be row.findLineIdx_max,
-							because the mouse is at the end of the row
-						+/
-						
-						if(auto mod = moduleOf(row))
-						res.file = mod.file; 
-						break; 
-					}
-					//Todo: Tabs would look better in this if chain.
-					
-					st.popBack; 
+					if(auto mod = moduleOf(row))
+					res.file = mod.file; 
+					break; 
 				}
+				//Todo: Tabs would look better in this if chain.
+				
+				st.popBack; 
 			}
 			
 			return res; 
 		} 
-		
+		
 		static CellLocation[] findLastCodeRow(CellLocation[] st)
 		{
 			foreach_reverse(i; 0..st.length) {
@@ -4908,10 +4630,7 @@ version(/+$DIDE_REGION main+/all)
 				+/
 				buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash); 
 				if(buildStateChanged)
-				{
-					updateModuleBuildStates(buildResult); 
-					convertBuildMessagesToSearchResults(buildResult); 
-				}
+				{ updateModuleBuildStates(buildResult); }
 				
 				updateLastKnownModulePositions; 
 				
@@ -6085,53 +5804,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 		} 
 		
-		version(/+$DIDE_REGION+/none) {
-			auto UI_ErrorList()
-			{
-				with(im) {
-					//UI_ErrorList ////////////////////////////
-					//Todo: extract this as ScrollBox
-					auto siz = innerSize; 
-					Container
-					(
-						{
-							outerSize = siz; 
-							with(flags) {
-								clipSubCells = true; 
-								vScrollState = ScrollState.auto_; 
-								hScrollState = ScrollState.auto_; 
-							}
-							
-							if(auto mod = errorModule)
-							{
-								if(auto col = mod.content)
-								{
-									//total size placeholder
-									Container({ outerPos = col.outerSize; outerSize = vec2(0); }); 
-									
-									flags.saveVisibleBounds = true; 
-									if(auto visibleBounds = imstVisibleBounds(actId))
-									{
-										CodeRow[] visibleRows = col.rows.filter!(
-											r => r.outerBounds.overlaps(visibleBounds)
-											&& r.subCells.length
-										).array; 
-										//Opt: binary search
-										
-										actContainer.append(cast(Cell[])visibleRows); 
-										//Note: append is important because it already has the spaceHolder Container.
-									}
-								}
-								else
-								WARN("Invalid errorList"); 
-							}
-						}
-					); 
-				}
-			} 
-		}
 		
-		
 		string lastNearestSearchResultReference; 
 		
 		Container mouseOverHintCntr; 
@@ -6784,8 +6457,6 @@ version(/+$DIDE_REGION main+/all)
 			
 			drawMessageConnectionArrows(dr); 
 			
-			.drawProbes(dr); globalVisibleProbes.clear; 
-			
 			(mixin(求each(q{ref p},q{inspectorParticles},q{p.updateAndDraw(dr)}))); 
 			
 			drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
@@ -6879,8 +6550,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3316735B2D627).檢(expr)) ((0x3318535B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x331D335B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30AF035B2D627).檢(expr)) ((0x30B0E35B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30B5C35B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
