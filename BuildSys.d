@@ -2487,7 +2487,7 @@ struct BuildSystem
 		
 		auto line = joinCommandLine(cmd); 
 		logln(bold("LINKING: "), line); 
-		auto link = executeShell(line, null/+MSVCEnv.getEnv(is64bit)+/, Config.suppressConsole | Config.newEnv, size_t.max, mainFile.path.fullPath); 
+		auto link = executeShell(line, null, Config.suppressConsole, size_t.max, mainFile.path.fullPath); 
 		
 		if(printCommands) print(line); 
 		
