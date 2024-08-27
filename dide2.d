@@ -258,7 +258,7 @@ version(/+$DIDE_REGION main+/all)
 			@STORED {
 				bool mainMenuOpened; 
 				
-				enum MenuPage { Tools, Palette, Settings } 
+				enum MenuPage { Tools, Palette, Settings, ResMon } 
 				MenuPage menuPage; 
 				string toolPalettePage; 
 				
@@ -849,8 +849,7 @@ version(/+$DIDE_REGION main+/all)
 							{
 								final switch(menuPage)
 								{
-									case MenuPage.Tools: 
-										{
+									case MenuPage.Tools: 	{
 										UI_refactor; 
 										
 										Grp!Column
@@ -863,19 +862,18 @@ version(/+$DIDE_REGION main+/all)
 												ChkBox(showResyntaxQueue, "Resyntax Queue"); 
 											}
 										); 
-									}
-									break; 
-									case MenuPage.Palette: 
-										with(toolPalette) {
+									}	break; 
+											
+									case MenuPage.Palette: 	with(toolPalette) {
 										UI(toolPalettePage); 
 										
 										if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
 										workspace.insertNode(templateSource, subColumnIdx); 
-									}
-									break; 
-									case MenuPage.Settings: 
-										Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 
-									break; 
+									}	break; 
+											
+									case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
+											
+									case MenuPage.ResMon: 	resourceMonitor.UI(400); 	break; 
 								}
 							}
 						}
@@ -6550,8 +6548,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x30AF035B2D627).檢(expr)) ((0x30B0E35B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x30B5C35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x30B2335B2D627).檢(expr)) ((0x30B4135B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x30B8F35B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))

@@ -1144,15 +1144,17 @@ Experimental:
 			return true; 
 		} 
 		
-		DMDMessage addConsoleMessage(string[] lines)
+		void addConsoleMessage(string[] lines)
 		{
+			if(lines.empty) return; 
+			const s = lines.join('\n'); 
+			if(s.strip=="") return; 
 			messages ~= new DMDMessage(
 				CodeLocation(actSourceFile.fullName), 
 				DMDMessage.Type.console, 
-				lines.join('\n')
+				s
 			); 
 			updatedMessages ~= messages.back; 
-			return messages.back; 
 		} 
 		
 		
@@ -1197,6 +1199,8 @@ Experimental:
 		
 		void processDMDOutput_partial(ref string[] lines, bool isFinal)
 		{
+			if(lines.empty) return; 
+			
 			if(isFinal)
 			{
 				processDMDOutput(lines); 
@@ -1239,11 +1243,11 @@ Experimental:
 		
 		DMDMessage[] fetchUpdatedMessages()
 		{
-			if(pragmas.length)
-			{ addConsoleMessage(pragmas.fetchAll); }
+			//add remaining pragmas first to messages
+			addConsoleMessage(pragmas.fetchAll); 
 			
-			auto res = updatedMessages.fetchAll; 
-			return res; 
+			//then fetch all new or modified messages
+			return updatedMessages.fetchAll; 
 		} 
 		
 		void processDMDOutput(string[] lines)
@@ -1445,7 +1449,7 @@ struct BuildSystem
 	} 
 		static perf(string f)
 	{ return "auto _perfMeasurerStruct = Perf(times."~f~");"; } 
-	
+	
 		void prepareMapPdbResDef()
 	{
 		//mapFile
@@ -1474,7 +1478,7 @@ struct BuildSystem
 		resFile = targetFile.otherExt(".res"); 
 		else resFile = File(""); 
 		
-	} 
+	} 
 	
 		void initData(File mainFile_)
 	{
@@ -1611,6 +1615,7 @@ struct BuildSystem
 				enforce(any, format(`Can't find any resources at: "%s"`, src)); 
 				//Todo: source file/line number visszajelzes
 			}	break; 
+			
 					
 			case CMD.def: 	{ defLines ~= buildMacro[3..$].strip; }	break; 
 			case CMD.win: 	{ isWindowedApp = true; }	break; 
@@ -1712,7 +1717,7 @@ struct BuildSystem
 		foreach(imp; mAct.importedFiles)
 		processSourceFile(imp); 
 	} 
-	
+	
 		static string processDMDErrors(string sErr, string path)
 	{
 		//processes each errorlog individually, making absolute filepaths
@@ -1964,7 +1969,7 @@ struct BuildSystem
 				fetchAndCall_onBuildMessages; 
 			}
 		}
-		
+		
 		bool cancelled; 
 		combinedResult = spawnProcessMulti
 		(
@@ -2002,7 +2007,7 @@ struct BuildSystem
 					cancelled = true; 
 					return true; //continue
 				}
-			}),
+			}),
 			((int inFlight, int justStartedIdx) {
 				cancelled |= onIdle ? onIdle(inFlight, justStartedIdx) : false; 
 				return cancelled; 
@@ -2013,10 +2018,12 @@ struct BuildSystem
 			((string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) {
 				//foreach(a; stdErr) print("incoming>", a); 
 				msgDec.actSourceFile = File(id); 
-				if(stdOut.length)
-				{ msgDec.addConsoleMessage(stdOut.fetchAll); }
-				if(stdErr.length)
-				{ msgDec.processDMDOutput_partial(stdErr, isFinal); }
+				
+				/+Always take every output line from stdOut.+/
+				msgDec.addConsoleMessage(stdOut.fetchAll); 
+				
+				/+Only complete messages are fetched form stdErr.+/
+				msgDec.processDMDOutput_partial(stdErr, isFinal); 
 				
 				fetchAndCall_onBuildMessages; 
 			})
@@ -2211,42 +2218,7 @@ struct BuildSystem
 		exeCache.clear; 
 		mapCache.clear; 
 		resCache.clear; 
-	} ; 
-	
-		/+
-		//this is only usable from the IDE, not from a standalone build tool
-			bool killDeleteExe(File file)
-		{
-			const killTimeOut	= 1.0*second,//sec
-						deleteTimeOut	= 1.0*second; //sec
-			
-			bool doDelete()
-			{
-				auto t0 = now; 
-				while((now-t0)<deleteTimeOut)
-				{
-					file.remove(false); 
-					if(!file.exists)
-					return true; //success
-					sleep(50); 
-				}
-				return false; 
-			} 
-			
-			if(!dbg.forceExit_set)
-			return false; //fail: no DIDE present
-			auto t0 = now; 
-			const timeOut = 1.0; //sec
-			while(now-t0<killTimeOut)
-			{
-				if(!dbg.forceExit_check)
-				return doDelete; //success, delete it
-				sleep(50); 
-			}
-			dbg.forceExit_clear; 
-			return false; //fail: timeout
-		} 
-	+/
+	} 
 		//Errors returned in exceptions
 		void build(in File mainFile_, in BuildSettings originalSettings)
 	{
@@ -2719,7 +2691,7 @@ version(/+$DIDE_REGION+/all) {
 		int[File] results; //command line console exit codes
 		string[][File] outputs, remainings; //raw output lines, remaining output lines after processing
 		
-		DMDMessages messages; 
+		deprecated DMDMessages messages; 
 		
 		DMDMessage[] incomingMessages; 
 		
