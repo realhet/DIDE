@@ -3294,18 +3294,6 @@ class CodeRow: Row
 		}
 	} 
 	
-	deprecated int getLineIdxOfFirstGlyphOrNode_notRecursive()
-	{
-		return rows.front.lineIdx; 
-		
-		/*
-			auto c = rows.map!(r => r.subCells).joiner.frontOrNull;
-			if(auto g = cast(Glyph) c) return g.lineIdx;
-			if(auto n = cast(CodeNode) c) return n.lineIdx;
-			return 0;
-		*/
-	} 
-	
 	auto calcWhitespaceStats()
 	{
 		WhitespaceStats whitespaceStats; 
@@ -9834,7 +9822,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x4041C7B6B4BCC).檢(expr))},
+			q{((0x402F57B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9848,7 +9836,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x4052A7B6B4BCC).檢 (expr))},
+			q{((0x404037B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -10325,7 +10313,7 @@ version(/+$DIDE_REGION+/all)
 			templateIdx = templateIdx_; 
 			enforce(validTemplate, "Invalid NiceExpressionTemplate idx."); 
 			
-			if(col0) lineIdx = col0.getLineIdxOfFirstGlyphOrNode_notRecursive; 
+			if(col0) lineIdx = col0.rows.front.lineIdx; 
 			
 			static foreach(i; 0..operands.length)
 			{

@@ -444,13 +444,21 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			void cancelBuild()
-			{ if(building) buildSystemWorkerTid.send(MsgBuildCommand.cancel); } 
+			{
+				if(building) {
+					workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
+					buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
+				}
+			} 
 			
 			@property canKillCompilers()
 			{ return !globalPidList.empty; } 
 			
 			void killCompilers()
-			{ globalPidList.killAll; } 
+			{
+				workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
+				globalPidList.killAll; 
+			} 
 			
 			
 			@property canKillRunningProcess()
@@ -6355,8 +6363,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x2F92A35B2D627).檢(expr)) ((0x2F94835B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x2F99635B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x2FA2235B2D627).檢(expr)) ((0x2FA4035B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x2FA8E35B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
