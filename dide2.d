@@ -657,42 +657,111 @@ version(/+$DIDE_REGION main+/all)
 			
 			void onDebugException(string message)
 			{
-				LOG("DBGEXC:\n"~message); 
-				
 				/+
-					Bug: Exception messages are fucked up now.
-					Take out the .map file interpreter from the .exe and move it to here.
-					Because in exception handling it must not use GC!
-					Only process .map file if there is no .pdb file.
-					The exe should onpy produce an error report file.  If the map/pdb file is next to it, it can be interpreted.
+					LOG("DBGEXC:\n"~message); 
+					
+					/+
+						Bug: Exception messages are fucked up now.
+						Take out the .map file interpreter from the .exe and move it to here.
+						Because in exception handling it must not use GC!
+						Only process .map file if there is no .pdb file.
+						The exe should onpy produce an error report file.  If the map/pdb file is next to it, it can be interpreted.
+					+/
+					
+					const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
+					string lastPrefix; 
+					string[] processedLines; 
+					foreach(s; message.splitLines)
+					{
+						if(s.isWild(`?:\?*.d*(?*): *`)) {
+							lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
+							processedLines ~= s; 
+						}
+						else
+						{
+							s = s.strip; 
+							if(s!="")
+							processedLines ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
+						}
+					}
+					auto processedText = processedLines.join('\n'); 
+					
+					LOG("PROCESSED:\n"~processedText); 
+					
+					//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
 				+/
 				
-				const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
-				string lastPrefix; 
-				string[] processedLines; 
-				foreach(s; message.splitLines)
+				string processExceptionMessage(string message)
 				{
-					if(s.isWild(`?:\?*.d*(?*): *`)) {
-						lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
-						processedLines ~= s; 
-					}
-					else
+					static bool ignoreFunction(string f)
 					{
-						s = s.strip; 
-						if(s!="")
-						processedLines ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
+						static immutable list = 
+						[
+							`__scrt_common_main_seh`, `BaseThreadInitThunk`, `RtlUserThreadStart`, 
+							`CallWindowProcW`, `CallWindowProcW`, `glPushClientAttrib`, `CallWindowProcW`, 
+							`DispatchMessageW`, `SendMessageTimeoutW`, `KiUserCallbackDispatcher`, 
+							`NtUserDispatchMessage`, `DispatchMessageW`, 
+							`void rt.dmain2._d_run_main2(char[][], ulong, extern (C) int function(char[][])*).runAll()`, 
+							`d_run_main2`, `d_wrun_main`
+						]; 
+						return list.canFind(f); 
+					} 
+					
+					static bool ignoreLocation(string loc)
+					{
+						static immutable list = 
+						[`\ldc2\import\core\internal\entrypoint.d(`, `\ldc2\import\std\exception.d(`]; 
+						return list.any!((a)=>(loc.canFind(a))); 
+					} 
+					
+					static string dquoted(string s) => '`' ~ s.replace("`", "<DQuote>") ~ '`'; 
+					static addCol(string s) => s ~ ((s.canFind(','))?(""):(",1")); 
+					
+					auto lines = message.splitLines; 
+					
+					if(lines.get(1)=="----------------")
+					{
+						
+						string doit(bool hasLocation)
+						{
+							string[] res, unprocessed; 
+							
+							string firstLocation; 
+							foreach(s; lines.drop(2))
+							{
+								if(s.isWild(`0x???????????????? in * at ?:\?*.?*(*)`))
+								{
+									if(ignoreFunction(wild[1])) continue; 
+									auto loc = i`$(wild[2]):\$(wild[3]).$(wild[4])($(addCol(wild[5]))): `.text; 
+									if(ignoreLocation(loc)) continue; 
+									if(firstLocation=="") firstLocation = loc; 
+									res ~= i`$(loc)       called from $(dquoted(wild[1]))`.text; 
+								}
+								else if(s.isWild(`0x???????????????? in *`))
+								{
+									if(ignoreFunction(wild[1])) continue; 
+									if(res.length)	res.back ~= i`, $(wild[1])`.text; 
+									else	unprocessed ~= s; 
+								}
+								else if(s.strip!="")
+								unprocessed ~= s; 
+							}
+							
+							return chain(only(((hasLocation)?(""):(firstLocation))~lines[0]), res).join('\n'); 
+						} 
+						
+						if(lines[0].isWild("?:\?*.?*(*): Error: *")) return doit(true); 
+						else if(lines[0].isWild("Error: *")) return doit(false); 
 					}
-				}
-				auto processedText = processedLines.join('\n'); 
+					
+					return message; 
+				} 
 				
-				LOG("PROCESSED:\n"~processedText); 
-				
-				//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
-				
-				auto messages = decodeDMDMessages(processedText, workspace.mainModuleFile); 
+				message = processExceptionMessage(message); 
+				auto messages = decodeDMDMessages(message, workspace.mainModuleFile); 
 				workspace.processBuildMessages(messages); 
 				
-				im.flashError(processedLines.frontOr("Exception without message.")); 
+				im.flashError(message.splitter('\n').frontOr("Exception without message.")); 
 			} 
 			
 			////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -6363,8 +6432,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x2FA2235B2D627).檢(expr)) ((0x2FA4035B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x2FA8E35B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3038835B2D627).檢(expr)) ((0x303A635B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x303F435B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
