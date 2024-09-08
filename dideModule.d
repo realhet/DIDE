@@ -83,6 +83,7 @@ version(/+$DIDE_REGION+/all)
 	
 	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
 	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
+	__gshared globalVisualizeSpacesAndTabs = true; 
 	
 	const clModuleBorder = clGray; 
 	const clModuleText = clBlack; 
@@ -319,6 +320,27 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		
+		CodeRow rowAt(CodeColumn cc, int y)
+		{
+			if(!cc) return null; 
+			return cast(CodeRow)(cc.subCells.get(y)); 
+		} 
+		
+		CodeRow rowAt(TextCursor tc)
+		{ return rowAt(tc.codeColumn, tc.pos.y); } 
+		
+		
+		Cell cellAt(CodeRow cr, int x)
+		{
+			if(!cr) return null; 
+			return cr.subCells.get(x); 
+		} 
+		
+		Cell cellAt(CodeColumn cc, ivec2 p)
+		{ return cellAt(rowAt(cc, p.y), p.x); } 
+		
+		Cell cellAt(TextCursor tc)
+		{ return cellAt(tc.codeColumn, tc.pos); } 
 		
 		
 		dchar charAt(const CodeRow cr, int i, bool newLineAtEnd=true)
@@ -537,6 +559,13 @@ version(/+$DIDE_REGION+/all)
 		
 		Breadcrumb[] toBreadcrumbs(TextSelection ts)
 		{ return ts.codeColumn.toBreadcrumbs; } 
+		
+		Breadcrumb[] toBreadcrumbs(CellLocation[] arr)
+		{
+			foreach_reverse(a; arr)
+			static foreach(T; AliasSeq!(CodeNode, CodeRow, CodeColumn))
+			if(auto b = (cast(T)(a.cell))) return b.toBreadcrumbs; return []; 
+		} 
 		
 		
 		bool isTokenString(Cell cell)
@@ -2008,7 +2037,6 @@ version(/+$DIDE_REGION+/all)
 }
 class CodeRow: Row
 {
-	
 	CodeColumn parent; 
 	
 	int lineIdx; 
@@ -2582,8 +2610,6 @@ class CodeRow: Row
 	
 	version(/+$DIDE_REGION+/all)
 	{
-		
-		
 		override void draw(Drawing dr)
 		{
 			
@@ -2713,8 +2739,11 @@ class CodeRow: Row
 				
 				dr.color = clGray; dr.alpha = .4f; dr.lineWidth = .5f; dr.pointSize = 1; 
 				
-				visualizeTabs; 
-				visualizeSpaces; 
+				if(globalVisualizeSpacesAndTabs)
+				{
+					visualizeTabs; 
+					visualizeSpaces; 
+				}
 				
 				if(enableCodeLigatures) drawLigatures; 
 				
@@ -6588,6 +6617,8 @@ version(/+$DIDE_REGION+/all)
 		
 		version(/+$DIDE_REGION Constant Node handling+/all)
 		{ CodeNode[] visibleConstantNodes; }
+		
+		
 	} 
 }version(/+$DIDE_REGION SCRUM+/all)
 {
@@ -9822,7 +9853,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x402F57B6B4BCC).檢(expr))},
+			q{((0x406227B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9836,7 +9867,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x404037B6B4BCC).檢 (expr))},
+			q{((0x407307B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },

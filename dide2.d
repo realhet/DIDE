@@ -268,7 +268,7 @@ version(/+$DIDE_REGION main+/all)
 					void _settings_launchRequirements(string s) { buildsys_spawnProcessMultiSettings.fromJson(s); } 
 				} 
 				
-				bool showModuleButtons, showHitTest, showUndoStack, showResyntaxQueue; 
+				bool showModuleButtons, showTextSelectionDebugInfo, showHitTest, showUndoStack, showResyntaxQueue; 
 			} 
 			
 			Workspace workspace; 
@@ -878,14 +878,17 @@ version(/+$DIDE_REGION main+/all)
 				version(D_Optimized)	enum D_Optimized = true; 
 				else	enum D_Optimized = false; //Todo: exeBuildInfo struct into het.utils
 				
-				caption = format!"%s%s - [%s]%s %s %s %s"(
+				caption = format!"%s%s - [%s] %s %s"(
 					baseCaption,
 					D_Optimized ? " (opt)" : "",
 					workspace.mainModuleFile.fullName,
-					workspace.modules.any!"a.changed" ? "CHG" : "",
-					dbgsrv.pingLedStateText,
-					dbgsrv.exe_pid ? dbgsrv.exe_pid.format!"PID:%s" : "",
-					dbgsrv.console_hwnd ? dbgsrv.console_hwnd.format!"CON:%s" : ""
+					workspace.modules.any!"a.changed" ? "Edited" : "",
+					buildSystemWorkerState.building ? format!"Building: %d,  %d/%d"(buildSystemWorkerState.inFlight, buildSystemWorkerState.compiledModules, buildSystemWorkerState.totalModules) : "" 
+					/+
+						dbgsrv.pingLedStateText,
+						dbgsrv.exe_pid ? dbgsrv.exe_pid.format!"PID:%s" : "",
+						dbgsrv.console_hwnd ? dbgsrv.console_hwnd.format!"CON:%s" : ""
+					+/
 				); 
 				
 				/+
@@ -1014,6 +1017,20 @@ version(/+$DIDE_REGION main+/all)
 					}
 				); 
 				
+				if(showTextSelectionDebugInfo)
+				with(im)
+				with(workspace)
+				{
+					if(textSelections.length)
+					{
+						NL; 
+						if(textSelections.length>1)
+						{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
+						else if(textSelections.length==1)
+						{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+					}
+				}
+				
 				if(showHitTest)
 				with(im)
 				Panel(
@@ -1083,7 +1100,7 @@ version(/+$DIDE_REGION main+/all)
 									{
 										margin = "0 3"; flags.yAlign = YAlign.center; 
 										//style.fontHeight = 18+6;
-										buildSystemWorkerState.UI; 
+										//buildSystemWorkerState.UI; 
 										
 										if(dbgsrv.active)
 										{
@@ -2077,7 +2094,8 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			visit([rootMessage]); 
 		} 
-		
+		
+		
 		void processBuildMessages(DMDMessage[] messages)
 		{ (mixin(求each(q{m},q{messages},q{processBuildMessage(m)}))); } 
 		
@@ -2099,7 +2117,7 @@ version(/+$DIDE_REGION main+/all)
 			+/
 			return msgNode; 
 		} 
-		
+		
 		Module.Message[] incomingVisibleModuleMessageQueue; 
 		bool firstErrorMessageArrived; 
 		
@@ -2224,7 +2242,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			catch(Exception e) { ERR(e.simpleMsg~"\n"~msg.text); }
 		} 
-		
+		
 		auto getMarkerLayerCount(DMDMessage.Type type)
 		{ return (mixin(求sum(q{mod},q{modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
 		
@@ -2240,7 +2258,9 @@ version(/+$DIDE_REGION main+/all)
 		auto clearMarkerLayer_find()
 		{ foreach(m; modules) m.findSearchResults = []; } 
 		
-		
+		
+		
+		
 		
 		//Todo: since all the code containers have parents, location() is not needed anymore
 		
@@ -2319,7 +2339,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return st; 
 		} 
-		
+		
 		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
 		{
 			CodeLocation res; 
@@ -2353,6 +2373,22 @@ version(/+$DIDE_REGION main+/all)
 			return res; 
 		} 
 		
+		CellLocation[] cursorToCellLocations(TextCursor cr)
+		{
+			//Note: it does not return local/global positions, just the cell chain.
+			if(auto row = rowAt(cr))
+			{
+				auto res = row.thisAndAllParents.array.retro.map!((a)=>(CellLocation(a))).array; 
+				if(cr.isAtLineEnd) cr.pos.x--; 
+				if(auto cell = cellAt(cr)) res ~= CellLocation(cell); 
+				return res; 
+			}
+			return []; 
+		} 
+		
+		CodeLocation cursorToCodeLocation(TextCursor cr)
+		{ return cellLocationToCodeLocation(cursorToCellLocations(cr)); } 
+		
 		static CellLocation[] findLastCodeRow(CellLocation[] st)
 		{
 			foreach_reverse(i; 0..st.length) {
@@ -2401,6 +2437,38 @@ version(/+$DIDE_REGION main+/all)
 			}
 			
 			return validate(res); 
+		} 
+		
+		string wordAt(CellLocation[] st, bool canStepLeft = false/+can see one cell to the left+/, bounds2* globalBounds)
+		{
+			static isWordGlyph(Cell c)
+			{
+				if(auto g = (cast(Glyph)(c))) return g.ch.isDLangIdentifierCont /+|| g.ch=='.'+/; 
+				return false; 
+			} 
+			if(st.length>=2)
+			if(auto row = (cast(CodeRow)(st[$-2].cell)))
+			{
+				auto idx = row.subCells.countUntil(st.back.cell); 
+				
+				//optionally it can step back a cell
+				if(canStepLeft && !isWordGlyph(row.subCells[idx]) && idx>0) idx--; 
+				
+				if(idx>=0 && isWordGlyph(row.subCells[idx]))
+				{
+					auto fw = row.subCells[idx..$].until!(not!isWordGlyph); 
+					auto bk = row.subCells[0..idx].retro.until!(not!isWordGlyph); 
+					bounds2 bnd; 
+					auto res = chain(bk.array.retro, fw)	.map	!((n)=>((cast(Glyph)(n))))
+						.tee	!((g){ bnd |= g.outerBounds; })
+						.map	!((g)=>(g.ch)).text; 
+					bnd += row.worldInnerPos; 
+					if(globalBounds) *globalBounds = bnd; 
+					
+					return res; 
+				}
+			}
+			return ""; 
 		} 
 	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
 	{
@@ -2747,16 +2815,10 @@ version(/+$DIDE_REGION main+/all)
 			}
 			
 			if(ts.length>0)
-			{ textSelections = []; return; }
+			{ textSelections = []; deselectAllModules; return; }
 			
-			//Todo: primary module selection is annoying
-			if(false)
-			{ selectPrimaryModule; return; }
-			
-			//deselect everything, zoom all
-			textSelections = []; 
-			deselectAllModules; 
-			scrollInAllModules; 
+			//as a final act, zoom all
+			deselectAllModules; scrollInAllModules; 
 		} 
 		
 		auto extend(TextSelection sel)
@@ -4251,8 +4313,12 @@ version(/+$DIDE_REGION main+/all)
 		
 		void jumpTo(bounds2 bnd)
 		{
-			if(bnd) jumpTo(bnd.center); 
-			//Todo: restrict Zoom in to fit the whole rect inside!
+			//if(bnd) jumpTo(bnd.center); 
+			if(bnd)
+			{
+				frmMain.view.scale = 1; 
+				frmMain.view.smartScrollTo(bnd); 
+			}
 		} 
 		
 		void jumpTo(R)(R searchResults)
@@ -4266,8 +4332,9 @@ version(/+$DIDE_REGION main+/all)
 			{
 				if(mm.searchResults.length)	jumpTo(mm.searchResults); 
 				else	jumpTo(mm.node.worldOuterBounds); 
-				return; 
 			}
+			else if(auto node = (cast(CodeNode)(obj)))
+			{ jumpTo(node.worldOuterBounds); }
 		} 
 		
 		void jumpTo(in CodeLocation loc)
@@ -4593,6 +4660,122 @@ version(/+$DIDE_REGION main+/all)
 			textSelections = paste_impl(textSelections, storedMemSlots[n]); 
 		} 
 		
+	}version(/+$DIDE_REGION Help+/all)
+	{
+		string actHelpQuery, actSearchKeyword; 
+		bounds2 actSearchKeywordBounds; 
+		
+		void prepareHelpQuery(ref string s)
+		{
+			//Todo: this is kinda lame: It avoids getting the actual textSelection until the last moment.
+			if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
+			{ s = s.replace("$DIDE_PRIMARY_SELECTION$", primaryTextSelection.sourceText.replace("\n", " ")); }
+		} 
+		
+		string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
+		{
+			//filter out breadcrumbs
+			static bool validBreadcrumb(Breadcrumb bc)
+			{
+				if(auto decl = (cast(Declaration)(bc.node)))
+				return 	decl.identifier!="" && 
+					decl.keyword.among("struct", "union", "enum", "class", "interface"); 
+				if(auto mod = (cast(Module)(bc.node)))
+				return bc.text!=""; 
+				return false; 
+			} 
+			breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
+			
+			string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
+			if(word!="" && word!=s.get(0)) s ~= word; 
+			if(s.length==2) s.back = '+'~s.back; 
+			auto query = s.join(' '); 
+			
+			return query; 
+		} 
+		
+		string[] scrapeLinks_bing(string query)
+		{
+			prepareHelpQuery(query); 
+			import het.http; 
+			if(query=="") return []; 
+			auto 	bloatml = curlGet(`https://bing.com/search?q=`~urlEncode(query)),
+				links = bloatml	.splitter(`href="`).drop(1)
+					.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``".array; 
+			links = links.filter!((a)=>(a.startsWith("https://") && !a.canFind(".bing.com"))).array; 
+			
+			immutable helpProviders = [
+				`https://learn.microsoft.com/`,
+				`https://registry.khronos.org/vulkan/specs/`,
+				`https://registry.khronos.org/OpenGL-Refpages/`
+			]; 
+			
+			string[] preferred; 
+			foreach(link; links) foreach(a; helpProviders) if(link.startsWith(a)) preferred ~= link; 
+			
+			if(preferred.empty) {
+				print("----------- Can't choose helpful link from: -----------------"); 
+				links.each!print; beep; 
+			}
+			
+			return preferred; 
+		} 
+		
+		string[] scrapeLinks_dpldocs(string query)
+		{
+			prepareHelpQuery(query); 
+			
+			import het.http; 
+			if(query=="") return []; 
+			auto queryUrl = `https://search.dpldocs.info/?q=`~urlEncode(query); 
+			auto 	bloatml = curlGet(queryUrl),
+				links = bloatml	.splitter(`<a href="//phobos.dpldocs.info/`).drop(1)
+					.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``"
+					.map!"`https://phobos.dpldocs.info/`~a".array; 
+			
+			if(links.empty) {
+				print("----------- Can't choose helpful link from: -----------------"); 
+				bloatml.print; beep; 
+			}
+			
+			if(links.length<=1) return links.take(1).array; 
+			return [queryUrl]; 
+		} 
+		
+		void startChrome(string url, string keyword="")
+		{
+			if(url==``) return; 
+			try {
+				prepareHelpQuery(keyword); 
+				
+				frmMain.setForegroundWindow; //just to make sure
+				executeShell(joinCommandLine(["start", "chrome", url])); 
+				auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
+				
+				if(keyword!="")
+				{
+					const 	clipboardHadText = clipboard.hasText,
+						savedClipboardText = clipboardHadText ? clipboard.text : ""; 
+					scope(exit) if(clipboardHadText) clipboard.text = savedClipboardText; 
+					
+					clipboard.text = keyword; 	
+					
+					int bail = 10; 
+					foreach(i; 0..100) {
+						const title = getWindowInfo(wi.handle).title; 
+						if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
+						sleep(100); 
+					}
+					inputs.pressCombo("Ctrl+F"); 	sleep(50); 
+					inputs.pressCombo("Ctrl+V"); 	sleep(50); 
+					
+					const needEnter = [`https://registry.khronos.org/vulkan/specs/`].any!((a)=>(url.startsWith(a))); 
+					if(needEnter /+Note: This skips to the second match.+/)
+					{ inputs.pressCombo("Enter"); 	sleep(50); }
+				}
+			}
+			catch(Exception e) {}
+		} 
 	}version(/+$DIDE_REGION Refactor+/all)
 	{
 		static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
@@ -5279,6 +5462,9 @@ version(/+$DIDE_REGION main+/all)
 						[q{//@VERB("F11") void stepInto() { NOTIMPL; }
 						}],
 						[],
+						[q{"F1"},q{help_bing},q{startChrome(scrapeLinks_bing(actHelpQuery).get(0), actSearchKeyword); }],
+						[q{"Ctrl+F1"},q{help_dlang},q{startChrome(scrapeLinks_dpldocs(actSearchKeyword).get(0), actSearchKeyword); }],
+						[],
 						[q{//Experimental
 						}],
 						[q{"F1"},q{function1},q{}],
@@ -5641,45 +5827,73 @@ version(/+$DIDE_REGION main+/all)
 		void UI_mouseLocationHint(View2D view)
 		{
 			with(im) {
-				if(!view.isMouseInside) return; 
-				auto st = locate_snapToRow(view.mousePos.vec2); 
+				//Todo: This UI thing updated internal state. Not good...
+				actSearchKeyword = ""; 
+				actSearchKeywordBounds = bounds2.init; 
+				actHelpQuery = ""; 
+				
+				bool isCaret, isAtLineEnd, wordIsSelectedText; 
+				CellLocation[] st; 
+				
+				if(primaryCaret.valid)
+				{
+					isCaret = true; 
+					
+					if(textSelections.length==1)
+					{
+						if(primaryTextSelection.isZeroLength)
+						{
+							isAtLineEnd = primaryCaret.isAtLineEnd; 
+							st = cursorToCellLocations(primaryCaret); 
+						}
+						else if(primaryTextSelection.isSingleLine)
+						{
+							st = cursorToCellLocations(primaryTextSelection.start); 
+							wordIsSelectedText = true; 
+						}
+					}
+				}
+				else
+				{ if(view.isMouseInside) st = locate_snapToRow(view.mousePos.vec2); }
+				
 				if(st.length)
 				{
+					auto 	loc 	= cellLocationToCodeLocation(st),
+						breadcrumbs 	= st.toBreadcrumbs; 
+					if(wordIsSelectedText)
+					{
+						actSearchKeyword = "$DIDE_PRIMARY_SELECTION$"; 
+						actSearchKeywordBounds = primaryTextSelection.worldBounds; 
+						//Todo: Don't get the actual source text becaus it can be very large.  Needs a size estimation first.
+					}
+					else
+					{ actSearchKeyword = wordAt(st, isCaret && !isAtLineEnd, &actSearchKeywordBounds); }
+					actHelpQuery = extractHelpQuery(breadcrumbs, actSearchKeyword); 
+					
+					
 					Row(
-						{ padding="0 8"; }, "\u2316 ",
+						{ padding="0 8"; }, ((isCaret)?("Ꮖ"):("⌖")), " ",
 						{
-							const loc = cellLocationToCodeLocation(st); 
-							loc.UI; 
-							
-							/*
-								if(loc.file && loc.line){
-									if(loc.column) with(findModule(loc.file).code){
-										const pos = ivec2(loc.column, loc.line)-1;
-										Text("   ", pos.text);
-									}else with(findModule(loc.file).code){
-										const pos = ivec2(st.back.localPos.x<=0 ? 0 
-											: rows[loc.line-1].cellCount, loc.line-1);
-										Text("   ", pos.text);
-									}
-								}
-							*/
-							
-							/*
-								auto crsr = cellLocationToTextCursor(st);
-								if(crsr.valid){
-									Text("   ", crsr.text, "   ", crsr.toReference.text, "   ",
-										crsr.worldPos.text, "   ", view.mousePos.text);
-								}
-							*/
-							
-							if(textSelections.length)
+							theme = "tool"; 
+							loc.UI; NL; 
+							foreach(i, b; breadcrumbs)
 							{
-								NL; 
-								if(textSelections.length>1)
-								{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
-								else if(textSelections.length==1)
-								{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+								if(
+									Btn(
+										{
+											style.bkColor = bkColor = b.node.bkColor; 
+											style.fontColor = blackOrWhiteFor(bkColor); 
+											Text(b.text); 
+										},
+										(("Breadcrumb:"~i.text).genericArg!q{id})
+									)
+								)
+								{ jumpTo(b.node); }
 							}
+							
+							if(actHelpQuery!="")
+							if(Btn("Search: "~actHelpQuery))
+							{/+Todo: bing.com?q=query+string -> shellExecute start chrome ...+/}
 						}
 					); 
 				}
@@ -6316,6 +6530,13 @@ version(/+$DIDE_REGION main+/all)
 			drawFolders(dr, clGray, clWhite); 
 			drawSelectionRect(dr, clAccent); 
 			
+			if(auto b = actSearchKeywordBounds) {
+				dr.color = clWhite; dr.alpha = .6*blink; dr.lineWidth = 2; dr.lineStyle = LineStyle.dot; 
+				dr.drawRect(b); 
+				dr.lineStyle = LineStyle.normal; 
+				dr.alpha = 1; 
+			}
+			
 			resetNearestSearchResult; 
 			
 			markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
@@ -6361,6 +6582,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		override void draw(Drawing dr)
 		{
+			globalVisualizeSpacesAndTabs = !textSelections_internal.empty; 
+			
 			globalChangeindicatorsAppender.clear; 
 			(mixin(求each(q{m},q{modules},q{m.visibleConstantNodes.clear}))); 
 			
@@ -6432,8 +6655,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 					[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3038835B2D627).檢(expr)) ((0x303A635B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x303F435B2D627).檢((update間(_間)))); }],
+					[q{"debug inspector"},q{((0x3205535B2D627).檢(expr)) ((0x3207335B2D627).檢 (expr))}],
+					[q{"stop watch"},q{auto _間=init間; ((0x320C135B2D627).檢((update間(_間)))); }],
 					[q{"interactive literals"},q{/+
 						Todo: It throws ->
 						(常!(bool)(0)) (常!(bool)(1))
