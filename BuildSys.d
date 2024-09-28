@@ -2117,8 +2117,25 @@ struct BuildSystem
 			/+"-v"+//+, /+It's quitr bogus in LDC.+/+/
 		]; 
 		
+		/+
+			Note: 20240928: From now I stop using --allinst.
+			
+			/+Link: https://forum.dlang.org/post/nedjfzfyxyudrjeypcvg@forum.dlang.org+/
+			User1234: "-allinst" disable an internal system of speculation that is: "this instance is already 
+			emitted so dont do it again".
+			
+			Over the years it has appeared that the speculation does not always work as it should.
+			The classic symptom of that is when people encounter linker errors related to missing symbols. 
+			
+			"-allinst" is the number one workaround. When activated, it's likely that things get emitted 
+			more than once, but at least, speculation bugs are gone.
+			
+			You may ask "but then there should be other linker errors about double definition ?". 
+			No, those syms has to be emitted as "weak" symbols, so the linker ignore duplicated definitions.
+		+/
+		
 		if(isIncremental)
-		args ~= ["-c", "-allinst"]; /+
+		args ~= ["-c"/+, "-allinst"+/]; /+
 			no more "-op", because every output filename 
 			is specified explicitly with "-of="
 		+/
