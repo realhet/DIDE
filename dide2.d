@@ -165,7 +165,7 @@ version(/+$DIDE_REGION main+/all)
 			[ ] memory leak
 		+/
 	}
-	
+	
 	//globals ////////////////////////////////////////
 	
 	import het, het.parser, het.ui; 
@@ -251,1197 +251,1192 @@ version(/+$DIDE_REGION main+/all)
 	class FrmMain : GLWindow
 	{
 		mixin autoCreate; 
-		version(/+$DIDE_REGION+/all)
+		
+		
+		@STORED {
+			bool mainMenuOpened; 
+			
+			enum MenuPage { Tools, Palette, Settings, ResMon } 
+			MenuPage menuPage; 
+			string toolPalettePage; 
+			
+			@property {
+				//Todo: bad naming
+				string _settings_launchRequirements() const { return buildsys_spawnProcessMultiSettings.toJson; } 
+				void _settings_launchRequirements(string s) { buildsys_spawnProcessMultiSettings.fromJson(s); } 
+			} 
+			
+			bool showModuleButtons, showTextSelectionDebugInfo, showHitTest, showUndoStack, showResyntaxQueue; 
+		} 
+		
+		Workspace workspace; 
+		MainOverlayContainer overlay; 
+		
+		Tid buildSystemWorkerTid; 
+		
+		BuildResult buildResult; //collects buildMessages and output
+		
+		Path workPath = Path(`z:\temp2`); 
+		
+		File workspaceFile; 
+		bool initialized; //workspace has been loaded.
+		
+		string baseCaption; 
+		bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
+		
+		MSQueue!string dbgRerouteQueue; 
+		
+		Bitmap[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
+		
+		ToolPalette _toolPalette; @property toolPalette()
+		{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
+		
+		override void onCreate()
 		{
+			//onCreate //////////////////////////////////
+			baseCaption = appFile.nameWithoutExt.uc; 
+			isSpecialVersion = baseCaption != "DIDE2"; 
 			
+			{ auto a = this; a.fromJson(ini.read("settings", "")); }//Todo: this.fromJson
 			
-			@STORED {
-				bool mainMenuOpened; 
-				
-				enum MenuPage { Tools, Palette, Settings, ResMon } 
-				MenuPage menuPage; 
-				string toolPalettePage; 
-				
-				@property {
-					//Todo: bad naming
-					string _settings_launchRequirements() const { return buildsys_spawnProcessMultiSettings.toJson; } 
-					void _settings_launchRequirements(string s) { buildsys_spawnProcessMultiSettings.fromJson(s); } 
-				} 
-				
-				bool showModuleButtons, showTextSelectionDebugInfo, showHitTest, showUndoStack, showResyntaxQueue; 
-			} 
+			initBuildSystem; 
+			workspace = new Workspace; 
+			workspaceFile = appFile.otherExt(Workspace.defaultExt); 
+			overlay = new MainOverlayContainer; 
 			
-			Workspace workspace; 
-			MainOverlayContainer overlay; 
+			dbgRerouteQueue = new MSQueue!string; 
+			globalDbgRerouteQueue = dbgRerouteQueue; 
+		} 
+		
+		override void onDestroy()
+		{
+			ini.write("settings", this.toJson); 
+			if(initialized) workspace.saveWorkspace(workspaceFile); 
+			workspace.destroy; 
+			destroyBuildSystem; 
+		} 
+		
+		@VERB("Alt+F4") void closeApp()
+		{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
+		
+		@property building()const
+		{ return buildSystemWorkerState.building; } 
+		@property ready()const
+		{ return !buildSystemWorkerState.building; } 
+		@property cancelling()const
+		{ return buildSystemWorkerState.cancelling; } 
+		@property running()const
+		{ return !!dbgsrv.exe_pid; } 
+		@property running_console()const
+		{ return !!dbgsrv.console_hwnd; } 
+		
+		void initBuildSystem()
+		{
+			buildResult = new BuildResult; 
+			buildSystemWorkerTid = spawn(&buildSystemWorker); 
+		} 
+		
+		void updateBuildSystem()
+		{
+			buildResult.receiveBuildMessages; 
 			
-			Tid buildSystemWorkerTid; 
+			if(buildResult.incomingMessages.length)
+			workspace.processBuildMessages(buildResult.incomingMessages.fetchAll); 
 			
-			BuildResult buildResult; //collects buildMessages and output
+			//Note: These operations are fast: only 0.015 ms
 			
-			Path workPath = Path(`z:\temp2`); 
-			
-			File workspaceFile; 
-			bool initialized; //workspace has been loaded.
-			
-			string baseCaption; 
-			bool isSpecialVersion; //This is a copy of the .exe that is used to cimpile dide2.exe
-			
-			MSQueue!string dbgRerouteQueue; 
-			
-			Bitmap[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
-			
-			ToolPalette _toolPalette; @property toolPalette()
-			{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
-			
-			override void onCreate()
+			if(dbgsrv.exe_pid)
 			{
-				//onCreate //////////////////////////////////
-				baseCaption = appFile.nameWithoutExt.uc; 
-				isSpecialVersion = baseCaption != "DIDE2"; 
+				const running = PIDModuleFileIsRunning(dbgsrv.exe_pid, workspace.mainModuleFile.otherExt("exe")); 
 				
-				{ auto a = this; a.fromJson(ini.read("settings", "")); }//Todo: this.fromJson
-				
-				initBuildSystem; 
-				workspace = new Workspace; 
-				workspaceFile = appFile.otherExt(Workspace.defaultExt); 
-				overlay = new MainOverlayContainer; 
-				
-				dbgRerouteQueue = new MSQueue!string; 
-				globalDbgRerouteQueue = dbgRerouteQueue; 
-			} 
-			
-			override void onDestroy()
-			{
-				ini.write("settings", this.toJson); 
-				if(initialized) workspace.saveWorkspace(workspaceFile); 
-				workspace.destroy; 
-				destroyBuildSystem; 
-			} 
-			
-			@VERB("Alt+F4") void closeApp()
-			{ import core.sys.windows.windows; PostMessage(hwnd, WM_CLOSE, 0, 0); } 
-			
-			@property building()const
-			{ return buildSystemWorkerState.building; } 
-			@property ready()const
-			{ return !buildSystemWorkerState.building; } 
-			@property cancelling()const
-			{ return buildSystemWorkerState.cancelling; } 
-			@property running()const
-			{ return !!dbgsrv.exe_pid; } 
-			@property running_console()const
-			{ return !!dbgsrv.console_hwnd; } 
-			
-			void initBuildSystem()
-			{
-				buildResult = new BuildResult; 
-				buildSystemWorkerTid = spawn(&buildSystemWorker); 
-			} 
-			
-			void updateBuildSystem()
-			{
-				buildResult.receiveBuildMessages; 
-				
-				if(buildResult.incomingMessages.length)
-				workspace.processBuildMessages(buildResult.incomingMessages.fetchAll); 
-				
-				//Note: These operations are fast: only 0.015 ms
-				
-				if(dbgsrv.exe_pid)
-				{
-					const running = PIDModuleFileIsRunning(dbgsrv.exe_pid, workspace.mainModuleFile.otherExt("exe")); 
-					
-					if(!running) {
-						dbgsrv.exe_pid = 0; /+It's been terminated.+/
-						WARN("PID terminated"); 
-					}
+				if(!running) {
+					dbgsrv.exe_pid = 0; /+It's been terminated.+/
+					WARN("PID terminated"); 
 				}
-				
-				if(dbgsrv.console_hwnd)
-				{
-					import core.sys.windows.windows; 
-					if(!IsWindow(cast(HANDLE) dbgsrv.console_hwnd))
-					dbgsrv.console_hwnd = 0; 
-				}
-				
-				if(dbgsrv.exe_hwnd)
-				{
-					import core.sys.windows.windows; 
-					if(!IsWindow(cast(HANDLE) dbgsrv.exe_hwnd))
-					dbgsrv.exe_hwnd = 0; 
-				}
-				
-				with(buildSystemWorkerState)
-				{
-					enum scale = 16; /+Note: It shows a tiny bit of progress at the start+/
-					const total = totalModules*scale; 
-					const act = (compiledModules*scale).max(1).min(total); 
-					setTaskbarProgress(building, act, total); 
-					
-					//Todo: show error on the taskbarList
-				}
-			} 
+			}
 			
-			void destroyBuildSystem()
+			if(dbgsrv.console_hwnd)
 			{
-				buildSystemWorkerTid.send(MsgBuildCommand.shutDown); 
+				import core.sys.windows.windows; 
+				if(!IsWindow(cast(HANDLE) dbgsrv.console_hwnd))
+				dbgsrv.console_hwnd = 0; 
+			}
+			
+			if(dbgsrv.exe_hwnd)
+			{
+				import core.sys.windows.windows; 
+				if(!IsWindow(cast(HANDLE) dbgsrv.exe_hwnd))
+				dbgsrv.exe_hwnd = 0; 
+			}
+			
+			with(buildSystemWorkerState)
+			{
+				enum scale = 16; /+Note: It shows a tiny bit of progress at the start+/
+				const total = totalModules*scale; 
+				const act = (compiledModules*scale).max(1).min(total); 
+				setTaskbarProgress(building, act, total); 
 				
-				if(building)
-				{
-					LOG("Waiting for buildsystem to shut down."); 
-					while(building) { write('.'); sleep(100); }
-				}
-			} 
+				//Todo: show error on the taskbarList
+			}
+		} 
+		
+		void destroyBuildSystem()
+		{
+			buildSystemWorkerTid.send(MsgBuildCommand.shutDown); 
 			
-			void launchBuildSystem(string command)()
+			if(building)
 			{
-				static assert(command.among("rebuild", "run"), "Invalid command `"~command~"`"); 
-				if(building)
-				{ beep; return; }
-				
-				if(!workPath.exists) workPath.make; 
-				
-				BuildSettings bs = {
-					killExe	: false/+It's deprecated. DIDE Kills it.+/,
-					rebuild	: command=="rebuild",
-					verbose	: false,
-					compileOnly	: command=="rebuild",
-					workPath	: this.workPath.fullPath,
-					collectTodos	: false,
-					generateMap 	: true,
-					compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
-					dideDbgEnv	: dbgsrv.getDataFileName
-				}; 
-				
-				void addOpt(string o)
-				{ if(o.length) bs.compileArgs.addIfCan(o); } 
-				
-				buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs)); 
-				//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
-			} 
+				LOG("Waiting for buildsystem to shut down."); 
+				while(building) { write('.'); sleep(100); }
+			}
+		} 
+		
+		void launchBuildSystem(string command)()
+		{
+			static assert(command.among("rebuild", "run"), "Invalid command `"~command~"`"); 
+			if(building)
+			{ beep; return; }
 			
-			void resetBuildState()
-			{
-				clearDebugImageBlobs; 
-				workspace.firstErrorMessageArrived = false; 
-				workspace.modules.each!((m){ m.resetBuildMessages; }); 
-				workspace.modules.each!((m){ m.resetInspectors; }); 
-				dbgsrv.resetBeforeRun; 
-			} 
+			if(!workPath.exists) workPath.make; 
 			
-			void run()
-			{
-				if(!running) killRunningConsole; 
-				resetBuildState; 
-				launchBuildSystem!"run"; 
-			} 
+			BuildSettings bs = {
+				killExe	: false/+It's deprecated. DIDE Kills it.+/,
+				rebuild	: command=="rebuild",
+				verbose	: false,
+				compileOnly	: command=="rebuild",
+				workPath	: this.workPath.fullPath,
+				collectTodos	: false,
+				generateMap 	: true,
+				compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
+				dideDbgEnv	: dbgsrv.getDataFileName
+			}; 
 			
-			void rebuild()
-			{
-				if(!running) killRunningConsole; 
-				resetBuildState; 
-				launchBuildSystem!"rebuild"; 
-			} 
+			void addOpt(string o)
+			{ if(o.length) bs.compileArgs.addIfCan(o); } 
 			
-			void cancelBuild()
-			{
-				if(building) {
-					workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
-					buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
-				}
-			} 
-			
-			@property canKillCompilers()
-			{ return !globalPidList.empty; } 
-			
-			void killCompilers()
-			{
+			buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs)); 
+			//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
+		} 
+		
+		
+		void resetBuildState()
+		{
+			clearDebugImageBlobs; 
+			workspace.firstErrorMessageArrived = false; 
+			workspace.modules.each!((m){ m.resetBuildMessages; }); 
+			workspace.modules.each!((m){ m.resetInspectors; }); 
+			dbgsrv.resetBeforeRun; 
+		} 
+		
+		void run()
+		{
+			if(!running) killRunningConsole; 
+			resetBuildState; 
+			launchBuildSystem!"run"; 
+		} 
+		
+		void rebuild()
+		{
+			if(!running) killRunningConsole; 
+			resetBuildState; 
+			launchBuildSystem!"rebuild"; 
+		} 
+		
+		void cancelBuild()
+		{
+			if(building) {
 				workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
-				globalPidList.killAll; 
-			} 
-			
-			
-			@property canKillRunningProcess()
-			{ return !!dbgsrv.exe_pid; } 
-			
-			void killRunningProcess()
+				buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
+			}
+		} 
+		
+		@property canKillCompilers()
+		{ return !globalPidList.empty; } 
+		
+		void killCompilers()
+		{
+			workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
+			globalPidList.killAll; 
+		} 
+		
+		
+		@property canKillRunningProcess()
+		{ return !!dbgsrv.exe_pid; } 
+		
+		void killRunningProcess()
+		{
+			if(canKillRunningProcess)
 			{
-				if(canKillRunningProcess)
+				import core.sys.windows.windows; 
+				if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
 				{
-					import core.sys.windows.windows; 
-					if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
+					TerminateProcess(hProcess, 0); 
+					CloseHandle(hProcess); 
+				}
+			}
+		} 
+		
+		@property canKillRunningConsole()
+		{ return !!dbgsrv.console_hwnd; } 
+		
+		void killRunningConsole()
+		{
+			if(canKillRunningConsole)
+			{
+				import core.sys.windows.windows; 
+				PostMessage(cast(HANDLE) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
+			}
+		} 
+		
+		@property canCloseRunningWindow()
+		{ return !!dbgsrv.exe_hwnd; } 
+		
+		void closeRunningWindow()
+		{
+			if(canCloseRunningWindow)
+			{ dbgsrv.forceExit; }
+		} 
+		
+		@property canTryCloseProcess()
+		{
+			//this is condition is used by the Ctrl+F2 button. Only tries once.
+			return canCloseRunningWindow && !dbgsrv.isForcingExit; /+Note: windowed app.+/
+		} 
+		
+		void closeOrKillProcess()
+		{
+			if(canTryCloseProcess)
+			{ dbgsrv.forceExit; }
+			else
+			{ killRunningProcess; killRunningConsole; }
+		} 
+		
+		void onDebugLog(string s)
+		{
+			//Todo: This communication should be full binary
+			if(s.startsWith("INSP_"))
+			{
+				s = s[5..$]; 
+				try
+				{
+					if(s.isWild("TXT:*:*"))
 					{
-						TerminateProcess(hProcess, 0); 
-						CloseHandle(hProcess); 
+						const 	id 	= wild[0].to!ulong(16),
+							value 	= wild[1],
+							moduleHash 	= (cast(uint)(id)),
+							location 	= (cast(uint)(id>>32)); 
+						if(auto m = moduleHash in workspace.moduleByHash)
+						{
+							if(auto node = m.getInspectorNode(location))
+							{
+								if(auto ne = cast(NiceExpression)node)
+								{
+									ne.updateDebugValue(value); 
+									addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
+									return; 
+								}
+							}
+						}
+						WARN("Inspection unknown location: "~id.to!string(16)~":"~value); 
 					}
-				}
-			} 
-			
-			@property canKillRunningConsole()
-			{ return !!dbgsrv.console_hwnd; } 
-			
-			void killRunningConsole()
-			{
-				if(canKillRunningConsole)
-				{
-					import core.sys.windows.windows; 
-					PostMessage(cast(HANDLE) dbgsrv.console_hwnd, WM_CLOSE, 0, 0); 
-				}
-			} 
-			
-			@property canCloseRunningWindow()
-			{ return !!dbgsrv.exe_hwnd; } 
-			
-			void closeRunningWindow()
-			{
-				if(canCloseRunningWindow)
-				{ dbgsrv.forceExit; }
-			} 
-			
-			@property canTryCloseProcess()
-			{
-				//this is condition is used by the Ctrl+F2 button. Only tries once.
-				return canCloseRunningWindow && !dbgsrv.isForcingExit; /+Note: windowed app.+/
-			} 
-			
-			void closeOrKillProcess()
-			{
-				if(canTryCloseProcess)
-				{ dbgsrv.forceExit; }
-				else
-				{ killRunningProcess; killRunningConsole; }
-			} 
-			
-			void onDebugLog(string s)
-			{
-				//Todo: This communication should be full binary
-				if(s.startsWith("INSP_"))
-				{
-					s = s[5..$]; 
-					try
+					else if(s.isWild("TXT_BLB:*:*"))
 					{
-						if(s.isWild("TXT:*:*"))
+						const 	id 	= wild[0].to!ulong(16),
+							blobAddress 	= wild[1].to!ulong(16),
+							moduleHash 	= (cast(uint)(id)),
+							location 	= (cast(uint)(id>>32)),
+							value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
+						
+						if(auto m = moduleHash in workspace.moduleByHash)
 						{
-							const 	id 	= wild[0].to!ulong(16),
-								value 	= wild[1],
-								moduleHash 	= (cast(uint)(id)),
-								location 	= (cast(uint)(id>>32)); 
-							if(auto m = moduleHash in workspace.moduleByHash)
+							if(auto node = m.getInspectorNode(location))
 							{
-								if(auto node = m.getInspectorNode(location))
+								if(auto ne = cast(NiceExpression)node)
 								{
-									if(auto ne = cast(NiceExpression)node)
-									{
-										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
-										return; 
-									}
-								}
-							}
-							WARN("Inspection unknown location: "~id.to!string(16)~":"~value); 
-						}
-						else if(s.isWild("TXT_BLB:*:*"))
-						{
-							const 	id 	= wild[0].to!ulong(16),
-								blobAddress 	= wild[1].to!ulong(16),
-								moduleHash 	= (cast(uint)(id)),
-								location 	= (cast(uint)(id>>32)),
-								value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
-							
-							if(auto m = moduleHash in workspace.moduleByHash)
-							{
-								if(auto node = m.getInspectorNode(location))
-								{
-									if(auto ne = cast(NiceExpression)node)
-									{
-										ne.updateDebugValue(value); 
-										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
-										return; 
-									}
+									ne.updateDebugValue(value); 
+									addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
+									return; 
 								}
 							}
 						}
-						else if(s.isWild("IMG_BLB:*:*:*:*:*"))
+					}
+					else if(s.isWild("IMG_BLB:*:*:*:*:*"))
+					{
+						const 	id 	= wild[0].to!ulong(16),
+							blobAddress 	= wild[1].to!ulong(16),
+							moduleHash 	= (cast(uint)(id)),
+							location 	= (cast(uint)(id>>32)),
+							value 	= dbgsrv.getBlob(blobAddress),
+							elementType	= wild[2],
+							width	= wild[3].to!int(16),
+							height	= wild[4].to!int(16); 
+						
+						Bitmap bmp; string error; 
+						try
 						{
-							const 	id 	= wild[0].to!ulong(16),
-								blobAddress 	= wild[1].to!ulong(16),
-								moduleHash 	= (cast(uint)(id)),
-								location 	= (cast(uint)(id>>32)),
-								value 	= dbgsrv.getBlob(blobAddress),
-								elementType	= wild[2],
-								width	= wild[3].to!int(16),
-								height	= wild[4].to!int(16); 
+							enforce(width>0 && height>0, i"Invalid image dimensions ($(width)x$(height))".text); 
+							enforce(blobAddress, "Image Blob is null."); 
+							auto buf = dbgsrv.getBlob(blobAddress); 
+							enforce(buf.length, "Image Blob is empty."); 
 							
-							Bitmap bmp; string error; 
-							try
+							sw: 
+							switch(elementType)
 							{
-								enforce(width>0 && height>0, i"Invalid image dimensions ($(width)x$(height))".text); 
-								enforce(blobAddress, "Image Blob is null."); 
-								auto buf = dbgsrv.getBlob(blobAddress); 
-								enforce(buf.length, "Image Blob is empty."); 
-								
-								sw: 
-								switch(elementType)
+								static foreach(C; AliasSeq!(ubyte, float))
+								static foreach(N; [1, 2, 3, 4])
 								{
-									static foreach(C; AliasSeq!(ubyte, float))
-									static foreach(N; [1, 2, 3, 4])
 									{
-										{
-											static if(N==1) alias E = C; else alias E = Vector!(C, N); 
-											case E.stringof: 
-											bmp = new Bitmap(
-												image2D(width, height, (cast(E[])(buf)))
-												/+
-													Note: NOT a copy!
-													It points to Windows SharedMemory.
-													
-													This means, it is noisy, but good enough for debugging.
-												+/
-											); 
-											break sw; 
-										}
-									}
-									default: raise("Unknown ImageBlob element type: "~elementType); 
-								}
-								
-								enforce(bmp && bmp.valid, "Can't load ImageBlob."); 
-								bmp.modified = now; //Todo: This should come from the EXE, not from DIDE.
-								bmp.file = File(i`temp:\\IMG_BLB_$(wild[0]).img`.text); 
-								bitmaps.set(bmp); 
-								/+
-									Opt: ain't work: textures.refreshFile(bmp.file, bmp); 
-									ain't work: textures.invalidate(bmp.file);
-									Only Img.autoRefresh works and that's slow...
-									This is a big mess...
-								+/
-								
-								debugImageBlobs[bmp.file] = bmp; 
-							}
-							catch(Exception e)
-							{ error = e.simpleMsg; }
-							if(auto m = moduleHash in workspace.moduleByHash)
-							{
-								if(auto node = m.getInspectorNode(location))
-								{
-									if(auto ne = cast(NiceExpression)node)
-									{
-										string imgParams; 
-										if(auto col = ne.operands[1])
-										if(auto cmt = col.lastRow.lastComment)
-										{ imgParams = cmt.content.sourceText; }
-										
-										ne.updateDebugValue
-											(
-											((error=="")?(
-												"$DIDE_CODE " ~ //prefix handled by Inspector Node.
-												i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=1 $(imgParams)+/".text
-											) :("ImageBlob Error: " ~ error))
+										static if(N==1) alias E = C; else alias E = Vector!(C, N); 
+										case E.stringof: 
+										bmp = new Bitmap(
+											image2D(width, height, (cast(E[])(buf)))
+											/+
+												Note: NOT a copy!
+												It points to Windows SharedMemory.
+												
+												This means, it is noisy, but good enough for debugging.
+											+/
 										); 
-										//Opt: Img.autoRefresh is slow. It should update Img.stIdx
-										
-										addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
-										return; 
+										break sw; 
 									}
+								}
+								default: raise("Unknown ImageBlob element type: "~elementType); 
+							}
+							
+							enforce(bmp && bmp.valid, "Can't load ImageBlob."); 
+							bmp.modified = now; //Todo: This should come from the EXE, not from DIDE.
+							bmp.file = File(i`temp:\\IMG_BLB_$(wild[0]).img`.text); 
+							bitmaps.set(bmp); 
+							/+
+								Opt: ain't work: textures.refreshFile(bmp.file, bmp); 
+								ain't work: textures.invalidate(bmp.file);
+								Only Img.autoRefresh works and that's slow...
+								This is a big mess...
+							+/
+							
+							debugImageBlobs[bmp.file] = bmp; 
+						}
+						catch(Exception e)
+						{ error = e.simpleMsg; }
+						if(auto m = moduleHash in workspace.moduleByHash)
+						{
+							if(auto node = m.getInspectorNode(location))
+							{
+								if(auto ne = cast(NiceExpression)node)
+								{
+									string imgParams; 
+									if(auto col = ne.operands[1])
+									if(auto cmt = col.lastRow.lastComment)
+									{ imgParams = cmt.content.sourceText; }
+									
+									ne.updateDebugValue
+										(
+										((error=="")?(
+											"$DIDE_CODE " ~ //prefix handled by Inspector Node.
+											i"/+$DIDE_IMG $(bmp.file.cmdArg) autoRefresh=1 $(imgParams)+/".text
+										) :("ImageBlob Error: " ~ error))
+									); 
+									//Opt: Img.autoRefresh is slow. It should update Img.stIdx
+									
+									addInspectorParticle(ne, clWhite, bounds2.init, ne.debugValueDiminisingIntensity); 
+									return; 
 								}
 							}
 						}
-						else
-						raise("Invalid inspection message: "~s.quoted); 
 					}
-					catch(Exception e)
-					{ ERR("Inspection exception: "~e.simpleMsg); }
+					else
+					raise("Invalid inspection message: "~s.quoted); 
 				}
-				else
-				LOG("DBGLOG:", s); 
-			} 
-			
-			void onDebugException(string message)
-			{
+				catch(Exception e)
+				{ ERR("Inspection exception: "~e.simpleMsg); }
+			}
+			else
+			LOG("DBGLOG:", s); 
+		} 
+		
+		void onDebugException(string message)
+		{
+			/+
+				LOG("DBGEXC:\n"~message); 
+				
 				/+
-					LOG("DBGEXC:\n"~message); 
-					
-					/+
-						Bug: Exception messages are fucked up now.
-						Take out the .map file interpreter from the .exe and move it to here.
-						Because in exception handling it must not use GC!
-						Only process .map file if there is no .pdb file.
-						The exe should onpy produce an error report file.  If the map/pdb file is next to it, it can be interpreted.
-					+/
-					
-					const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
-					string lastPrefix; 
-					string[] processedLines; 
-					foreach(s; message.splitLines)
-					{
-						if(s.isWild(`?:\?*.d*(?*): *`)) {
-							lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
-							processedLines ~= s; 
-						}
-						else
-						{
-							s = s.strip; 
-							if(s!="")
-							processedLines ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
-						}
-					}
-					auto processedText = processedLines.join('\n'); 
-					
-					LOG("PROCESSED:\n"~processedText); 
-					
-					//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
+					Bug: Exception messages are fucked up now.
+					Take out the .map file interpreter from the .exe and move it to here.
+					Because in exception handling it must not use GC!
+					Only process .map file if there is no .pdb file.
+					The exe should onpy produce an error report file.  If the map/pdb file is next to it, it can be interpreted.
 				+/
 				
-				string processExceptionMessage(string message)
+				const defaultPrefix = workspace.mainModule ? workspace.mainModule.file.fullName~": " : "$unknown$.d: Error: "; 
+				string lastPrefix; 
+				string[] processedLines; 
+				foreach(s; message.splitLines)
 				{
-					static bool ignoreFunction(string f)
-					{
-						static immutable list = 
-						[
-							`__scrt_common_main_seh`, `BaseThreadInitThunk`, `RtlUserThreadStart`, 
-							`CallWindowProcW`, `CallWindowProcW`, `glPushClientAttrib`, `CallWindowProcW`, 
-							`DispatchMessageW`, `SendMessageTimeoutW`, `KiUserCallbackDispatcher`, 
-							`NtUserDispatchMessage`, `DispatchMessageW`, 
-							`void rt.dmain2._d_run_main2(char[][], ulong, extern (C) int function(char[][])*).runAll()`, 
-							`d_run_main2`, `d_wrun_main`
-						]; 
-						return list.canFind(f); 
-					} 
-					
-					static bool ignoreLocation(string loc)
-					{
-						static immutable list = 
-						[`\ldc2\import\core\internal\entrypoint.d(`, `\ldc2\import\std\exception.d(`]; 
-						return list.any!((a)=>(loc.canFind(a))); 
-					} 
-					
-					static string dquoted(string s) => '`' ~ s.replace("`", "<DQuote>") ~ '`'; 
-					static addCol(string s) => s ~ ((s.canFind(','))?(""):(",1")); 
-					
-					auto lines = message.splitLines; 
-					
-					if(lines.get(1)=="----------------")
-					{
-						
-						string doit(bool hasLocation)
-						{
-							string[] res, unprocessed; 
-							
-							string firstLocation; 
-							foreach(s; lines.drop(2))
-							{
-								if(s.isWild(`0x???????????????? in * at ?:\?*.?*(*)`))
-								{
-									if(ignoreFunction(wild[1])) continue; 
-									auto loc = i`$(wild[2]):\$(wild[3]).$(wild[4])($(addCol(wild[5]))): `.text; 
-									if(ignoreLocation(loc)) continue; 
-									if(firstLocation=="") firstLocation = loc; 
-									res ~= i`$(loc)       called from $(dquoted(wild[1]))`.text; 
-								}
-								else if(s.isWild(`0x???????????????? in *`))
-								{
-									if(ignoreFunction(wild[1])) continue; 
-									if(res.length)	res.back ~= i`, $(wild[1])`.text; 
-									else	unprocessed ~= s; 
-								}
-								else if(s.strip!="")
-								unprocessed ~= s; 
-							}
-							
-							return chain(only(((hasLocation)?(""):(firstLocation))~lines[0]), res).join('\n'); 
-						} 
-						
-						if(lines[0].isWild("?:\?*.?*(*): Error: *")) return doit(true); 
-						else if(lines[0].isWild("Error: *")) return doit(false); 
+					if(s.isWild(`?:\?*.d*(?*): *`)) {
+						lastPrefix = wild[0]~`:\`~wild[1]~`.d`~wild[2]~`(`~wild[3]~`): `; 
+						processedLines ~= s; 
 					}
-					
-					return message; 
+					else
+					{
+						s = s.strip; 
+						if(s!="")
+						processedLines ~= (lastPrefix.length ? lastPrefix : defaultPrefix) ~ s; 
+					}
+				}
+				auto processedText = processedLines.join('\n'); 
+				
+				LOG("PROCESSED:\n"~processedText); 
+				
+				//Todo: process these errors more. d:\testExceptions.d   Also make an exception style and dont erase only the exceptions from the list.
+			+/
+			
+			string processExceptionMessage(string message)
+			{
+				static bool ignoreFunction(string f)
+				{
+					static immutable list = 
+					[
+						`__scrt_common_main_seh`, `BaseThreadInitThunk`, `RtlUserThreadStart`, 
+						`CallWindowProcW`, `CallWindowProcW`, `glPushClientAttrib`, `CallWindowProcW`, 
+						`DispatchMessageW`, `SendMessageTimeoutW`, `KiUserCallbackDispatcher`, 
+						`NtUserDispatchMessage`, `DispatchMessageW`, 
+						`void rt.dmain2._d_run_main2(char[][], ulong, extern (C) int function(char[][])*).runAll()`, 
+						`d_run_main2`, `d_wrun_main`
+					]; 
+					return list.canFind(f); 
 				} 
 				
-				message = processExceptionMessage(message); 
-				auto messages = decodeDMDMessages(message, workspace.mainModuleFile); 
-				workspace.processBuildMessages(messages); 
-				
-				im.flashError(message.splitter('\n').frontOr("Exception without message.")); 
-			} 
-			
-			////////////////////////////////////////////////////////////////////////////////////////////////////
-			
-			
-			
-			override void onPaint()
-			{
-				//onPaint ///////////////////////////////////////
-				gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); 
-			} 
-			
-			void drawOverlay(Drawing dr)
-			{
-				if(0) dr.mmGrid(view); 
-				
-				scope(exit) dr.alpha = 1; 
-				dr.alpha = .5f; 
-				dr.lineWidth = -1; 
-				if(visualizeMarginsAndPaddingUnderMouse)
-				foreach(cl; workspace.locate(view.mousePos.vec2))
+				static bool ignoreLocation(string loc)
 				{
-					auto rOuter 	= cl.globalOuterBounds; 
-					auto rMargin 	= rOuter; 	cl.cell.margin.apply(rMargin); 
-					auto rInner 	= rMargin; 	cl.cell.padding.apply(rInner); 
+					static immutable list = 
+					[`\ldc2\import\core\internal\entrypoint.d(`, `\ldc2\import\std\exception.d(`]; 
+					return list.any!((a)=>(loc.canFind(a))); 
+				} 
+				
+				static string dquoted(string s) => '`' ~ s.replace("`", "<DQuote>") ~ '`'; 
+				static addCol(string s) => s ~ ((s.canFind(','))?(""):(",1")); 
+				
+				auto lines = message.splitLines; 
+				
+				if(lines.get(1)=="----------------")
+				{
 					
-					/*
-						dr.color = clRed	; dr.drawRect(rOuter);
-						dr.color = clGreen	; dr.drawRect(rMargin);
-						dr.color = clBlue	; dr.drawRect(rInner);
-					*/
-					
-					void drawDiff(bounds2 o, bounds2 i)
+					string doit(bool hasLocation)
 					{
-						if(o.top 	!= i.top	) dr.fillRect(o.left, o.top, o.right, i.top); 
-						if(o.bottom 	!= i.bottom	) dr.fillRect(o.left, i.bottom, o.right, o.bottom); 
-						if(o.left 	!= i.left	) dr.fillRect(o.left, i.top, i.left, i.bottom); 
-						if(o.right 	!= i.right	) dr.fillRect(i.right, i.top, o.right, i.bottom); 
+						string[] res, unprocessed; 
+						
+						string firstLocation; 
+						foreach(s; lines.drop(2))
+						{
+							if(s.isWild(`0x???????????????? in * at ?:\?*.?*(*)`))
+							{
+								if(ignoreFunction(wild[1])) continue; 
+								auto loc = i`$(wild[2]):\$(wild[3]).$(wild[4])($(addCol(wild[5]))): `.text; 
+								if(ignoreLocation(loc)) continue; 
+								if(firstLocation=="") firstLocation = loc; 
+								res ~= i`$(loc)       called from $(dquoted(wild[1]))`.text; 
+							}
+							else if(s.isWild(`0x???????????????? in *`))
+							{
+								if(ignoreFunction(wild[1])) continue; 
+								if(res.length)	res.back ~= i`, $(wild[1])`.text; 
+								else	unprocessed ~= s; 
+							}
+							else if(s.strip!="")
+							unprocessed ~= s; 
+						}
+						
+						return chain(only(((hasLocation)?(""):(firstLocation))~lines[0]), res).join('\n'); 
 					} 
 					
-					dr.color = clWhite; dr.drawRect(rOuter); 
-					dr.color = clWhite; dr.drawRect(rMargin); 
-					dr.color = clWhite; dr.drawRect(rInner); 
-					dr.color = clYellow; drawDiff(rOuter, rMargin); 
-					dr.color = clAqua; drawDiff(rMargin, rInner); 
-					
+					if(lines[0].isWild("?:\?*.?*(*): Error: *")) return doit(true); 
+					else if(lines[0].isWild("Error: *")) return doit(false); 
 				}
+				
+				return message; 
+			} 
+			
+			message = processExceptionMessage(message); 
+			auto messages = decodeDMDMessages(message, workspace.mainModuleFile); 
+			workspace.processBuildMessages(messages); 
+			
+			im.flashError(message.splitter('\n').frontOr("Exception without message.")); 
+		} 
+		
+		////////////////////////////////////////////////////////////////////////////////////////////////////
+		
+		
+		
+		override void onPaint()
+		{
+			//onPaint ///////////////////////////////////////
+			gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); 
+		} 
+		
+		void drawOverlay(Drawing dr)
+		{
+			if(0) dr.mmGrid(view); 
+			
+			scope(exit) dr.alpha = 1; 
+			dr.alpha = .5f; 
+			dr.lineWidth = -1; 
+			if(visualizeMarginsAndPaddingUnderMouse)
+			foreach(cl; workspace.locate(view.mousePos.vec2))
+			{
+				auto rOuter 	= cl.globalOuterBounds; 
+				auto rMargin 	= rOuter; 	cl.cell.margin.apply(rMargin); 
+				auto rInner 	= rMargin; 	cl.cell.padding.apply(rInner); 
 				
 				/*
-					if(workspace.changed) foreach(m; workspace.modules) if(m.changed){
-										LOG(m.file);
-									} 
+					dr.color = clRed	; dr.drawRect(rOuter);
+					dr.color = clGreen	; dr.drawRect(rMargin);
+					dr.color = clBlue	; dr.drawRect(rInner);
 				*/
-			} 
-			
-			float bloodScreenIntensity = 0; 
-			
-			override void afterPaint()
-			{
-				if(bloodScreenIntensity)
+				
+				void drawDiff(bounds2 o, bounds2 i)
 				{
-					with(scoped!Drawing)
-					{
-						color = clRed; alpha = 1-(1-bloodScreenIntensity)^^2; 
-						fillRect(clientBounds); 
-						glDraw(viewGUI); 
+					if(o.top 	!= i.top	) dr.fillRect(o.left, o.top, o.right, i.top); 
+					if(o.bottom 	!= i.bottom	) dr.fillRect(o.left, i.bottom, o.right, o.bottom); 
+					if(o.left 	!= i.left	) dr.fillRect(o.left, i.top, i.left, i.bottom); 
+					if(o.right 	!= i.right	) dr.fillRect(i.right, i.top, o.right, i.bottom); 
+				} 
+				
+				dr.color = clWhite; dr.drawRect(rOuter); 
+				dr.color = clWhite; dr.drawRect(rMargin); 
+				dr.color = clWhite; dr.drawRect(rInner); 
+				dr.color = clYellow; drawDiff(rOuter, rMargin); 
+				dr.color = clAqua; drawDiff(rMargin, rInner); 
+				
+			}
+			
+			/*
+				if(workspace.changed) foreach(m; workspace.modules) if(m.changed){
+									LOG(m.file);
+								} 
+			*/
+		} 
+		
+		float bloodScreenIntensity = 0; 
+		
+		override void afterPaint()
+		{
+			if(bloodScreenIntensity)
+			{
+				with(scoped!Drawing)
+				{
+					color = clRed; alpha = 1-(1-bloodScreenIntensity)^^2; 
+					fillRect(clientBounds); 
+					glDraw(viewGUI); 
+				}
+			}
+		} 
+		
+		override void onUpdate()
+		{
+			//showFPS = true;
+			//im.focus
+			
+			version(/+$DIDE_REGION update a virtual file from clipboard+/all) {
+				static uint id; 
+				if(id.chkSet(clipboard.sequenceNumber))
+				File(`virtual:\clipboard.txt`).write(clipboard.text); 
+				//Todo: sinchronize the clipboard both ways.
+				//Todo: don't load too big files. And most importantly don't crash.
+			}
+			
+			dbgsrv.onDebugLog = &onDebugLog; 
+			dbgsrv.onDebugException = &onDebugException; 
+			
+			dbgsrv.update; 
+			
+			if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
+			{ im.focusNothing; }
+			
+			updateBlink; 
+			bloodScreenIntensity.follow(0, calcAnimationT(deltaTime.value(second), .9, .2), .05f); 
+			
+			updateBuildSystem; 
+			
+			if(application.tick>5 && initialized.chkSet)
+			{
+				CodeColumn.selfTest; 
+				if(workspaceFile.exists) { workspace.loadWorkspace(workspaceFile); }
+			}
+			
+			if(dbgRerouteQueue)
+			dbgRerouteQueue.fetchAll.each!((msg){
+				print("Local debug mgs:", msg); 
+				//Todo: convert these into flashmessages
+			}); 
+			
+			invalidate; //Todo: low power usage
+			
+			version(D_Optimized)	enum D_Optimized = true; 
+			else	enum D_Optimized = false; //Todo: exeBuildInfo struct into het.utils
+			
+			caption = format!"%s%s - [%s] %s %s"(
+				baseCaption,
+				D_Optimized ? " (opt)" : "",
+				workspace.mainModuleFile.fullName,
+				workspace.modules.any!"a.changed" ? "Edited" : "",
+				buildSystemWorkerState.building ? format!"Building: %d,  %d/%d"(buildSystemWorkerState.inFlight, buildSystemWorkerState.compiledModules, buildSystemWorkerState.totalModules) : "" 
+				/+
+					dbgsrv.pingLedStateText,
+					dbgsrv.exe_pid ? dbgsrv.exe_pid.format!"PID:%s" : "",
+					dbgsrv.console_hwnd ? dbgsrv.console_hwnd.format!"CON:%s" : ""
+				+/
+			); 
+			
+			/+
+				view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down 
+				&& !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
+			+/
+			view.updateSmartScroll; 
+			view.animSpeed = mix(view.animSpeed, 0.3f, .01f); //slowly goes to it.
+			setLod(view.scale_anim); 
+			
+			if(canProcessUserInput) callVerbs(this); 
+			
+			//Menu //////////////////////////////////////////////
+			if(1)
+			with(im)
+			Panel(
+				PanelPosition.topLeft, 
+				{
+					if(!mainMenuOpened) {
+						margin = "0"; padding = "0"; /+border = "1 normal gray";+/
+						if(Btn("\u2630")) mainMenuOpened = true; 
+					}
+					else {
+						Row(
+							{
+								if(Btn("\u2630")) mainMenuOpened = false; 
+								BtnRow(menuPage); 
+							}
+						); 
+						
+						with(workspace)
+						{
+							final switch(menuPage)
+							{
+								case MenuPage.Tools: 	{
+									UI_refactor; 
+									
+									Grp!Column
+									(
+										"Show Debug Info",
+										{
+											ChkBox(showModuleButtons, "Module buttons"); 
+											ChkBox(showHitTest, "HitTest"); 
+											ChkBox(showUndoStack, "Undo stack"); 
+											ChkBox(showResyntaxQueue, "Resyntax Queue"); 
+										}
+									); 
+								}	break; 
+										
+								case MenuPage.Palette: 	with(toolPalette) {
+									UI(toolPalettePage); 
+									
+									if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
+									workspace.insertNode(templateSource, subColumnIdx); 
+								}	break; 
+										
+								case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
+										
+								case MenuPage.ResMon: 	resourceMonitor.UI(400); 	break; 
+							}
+						}
 					}
 				}
-			} 
-			
-		}version(/+$DIDE_REGION+/all)
-		{
-			
-			override void onUpdate()
-			{
-				//showFPS = true;
-				//im.focus
-				
-				version(/+$DIDE_REGION update a virtual file from clipboard+/all) {
-					static uint id; 
-					if(id.chkSet(clipboard.sequenceNumber))
-					File(`virtual:\clipboard.txt`).write(clipboard.text); 
-					//Todo: sinchronize the clipboard both ways.
-					//Todo: don't load too big files. And most importantly don't crash.
-				}
-				
-				dbgsrv.onDebugLog = &onDebugLog; 
-				dbgsrv.onDebugException = &onDebugException; 
-				
-				dbgsrv.update; 
-				
-				if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
-				{ im.focusNothing; }
-				
-				updateBlink; 
-				bloodScreenIntensity.follow(0, calcAnimationT(deltaTime.value(second), .9, .2), .05f); 
-				
-				updateBuildSystem; 
-				
-				if(application.tick>5 && initialized.chkSet)
+			); 
+			
+			with(workspace)
+			if(!selectedStickers.empty)
+			with(im)
+			Panel(
+				PanelPosition.topCenter, 
 				{
-					CodeColumn.selfTest; 
-					if(workspaceFile.exists) { workspace.loadWorkspace(workspaceFile); }
-				}
-				
-				if(dbgRerouteQueue)
-				dbgRerouteQueue.fetchAll.each!((msg){
-					print("Local debug mgs:", msg); 
-					//Todo: convert these into flashmessages
-				}); 
-				
-				invalidate; //Todo: low power usage
-				
-				version(D_Optimized)	enum D_Optimized = true; 
-				else	enum D_Optimized = false; //Todo: exeBuildInfo struct into het.utils
-				
-				caption = format!"%s%s - [%s] %s %s"(
-					baseCaption,
-					D_Optimized ? " (opt)" : "",
-					workspace.mainModuleFile.fullName,
-					workspace.modules.any!"a.changed" ? "Edited" : "",
-					buildSystemWorkerState.building ? format!"Building: %d,  %d/%d"(buildSystemWorkerState.inFlight, buildSystemWorkerState.compiledModules, buildSystemWorkerState.totalModules) : "" 
-					/+
-						dbgsrv.pingLedStateText,
-						dbgsrv.exe_pid ? dbgsrv.exe_pid.format!"PID:%s" : "",
-						dbgsrv.console_hwnd ? dbgsrv.console_hwnd.format!"CON:%s" : ""
-					+/
-				); 
-				
-				/+
-					view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down 
-					&& !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
-				+/
-				view.updateSmartScroll; 
-				view.animSpeed = mix(view.animSpeed, 0.3f, .01f); //slowly goes to it.
-				setLod(view.scale_anim); 
-				
-				if(canProcessUserInput) callVerbs(this); 
-				
-				//Menu //////////////////////////////////////////////
-				if(1)
-				with(im)
-				Panel(
-					PanelPosition.topLeft, 
-					{
-						if(!mainMenuOpened) {
-							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
-							if(Btn("\u2630")) mainMenuOpened = true; 
+					Row(
+						{
+							foreach(
+								colorName; [
+									"Yellow", "White", "LightOrange", "Olive", 
+									"Green", "PastelBlue", "Aqua", "Blue", 
+									"Orange", "Pink", "Red", "Purple"
+								].map!"`Sticky` ~ a"
+							)
+							if(
+								Btn(
+									{
+										Row(
+											{
+												flags.clickable = false; 
+												style.bkColor = (colorName).toRGB; 
+												border = "1 normal black"; 
+												Text("    "); 
+											}
+										); 
+									}, genericId(colorName)
+								)
+							)
+							{
+								foreach(s; selectedStickers)
+								if(s.props.color.chkSet(colorName))
+								s.needMeasure; 
+							}
 						}
-						else {
+					); 
+				}
+			); 
+			
+			if(showModuleButtons)
+			with(im)
+			Panel(
+				PanelPosition.topClient,
+				{
+					margin = "0"; padding = "0"; //border = "1 normal gray";
+					Row(
+						{
+							 //Todo: Panel should be a Row, not a Column...
+							Row({ workspace.UI_ModuleBtns; flex = 1; }); 
+						}
+					); 
+				}
+			); 
+			
+			with(im)
+			Panel(
+				PanelPosition.topRight,
+				{
+					margin = "0"; padding = "0"; 
+					workspace.UI_SearchBox(view); 
+				}
+			); 
+			
+			if(showTextSelectionDebugInfo)
+			with(im)
+			with(workspace)
+			{
+				if(textSelections.length)
+				{
+					NL; 
+					if(textSelections.length>1)
+					{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
+					else if(textSelections.length==1)
+					{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
+				}
+			}
+			
+			if(showHitTest)
+			with(im)
+			Panel(
+				PanelPosition.bottomClient,
+				{
+					margin = "0"; padding = "0"; //border = "1 normal gray";
+					Row(
+						{
+							Text(hitTestManager.lastHitStack.map!(a => "["~a.id.text~"]").join(` `)); 
+							NL; 
+							if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
+							
+							Text("\n", workspace.locate_snapToRow(view.mousePos.vec2).text); 
+						}
+					); 
+				}
+			); 
+			
+			if(showUndoStack)
+			with(im)
+			with(workspace)
+			Panel(
+				PanelPosition.bottomClient,
+				{
+					margin = "0"; padding = "0"; //border = "1 normal gray";
+					if(auto m = moduleWithPrimaryTextSelection)
+					{
+						Container(
+							{
+								flags.hScrollState = ScrollState.auto_; 
+								actContainer.appendCell(m.undoManager.createUI); 
+							}
+						); 
+					}
+				}
+			); 
+			
+			if(showResyntaxQueue)
+			with(im)
+			with(workspace)
+			Panel(
+				PanelPosition.bottomClient,
+				{
+					margin = "0"; padding = "0"; //border = "1 normal gray";
+					Column({ UI_ResyntaxQueue; }); 
+				}
+			); 
+			
+			void VLine()
+			{ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); } 
+			
+			//StatusBar
+			with(im)
+			Panel(
+				PanelPosition.bottomClient,
+				{
+					margin = "0"; padding = "0"; 
+					Row(
+						{
+							/*theme = "tool";*/ style.fontHeight = 18; 
+							
+							//Todo: faszomat ebbe a szarba:
+							flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
+							//flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
+							
 							Row(
 								{
-									if(Btn("\u2630")) mainMenuOpened = false; 
-									BtnRow(menuPage); 
+									margin = "0 3"; flags.yAlign = YAlign.center; 
+									//style.fontHeight = 18+6;
+									//buildSystemWorkerState.UI; 
+									
+									if(dbgsrv.active)
+									{
+										if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
+										if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
+									}
+									
+									static bool buildOpt_release, buildOpt_debug; 
+									//return Btn({ Column({ Row(); Row(); }); });
+									
+									static CaptIconBtn	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
+										(string capt, string icon, bool en = true)
+									{
+										return Btn!(srcModule, srcLine)
+										(
+											{
+												Column(
+													{
+														flags.clickable = false; 
+														Row(HAlign.center, { fh = ceil(fh*.66f); Text(capt); flags.clickable = false; }); 
+														Row(HAlign.center, { Text(icon); flags.clickable = false; }); 
+													}
+												); 
+											},
+											enable(en)
+										); 
+									} 
+									static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
+										(string capt, string icon, float w, bool en, void delegate() fun)
+									{
+										return Btn!(srcModule, srcLine)
+										(
+											{
+												Row(
+													{
+														innerWidth = fh*w; 
+														innerHeight = ceil(fh*1.66f); 
+														flags.clickable = false; 
+														Text(" ", icon!="" ? icon~" " : ""); 
+														Text(capt~"\n"); 
+														fh = ceil(fh*.66f); 
+														fun(); 
+													}
+												); 
+											},
+											enable(en)
+										); 
+									} 
+									
+									
+									BtnRow(
+										{
+											if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
+											if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
+										}
+									)
+									/+Todo: ezt a 2 buttont bekotni, hogy modositsa a project forrast.+/; 
+									
+									enum greenRightTriangle = tag("style fontColor=green")~" ▶ "~tag("style fontColor=black"); 
+									
+									static struct A { string capt, icon; void delegate() task; bool en = true; } 
+									
+									const modifier_rebuild = inputs.Shift.down; 
+									
+									{
+										auto a = 	cancelling 	? A("Cancelling", "", {}, false) : 
+											building 	? A("Building", "", {}, false) : 
+											running 	? A("Running", "", {}, false) 
+												: (
+											modifier_rebuild 	? A("Rebuild", "⚙", { rebuild; })
+												: A("Run", greenRightTriangle, { run; })
+										); 
+										if(
+											CaptIconBtn2(
+												a.capt, a.icon, 4, a.en, 
+												{
+													fh = ceil(fh*.66f); 
+													with(buildSystemWorkerState)
+													{
+														const w = innerWidth; 
+														Row(
+															{
+																flags.clickable = false; 
+																innerSize = vec2(w, fh); 
+																
+																static drawProgress(
+																	vec2 size, int compiled, int inFlight, int total,
+																	RGB clBackground, RGB clQueued, RGB clCompiled
+																)
+																{
+																	auto dr = new Drawing; 
+																	
+																	auto r = bounds2(vec2(0), size); 
+																	if(!r.empty)
+																	{
+																		dr.color = clBackground; 
+																		dr.fillRect(r); 
+																		r = r.inflated(-.5f, -1);  //Opt: ellenorizni, ha ez double, akkor is floattal szamol-e.
+																	}
+																	
+																	if(total.inRange(1, 1000) && !r.empty)
+																	{
+																		//Must do errorchecks, because it updated asynchronously as nasty globals.
+																		compiled = compiled.clamp(0, total); 
+																		inFlight = inFlight.clamp(0, total-compiled); 
+																		
+																		const sc = r.width / total; //Opt: ellenorizni, hogy ha ezt belerakom a box()-ba, akkor 1x szamolja-e.
+																		
+																		void box(int i) { dr.fillRect(bounds2(i*sc+.5f, r.top, i*sc+sc-.5f, r.bottom)); } 
+																		
+																		dr.color = clCompiled; 	foreach(i; 0 .. compiled) box(i); 
+																		dr.color = mix(clQueued, clCompiled, blink^^2); 	foreach(i; compiled .. compiled+inFlight) box(i); 
+																		dr.color = clQueued; 	foreach(i; compiled+inFlight .. total) box(i); 
+																	}
+																	
+																	//Todo: a szinezes lehetne error/warning alapjan is.  A rectangle belseje lehetne olyan szinu.
+																	//Todo: a legutolso forditas eredmenye maradjon kint. Ha projectet valt, akkor tunjon el.
+																	
+																	return dr; 
+																} 
+																bkColor = mix(bkColor, clGray, .175f); 
+																addOverlayDrawing(
+																	drawProgress(
+																		innerSize, compiledModules, inFlight, totalModules, 
+																		bkColor, mix(bkColor, clGray, .25f), clAccent
+																	)
+																); 
+															}
+														); 
+													}
+												}
+											)
+										) a.task(); 
+									}
+									{
+										auto a = 	cancelling 	? A("Kill", "🔪", { killCompilers; }) :
+											building 	? A("Cancel", "❌", { cancelBuild; }) :
+											running	? (
+											canTryCloseProcess 	? A("Close", "✖", { closeOrKillProcess; }) 
+												: A("Kill", "🔪", { closeOrKillProcess; })
+										) :
+											canKillRunningConsole	? A("Close", "🖥", { killRunningConsole; })
+												: A("Stop", "   ", {}, false); 
+										if(
+											CaptIconBtn2(
+												a.capt, a.icon, 4, a.en, 
+												{
+													theme = "tool"; 
+													auto B(string capt, bool vis, void delegate() fun)
+													{ if(vis && Btn(capt, ((capt).genericArg!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
+													
+													B("LDC", canKillCompilers, &killCompilers); 
+													B("PID", canKillRunningProcess, &killRunningProcess); 
+													B("WND", canCloseRunningWindow, &closeRunningWindow); 
+													B("CON", canKillRunningConsole, &killRunningConsole); 
+													
+													//Todo: Ha a window es a console open, de a nagy button disabled, akkor ezek sem hasznalhatoak.
+													//Todo: ha csak a console window marad, azt is be lehessen zarni.🖥🗔
+												}
+											)
+										) a.task(); 
+									}
+									
+									
+									/+🐌🚀✨🐞🔪🛠▶🛑🟥■+/
+								}
+							); 
+							
+							VLine; //---------------------------
+							
+							Row(
+								{
+									 flex = 1; margin = "0 3"; flags.yAlign = YAlign.center; flags.clipSubCells = true; 
+									//style.fontHeight = 18+6;
+									
+									if(lod.moduleLevel) workspace.UI_selectedModulesHint; 
+									if(!lod.moduleLevel) workspace.UI_mouseLocationHint(view); 
+									
+									
+									enum showMousePosCellInfoHint = false; 
+									if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos.vec2).map!cellInfoText.join(' ')); 
 								}
 							); 
 							
-							with(workspace)
-							{
-								final switch(menuPage)
+							VLine; //---------------------------
+							
+							Row(
 								{
-									case MenuPage.Tools: 	{
-										UI_refactor; 
-										
-										Grp!Column
-										(
-											"Show Debug Info",
-											{
-												ChkBox(showModuleButtons, "Module buttons"); 
-												ChkBox(showHitTest, "HitTest"); 
-												ChkBox(showUndoStack, "Undo stack"); 
-												ChkBox(showResyntaxQueue, "Resyntax Queue"); 
-											}
-										); 
-									}	break; 
-											
-									case MenuPage.Palette: 	with(toolPalette) {
-										UI(toolPalettePage); 
-										
-										if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
-										workspace.insertNode(templateSource, subColumnIdx); 
-									}	break; 
-											
-									case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
-											
-									case MenuPage.ResMon: 	resourceMonitor.UI(400); 	break; 
-								}
-							}
-						}
-					}
-				); 
-				
-				with(workspace)
-				if(!selectedStickers.empty)
-				with(im)
-				Panel(
-					PanelPosition.topCenter, 
-					{
-						Row(
-							{
-								foreach(
-									colorName; [
-										"Yellow", "White", "LightOrange", "Olive", 
-										"Green", "PastelBlue", "Aqua", "Blue", 
-										"Orange", "Pink", "Red", "Purple"
-									].map!"`Sticky` ~ a"
-								)
-								if(
-									Btn(
-										{
-											Row(
-												{
-													flags.clickable = false; 
-													style.bkColor = (colorName).toRGB; 
-													border = "1 normal black"; 
-													Text("    "); 
-												}
-											); 
-										}, genericId(colorName)
-									)
-								)
-								{
-									foreach(s; selectedStickers)
-									if(s.props.color.chkSet(colorName))
-									s.needMeasure; 
-								}
-							}
-						); 
-					}
-				); 
-				
-				if(showModuleButtons)
-				with(im)
-				Panel(
-					PanelPosition.topClient,
-					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						Row(
-							{
-								 //Todo: Panel should be a Row, not a Column...
-								Row({ workspace.UI_ModuleBtns; flex = 1; }); 
-							}
-						); 
-					}
-				); 
-				
-				with(im)
-				Panel(
-					PanelPosition.topRight,
-					{
-						margin = "0"; padding = "0"; 
-						workspace.UI_SearchBox(view); 
-					}
-				); 
-				
-				if(showTextSelectionDebugInfo)
-				with(im)
-				with(workspace)
-				{
-					if(textSelections.length)
-					{
-						NL; 
-						if(textSelections.length>1)
-						{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
-						else if(textSelections.length==1)
-						{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
-					}
-				}
-				
-				if(showHitTest)
-				with(im)
-				Panel(
-					PanelPosition.bottomClient,
-					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						Row(
-							{
-								Text(hitTestManager.lastHitStack.map!(a => "["~a.id.text~"]").join(` `)); 
-								NL; 
-								if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
-								
-								Text("\n", workspace.locate_snapToRow(view.mousePos.vec2).text); 
-							}
-						); 
-					}
-				); 
-				
-				if(showUndoStack)
-				with(im)
-				with(workspace)
-				Panel(
-					PanelPosition.bottomClient,
-					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						if(auto m = moduleWithPrimaryTextSelection)
-						{
-							Container(
-								{
-									flags.hScrollState = ScrollState.auto_; 
-									actContainer.appendCell(m.undoManager.createUI); 
+									margin = "0 3"; flags.yAlign = YAlign.center; 
+									foreach(t; [EnumMembers!(DMDMessage.Type)]) {
+										if(!t.among(DMDMessage.Type.unknown))
+										workspace.UI_BuildMessageType(t, view); 
+									}
 								}
 							); 
-						}
-					}
-				); 
-				
-				if(showResyntaxQueue)
-				with(im)
-				with(workspace)
-				Panel(
-					PanelPosition.bottomClient,
-					{
-						margin = "0"; padding = "0"; //border = "1 normal gray";
-						Column({ UI_ResyntaxQueue; }); 
-					}
-				); 
-				
-				void VLine()
-				{ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); } 
-				
-				//StatusBar
-				with(im)
-				Panel(
-					PanelPosition.bottomClient,
-					{
-						margin = "0"; padding = "0"; 
-						Row(
-							{
-								/*theme = "tool";*/ style.fontHeight = 18; 
-								
-								//Todo: faszomat ebbe a szarba:
-								flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
-								//flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
-								
-								Row(
-									{
-										margin = "0 3"; flags.yAlign = YAlign.center; 
-										//style.fontHeight = 18+6;
-										//buildSystemWorkerState.UI; 
-										
-										if(dbgsrv.active)
-										{
-											if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
-											if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
-										}
-										
-										static bool buildOpt_release, buildOpt_debug; 
-										//return Btn({ Column({ Row(); Row(); }); });
-										
-										static CaptIconBtn	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
-											(string capt, string icon, bool en = true)
-										{
-											return Btn!(srcModule, srcLine)
-											(
-												{
-													Column(
-														{
-															flags.clickable = false; 
-															Row(HAlign.center, { fh = ceil(fh*.66f); Text(capt); flags.clickable = false; }); 
-															Row(HAlign.center, { Text(icon); flags.clickable = false; }); 
-														}
-													); 
-												},
-												enable(en)
-											); 
-										} 
-										static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
-											(string capt, string icon, float w, bool en, void delegate() fun)
-										{
-											return Btn!(srcModule, srcLine)
-											(
-												{
-													Row(
-														{
-															innerWidth = fh*w; 
-															innerHeight = ceil(fh*1.66f); 
-															flags.clickable = false; 
-															Text(" ", icon!="" ? icon~" " : ""); 
-															Text(capt~"\n"); 
-															fh = ceil(fh*.66f); 
-															fun(); 
-														}
-													); 
-												},
-												enable(en)
-											); 
-										} 
-										
-										
-										BtnRow(
-											{
-												if(CaptIconBtn("REL", ((buildOpt_release)?("🚀"):("🐌")), !building)) buildOpt_release.toggle; 
-												if(CaptIconBtn("DBG", ((buildOpt_debug)?("🐞"):("➖")), !building)) buildOpt_debug.toggle; 
-											}
-										)
-										/+Todo: ezt a 2 buttont bekotni, hogy modositsa a project forrast.+/; 
-										
-										enum greenRightTriangle = tag("style fontColor=green")~" ▶ "~tag("style fontColor=black"); 
-										
-										static struct A { string capt, icon; void delegate() task; bool en = true; } 
-										
-										const modifier_rebuild = inputs.Shift.down; 
-										
-										{
-											auto a = 	cancelling 	? A("Cancelling", "", {}, false) : 
-												building 	? A("Building", "", {}, false) : 
-												running 	? A("Running", "", {}, false) 
-													: (
-												modifier_rebuild 	? A("Rebuild", "⚙", { rebuild; })
-													: A("Run", greenRightTriangle, { run; })
-											); 
-											if(
-												CaptIconBtn2(
-													a.capt, a.icon, 4, a.en, 
-													{
-														fh = ceil(fh*.66f); 
-														with(buildSystemWorkerState)
-														{
-															const w = innerWidth; 
-															Row(
-																{
-																	flags.clickable = false; 
-																	innerSize = vec2(w, fh); 
-																	
-																	static drawProgress(
-																		vec2 size, int compiled, int inFlight, int total,
-																		RGB clBackground, RGB clQueued, RGB clCompiled
-																	)
-																	{
-																		auto dr = new Drawing; 
-																		
-																		auto r = bounds2(vec2(0), size); 
-																		if(!r.empty)
-																		{
-																			dr.color = clBackground; 
-																			dr.fillRect(r); 
-																			r = r.inflated(-.5f, -1);  //Opt: ellenorizni, ha ez double, akkor is floattal szamol-e.
-																		}
-																		
-																		if(total.inRange(1, 1000) && !r.empty)
-																		{
-																			//Must do errorchecks, because it updated asynchronously as nasty globals.
-																			compiled = compiled.clamp(0, total); 
-																			inFlight = inFlight.clamp(0, total-compiled); 
-																			
-																			const sc = r.width / total; //Opt: ellenorizni, hogy ha ezt belerakom a box()-ba, akkor 1x szamolja-e.
-																			
-																			void box(int i) { dr.fillRect(bounds2(i*sc+.5f, r.top, i*sc+sc-.5f, r.bottom)); } 
-																			
-																			dr.color = clCompiled; 	foreach(i; 0 .. compiled) box(i); 
-																			dr.color = mix(clQueued, clCompiled, blink^^2); 	foreach(i; compiled .. compiled+inFlight) box(i); 
-																			dr.color = clQueued; 	foreach(i; compiled+inFlight .. total) box(i); 
-																		}
-																		
-																		//Todo: a szinezes lehetne error/warning alapjan is.  A rectangle belseje lehetne olyan szinu.
-																		//Todo: a legutolso forditas eredmenye maradjon kint. Ha projectet valt, akkor tunjon el.
-																		
-																		return dr; 
-																	} 
-																	bkColor = mix(bkColor, clGray, .175f); 
-																	addOverlayDrawing(
-																		drawProgress(
-																			innerSize, compiledModules, inFlight, totalModules, 
-																			bkColor, mix(bkColor, clGray, .25f), clAccent
-																		)
-																	); 
-																}
-															); 
-														}
-													}
-												)
-											) a.task(); 
-										}
-										{
-											auto a = 	cancelling 	? A("Kill", "🔪", { killCompilers; }) :
-												building 	? A("Cancel", "❌", { cancelBuild; }) :
-												running	? (
-												canTryCloseProcess 	? A("Close", "✖", { closeOrKillProcess; }) 
-													: A("Kill", "🔪", { closeOrKillProcess; })
-											) :
-												canKillRunningConsole	? A("Close", "🖥", { killRunningConsole; })
-													: A("Stop", "   ", {}, false); 
-											if(
-												CaptIconBtn2(
-													a.capt, a.icon, 4, a.en, 
-													{
-														theme = "tool"; 
-														auto B(string capt, bool vis, void delegate() fun)
-														{ if(vis && Btn(capt, ((capt).genericArg!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
-														
-														B("LDC", canKillCompilers, &killCompilers); 
-														B("PID", canKillRunningProcess, &killRunningProcess); 
-														B("WND", canCloseRunningWindow, &closeRunningWindow); 
-														B("CON", canKillRunningConsole, &killRunningConsole); 
-														
-														//Todo: Ha a window es a console open, de a nagy button disabled, akkor ezek sem hasznalhatoak.
-														//Todo: ha csak a console window marad, azt is be lehessen zarni.🖥🗔
-													}
-												)
-											) a.task(); 
-										}
-										
-										
-										/+🐌🚀✨🐞🔪🛠▶🛑🟥■+/
-									}
-								); 
-								
-								VLine; //---------------------------
-								
-								Row(
-									{
-										 flex = 1; margin = "0 3"; flags.yAlign = YAlign.center; flags.clipSubCells = true; 
-										//style.fontHeight = 18+6;
-										
-										if(lod.moduleLevel) workspace.UI_selectedModulesHint; 
-										if(!lod.moduleLevel) workspace.UI_mouseLocationHint(view); 
-										
-										
-										enum showMousePosCellInfoHint = false; 
-										if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos.vec2).map!cellInfoText.join(' ')); 
-									}
-								); 
-								
-								VLine; //---------------------------
-								
-								Row(
-									{
-										margin = "0 3"; flags.yAlign = YAlign.center; 
-										foreach(t; [EnumMembers!(DMDMessage.Type)]) {
-											if(!t.among(DMDMessage.Type.unknown))
-											workspace.UI_BuildMessageType(t, view); 
-										}
-									}
-								); 
-								VLine; //---------------------------
-								
-								Row(
-									{
-										margin = "0 3"; flags.vAlign = VAlign.center; 
-										version(/+$DIDE_REGION+/none) {
-											if(Btn("ErrorList")) workspace.showErrorList.toggle; 
-											if(Btn("Calc size")) print(workspace.allocatedSize); 
-										}
-										Text(now.text); NL; 
-										Text(
-											i"FPS=$(FPS
-.format!"%.0f")  Z=$(log2(lod.pixelSize)
-.format!"%.2f")  A=$(view.animSpeed
-.format!"%.2f")".text
-										); 
-									}
-								); 
-								
-								if(1)
+							VLine; //---------------------------
+							
+							Row(
 								{
-									VLine; 
-									workspace.UI_structureLevel; 
+									margin = "0 3"; flags.vAlign = VAlign.center; 
+									version(/+$DIDE_REGION+/none) {
+										if(Btn("ErrorList")) workspace.showErrorList.toggle; 
+										if(Btn("Calc size")) print(workspace.allocatedSize); 
+									}
+									Text(now.text); NL; 
+									Text(
+										i"FPS=$(FPS
+	.format!"%.0f")  Z=$(log2(lod.pixelSize)
+	.format!"%.2f")  A=$(view.animSpeed
+	.format!"%.2f")".text
+									); 
 								}
-								
-								//this applies YAlign.stretch
-								with(actContainer) {
-									measure; 
-									foreach(c; cast(.Container[])subCells) c.measure; 
-								}
-								
-								
-								
+							); 
+							
+							if(1)
+							{
+								VLine; 
+								workspace.UI_structureLevel; 
 							}
-						); 
-					}
-				); 
-				
-				
-				im.UI_FlashMessages; 
-				
-				workspace.update(view, buildResult); 
-				im.root ~= workspace; 
-				
-				version(/+$DIDE_REGION Interactive controls on modules+/all)
+							
+							//this applies YAlign.stretch
+							with(actContainer) {
+								measure; 
+								foreach(c; cast(.Container[])subCells) c.measure; 
+							}
+							
+							
+							
+						}
+					); 
+				}
+			); 
+			
+			
+			im.UI_FlashMessages; 
+			
+			workspace.update(view, buildResult); 
+			im.root ~= workspace; 
+			
+			version(/+$DIDE_REGION Interactive controls on modules+/all)
+			{
+				with(im)
 				{
-					with(im)
+					auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
+					if(enabledModule && enabledModule.isReadOnly) enabledModule = null; 
+					
+					const oldStyle = style; scope(exit) style = oldStyle; 
+					
+					foreach(m; workspace.modules)
 					{
-						auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
-						if(enabledModule && enabledModule.isReadOnly) enabledModule = null; 
-						
-						const oldStyle = style; scope(exit) style = oldStyle; 
-						
-						foreach(m; workspace.modules)
+						//baszik mukodni igy: im.root ~= m; 
+						foreach(n; m.visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
 						{
-							//baszik mukodni igy: im.root ~= m; 
-							foreach(n; m.visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
+							if(n.operands[0] && n.operands[1])
 							{
-								if(n.operands[0] && n.operands[1])
+								const type = n.operands[0].extractThisLevelDString.text; 
+								switch(type)
 								{
-									const type = n.operands[0].extractThisLevelDString.text; 
-									switch(type)
-									{
-										case "bool": {
-											//Todo: edit permission
-											//Todo: put this next to niceexpression
-											const b1 = !!n.controlValue; 
-											bool b2 = b1; 
-											style.bkColor = n.bkColor; 
-											style.fontColor = syntaxFontColor(skIdentifier1); 
-											ChkBox(
-												b2, "", {
-													flags.targetSurface = 0; 
-													outerPos = n.worldInnerPos; 
-												}, 
-												enable(m is enabledModule), ((n.identityStr).genericArg!q{id})
-											); 
-											if(b1!=b2) {
-												n.controlValue = b2; 
-												n.setChanged; 
-											}
-										}break; 
-										default: 
-									}
+									case "bool": {
+										//Todo: edit permission
+										//Todo: put this next to niceexpression
+										const b1 = !!n.controlValue; 
+										bool b2 = b1; 
+										style.bkColor = n.bkColor; 
+										style.fontColor = syntaxFontColor(skIdentifier1); 
+										ChkBox(
+											b2, "", {
+												flags.targetSurface = 0; 
+												outerPos = n.worldInnerPos; 
+											}, 
+											enable(m is enabledModule), ((n.identityStr).genericArg!q{id})
+										); 
+										if(b1!=b2) {
+											n.controlValue = b2; 
+											n.setChanged; 
+										}
+									}break; 
+									default: 
 								}
 							}
 						}
 					}
 				}
-				
-				im.root ~= overlay; 
-				
-				view.subScreenArea = im.clientArea / clientSize; 
-				
-				workspace.UI_Popup; 
-				
-				//bottomRight hint
-				with(im)
-				Panel
-					(
-					PanelPosition.bottomRight,
-					{
-						margin = "0 24 24 0"; 
-						border = Border.init; 
-						padding = "0"; 
-						flags.noBackground = true; 
-						workspace.UI_mouseOverHint; 
-					}
-				); 
-				
-				
-				//update mouse cursor//////////////////////////
-				MouseCursor chooseMouseCursor()
+			}
+			
+			im.root ~= overlay; 
+			
+			view.subScreenArea = im.clientArea / clientSize; 
+			
+			workspace.UI_Popup; 
+			
+			//bottomRight hint
+			with(im)
+			Panel
+				(
+				PanelPosition.bottomRight,
 				{
-					with(MouseCursor)
+					margin = "0 24 24 0"; 
+					border = Border.init; 
+					padding = "0"; 
+					flags.noBackground = true; 
+					workspace.UI_mouseOverHint; 
+				}
+			); 
+			
+			
+			//update mouse cursor//////////////////////////
+			MouseCursor chooseMouseCursor()
+			{
+				with(MouseCursor)
+				{
+					if(cancelling) return NO; 
+					if(building) return APPSTARTING; 
+					if(im.mouseOverUI || im.wantMouse) return ARROW; //Todo: im.chooseMouseCursor
+					with(workspace.moduleSelectionManager)
 					{
-						if(cancelling) return NO; 
-						if(building) return APPSTARTING; 
-						if(im.mouseOverUI || im.wantMouse) return ARROW; //Todo: im.chooseMouseCursor
-						with(workspace.moduleSelectionManager)
-						{
-							if(mouseOp == MouseOp.move) return SIZEALL; 
-							if(mouseOp == MouseOp.rectSelect) return CROSS; 
-						}
-						if(workspace.textSelections.any)
-						{
-							return IBEAM; 
-							/+
-								Bug: ez az IBeam a form jobb oldalan eltunik pont annyi pixelnyire 
-															az ablak jobb szeletol, mint ahany pixelre az ablak bal szele van 
-															a desktop bal szeletol merve.
-							+/
-						}
-						return ARROW; 
+						if(mouseOp == MouseOp.move) return SIZEALL; 
+						if(mouseOp == MouseOp.rectSelect) return CROSS; 
 					}
-				} 
-				
-				mouseCursor = chooseMouseCursor; 
-				
-				//print(lod.zoomFactor*DefaultFontHeight);
+					if(workspace.textSelections.any)
+					{
+						return IBEAM; 
+						/+
+							Bug: ez az IBeam a form jobb oldalan eltunik pont annyi pixelnyire 
+														az ablak jobb szeletol, mint ahany pixelre az ablak bal szele van 
+														a desktop bal szeletol merve.
+						+/
+					}
+					return ARROW; 
+				}
 			} 
 			
-		}
+			mouseCursor = chooseMouseCursor; 
+			
+			//print(lod.zoomFactor*DefaultFontHeight);
+		} 
 	} 
 	
-}class Workspace : Container, WorkspaceInterface
+}
+class Workspace : Container, WorkspaceInterface
 {
 	version(/+$DIDE_REGION Workspace things+/all)
 	{
@@ -1552,7 +1547,7 @@ version(/+$DIDE_REGION main+/all)
 		} 
 		
 		@STORED AutoReloader autoReloader; 
-		
+		
 		this()
 		{
 			flags.targetSurface = 0; 
@@ -1756,7 +1751,7 @@ version(/+$DIDE_REGION main+/all)
 				if(res.empty) res = modules; 
 				return res; 
 			} 
-			
+			
 			/+
 				+Selects all the CodeColumns under the cursors. 
 				If there is none, selects all the modules' content CodeColumns.
@@ -1785,8 +1780,8 @@ version(/+$DIDE_REGION main+/all)
 			{ return projectModules.filter!"a.changed"; } 
 			void saveChangedProjectModules()
 			{ changedProjectModules.each!"a.save"; } 
-		}version(/+$DIDE_REGION+/all)
-		{
+			
+			
 			private void closeSelectedModules_impl()
 			{
 				//Todo: ask user to save if needed
@@ -1853,7 +1848,7 @@ version(/+$DIDE_REGION main+/all)
 				
 				return true; 
 			} 
-			
+			
 			File[] allFilesFromModule(File file)
 			{
 				if(!file.exists) return []; 
@@ -1868,7 +1863,10 @@ version(/+$DIDE_REGION main+/all)
 			
 			void queueModule(File f)
 			{
-				//Todo: this workaround is there to let the filedialog handle virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
+				/+
+					Todo: this workaround is there to let the filedialog handle 
+					virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
+				+/
 				if(f.fullName.isWild(`*\?*:*`)) f.fullName = wild[1].split('\\').back~':'~wild[2]; 
 				openQueue ~= f; 
 			} 
@@ -1984,7 +1982,7 @@ version(/+$DIDE_REGION main+/all)
 				row.byNode.each!((n){ visitNode(n); }); /+Opt: early exit+/
 			} 
 		} 
-		
+		
 		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
 		{
 			//Opt: unoptimal to return a dynamic array
@@ -2054,7 +2052,7 @@ version(/+$DIDE_REGION main+/all)
 				reference	: reference
 			}))); 
 		} 
-		
+		
 		CodeRow[string] messageUICache; 
 		string[string] messageSourceTextByLocation; 
 		
@@ -2481,6 +2479,7 @@ version(/+$DIDE_REGION main+/all)
 		{ return DefaultFontHeight; } 
 		int pageSize()
 		{ return (frmMain.view.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); } 
+		
 		void cursorOp(ivec2 dir, bool select, bool stepInOut=false)
 		{
 			const stepOut = stepInOut; 
@@ -2947,8 +2946,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		bool selectAll_impl()
 		{ return extendSelection_impl(Yes.selectAll); } 
-	}
-	version(/+$DIDE_REGION Permissions+/all)
+	}version(/+$DIDE_REGION Permissions+/all)
 	{
 		protected
 		{
@@ -3116,7 +3114,8 @@ version(/+$DIDE_REGION main+/all)
 				invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
 		} 
-	}version(/+$DIDE_REGION Cut   +/all)
+	}
+	version(/+$DIDE_REGION Cut   +/all)
 	{
 		///All operations must go through copy_impl or cut_impl. Those are calling 
 		///requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
@@ -4198,8 +4197,7 @@ version(/+$DIDE_REGION main+/all)
 				return true; 
 			} 
 		}
-	}
-	version(/+$DIDE_REGION Update+/all)
+	}version(/+$DIDE_REGION Update+/all)
 	{
 		
 		
@@ -4587,7 +4585,8 @@ version(/+$DIDE_REGION main+/all)
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
 		} 
-	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+	}
+	version(/+$DIDE_REGION Location/Clipbrd slots+/all)
 	{
 		struct Location
 		{
@@ -4720,7 +4719,7 @@ version(/+$DIDE_REGION main+/all)
 			
 			return preferred; 
 		} 
-		
+		
 		string[] scrapeLinks_dpldocs(string query)
 		{
 			prepareHelpQuery(query); 
@@ -5104,7 +5103,7 @@ version(/+$DIDE_REGION main+/all)
 				
 			}
 		} 
-	}version(/+$DIDE_REGION Keyboard mapping+/all)
+	}version(/+$DIDE_REGION Keyboard    +/all)
 	{
 		@property SEL() => !textSelections.empty; @property NOSEL() => !SEL; 
 		version(/+$DIDE_REGION Scroll and zoom view+/all)
@@ -5551,7 +5550,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 		}
 	}
-	version(/+$DIDE_REGION UI                 +/all)
+	version(/+$DIDE_REGION UI      +/all)
 	{
 		void UI_ModuleBtns()
 		{
@@ -5952,7 +5951,7 @@ version(/+$DIDE_REGION main+/all)
 				actContainer.append(mouseOverHintCntr); 
 			}
 		} 
-		
+		
 		void UI_Popup()
 		{
 			version(/+$DIDE_REGION Popup menu+/all)
@@ -6127,7 +6126,7 @@ version(/+$DIDE_REGION main+/all)
 				*/
 			}
 		} 
-		
+		
 		/// A flashing effect, when right after the module was loaded.
 		void drawModuleLoadingHighlights(string field)(Drawing dr, RGB c)
 		{
@@ -6497,7 +6496,7 @@ version(/+$DIDE_REGION main+/all)
 			}
 			dr.alpha = 1; 
 		} 
-		
+		
 		void customDraw(Drawing dr)
 		{
 			//customDraw //////////////////////////////
@@ -6576,7 +6575,7 @@ version(/+$DIDE_REGION main+/all)
 				}
 			} 
 		} 
-		
+		
 		override void onDraw(Drawing dr)
 		{} 
 		
@@ -6592,502 +6591,5 @@ version(/+$DIDE_REGION main+/all)
 			structureMap.endCollect(dr); 
 			customDraw(dr); 
 		} 
-	}
-} 
-class ToolPalette : Column
-{
-	Page[] pages = /+Todo: Indentation is a problem here.  Ineffective and for multiline strings it's unreliable.+/
-	[
-		{
-			"Symbols, math", "α",
-			q{
-				(表([
-					[q{"expression blocks"},q{
-						{ a; }(a) [a] 
-						"S" r"S" `S` 
-						'S' q{S} $(a)
-						i"S" i`S` iq{S}
-					}],
-					[q{"math letters"},q{
-						π ℯ ℂ α β γ µ σ
-						Δ δ ϕ ϑ ε ω
-					}],
-					[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
-					[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
-					[q{"floor, 
-ceil, 
-round, 
-trunc"},q{
-						(floor(x)) (ifloor(x)) (lfloor(x))
-						(ceil(x)) (iceil(x)) (lceil(x))
-						(round(x)) (iround(x)) (lround(x))
-						(trunc(x)) (itrunc(x)) (ltrunc(x))
-					}],
-					[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
-					[q{"multiply, divide, 
-dot, cross"},q{
-						((a).dot(b)) ((a).cross(b))
-						((a)*(b)) ((a)/(b))
-					}],
-					[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
-					[q{"color literals"},q{
-						(RGB( , , )) 
-						(RGBA( , , , ))
-					}],
-				]))
-			}
-		},
-		{
-			"Expressions", "(1)", 
-			q{
-				(表([
-					[q{"tenary operator"},q{
-						((a)?(b):(c))	((a)?(b) :(c)) 
-						((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
-					}],
-					[q{"lambda, 
-anonym method"},q{
-						((a)=>(a+1)) 	((a){ f; })
-						((a) =>(a+1))	((a) { f; })
-					}],
-					[q{"named param, 
-struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
-					[q{"enum member 
-blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
-					[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-					[q{"debug inspector"},q{((0x3205535B2D627).檢(expr)) ((0x3207335B2D627).檢 (expr))}],
-					[q{"stop watch"},q{auto _間=init間; ((0x320C135B2D627).檢((update間(_間)))); }],
-					[q{"interactive literals"},q{/+
-						Todo: It throws ->
-						(常!(bool)(0)) (常!(bool)(1))
-					+/}],
-				]))
-			}
-		},
-		{
-			"Expressions", "(2)", 
-			q{
-				(表([
-					[q{"table blocks"},q{
-						(表([
-							[q{/+Note: Hdr+/}],
-							[q{Cell}],
-						])) ((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return script; }}())
-					}],
-					[q{"mixin generators"},q{
-						mixin((src) .GEN!q{script}); mixin((expr).調!fun); 
-						mixin((src).GEN!q{script}); 
-					}],
-					[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
-					[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
-					[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
-					[q{`product`},q{(mixin(求product(q{i=0},q{N},q{expr})))(mixin(求product(q{0<i<N},q{},q{expr})))(mixin(求product(q{i},q{1, 2, 3},q{expr})))}],
-				]))
-			}
-		},
-		{
-			"Comments", "//",
-			q{
-				(表([
-					[q{"comments"},q{
-						/+cmt+/
-						/*cmt*/ //cmt
-						/+Note: note+/ /+Code: code+/ /+Hidden:+/
-						/+Link: cmt+/ /+$DIDE_IMG+/
-						/+Todo: cmt+/ 
-						/+Opt: cmt+/ /+Bug: cmt+/
-						/+Error: cmt+/ 
-						/+Warning: cmt+/ 
-						/+Deprecation: cmt+/
-						/+Console: cmt+/
-						//$DIDE_LOC file.d(1,2)
-					}],
-					[q{"regions"},q{
-						version(/+$DIDE_REGION RGN+/all) { s; }version(/+$DIDE_REGION+/all) { s; }
-						version(/+$DIDE_REGION RGN+/none) { s; }version(/+$DIDE_REGION+/none) { s; }
-						version(/+$DIDE_REGION RGN+/all)
-						{ s; }version(/+$DIDE_REGION RGN+/none)
-						{ s; }
-					}],
-					[q{"directives"},q{
-						#
-						#!
-						#line 5
-						#define
-						#ifdef
-						#else
-						s; 
-					}],
-				]))
-			}
-		},
-		{
-			"Blocks", "{ }",
-			q{
-				(表([[q{`declaration blocks`},q{
-					s; 	auto f()
-					{ s; } 
-					import ; 	alias id; 
-					enum id; 	enum id
-					{} 
-					struct id
-					{ s; } 	union id
-					{ s; } 
-					class id
-					{ s; } 	interface id
-					{ s; } 
-					@(u)
-					{ s; } 	private
-					{ s; } 
-					public
-					{ s; } 	protected
-					{ s; } 
-					unittest
-					{ s; } 	invariant
-					{ s; } 
-					template id
-					{ s; } 
-					mixin template id
-					{ s; } 
-				}],]))
-			}
-		},
-		{
-			"Statement blocks", "RT",
-			q{
-				(表([
-					[q{"if blocks"},q{
-						if(c) { f; }
-						if(c) { f; }else { g; }
-						if(c)
-						{}if(c)	{ f; }
-						else	{ g; }
-						if(c)	{ f; }
-						else if(d)	{ g; }
-						else	{ h; }
-						else { f; }else
-						{ f; }
-					}],
-					[q{"swicth case block"},q{
-						switch(c)
-						{
-							case: 
-							break; 
-							default: 
-						}
-					}],
-					[q{"with block"},q{
-						with(a)
-						{ f; }with(a) { f; }
-					}],
-					[q{"scope"},q{
-						scope(exit)
-						{ a; }
-						scope(exit) { a; }
-					}],
-				]))
-			}
-		},
-		{
-			"Loops Exceptions", "LE",
-			q{
-				(表([
-					[q{"while blocks"},q{
-						while(a)
-						{ f; }while(a) { f; }
-					}],
-					[q{"do while blocks"},q{
-						do { f; }
-						while(c); 
-						do { f; }while(c); 
-					}],
-					[q{"for loops"},q{
-						for(; ;)
-						{ f; }for(; ;) { f; }
-						foreach(;)
-						{ f; }
-						foreach(;) { f; }
-						foreach_reverse(;)
-						{ f; }
-						foreach_reverse(;) { f; }
-					}],
-					[q{"try catch finally"},q{
-						try
-						{}
-						catch(a)
-						{}try
-						{}
-						finally
-						{}
-						try {}catch(a) {}
-						try {}finally {}
-					}],
-				]))
-			}
-		},
-		{
-			"Compile time blocks", "CT",
-			q{
-				(表([
-					[q{"static foreach"},q{
-						static foreach(;)
-						{ f; }
-						static foreach(;) { f; }
-						static foreach_reverse(;)
-						{ f; }
-						static foreach_reverse(;) { f; }
-					}],
-					[q{"static if blocks"},q{
-						static if(c) { f; }
-						static if(c) { f; }else { g; }
-						static if(c)
-						{ f; }static if(c)	{ f; }
-						else	{ g; }
-						static if(c)	{ f; }
-						else static if(d)	{ g; }
-						else static assert(0, ); 
-					}],
-				]))
-			}
-		},
-		{
-			"Compile time blocks", "VD",
-			q{
-				(表([
-					[q{"version blocks"},q{
-						version(v) { f; }
-						version(v) { f; }else { g; }
-						version(v)
-						{ f; }version(v)	{ f; }
-						else	{ g; }
-						version(v)	{ f; }
-						else version(w)	{ g; }
-						else	{ h; }
-					}],
-					[q{"debug blocks"},q{
-						debug { f; }
-						debug { f; }else { g; }
-						debug
-						{ f; }debug	{ f; }
-						else	{ g; }
-					}],
-					[q{"debug blocks
-with condition"},q{
-						debug(d) { f; }
-						debug(d) { f; }else { g; }
-						debug(d)
-						{ f; }debug(d)	{ f; }
-						else	{ g; }
-						debug(d)	{ f; }
-						else debug(e)	{ g; }
-						else	{ h; }
-						/+
-							Todo: When the operand of 
-							debug() becomes empty, 
-							it disappears. 🤬
-						+/
-					}],
-				]))
-			}
-		}
-	]; /+/+Link: https://en.wikipedia.org/wiki/Greek_letters_used_in_mathematics,_science,_and_engineering+/+/
-	version(/+$DIDE_REGION+/all) {
-		struct Page
-		{
-			string title, caption, source; 
-			
-			Module _module; 
-			static struct Entry { Cell cell; string comment; } 
-			Entry[] entries; 
-			
-			void initialize(Container parent)
-			{
-				_module = new Module(null, source, StructureLevel.managed); 
-				if(_module)
-				if(auto mCol = _module.content)
-				if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
-				if(auto tCol = table.operands[0])
-				foreach(tRow; tCol.rows)
-				if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
-				{
-					string comment; 
-					if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
-					comment = cntr0.content.sourceText; 
-					//Todo: implement ?. null coalescing NiceExpression from C#
-					entries ~= Entry(cntr1, comment); 
-					cntr1.setParent(parent); //from here worldPos() calculations work
-					cntr1.measure; 
-				}
-			} 
-		} 
-		
-		string[] captions; 
-		
-		this()
-		{ (mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; } 
-		Page* actPage, lastPage; //cached
-		uint lastTick; 
-		
-		private enum enableDebug = false; 
-		private void DBG(A...)(A a)
-		{
-			static if(enableDebug)
-			im.Text(text(a)); 
-		} 
-		
-		void UI(ref string actPageCaption)
-		{
-			im.BtnRow(actPageCaption, captions); 
-			const actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
-			if(actPageIdx<0)
-			{
-				actPage = null; 
-				if(pages.length)
-				{
-					//select first page if anything...
-					actPageCaption = pages[0].caption; 
-				}
-			}
-			else {
-				auto actPage = &pages[actPageIdx]; 
-				
-				if(lastPage.chkSet(actPage))
-				{
-					subCells = actPage.entries.map!"a.cell".array; 
-					
-					const maxW = subCells.map!"a.outerWidth".maxElement(0); 
-					subCells.each!((a){ a.outerWidth = maxW; }); 
-					subCells.spreadV; 
-					innerSize = calcContentSize; 
-					
-					/+Todo: Column aligning is totally fucked up...+/
-				}
-				
-				
-				id = "$ToolPalette$"; //it will be on the hitStack
-				im.actContainer.appendCell(this); 
-			}
-			
-			detectMouseLocation; 
-			detectTemplate; 
-		} 
-		CodeRow hoveredRow; //only for the glyph
-		Cell hoveredCell; 
-		CodeColumn innerCol; 
-		
-		@property hoveredGlyph()
-		{ return (cast(Glyph)(hoveredCell)); } 
-		@property hoveredNode()
-		{ return (cast(CodeNode)(hoveredCell)); } 
-		
-		void detectMouseLocation()
-		{
-			hoveredRow=null; hoveredCell = null; innerCol =  null; 
-			auto hs = hitTestManager.lastHitStack; 
-			
-			const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
-			if(toolPaletteIdx>=0)
-			{
-				hs = hs[toolPaletteIdx..$]; 
-				T idTo(T)(string id)
-				{
-					if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
-					else	return null; 
-				} 
-				
-				if(auto node = idTo!CodeNode(hs.get(4).id))
-				{
-					hoveredCell = node; 
-					innerCol = idTo!CodeColumn(hs.get(5).id); 
-				}
-				else if(auto row = idTo!CodeRow(hs.get(3).id))
-				if(auto glyph = (cast(Glyph)(row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest))))
-				if(!glyph.isWhite)
-				{
-					hoveredCell = glyph; 
-					hoveredRow = row; 
-				}
-			}
-		} 
-		
-		string templateSource; 
-		int subColumnIdx = -1; 
-		
-		void detectTemplate()
-		{
-			//Todo: support mixinStatement
-			templateSource=""; subColumnIdx=-1; 
-			if(hoveredNode)
-			{
-				auto src = hoveredNode.sourceText.strip; DBG(src); 
-				auto subColumns = hoveredNode.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a".array; 
-				foreach(idx, sc; subColumns)
-				{
-					string marker = ""; 
-					if(
-						sc is 
-						innerCol
-					) {
-						subColumnIdx = (cast(int)(idx)); 
-						marker = "\0"; 	//ASCII 0 is the market. It's nasty...
-					}
-					
-					auto s = sc.sourceText; DBG(s); 
-					
-					if(s=="id")
-					{
-						//s has no brackets.
-						src = src.replaceWords(s, marker); 
-					}
-					else
-					{
-						string t; 
-						if(s=="i=0")	t = "="; 
-						else if(s=="0<i<N")	t = "<<"; 
-						
-						t ~= marker; //copied text will go here
-						
-						foreach(q; [["(", ")"], ["q{", "}"], ["{ ", "}"]])
-						src = src.replace(q[0]~s~q[1], q[0].strip~t~q[1].strip); 
-					}
-				}
-				templateSource = src; 
-			}
-			else if(hoveredGlyph)
-			{ templateSource = hoveredGlyph.ch.text; }
-			
-			if(templateSource!="")
-			{
-				auto col(string s) { return het.ui.tag("style fontColor="~s); } 
-				auto s = col("black")~templateSource.replace("\0", col("red")~"⌖"~col("black")); 
-				im.Text(s); 
-			}
-		} 
-		
-		override void draw(Drawing dr)
-		{
-			super.draw(dr); 
-			
-			dr.color = mix(clAccent, clWhite, blink); 
-			dr.lineWidth = -(4*blink+1); 
-			
-			if(hoveredNode)
-			{
-				dr.drawRect(hoveredNode.worldOuterBounds.inflated(2)); 
-				if(innerCol)
-				{ dr.drawRect(innerCol.worldOuterBounds.inflated(-2)); }
-			}
-			else if(hoveredGlyph)
-			{
-				const idx = hoveredRow.subCells.countUntil(hoveredCell); 
-				if(idx>=0)
-				{
-					const bnd = hoveredGlyph.outerBounds + hoveredRow.worldInnerPos; 
-					dr.drawRect(bnd.inflated(2)); 
-				}
-			}
-		} 
-		
-		
 	}
 } 
