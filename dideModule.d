@@ -5325,12 +5325,6 @@ version(/+$DIDE_REGION+/all)
 			[q{directive},q{"#"},q{""}],
 		]))
 	) .GEN!q{GEN_enumTable}); 
-	version(/+$DIDE_REGION+/none) {
-		enum Type
-		{ slashComment, cComment, dComment, directive} 
-		enum TypePrefix	= ["//", "/*", "/+", "#"],
-		TypePostfix 	= ["", "*/", "+/", "" ]; 
-	}
 	//node: directive is detected by the high level parser, not the structured scanner.
 	
 	Type type; 
@@ -8964,99 +8958,122 @@ version(/+$DIDE_REGION+/all)
 {
 	enum lowestSpecialUnicodeChar = '\u3000' /+Contains all chinese chars used in NiceExpressions+/; 
 	
-	enum NiceExpressionType : ubyte
-	{
-		
-		
-		
-		unaryOp, 
-		binaryOp, 
-		tenaryOp, 
-		castOp, 
-		namedUnaryOp, 
-		binaryMixinEQOp, 
-		nullaryMixinTokenStringOp,
-		unaryMixinTokenStringOp,
-		binaryMixinTokenStringOp,
-		tenaryMixinTokenStringOp,
-		binaryTokenStringOp,
-		tenaryTokenStringOp,
-		mixinTableInjectorOp,
-		anonymMethod,
-		mixinGeneratorOp,
-		mixinFunctionCallOp,
-		specialStatementOp,
-		
-		/+
-			Code: Source form:
-			
-			(op(expr))
-			((expr)op(expr))
-			((expr)op(expr)op(expr))
-			(op(expr)(expr))
-			((expr)opq{code})
-			(mixin(op!((expr),q{code})))
-			(mixin(op))
-			(mixin(op(q{})))
-			(mixin(op(q{},q{})))
-			(mixin(op(q{},q{},q{})))
-			(op(q{},q{}))
-			(op(q{},q{},q{}))
-			((){with(op(expr)){expr}}())
-			((expr)op{code})
-			mixin((expr)opq{script})
-			mixin((expr).op!fun)
-			op
-		+//+
-			Note: Example:
-			
-			sqrt RGB
-			^^  .pow
-			?:
-			cast
-			genericArg
-			體 (EnumFields, StructInitializer)
-			
-			
-			
-			
-			
-			
-			
-			表! (old MixinTable)
-			Sigma operations
-			表 new MixinTable
-			anonym method (without attrs)
-			.GEN! /+Todo: Mixin Generator+/
-			調, the third way to mixin a table
-			auto 間T=now間 //Last char must be a unicode special char
-		+/
-	} 
-	private alias NET = NiceExpressionType; 
-	
-	int getOperandCount(NiceExpressionType t)
-	{
-		with(NiceExpressionType)
-		final switch(t)
+	version(/+$DIDE_REGION+/none) {
+		enum NiceExpressionType : ubyte
 		{
-			case nullaryMixinTokenStringOp, specialStatementOp: 	return 0; 
-			case unaryOp, unaryMixinTokenStringOp: 	return 1; 
-			case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
-				binaryTokenStringOp, binaryMixinTokenStringOp,
-				mixinTableInjectorOp, anonymMethod, mixinGeneratorOp,
-				mixinFunctionCallOp: 	return 2; 
-			case tenaryOp, tenaryTokenStringOp, tenaryMixinTokenStringOp: 	return 3; 
-		}
-	} 
+			
+			
+			
+			unaryOp, 
+			binaryOp, 
+			tenaryOp, 
+			castOp, 
+			namedUnaryOp, 
+			binaryMixinEQOp, 
+			nullaryMixinTokenStringOp,
+			unaryMixinTokenStringOp,
+			binaryMixinTokenStringOp,
+			tenaryMixinTokenStringOp,
+			binaryTokenStringOp,
+			tenaryTokenStringOp,
+			mixinTableInjectorOp,
+			anonymMethod,
+			mixinGeneratorOp,
+			mixinFunctionCallOp,
+			specialStatementOp,
+			
+			/+
+				Code: Source form:
+				
+				(op(expr))
+				((expr)op(expr))
+				((expr)op(expr)op(expr))
+				(op(expr)(expr))
+				((expr)opq{code})
+				(mixin(op!((expr),q{code})))
+				(mixin(op))
+				(mixin(op(q{})))
+				(mixin(op(q{},q{})))
+				(mixin(op(q{},q{},q{})))
+				(op(q{},q{}))
+				(op(q{},q{},q{}))
+				((){with(op(expr)){expr}}())
+				((expr)op{code})
+				mixin((expr)opq{script})
+				mixin((expr).op!fun)
+				op
+			+//+
+				Note: Example:
+				
+				sqrt RGB
+				^^  .pow
+				?:
+				cast
+				genericArg
+				體 (EnumFields, StructInitializer)
+				
+				
+				
+				
+				
+				
+				
+				表! (old MixinTable)
+				Sigma operations
+				表 new MixinTable
+				anonym method (without attrs)
+				.GEN! /+Todo: Mixin Generator+/
+				調, the third way to mixin a table
+				auto 間T=now間 //Last char must be a unicode special char
+			+/
+		} 
+		
+		int getOperandCount(NiceExpressionType t)
+		{
+			with(NiceExpressionType)
+			final switch(t)
+			{
+				case nullaryMixinTokenStringOp, specialStatementOp: 	return 0; 
+				case unaryOp, unaryMixinTokenStringOp: 	return 1; 
+				case 	binaryOp, castOp, binaryMixinEQOp, namedUnaryOp, 
+					binaryTokenStringOp, binaryMixinTokenStringOp,
+					mixinTableInjectorOp, anonymMethod, mixinGeneratorOp,
+					mixinFunctionCallOp: 	return 2; 
+				case tenaryOp, tenaryTokenStringOp, tenaryMixinTokenStringOp: 	return 3; 
+			}
+		} 
+		
+	}
+	
+	mixin((
+		(表([
+			[q{/+Note: NiceExpressionType : ubyte+/},q{/+Note: OpCnt+/}],
+			[q{unaryOp},q{1},q{/+Code: (op(expr))+/},q{/+Note: ^^  .pow+/}],
+			[q{binaryOp},q{2},q{/+Code: ((expr)op(expr))+/},q{/+Note: sqrt RGB+/}],
+			[q{tenaryOp},q{3},q{/+Code: ((expr)op(expr)op(expr))+/},q{/+Note: ?:+/}],
+			[q{castOp},q{2},q{/+Code: (op(expr)(expr))+/},q{/+Note: cast+/}],
+			[q{namedUnaryOp},q{2},q{/+Code: ((expr)opq{code})+/},q{/+Note: genericArg!+/}],
+			[q{binaryMixinEQOp},q{2},q{/+Code: (mixin(op!((expr),q{code})))+/},q{/+Note: 體 (EnumFields, StructInitializer)+/}],
+			[q{nullaryMixinTokenStringOp},q{0},q{/+Code: (mixin(op))+/},q{/+Note:+/}],
+			[q{unaryMixinTokenStringOp},q{1},q{/+Code: (mixin(op(q{})))+/},q{/+Note:+/}],
+			[q{binaryMixinTokenStringOp},q{2},q{/+Code: (mixin(op(q{},q{})))+/},q{/+Note:+/}],
+			[q{tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note:+/}],
+			[q{binaryTokenStringOp},q{2},q{/+Code: (op(q{},q{}))+/},q{/+Note: 表! (old MixinTable)+/}],
+			[q{tenaryTokenStringOp},q{3},q{/+Code: (op(q{},q{},q{}))+/},q{/+Note: Sigma operations+/}],
+			[q{mixinTableInjectorOp},q{2},q{/+Code: ((){with(op(expr)){expr}}())+/},q{/+Note: 表 new MixinTable+/}],
+			[q{anonymMethod},q{2},q{/+Code: ((expr)op{code})+/},q{/+Note: anonym method (without attrs)+/}],
+			[q{mixinGeneratorOp},q{2},q{/+Code: mixin((expr)opq{script})+/},q{/+Note: .GEN!+/}],
+			[q{mixinFunctionCallOp},q{2},q{/+Code: mixin((expr).op!fun)+/},q{/+Note: 調, the third way to mixin a table+/}],
+			[q{specialStatementOp},q{0},q{/+Code: op+/},q{/+Note: auto 間T=now間 //Last char must be a unicode special char+/}],
+		]))
+	).調!GEN_enumTable); 
+	
+	private alias NET = NiceExpressionType; 
 	
 	int hasListBrackets(NiceExpressionType t)
 	{
 		with(NiceExpressionType)
-		return !t.among(
-			mixinGeneratorOp, specialStatementOp,
-			mixinFunctionCallOp
-		); 
-		
+		return !t.among(mixinGeneratorOp, specialStatementOp, mixinFunctionCallOp); 
 	} 
 	
 	static if(
@@ -9853,7 +9870,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x406227B6B4BCC).檢(expr))},
+			q{((0x40C707B6B4BCC).檢(expr))},
 			
 			".檢",
 			q{buildInspector; },
@@ -9867,7 +9884,7 @@ version(/+$DIDE_REGION+/all)
 			NET.binaryOp, 
 			skIdentifier1, 
 			NodeStyle.dim,
-			q{((0x407307B6B4BCC).檢 (expr))},
+			q{((0x40D7E7B6B4BCC).檢 (expr))},
 			
 			".檢 ",
 			q{buildInspector; },
@@ -9996,6 +10013,7 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		
+		
 		version(/+$DIDE_REGION+/none)
 		{
 			if(auto blk = asListBlock(outerCell))
@@ -10287,258 +10305,244 @@ version(/+$DIDE_REGION+/all)
 					}
 				}
 			}
-		}version(/+$DIDE_REGION+/all)
+		}
+		
+		void processStatementRow(CodeRow statementRow)
 		{
-			if(auto blk = asListBlock(outerCell))
+			assert(statementRow); 
+			
+			void ADD(Args...)(int tIdx, Args args)
 			{
-				if(blk.content.rows.length==1)
-				if(auto row = blk.content.getRow(0))
-				if(row.length.inRange(2, 16) /+It's an optimization for the size range.  Must update and verify!!!+/)
+				with(statementRow)
 				{
+					clearSubCells; 
+					appendCell(new NiceExpression(statementRow, tIdx, args)); 
+					needMeasure; 
+				}
+			} bool TRY(Args...)(NiceExpressionType type, string op, Args args)
+			{
+				if(const tIdx = findNiceExpressionTemplateIdx(type, op))
+				{
+					ADD(tIdx, args); 
+					return true; 
+				}
+				return false; 
+			} 
+			
+			if(statementRow.subCells.empty) return; 
+			const lastCh = statementRow.chars.back; 
+			if(lastCh=='￼')
+			{
+				if(statementRow.subCells.map!structuredCellToChar.equal("mixin("))
+				{
+					if(auto blk = asListBlock(statementRow.subCells.back))
+					if(blk.content.rows.length==1)
+					if(auto row = blk.content.rows[0])
+					if(row.length>=2)
+					if(auto left = asListBlock(row.subCells.front))
 					{
-						bool TRY(Args...)(Args args)
+						if(auto right = asTokenString(row.subCells.back))
 						{
-							//try to add a NiceExpression template.
-							static if(is(Unqual!(Args[0])==int))	{ if(args[0]) { outerCell = new NiceExpression(blk.parent, args[0], args[1..$]);  return true; }return false; }
-							else	{ return TRY(findNiceExpressionTemplateIdx(args[0], args[1]), args[2..$]); }
-						} 
-						if(auto right = asListBlock(row.subCells.back))
-						{
-							if(auto left = asListBlock(row.subCells.front))
-							{
-								const op = row.chars[1..$-1].text; 
-								if(left.content && right.content)
-								{
-									{
-										/+Note: binaryOp: ((expr)op(expr))+/
-										if(TRY(NiceExpressionType.binaryOp, op, left.content, right.content)) return; 
-									}
-									{
-										/+Note: tenaryyOp: ((expr)op(expr)op(expr))+/
-										if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.tenaryOp, op))
-										{
-											const mIdx = op.countUntil('￼'); 
-											if(mIdx>=0)
-											{
-												if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
-												{ if(TRY(tIdx, left.content, middle.content, right.content)) return; }
-											}
-										}
-									}
-									{
-										/+Note: mixinTableInjectorOp: ((){with(op(expr)){expr}}())+/
-										if(row.length==3 && left.content.empty && right.content.empty)
-										if(auto mid = asStatementBlockDeclaration(row.subCells[1]))
-										if(mid.block)
-										if(auto with_ = (cast(Declaration)(mid.block.singleCellOrNull)))
-										if(with_.isPreposition && with_.keyword=="with" && with_.header && with_.block)
-										if(with_.header.rowCount==1)
-										{
-											auto headerRow = with_.header.rows[0]; 
-											if(headerRow.subCells.length.inRange(2, 16))
-											if(auto expr1 = asListBlock(headerRow.subCells.back))
-											if(expr1.content)
-											{
-												const innerOp = headerRow.chars[0..$-1].text; 
-												if(TRY(NiceExpressionType.mixinTableInjectorOp, innerOp, expr1.content, with_.block)) return; 
-											}
-										}
-									}
-								}
-							}
-							else
-							{
-								const op = row.chars[0..$-1].text; 
-								if(op=="mixin")
-								{
-									if(right.content.rows.length==1)
-									if(auto row2 = right.content.getRow(0))
-									{
-										if(row2.subCells.length==3)
-										if(row2.chars[1]=='!')
-										{
-											string mixinOp = row2.chars[0].text; 
-											{
-												/+Note: binaryMixinEQOp: (mixin(op!((expr),q{code})))+/
-												if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryMixinEQOp, mixinOp))
-												if(auto right2 = asListBlock(row2.subCells.back))
-												if(right2.content.rowCount==1)
-												if(auto row3 = right2.content.rows[0])
-												if(row3.cellCount==3 && row3.chars[1]==',')
-												if(auto left3 = asListBlock(row3.subCells[0]))
-												if(auto right3 = asTokenString(row3.subCells[2]))
-												{ if(TRY(tIdx, left3.content, right3.content)) return; }
-											}
-										}
-										if(auto right2 = asListBlock(row2.subCells.back))
-										{
-											auto params = extractTokenStringParams(right2.content); 
-											const mixinOp = row2.chars[0..$-1].text; 
-											if(params.length==1)
-											{
-												/+Note: unaryMixinTokenStringOp (mixin(op(q{})))+/
-												if(TRY(NiceExpressionType.unaryMixinTokenStringOp, mixinOp, params[0])) return; 
-											}
-											else if(params.length==2)
-											{
-												/+Note: binaryMixinTokenStringOp (mixin(op(q{},q{})))+/
-												if(TRY(NiceExpressionType.binaryMixinTokenStringOp, mixinOp, params[0], params[1])) return; 
-											}
-											else if(params.length==3)
-											{
-												/+Note: tenaryMixinTokenStringOp (mixin(op(q{},q{},q{})))+/
-												if(TRY(NiceExpressionType.tenaryMixinTokenStringOp, mixinOp, params[0], params[1], params[2])) return; 
-											}
-										}
-										else
-										{
-											const mixinOp = row2.chars.text; 
-											/+Note: nullaryMixinTokenStringOp (mixin(op))+/
-											if(TRY(NiceExpressionType.nullaryMixinTokenStringOp, mixinOp)) return; 
-										}
-									}
-								}
-								else
-								{
-									if(op.endsWith('￼'))
-									{
-										if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
-										{
-											{
-												/+Note: castOp (op(expr)(expr))+/
-												if(TRY(NiceExpressionType.castOp, op.withoutEnding('￼'), mid.content, right.content)) return; 
-											}
-										}
-									}
-									else
-									{
-										{
-											//Note: unaryOp (op(expr))
-											if(TRY(NiceExpressionType.unaryOp, op, right.content)) return; 
-										}
-										{
-											/+Note: binaryTokenStringOp (op(q{},q{}))+/
-											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
-											{
-												auto params = extractTokenStringParams(right.content); 
-												if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
-											}
-										}
-										{
-											/+Note: tenaryTokenStringOp (op(q{},q{},q{}))+/
-											if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.binaryTokenStringOp, op))
-											{
-												auto params = extractTokenStringParams(right.content); 
-												if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
-											}
-										}
-									}
-								}
-							}
+							const op = row.chars[1..$-1].text; 
+							{ if(TRY((mixin(舉!((NiceExpressionType),q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
 						}
-						else if(auto right = asTokenString(row.subCells.back))
+						if(row.length>=4 && row.chars[1]=='.')
 						{
-							if(auto left = asListBlock(row.subCells.front))
+							const exclIdx = row.chars.countUntil('!'); 
+							if(exclIdx>=3)
 							{
-								const op = row.chars[1..$-1].text; 
+								const op = row.chars[2..exclIdx].text; 
 								{
-									/+Note: namedUnaryOp: ((expr)op q{code})+///Example: op = .genericArg!`
-									if(TRY(NiceExpressionType.namedUnaryOp, op, left.content, right.content)) return; 
-								}
-							}
-						}
-						else if(auto rightContent = asStatementBlockContents(row.subCells.back))
-						{
-							if(auto left = asListBlock(row.subCells.front))
-							if(left.content)
-							{
-								const op = row.chars[1..$-1].text; //No attributes handled here.
-								{
-									//Note: anonymMethod: ((expr)or{code})
-									if(TRY(NiceExpressionType.anonymMethod, op, left.content, rightContent)) return; 
+									if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
+									{
+										//only leave the function part on the row.
+										row.subCells = row.subCells[exclIdx+1..$]; row.refreshTabIdx; 
+										auto rightCol = row.parent; 
+										
+										ADD(tIdx, left.content, rightCol); return; 
+									}
 								}
 							}
 						}
 					}
 				}
 			}
-			else if(auto decl = (cast(Declaration)(outerCell)))
+			else if(lastCh>=lowestSpecialUnicodeChar)
 			{
-				if(decl.isStatement && decl.header.rowCount==1 && decl.header.rows[0].cellCount>=1)
-				if(auto statementRow = decl.header.rows[0])
+				const op = statementRow.chars.text; 
+				{ if(TRY((mixin(舉!((NiceExpressionType),q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
+			}
+		} 
+		
+		void processListBlock(CodeBlock blk)
+		{
+			assert(blk && blk.content && blk.content.rowCount==1); 
+			
+			auto row = blk.content.rows[0]; 
+			if(!row.length.inRange(2, 16) /+It's an optimization for the size range.  Must update and verify!!!+/) return; 
+			
+			bool TRY(Args...)(Args args)
+			{
+				//try to add a NiceExpression template.
+				static if(is(Unqual!(Args[0])==int))
 				{
+					if(args[0]) {
+						outerCell = new NiceExpression(blk.parent, args[0], args[1..$]); 
+						return true; 
+					}
+					return false; 
+				}
+				else
+				{ return TRY(findNiceExpressionTemplateIdx(args[0], args[1]), args[2..$]); }
+			} 
+			
+			void processOpList(string op, CodeColumn content)
+			{
+				if(TRY((mixin(舉!((NiceExpressionType),q{unaryOp}))) /+Note: (op(expr))+/, op, content)) return; 
+				if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
+				{
+					auto params = extractTokenStringParams(content); 
+					if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
+				}
+				if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
+				{
+					auto params = extractTokenStringParams(content); 
+					if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
+				}
+			} 
+			
+			void processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
+			{
+				if(TRY((mixin(舉!((NiceExpressionType),q{binaryOp}))) /+Note: ((expr)op(expr))+/, op, leftContent, rightContent)) return; 
+				if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryOp}))) /+Note: ((expr)op(expr)op(expr))+/, op))
+				{
+					const mIdx = op.countUntil('￼'); 
+					if(mIdx>=0)
 					{
-						/+Todo: make an additional processNiceExpression_statement() funct.+/
-						
-						void ADD(Args...)(int tIdx, Args args)
+						if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
+						{ if(TRY(tIdx, leftContent, middle.content, rightContent)) return; }
+					}
+				}
+				if(row.length==3 && leftContent.empty && rightContent.empty)
+				if(auto mid = asStatementBlockDeclaration(row.subCells[1]))
+				if(mid.block)
+				if(auto with_ = (cast(Declaration)(mid.block.singleCellOrNull)))
+				if(with_.isPreposition && with_.keyword=="with" && with_.header && with_.block)
+				if(with_.header.rowCount==1)
+				{
+					auto headerRow = with_.header.rows[0]; 
+					if(headerRow.subCells.length.inRange(2, 16))
+					if(auto expr1 = asListBlock(headerRow.subCells.back))
+					if(expr1.content)
+					{
+						const innerOp = headerRow.chars[0..$-1].text; 
+						if(
+							TRY(
+								(mixin(舉!((NiceExpressionType),q{mixinTableInjectorOp}))) /+Note: ((){with(op(expr)){expr}}())+/, 
+								innerOp, expr1.content, with_.block
+							)
+						) return; 
+					}
+				}
+			} 
+			
+			void processMixinExpr(CodeRow row2)
+			{
+				if(row2.subCells.length==3)
+				if(row2.chars[1]=='!')
+				{
+					string mixinOp = row2.chars[0].text; 
+					{
+						if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryMixinEQOp}))) /+Note: (mixin(op!((expr),q{code})))+/, mixinOp))
+						if(auto right2 = asListBlock(row2.subCells.back))
+						if(right2.content.rowCount==1)
+						if(auto row3 = right2.content.rows[0])
+						if(row3.cellCount==3 && row3.chars[1]==',')
+						if(auto left3 = asListBlock(row3.subCells[0]))
+						if(auto right3 = asTokenString(row3.subCells[2]))
+						{ if(TRY(tIdx, left3.content, right3.content)) return; }
+					}
+				}
+				if(auto right2 = asListBlock(row2.subCells.back))
+				{
+					auto params = extractTokenStringParams(right2.content); 
+					const mixinOp = row2.chars[0..$-1].text; 
+					if(params.length==1)
+					{ if(TRY((mixin(舉!((NiceExpressionType),q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
+					else if(params.length==2)
+					{ if(TRY((mixin(舉!((NiceExpressionType),q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
+					else if(params.length==3)
+					{ if(TRY((mixin(舉!((NiceExpressionType),q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
+				}
+				else
+				{
+					const mixinOp = row2.chars.text; 
+					if(TRY((mixin(舉!((NiceExpressionType),q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
+				}
+			} 
+			
+			if(auto right = asListBlock(row.subCells.back))
+			{
+				if(auto left = asListBlock(row.subCells.front))
+				{
+					const op = row.chars[1..$-1].text; 
+					if(left.content && right.content)
+					{ processListOpList(op, left.content, right.content); }
+				}
+				else
+				{
+					const op = row.chars[0..$-1].text; 
+					if(op=="mixin")
+					{
+						if(right.content.rows.length==1)
+						if(auto row2 = right.content.getRow(0))
+						processMixinExpr(row2); 
+					}
+					else
+					{
+						if(op.endsWith('￼'))
 						{
-							with(statementRow)
-							{
-								clearSubCells; 
-								appendCell(new NiceExpression(statementRow, tIdx, args)); 
-								needMeasure; 
-							}
-						} bool TRY(Args...)(NiceExpressionType type, string op, Args args)
-						{
-							if(const tIdx = findNiceExpressionTemplateIdx(type, op))
-							{
-								ADD(tIdx, args); 
-								return true; 
-							}
-							return false; 
-						} 
-						const lastCh = statementRow.chars.back; 
-						if(lastCh=='￼')
-						{
-							if(statementRow.subCells.map!structuredCellToChar.equal("mixin("))
-							{
-								if(auto blk = asListBlock(statementRow.subCells.back))
-								if(blk.content.rows.length==1)
-								if(auto row = blk.content.rows[0])
-								if(row.length>=2)
-								if(auto left = asListBlock(row.subCells.front))
-								{
-									if(auto right = asTokenString(row.subCells.back))
-									{
-										const op = row.chars[1..$-1].text; 
-										{
-											/+Note: mixinGeneratorOp: mixin((expr)op q{script})+/
-											if(TRY(NiceExpressionType.mixinGeneratorOp, op, left.content, right.content)) return; 
-										}
-									}
-									if(row.length>=4 && row.chars[1]=='.')
-									{
-										const exclIdx = row.chars.countUntil('!'); 
-										if(exclIdx>=3)
-										{
-											const op = row.chars[2..exclIdx].text; 
-											{
-												/+Note: mixinFunctionCallOp: mixin((expr).op!fun)+/
-												if(const tIdx = findNiceExpressionTemplateIdx(NiceExpressionType.mixinFunctionCallOp, op))
-												{
-													//only leave the function part on the row.
-													row.subCells = row.subCells[exclIdx+1..$]; row.refreshTabIdx; 
-													auto rightCol = row.parent; 
-													
-													ADD(tIdx, left.content, rightCol); return; 
-												}
-											}
-										}
-									}
-								}
-							}
+							if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
+							{ { if(TRY((mixin(舉!((NiceExpressionType),q{castOp}))) /+Note: (op(expr)(expr))+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
 						}
-						else if(lastCh>=lowestSpecialUnicodeChar)
-						{
-							const op = statementRow.chars.text; 
-							{
-								/+Note: specialStatementOp: op  //last char is special unicode+/
-								if(TRY(NiceExpressionType.specialStatementOp, op)) return; 
-							}
-						}
+						else
+						{ processOpList(op, right.content); }
 					}
 				}
 			}
+			else if(auto right = asTokenString(row.subCells.back))
+			{
+				if(auto left = asListBlock(row.subCells.front))
+				{
+					const op = row.chars[1..$-1].text; 
+					{
+						//Example: op = .genericArg!`
+						if(TRY((mixin(舉!((NiceExpressionType),q{namedUnaryOp}))) /+Note: ((expr)op q{code})+/, op, left.content, right.content)) return; 
+					}
+				}
+			}
+			else if(auto rightContent = asStatementBlockContents(row.subCells.back))
+			{
+				if(auto left = asListBlock(row.subCells.front))
+				if(left.content)
+				{
+					const op = row.chars[1..$-1].text; //No attributes handled here.
+					{ if(TRY((mixin(舉!((NiceExpressionType),q{anonymMethod}))) /+Note: ((expr)op{code})+/, op, left.content, rightContent)) return; }
+				}
+			}
+		} 
+		
+		
+		/+Note: Process the 2 main categories of DIDE marcoes: /+Code: (listRow)+/ and /+Code: statementRow;+/+/
+		if(auto blk = asListBlock(outerCell))
+		{
+			if(blk.content && blk.content.rowCount==1)
+			processListBlock(blk); 
+		}
+		else if(auto decl = (cast(Declaration)(outerCell)))
+		{
+			if(decl.isStatement && decl.header && decl.header.rowCount==1)
+			processStatementRow(decl.header.rows[0]); 
 		}
 		
 	} 
@@ -10570,7 +10574,7 @@ version(/+$DIDE_REGION+/all)
 		{ return getTemplate.operator; } 
 		
 		@property operandCount()
-		{ return getTemplate.type.getOperandCount; } 
+		{ return niceExpressionTypeOpCnt[getTemplate.type]; } 
 		
 		@property templateName()
 		{ return getTemplate.name; } 
