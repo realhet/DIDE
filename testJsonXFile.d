@@ -8,17 +8,20 @@ struct StructureScanner_JSON
 {
 	mixin((
 		(表([
-			[q{/+Note: Enter+/},q{/+Note: State+/},q{/+Note: Transitions+/},q{/+Note: Leave+/},q{/+Note: EOF handling+/}],
-			[q{"{"},q{object},q{Error("] )") ~ EntryTransitions ~ Trans(": ,", object)},q{"}"},q{}],
-			[q{"["},q{array},q{Error(") }") ~ EntryTransitions ~ Trans(",", array)},q{"]"},q{}],
-			[q{"'"},q{sqString},q{Ignore(`\\ \'`)},q{`'`},q{}],
-			[q{`"`},q{dqString},q{Ignore(`\\ \"`)},q{`"`},q{}],
+			[q{/+Note: Enter+/},q{/+Note: State+/},q{/+Note: Transitions+/},q{/+Note: Leave+/}],
+			[q{"{"},q{object},q{Error("] )") ~ EntryTransitions ~ Trans(": ,", object)},q{"}"}],
+			[q{"["},q{array},q{Error(") }") ~ EntryTransitions ~ Trans(",", array)},q{"]"}],
+			[q{"'"},q{sqString},q{Ignore(`\\ \'`)},q{`'`}],
+			[q{`"`},q{dqString},q{Ignore(`\\ \"`)},q{`"`}],
 		]))
-	) .GEN!q{GEN_StructureScanner(q{enum NewLineTokens 	= "\r\n \r \n"; })}); 
+	).調!GEN_StructureScanner); 
 } 
 
 void parseJson(S)(S scanner)
 {
+	/+Todo: Make global helper functions for parsing. Lot of reusable parts in /+$DIDE_LOC c:\D\project\DIDE\didemodule.d+/.+/
+	
+	
 	void skipWhite() { while(!scanner.empty && scanner.front.src.all!isWhite) scanner.popFront; } 
 	
 	skipWhite; if(scanner.empty || scanner.front.src.among("]", "}")) return; 
