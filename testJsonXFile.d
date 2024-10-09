@@ -1,77 +1,47 @@
 //@exe
 //@debug
+///@release
 
 import het, het.parser; 
-
-alias JSONScanner = StructureScanner_JSON.scanner; 
-struct StructureScanner_JSON
+/+
+	by kind
+	module: name, file
+	
++/
+struct Item
 {
-	mixin((
-		(表([
-			[q{/+Note: Enter+/},q{/+Note: State+/},q{/+Note: Transitions+/},q{/+Note: Leave+/}],
-			[q{"{"},q{object},q{Error("] )") ~ EntryTransitions ~ Trans(": ,", object)},q{"}"}],
-			[q{"["},q{array},q{Error(") }") ~ EntryTransitions ~ Trans(",", array)},q{"]"}],
-			[q{"'"},q{sqString},q{Ignore(`\\ \'`)},q{`'`}],
-			[q{`"`},q{dqString},q{Ignore(`\\ \"`)},q{`"`}],
-		]))
-	).調!GEN_StructureScanner); 
+	string kind, name; 
+	
+	Item[] parameters, members; 
+	string[] storageClass, overrides; 
+	string protection, base, init_, type, originalType, file, deco, baseDeco, value, defaultValue, default_; 
+	int line, char_, endline, endchar, offset; 
 } 
 
-void parseJson(S)(S scanner)
+void dump(alias pred="true")(const ref Item item, string path="")
 {
-	/+Todo: Make global helper functions for parsing. Lot of reusable parts in /+$DIDE_LOC c:\D\project\DIDE\didemodule.d+/.+/
+	if(item.name=="") return; 
 	
-	
-	void skipWhite() { while(!scanner.empty && scanner.front.src.all!isWhite) scanner.popFront; } 
-	
-	skipWhite; if(scanner.empty || scanner.front.src.among("]", "}")) return; 
-	
-	if(scanner.front.src==`"`)
+	if(unaryFun!pred(item))
 	{
-		scanner.popFront; 
-		if(!scanner.empty && scanner.front.op==StructureScanner.ScanOp.content) { print("STR:", scanner.front.src); scanner.popFront; }
-		enforce(!scanner.empty && scanner.front.src==`"`, "Closing `\"` expected."); scanner.popFront; 
-		return; 
+		auto p = item.parameters.map!"a.type~` `~a.name".join(", "); 
+		print(item.kind.padRight(' ', 20), path~item.name~((p!="")?("("~p~")"):(""))); 
 	}
-	if(scanner.front.src==`'`)
-	{
-		scanner.popFront; 
-		if(!scanner.empty && scanner.front.op==StructureScanner.ScanOp.content) { print("STR:", scanner.front.src); scanner.popFront; }
-		enforce(!scanner.empty && scanner.front.src==`'`, "Closing `\'` expected."); scanner.popFront; 
-		return; 
-	}
-	
-	if(scanner.front.src=="[")
-	{
-		scanner.popFront; 
-		print("ARRAY BEGIN"); 
-		again: 
-			skipWhite; enforce(!scanner.empty, "Unexpected end in `[`"); 
-			parseJson(scanner); 
-			skipWhite; enforce(!scanner.empty, "Unexpected end in `[`"); 
-		if(scanner.front.src==",") { scanner.popFront; goto again; }
-		enforce(scanner.front.src=="]", "`]` expected"); scanner.popFront; 
-		print("ARRAY END"); 
-		return; 
-	}if(scanner.front.src=="{")
-	{
-		scanner.popFront; 
-		
-		print("OBJECT BEGIN"); 
-		again2: 
-			skipWhite; enforce(!scanner.empty, "Unexpected end in `{`"); 
-			parseJson(scanner); 
-			skipWhite; enforce(!scanner.empty, "Unexpected end in `{`"); 
-		if(scanner.front.src.among(",", ":")) { scanner.popFront; goto again2; }
-		enforce(scanner.front.src=="}", "`}` expected"); scanner.popFront; 
-		print("OBJECT END"); 
-		return; 
-	}
-	
-	print("VALUE: ", scanner.front.src.strip); 
-	scanner.popFront; 
+	foreach(a; item.members) dump!pred(a, path~item.name~"."); 
 } 
 
+size_t calcMem(Item[] items)
+{ return Item.sizeof*items.length + items.map!((a)=>(a.members.calcMem + a.parameters.calcMem)).sum; } 
 
 void main()
-{ console({ `c:\d\projects\karc\karc.json`.File.readText.JSONScanner.parseJson; }); } 
+{
+	console(
+		{
+			auto _間=init間; 
+			Item[] i2; const txt = `c:\d\projects\karc\het.vulkan.json`.File.readText; 	((0x3E38F6F833B).檢((update間(_間)))); 
+			i2.fromJson(txt); 	((0x4258F6F833B).檢((update間(_間)))); 
+			((0x4548F6F833B).檢(i2.calcMem)); 	((0x4788F6F833B).檢((update間(_間)))); 
+			i2.each!(dump!`true`); 	((0x4BF8F6F833B).檢((update間(_間)))); 
+		}
+	); 
+} 
