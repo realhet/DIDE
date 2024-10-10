@@ -558,6 +558,7 @@ Experimental:
 				[q{string},q{workPath},q{"w"},q{"workPath"},q{"Specify path for temp files. Default = Project's path."}],
 				[q{bool},q{macroHelp},q{"a"},q{"macroHelp"},q{"Show info about the build-macros."}],
 				[q{string},q{dideDbgEnv},q{"d"},q{"dideDbgEnv"},q{"DIDE can specify it's debug environment."}],
+				[q{bool},q{xJson},q{"x"},q{"xJson"},q{"Generate X JSON files."}],
 			]))
 		) .GEN!q{
 			(mixin(求map(q{a},q{rows},q{
@@ -1429,7 +1430,7 @@ Experimental:
 		{
 			File file; 
 			int result; 
-			string output; 
+			string output, xJson; 
 		} 
 		
 		struct MsgBuildFinished
@@ -1481,11 +1482,11 @@ Experimental:
 			} 
 			buildSystem.onBuildStarted = &onBuildStarted; 
 			
-			void onCompileProgress(File file, int result, string output)
+			void onCompileProgress(File file, int result, string output, string xJson)
 			{
 				state.compiledModules++; 
 				//LOG("######################", file, result, output);
-				ownerTid.send(MsgCompileProgress(file, result, output)); 
+				ownerTid.send(MsgCompileProgress(file, result, output, xJson)); 
 			} 
 			buildSystem.onCompileProgress = &onCompileProgress; 
 			
@@ -1556,7 +1557,10 @@ Experimental:
 		bool[File] filesInProject, filesInFlight; 
 		
 		int[File] results; //command line console exit codes
+		
 		DMDMessage[] incomingMessages; //incoming from the MessageDecoder. Must be polled and fetched.
+		string[] incomingXJsons; //incoming X Json files.  Other side must pull!
+		
 		SourceStats sourceStats; 
 		
 		DateTime lastUpdateTime, buildStarted, buildFinished; 
@@ -1620,6 +1624,7 @@ Experimental:
 						auto f = msg.file; 
 						filesInFlight.remove(f); 
 						results[f] = msg.result; 
+						incomingXJsons ~= msg.xJson; 
 					}),
 					
 					((in MsgBuildMessages msg) {
@@ -1688,7 +1693,7 @@ struct BuildSystem
 		//cached data
 		SourceCache sourceCache; 
 		ubyte[][string] objCache, exeCache, mapCache, resCache; 
-		string[string] outputCache; 
+		string[string] outputCache, jsonCache; 
 	
 		//flags for special operation (daemon mode)
 		public bool disableKillProgram, isDaemon; 
@@ -1699,7 +1704,7 @@ struct BuildSystem
 		File mainFile, in File[] filesToCompile, in File[] filesInCache, 
 		in string[] todos, in SourceStats sourceStats
 	) onBuildStarted; 
-		void delegate(File f, int result, string output) onCompileProgress; 
+		void delegate(File f, int result, string output, string xJson) onCompileProgress; 
 		void delegate (DMDMessage[] messages) onBuildMessages; 
 		bool delegate(int inFlight, int justStartedIdx) onIdle; //returns true if IDE wants to cancel.
 	
@@ -2067,23 +2072,23 @@ struct BuildSystem
 		return mi ? mi.moduleFullName : ""; 
 	} 
 	
-		auto objFileOf(File srcFile)
+		auto objFileOf(string ext="obj")(File srcFile)
 	{
-		//for incremental builds: main file is OBJ, all others are LIBs
-		//auto ext = srcFile==mainFile ? ".obj" : ".lib";
-		//Note: no lib support at the moment.
-		
 		//this is the simplest strategy
 		if(!workPath)
 		{
-			return srcFile.otherExt("obj"); //right next to the source file
+			return srcFile.otherExt(ext); //right next to the source file
 		}else
 		{
-			auto s = moduleFullNameOf(srcFile); 
+			auto s = moduleFullNameOf(srcFile); //Opt: it's slow
 			enforce(s != "", "moduleFullNameOf() fail: "~srcFile.text); 
-			return File(workPath, s~".obj"); 
+			return File(workPath, s~'.'~ext); 
 		}
-	} 
+	} 
+		
+		auto jsonFileOf(File srcFile)
+	{ return objFileOf!"json"(srcFile); } 
+		
 	
 		bool is64bit()
 	{ return !settings.compileArgs.canFind("-m32"); } 
@@ -2165,11 +2170,11 @@ struct BuildSystem
 		{
 			foreach(fn; srcFiles)
 			{
-				auto c = commonCompilerArgs ~ [
-					"-of="~objFileOf(fn).fullName.lc, 
-					fn.fullName.lc
-				]; 
-				//ez nem tudom, mi. if(sameText(fn.ext, `.lib`)) c ~= "-lib";
+				auto c = commonCompilerArgs ~ ["-of=" ~ objFileOf(fn).fullName.lc, fn.fullName.lc]; 
+				
+				if(settings.xJson)
+				c ~= ["-X", "--Xf=" ~ jsonFileOf(fn).fullName.lc]; 
+				
 				cmdLines ~= c; 
 			}
 		}
@@ -2194,6 +2199,8 @@ struct BuildSystem
 				default: break; 
 			}
 			
+			
+			//Todo: Handle of xJson
 			
 			cmdLines ~= c; 
 		}
@@ -2275,7 +2282,7 @@ struct BuildSystem
 				output	= outputCache[objHash]; 
 			
 			if(onCompileProgress)
-			onCompileProgress(srcFile, 0/+success+/, outputCache[objHash]); 
+			onCompileProgress(srcFile, 0/+success+/, output, jsonCache[objHash]); 
 			
 			accumulateOutput(output, srcFile); 
 			
@@ -2299,6 +2306,14 @@ struct BuildSystem
 						.replace("*", srcFiles[idx].name)
 				); 
 				
+				const xJson = ((
+					settings.xJson
+					/+
+						Note: There can be a valid X Json when the compilation fails.
+						I keep that too because it helps resolving the error.
+					+/
+				) ?(jsonFileOf(srcFiles[idx]).readText(false)):("")); 
+				
 				//storing obj into objCache
 				if(isIncremental && result==0)
 				{
@@ -2307,10 +2322,11 @@ struct BuildSystem
 						objHash 	= findModule(srcFile).objHash; 
 					objCache[objHash] = objFile.forcedRead; 
 					outputCache[objHash] = output; 
+					jsonCache[objHash] = xJson; 
 				}
 				
 				if(onCompileProgress)
-				onCompileProgress(srcFiles[idx], result, output); 
+				onCompileProgress(srcFiles[idx], result, output, xJson); 
 				
 				static if(0)
 				{
@@ -2350,6 +2366,8 @@ struct BuildSystem
 			print("=========================================="); 
 			msgDec.messages.each!print; 
 		+/
+		
+		//Todo: cleanup here. The combined output aren't used anymore...
 		
 		logln; 
 		logln; 
@@ -2529,6 +2547,7 @@ struct BuildSystem
 		sourceCache.reset; 
 		objCache.clear; 
 		outputCache.clear; 
+		jsonCache.clear; 
 		exeCache.clear; 
 		mapCache.clear; 
 		resCache.clear; 
@@ -2654,7 +2673,11 @@ struct BuildSystem
 					 //including res file
 					resFile.remove; 
 					foreach(fn; chain(filesToCompile, filesInCache))
-					objFileOf(fn).remove; 
+					{
+						objFileOf(fn).remove; 
+						if(settings.xJson) jsonFileOf(fn).remove; 
+					}
+					
 				}
 				if(!settings.generateMap)
 				mapFile.remove; //linker makes it for dlls even not wanted

@@ -339,9 +339,11 @@ version(/+$DIDE_REGION main+/all)
 		void updateBuildSystem()
 		{
 			buildResult.receiveBuildMessages; 
+			auto 	msgs 	= buildResult.incomingMessages.fetchAll,
+				xJsons 	= buildResult.incomingXJsons.fetchAll; 
 			
-			if(buildResult.incomingMessages.length)
-			workspace.processBuildMessages(buildResult.incomingMessages.fetchAll); 
+			workspace.processBuildMessages(msgs); 
+			foreach(x; xJsons) { x.print; }
 			
 			//Note: These operations are fast: only 0.015 ms
 			
@@ -408,7 +410,8 @@ version(/+$DIDE_REGION main+/all)
 				collectTodos	: false,
 				generateMap 	: true,
 				compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
-				dideDbgEnv	: dbgsrv.getDataFileName
+				dideDbgEnv	: dbgsrv.getDataFileName,
+				xJson	: true
 			}; 
 			
 			void addOpt(string o)
