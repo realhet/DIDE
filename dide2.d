@@ -2,7 +2,9 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-//@release
+///@release
+
+//Local debug mgs: Error: c:\d\projects\dide\dide2.d(2244): @Workspace.processBuildMessage: addBuildMessage: Can't find parent module.
 
 
 version(/+$DIDE_REGION main+/all)
@@ -343,7 +345,7 @@ version(/+$DIDE_REGION main+/all)
 				xJsons 	= buildResult.incomingXJsons.fetchAll; 
 			
 			workspace.processBuildMessages(msgs); 
-			foreach(x; xJsons) { x.print; }
+			foreach(x; xJsons) {/+x.print; +/}
 			
 			//Note: These operations are fast: only 0.015 ms
 			
@@ -2232,6 +2234,15 @@ class Workspace : Container, WorkspaceInterface
 					else
 					{
 						//This buildMessage is injected at the bottom of a node.
+						
+						if(msg.type==DMDMessage.Type.error)
+						{
+							print("\34\2DEBUG241014\34\0", msg); 
+							print("msg.isPersistent=", msg.isPersistent); 
+							containerNode.thisAndAllParents.each!print; 
+							/+Todo: Itt egy hiba: a parenteket NEM lehet visszakovetni modulokig.+/
+						}
+						
 						const isNewMessage = containerNode.addBuildMessage(msgNode); 
 						searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
 						addMessageToModule(isNewMessage); 
@@ -2241,7 +2252,7 @@ class Workspace : Container, WorkspaceInterface
 				raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
 				
 			}
-			catch(Exception e) { ERR(e.simpleMsg~"\n"~msg.text); }
+			catch(Exception e) { ERR(e.text~"\n"~msg.text); }
 		} 
 		
 		auto getMarkerLayerCount(DMDMessage.Type type)
