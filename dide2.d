@@ -2,10 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
-
-//Local debug mgs: Error: c:\d\projects\dide\dide2.d(2244): @Workspace.processBuildMessage: addBuildMessage: Can't find parent module.
-
+//@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -2234,15 +2231,6 @@ class Workspace : Container, WorkspaceInterface
 					else
 					{
 						//This buildMessage is injected at the bottom of a node.
-						
-						if(msg.type==DMDMessage.Type.error)
-						{
-							print("\34\2DEBUG241014\34\0", msg); 
-							print("msg.isPersistent=", msg.isPersistent); 
-							containerNode.thisAndAllParents.each!print; 
-							/+Todo: Itt egy hiba: a parenteket NEM lehet visszakovetni modulokig.+/
-						}
-						
 						const isNewMessage = containerNode.addBuildMessage(msgNode); 
 						searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
 						addMessageToModule(isNewMessage); 
@@ -3163,12 +3151,11 @@ class Workspace : Container, WorkspaceInterface
 				if(sel.isZeroLength) return; //nothing to do with empty selection
 				if(auto col = sel.codeColumn)
 				{
-					const 	st = sel.start,
-						en = sel.end; 
+					const st = sel.start, en = sel.end; 
 					
 					foreach_reverse(y; st.pos.y..en.pos.y+1)
 					{
-						 //Todo: this loop is in the draw routine as well. Must refactor and reuse
+						//Todo: this loop is in the draw routine as well. Must refactor and reuse
 						if(auto row = col.getRow(y))
 						{
 							const rowCellCount = row.cellCount; 
@@ -3178,13 +3165,15 @@ class Workspace : Container, WorkspaceInterface
 								isMidRow	= !isFirstRow && !isLastRow; 
 							if(isMidRow)
 							{
-								 //delete whole row
+								//delete whole row
+								col.rows[y].setRemoved; 
+								
 								col.subCells = col.subCells.remove(y); 
 								//Opt: do this in a one run batch operation.
 							}
 							else
 							{
-								 //delete partial row
+								//delete partial row
 								const	x0 = isFirstRow	? st.pos.x	: 0,
 									x1 = isLastRow 	? en.pos.x 	: rowCellCount+1; 
 								
@@ -3192,12 +3181,14 @@ class Workspace : Container, WorkspaceInterface
 								{
 									if(x>=0 && x<rowCellCount)
 									{
+										if(auto cntr = (cast(Container)(row.subCells[x]))) cntr.setRemoved; 
+										
 										row.subCells = row.subCells.remove(x); 
 										//Opt: this is not so fast. It removes 1 by 1.
 									}
 									else if(x==rowCellCount)
 									{
-										 //newLine
+										//newLine
 										if(auto nextRow = col.getRow(y+1))
 										{
 											foreach(ref ss; savedSelections)
@@ -4791,56 +4782,6 @@ class Workspace : Container, WorkspaceInterface
 		} 
 	}version(/+$DIDE_REGION Refactor+/all)
 	{
-		static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
-		{
-			//only process structured or modular columns
-			if(!col.isStructuredCode) return; 
-			
-			//recursively visit nested columns
-			foreach(node; col.byNode)
-			{
-				foreach(ncell; node.subCells)
-				if(auto ncol = cast(CodeColumn) ncell)
-				visitNestedCodeColumns(ncol, fun); 
-				
-				//process joined prepositions
-				if(auto decl = cast(Declaration) node)
-				{
-					foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
-					foreach(ppcell; pp.subCells)
-					if(auto ppcol = cast(CodeColumn) ppcell)
-					visitNestedCodeColumns(ppcol, fun); 
-				}
-			}
-			
-			fun(col); //do the job
-		} 
-		
-		static void visitNestedCodeNodes(CodeColumn col, void delegate(CodeNode) fun)
-		{
-			//only process structured or modular columns
-			if(!col.isStructuredCode) return; 
-			
-			//recursively visit nested columns
-			foreach(node; col.byNode)
-			{
-				fun(node); 
-				foreach(ncell; node.subCells)
-				if(auto ncol = cast(CodeColumn) ncell)
-				visitNestedCodeNodes(ncol, fun); 
-				
-				//process joined prepositions
-				if(auto decl = cast(Declaration) node)
-				foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
-				{
-					fun(pp); 
-					foreach(ppcell; pp.subCells)
-					if(auto ppcol = cast(CodeColumn) ppcell)
-					visitNestedCodeNodes(ppcol, fun); 
-				}
-			}
-		} 
-		
 		void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
 		{
 			foreach_reverse(col; selectedOuterColumns)
@@ -4855,8 +4796,9 @@ class Workspace : Container, WorkspaceInterface
 		
 		void visitSelectedNestedDeclarations(void delegate(Declaration) fun)
 		{ visitSelectedNestedCodeNodes((node){ if(auto decl = cast(Declaration) node) fun(decl); }); } 
-		
-		enum syntaxCheckTempFile = File(`z:\temp\__syntax.d`); 
+		
+		
+		enum syntaxCheckTempFile = File(`z:\temp\__syntax.d`); //Todo: to settings!
 		
 		void syntaxCheck(File moduleFile, string source, int lineIdx=1)
 		{
@@ -4954,66 +4896,66 @@ class Workspace : Container, WorkspaceInterface
 			return res; 
 		} 
 		
-		void feedNode(CodeNode node, Flag!"syntaxCheck" enableSyntaxCheck = Yes.syntaxCheck)
-		{
-			node.enforce("Unable to reach node."); 
-			auto mod = cast(Module) node; 
-			if(!mod) mod = moduleOf(node); 
-			mod.enforce("Unable to reach module."); 
-			enforce(!mod.isReadOnly, "Module is readonly"); 
-			enforce(mod.isManaged, "Module Structure Level must be Managed."); 
-			
-			const source = node.sourceText; 
-			
-			if(enableSyntaxCheck) syntaxCheck(mod.file, source, node.lineIdx); 
-			auto newCol = new CodeColumn(node, source, TextFormat.managed_block); 
-			
-			if(cast(Module) node)
-			{ mod.replaceContent(newCol); }
-			else
-			{
-				//reload an internal structured object only.
-				auto newNode = newCol.extractSingleNode; 
-				
-				enforce(
-					typeid(node)==typeid(newNode), 
-					format!"Node typeid mismatch (old:%s, new:%s)"(typeid(node), typeid(newNode))
-				); 
-				
-				node.replaceWith(newNode); 
-			}
-			
-			//Todo: Remove the errors previously inserted by syntaxCheck
-		} 
-		
-		void feedCursor(TextCursor cursor, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
-		{
-			if(!cursor.valid) return; 
-			auto breadcrumbs = cursor.toBreadcrumbs; 
-			if(breadcrumbs.empty) return; 
-			/+
-				Todo: Handle undo.  
-				Save it with a cut operation. 
-				And paste the new stuff with an upgraded paste() 
-				that can work with Nodes too.
-			+/
-			
-			enforce(frmMain.ready, "BuildSystem is working."); 
-			
-			feedNode(breadcrumbs.back.node, syntaxCheck); 
-		} 
-		
-		void feedChangedModule(Module mod, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
+		void feedChangedModule(Module mod, Flag!"syntaxCheck" enableSyntaxCheck = Yes.syntaxCheck)
 		{
 			if(!mod) return; 
 			if(!mod.changed) return; 
 			if(!mod.isManaged) return; 
-			
 			enforce(frmMain.ready, "BuildSystem is currently working."); 
 			
-			mod.resetBuildMessages; firstErrorMessageArrived = true; 
+			//reset all caches in Module
+			mod.resetBuildMessages; 
+			mod.resetSearchResults; 
+			firstErrorMessageArrived = true; 
 			
-			foreach(n; editedBreadcrumbNodes(mod)) feedNode(n, syntaxCheck); 
+			void feedNode(CodeNode oldNode)
+			{
+				oldNode.enforce("Unable to reach node."); 
+				auto mod = (cast(Module)(oldNode)); 
+				if(!mod) mod = moduleOf(oldNode); 
+				mod.enforce("Unable to reach module."); 
+				enforce(!mod.isReadOnly, "Module is readonly"); 
+				enforce(mod.isManaged, "Module Structure Level must be Managed."); 
+				
+				const source = oldNode.sourceText; 
+				
+				if(enableSyntaxCheck) syntaxCheck(mod.file, source, oldNode.lineIdx); 
+				auto newCol = new CodeColumn(mod, source, TextFormat.managed_block); 
+				
+				if(mod is oldNode)
+				{
+					mod.content.setParent = null; 
+					mod.content = newCol; 
+					mod.content.setParent = mod; //Todo: Safe parent/child reowning system.
+					
+					mod.setChanged; 
+					mod.measure;  //this will rebuild subCells
+				}
+				else
+				{
+					//reload an internal structured object only.
+					auto newNode = newCol.extractSingleNode; 
+					
+					enforce(
+						typeid(oldNode)==typeid(newNode), 
+						format!"Node typeid mismatch (old:%s, new:%s)"(typeid(oldNode), typeid(newNode))
+					); 
+					
+					auto row = (cast(CodeRow)(oldNode.parent)).enforce("Can't get Node's Row"); 
+					const charIdx = row.subCells.countUntil(oldNode); enforce(charIdx>=0, "Can't find Node in Row."); 
+					
+					oldNode.setParent = null; 
+					newNode.setParent(row); 
+					row.subCells[charIdx] = newNode; 
+					
+					row.setChanged; 
+					row.measure; //this will rebuild subCells
+					row.refreshTabIdx; 
+					row.spreadElasticNeedMeasure; 
+				}
+			} 
+			
+			foreach(n; editedBreadcrumbNodes(mod)) feedNode(n); 
 		} 
 		
 		void feedAndSaveModules(R)(R modules, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
@@ -6098,32 +6040,36 @@ class Workspace : Container, WorkspaceInterface
 				foreach(sr; searchResults)
 				if(auto b = sr.bounds)
 				{
-					//Todo: constness
-					if(isVisible(b))
+					if(sr.container && !sr.container.flags.removed)
 					{
-						updateNearestSearchResult(distanceB(mp, b), sr); 
-						if(far)
-						{ fillRect(b.inflated(extra)); }
+						if(isVisible(b))
+						{
+							updateNearestSearchResult(distanceB(mp, b), sr); 
+							if(far)
+							{ fillRect(b.inflated(extra)); }
+							else
+							{
+								lineWidth = extra; 
+								arrowStyle = ArrowStyle.none; 
+								drawRect(b); 
+							}
+						}
 						else
 						{
-							lineWidth = extra; 
-							arrowStyle = ArrowStyle.none; 
-							drawRect(b); 
-						}
-					}
-					else
-					{
-						if(sr.showArrow)
-						{
-							lineWidth = -arrowThickness -extraThickness; 
-							arrowStyle = ArrowStyle.arrow; 
-							
-							const p = clamper.clampArrow(b.center); 
-							line(p); 
-							updateNearestSearchResult(distance(mp, p[1]), sr); 
+							if(sr.showArrow)
+							{
+								lineWidth = -arrowThickness -extraThickness; 
+								arrowStyle = ArrowStyle.arrow; 
+								
+								const p = clamper.clampArrow(b.center); 
+								line(p); 
+								updateNearestSearchResult(distance(mp, p[1]), sr); 
+							}
 						}
 					}
 				}
+				
+				
 				
 				arrowStyle = ArrowStyle.none; 
 				

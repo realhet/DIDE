@@ -387,20 +387,14 @@ version(/+$DIDE_REGION+/all)
 			{ return charAt(cursor); } 
 			@property bool empty() const
 			{
-				if(forward)
-				return cursor.pos.y>cursor.codeColumn.lastRowIdx; 
-				else
-				return cursor.pos.y<0; 
+				if(forward)	return cursor.pos.y>cursor.codeColumn.lastRowIdx; 
+				else	return cursor.pos.y<0; 
 			} 
-			
 			void popFront()
 			{
-				if(forward)
-				cursor.moveRight_unsafe; 
-				else
-				cursor.moveLeft_unsafe; 
+				if(forward)	cursor.moveRight_unsafe; 
+				else	cursor.moveLeft_unsafe; 
 			} 
-					
 			auto save() { return this; } 
 		} 
 	}version(/+$DIDE_REGION+/all)
@@ -1344,6 +1338,30 @@ version(/+$DIDE_REGION+/all)
 		
 		alias nodes = cells!CodeNode; 
 		
+		//Todo: byCell
+		version(/+$DIDE_REGION+/none) {
+			void visitCells()
+			{
+				if(sel.valid && !sel.isZeroLength)
+				{
+					const 	st 	= sel.codeColumn.pos2idx(sel.start.pos),
+						en 	= sel.codeColumn.pos2idx(sel.end.pos); //Note: st and en is validated
+					auto crsr = TextCursor(sel.codeColumn, sel.codeColumn.idx2pos(st)); 
+					foreach(i; st..en) {
+						auto row = sel.codeColumn.rows[crsr.pos.y]; 
+						if(crsr.pos.x<row.cellCount)
+						{
+							//highlighted chars
+							if(auto n = (cast(CodeNode)(row.subCells[crsr.pos.x])))
+							cleanupBuildMessagesAndSearchResults(n); 
+						}
+						crsr.moveRight_unsafe; 
+					}
+					//Todo: refactor this as sel.byNode
+				}
+			} 
+		}
+		
 		bool hitTest(vec2 p)
 		{
 			return false; 
@@ -2033,6 +2051,97 @@ version(/+$DIDE_REGION+/all)
 		
 		if(isPrimary) res ~= "*"; 
 		return res; 
+	} 
+}version(/+$DIDE_REGION+/all) {
+	static void visitNestedCodeColumns(CodeColumn col, void delegate(CodeColumn) fun)
+	{
+		//only process structured or modular columns
+		if(!col.isStructuredCode) return; 
+		
+		//recursively visit nested columns
+		foreach(node; col.byNode)
+		{
+			foreach(ncell; node.subCells)
+			if(auto ncol = cast(CodeColumn) ncell)
+			visitNestedCodeColumns(ncol, fun); 
+			
+			//process joined prepositions
+			if(auto decl = cast(Declaration) node)
+			{
+				foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+				foreach(ppcell; pp.subCells)
+				if(auto ppcol = cast(CodeColumn) ppcell)
+				visitNestedCodeColumns(ppcol, fun); 
+			}
+		}
+		
+		fun(col); //do the job
+	} 
+	
+	void visitNestedCodeNodes(CodeNode node, void delegate(CodeNode) fun)
+	{
+		fun(node); 
+		foreach(ncell; node.subCells)
+		if(auto ncol = cast(CodeColumn) ncell)
+		visitNestedCodeNodes(ncol, fun); 
+		
+		//process joined prepositions
+		if(auto decl = cast(Declaration) node)
+		foreach(pp; decl.allJoinedPrepositionsFromThis.drop(1))
+		{
+			fun(pp); 
+			foreach(ppcell; pp.subCells)
+			if(auto ppcol = cast(CodeColumn) ppcell)
+			visitNestedCodeNodes(ppcol, fun); 
+		}
+	} 
+	
+	void visitNestedCodeNodes(CodeColumn col, void delegate(CodeNode) fun)
+	{
+		//only process structured or modular columns
+		if(!col.isStructuredCode) return; 
+		
+		//recursively visit nested columns
+		foreach(node; col.byNode)
+		{ visitNestedCodeNodes(node, fun); }
+	} 
+	
+	
+	
+	void visitNestedCodeNodes(TextSelection sel, void delegate(CodeNode) fun)
+	{
+		if(sel.isZeroLength) return; //nothing to do with empty selection
+		if(auto col = sel.codeColumn)
+		{
+			const 	st 	= sel.start, 
+				en 	= sel.end; 
+			
+			foreach(y; max(st.pos.y, 0)..min(en.pos.y+1, col.rowCount))
+			{
+				auto row = col.rows[y]; 
+				const 	isFirstRow 	= y==st.pos.y,
+					isLastRow	= y==en.pos.y,
+					isMidRow	= !isFirstRow && !isLastRow; 
+				if(isMidRow)
+				{
+					foreach(c; row.subCells)
+					if(auto n = (cast(CodeNode)(c)))
+					visitNestedCodeNodes(n, fun); 
+				}
+				else
+				{
+					//delete partial row
+					const 	rowCellCount 	= row.cellCount,
+						x0 	= isFirstRow	? st.pos.x	: 0,
+						x1 	= isLastRow 	? en.pos.x 	: rowCellCount; 
+					foreach(x; max(x0, 0)..min(x1, rowCellCount))
+					{
+						if(auto n = (cast(CodeNode)(row.subCells[x])))
+						visitNestedCodeNodes(n, fun); 
+					}
+				}
+			}
+		}
 	} 
 }
 class CodeRow: Row
@@ -5081,9 +5190,13 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		if(VisualizeCodeLineIndices) {
-			dr.color = clWhite; 
-			dr.fontHeight = 1.25; 
+			dr.color = clWhite; dr.fontHeight = 1.25; 
 			dr.textOut(outerPos, format!"%sN"(lineIdx)); 
+		}
+		
+		static if(0) {
+			dr.color = clWhite; dr.fontHeight = 1.25; 
+			dr.textOut(outerPos, (cast(void*)(this)).text); 
 		}
 		
 		if(0 && canAcceptBuildMessages)
@@ -5109,34 +5222,6 @@ version(/+$DIDE_REGION+/all)
 		bkColor = ts.bkColor; 
 	} 
 	
-	void replaceWith(CodeNode newNode)
-	{
-		enforce(newNode); 
-		if(newNode is this) return; 
-		
-		auto row = (cast(CodeRow) parent).enforce("Can't get Node's Row"); 
-		
-		const charIdx = row.subCells.countUntil(this); 
-		enforce(charIdx>=0, "Can't find Node in Row."); 
-		
-		/+
-			Todo: parent-child kapcsolatok karbantartasa kozponti funkciokkal. 
-			Pl. setRow() setContent(), ami a subCells[]-t is updateolja.
-			Ha a node subCells[]-e nincs karbantartva, akkor a CursorReference is invalid lesz.
-			Oda-vissza jonak kell lennie a fának!
-		+/
-		
-		this.setParent = null; 
-		
-		newNode.setParent(row); 
-		row.subCells[charIdx] = newNode; 
-		
-		row.setChanged; 
-		row.measure; //this will rebuild subCells
-		row.refreshTabIdx; 
-		row.spreadElasticNeedMeasure; 
-	} 
-	
 	version(/+$DIDE_REGION BuildMessage handling+/all)
 	{
 		final bool canAcceptBuildMessages()
@@ -6161,8 +6246,6 @@ version(/+$DIDE_REGION+/all)
 		uint 	_rearrangeCounter,
 			_updateSearchResults_state; 
 		
-		SearchResult[][CodeLocation] searchResultsByCodeLocation; 
-		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
 		override string prefix() const
@@ -6189,20 +6272,6 @@ version(/+$DIDE_REGION+/all)
 			loadContents(contents, desiredStructureLevel); 
 		} 
 		
-		void replaceContent(CodeColumn col)
-		{
-			enforce(col); 
-			if(col is content) return; 
-			
-			content.setParent = null; 
-			
-			content = col; 
-			content.setParent = this; //Todo: Safe parent/child reowning system.
-			
-			setChanged; 
-			measure;  //this will rebuild subCells
-		} 
-		
 		void loadFile(File file_, StructureLevel desiredStructureLevel = StructureLevel.plain)
 		{
 			fileLoaded = now; 
@@ -6227,7 +6296,7 @@ version(/+$DIDE_REGION+/all)
 		
 		override @property string caption()
 		{ return file.name; } 
-		
+		
 		///It must return the actual logic. Files can be temporarily readonly while being compiled for example.
 		bool isReadOnly()
 		{
@@ -6272,7 +6341,7 @@ version(/+$DIDE_REGION+/all)
 			//Todo: periodically chenck if file is exists and other attributes in the IDE
 			//Note: This is just the file based input of the actual ReadOnly decision in isReadOnly().
 		} 
-		
+		
 		
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
@@ -6309,6 +6378,7 @@ version(/+$DIDE_REGION+/all)
 			CodeColumn[] moduleBuildMessageColumns; //all columns containing buildmessages
 			
 			SearchResult[] findSearchResults; //this is for the text search
+			SearchResult[][CodeLocation] searchResultsByCodeLocation;  //this is a lineIdx->searchResults cache
 			
 			void resetBuildMessages()
 			{
@@ -6333,7 +6403,10 @@ version(/+$DIDE_REGION+/all)
 			} 
 			
 			void resetSearchResults()
-			{ findSearchResults = []; } 
+			{
+				findSearchResults = []; 
+				searchResultsByCodeLocation.clear; 
+			} 
 			
 			auto addModuleMessage(bool isNew, DMDMessage msg, CodeNode node, SearchResult[] searchResults)
 			{
@@ -6358,22 +6431,50 @@ version(/+$DIDE_REGION+/all)
 				return mm; 
 			} 
 		}
-		
+		
 		void updateSearchResults()
 		{
 			if(_updateSearchResults_state.chkSet(_rearrangeCounter + [outerPos].xxh32))
 			{
-				void doit(ref SearchResult[] srs)
-				{ foreach(ref sr; srs) sr.absInnerPos = sr.container.worldInnerPos; } 
+				bool doit(ref SearchResult[] srs)
+				{
+					bool anyRemoved; 
+					foreach(ref sr; srs)
+					{
+						sr.absInnerPos = sr.container.worldInnerPos; 
+						anyRemoved |= sr.container.flags.removed; 
+					}
+					if(anyRemoved)
+					srs = srs.remove!((sr)=>(sr.container.flags.removed)); 
+					return srs.empty; 
+				} 
 				
-				foreach(msg; messageByHash.byValue) doit(msg.searchResults); 
 				doit(findSearchResults); 
 				
+				{
+					Message[] removedMessages; 
+					foreach(msg; messageByHash.byValue)
+					{ if(doit(msg.searchResults)) removedMessages ~= msg; }
+					foreach(rm; removedMessages)
+					{
+						const hash = rm.message.hash, type = rm.message.type; 
+						messageByHash.remove(hash); 
+						messagesByType[type] = messagesByType[type].remove!((m)=>(m is rm)); 
+					}
+				}
 				
-				foreach(ref sr; searchResultsByCodeLocation.byValue) doit(sr); 
+				{
+					CodeLocation[] removedLocations; 
+					foreach(loc, ref sr; searchResultsByCodeLocation)
+					{ if(doit(sr)) removedLocations ~= loc; }
+					foreach(loc; removedLocations)
+					searchResultsByCodeLocation.remove(loc); 
+				}
+				
+				moduleBuildMessageColumns = moduleBuildMessageColumns.remove!((c)=>(c.flags.removed)); 
 			}
 		} 
-		
+		
 		void resetInspectors()
 		{ NOTIMPL; } 
 		
@@ -9790,7 +9891,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4095A7B6B4BCC).檢(expr))},
+				q{((0x4154E7B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9804,7 +9905,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x40A767B6B4BCC).檢 (expr))},
+				q{((0x4166A7B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9906,8 +10007,8 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x416757B6B4BCC).檢(expr)) ((0x416937B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x416E37B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x422697B6B4BCC).檢(expr)) ((0x422877B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x422D77B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: It throws ->
 								(常!(bool)(0)) (常!(bool)(1))
