@@ -751,18 +751,22 @@ version(/+$DIDE_REGION main+/all)
 						return chain(only(((hasLocation)?(""):(firstLocation))~lines[0]), res).join('\n'); 
 					} 
 					
-					if(lines[0].isWild("?:\?*.?*(*): Error: *")) return doit(true); 
-					else if(lines[0].isWild("Error: *")) return doit(false); 
+					if(lines[0].isWild("?:\?*.?*(*): Exception: *")) return doit(true); 
+					else if(lines[0].isWild("Exception: *")) return doit(false); 
 				}
 				
 				return message; 
 			} 
 			
 			message = processExceptionMessage(message); 
-			auto messages = decodeDMDMessages(message, workspace.mainModuleFile); 
-			workspace.processBuildMessages(messages); 
-			
-			im.flashError(message.splitter('\n').frontOr("Exception without message.")); 
+			auto dmdMessages = decodeDMDMessages(message, workspace.mainModuleFile); 
+			if(dmdMessages.length)
+			{
+				workspace.processBuildMessages(dmdMessages); 
+				im.flashException(dmdMessages[0].oneLineText); 
+			}
+			else
+			ERR("Failed to decode exception message: "~message); 
 		} 
 		
 		////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2062,6 +2066,7 @@ class Workspace : Container, WorkspaceInterface
 		{
 			vec2 p1, p2; 
 			DMDMessage.Type type; 
+			bool isException; //a side-information for type
 		} 
 		bool[MessageConnectionArrow] messageConnectionArrows; 
 		
@@ -2087,7 +2092,7 @@ class Workspace : Container, WorkspaceInterface
 					auto segments = path.map!((a)=>(conv(a))).filter!"a".cache.uniq.array.slide!(No.withPartial)(2); 
 					foreach(a; segments)
 					{
-						auto mca = MessageConnectionArrow(a[1], a[0], rootMessage.type); 
+						auto mca = MessageConnectionArrow(a[1], a[0], rootMessage.type, rootMessage.isException); 
 						messageConnectionArrows[mca] = true; 
 					}
 				}
@@ -4470,13 +4475,17 @@ class Workspace : Container, WorkspaceInterface
 					auto layer = &markerLayerSettings[mm.type]; 
 					addInspectorParticle(mm.node, mm.node.bkColor, layer.btnWorldBounds); 
 					if(
-						mm.type==DMDMessage.Type.error && 
-						firstErrorMessageArrived.chkSet
+						mm.type==DMDMessage.Type.error && !mm.isException
+						&& firstErrorMessageArrived.chkSet
+						/+
+							Note: Catch the first compile error
+							(Exceptions are always shown.)
+						+/
 					)
 					{
 						view.animSpeed = .96f; 
 						jumpTo(mm); 
-						im.flashError("Compile Error"/+ ~ mm.message.content.splitLines.get(0)+/); 
+						im.flashError(mm.message.oneLineText); 
 						frmMain.bloodScreenIntensity = 1; 
 					}
 				}
@@ -4839,8 +4848,9 @@ class Workspace : Container, WorkspaceInterface
 				auto messages = decodeDMDMessages(output, moduleFile); 
 				processBuildMessages(messages); 
 				
-				if(messages.any!((m)=>(m.type==DMDMessage.Type.error)))
-				raise(output.splitLines.front); 
+				const errIdx = messages.countUntil!((m)=>(m.type==DMDMessage.Type.error)); 
+				if(errIdx>0)
+				raise(messages[errIdx].oneLineText); 
 			}
 		} 
 		
@@ -6124,8 +6134,10 @@ class Workspace : Container, WorkspaceInterface
 		
 		void drawMessageConnectionArrows(Drawing dr)
 		{
-			dr.lineWidth = -1.5; 
-			dr.pointSize = -5; 
+			enum sc = 1.5f; 
+			
+			dr.lineWidth = -1.5f*sc; 
+			dr.pointSize = -5*sc; 
 			//dr.lineStyle = LineStyle.dash; 
 			/+
 				Todo: animated dashed line is only going one direction on the screen. 
@@ -6133,6 +6145,9 @@ class Workspace : Container, WorkspaceInterface
 			+/
 			dr.arrowStyle = ArrowStyle.arrow; 
 			dr.alpha = blink.remap(0, 1, .5, 1); 
+			
+			const pixelSize = frmMain.view.invScale_anim; 
+			
 			foreach(const ref a; messageConnectionArrows.keys)
 			{
 				with(a)
@@ -6143,12 +6158,27 @@ class Workspace : Container, WorkspaceInterface
 						dr.color = DMDMessage.typeColor[type]; 
 						static if((常!(bool)(0))) dr.line(p1, p2); 
 						static if((常!(bool)(1))) {
-							auto pc = mix(p1, p2, .5f) + vec2(0, -(magnitude(p2-p1)))*.125f; 
-							dr.bezier2(p1, pc, p2); 
+							auto pc = mix(p1, p2, .5f) + vec2(0, -(magnitude(p2-p1)))*(.125f*sc); 
+							
+							const d = (normalize(p2-pc))*pixelSize; 
+							
+							static if((常!(bool)(1))/+Note: shadow/outline+/)
+							{
+								version(/+$DIDE_REGION Save state+/all) { const c = dr.color; const lw = dr.lineWidth; }
+								version(/+$DIDE_REGION Alter state+/all) { dr.color = isException ? clYellow : blackOrWhiteFor(dr.color); dr.lineWidth = -2.7*sc; }
+								
+								dr.bezier2(p1, pc, p2); 
+								
+								dr.lineWidth = -1.95*sc; 
+								dr.line(p2, p2 + d*(2.35f*sc)); 
+								
+								version(/+$DIDE_REGION Restore state+/all) { dr.color = c; dr.lineWidth = lw; }
+							}
+							
+							dr.bezier2(p1, pc, p2); dr.line(p2 - d, p2); 
 							//lame: arrow not included in bezier
-							dr.line(p2 - (normalize(p2-pc))*4, p2); 
 						}
-						static if((常!(bool)(0))) dr.bezier2(p1, p2 - vec2((magnitude(p2-p1))*.125f, 0), p2); 
+						static if((常!(bool)(0))) dr.bezier2(p1, p2 - vec2((magnitude(p2-p1))*(.125f*sc), 0), p2); 
 					}
 				}
 			}

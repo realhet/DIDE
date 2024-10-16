@@ -5419,8 +5419,8 @@ version(/+$DIDE_REGION+/all)
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
 		"include", "define", /*"if",*/ "ifdef", "ifndef", "endif", "elif", "else" 	//Link: Arduino directives
 	],
-		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skWarning,   skDeprecation, skConsole, skComment],
-		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Warning:", "Deprecation:", "Console:", "Hidden:"]
+		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skException, skWarning,   skDeprecation, skConsole, skComment],
+		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:"]
 		//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 		; 
 	
@@ -9891,7 +9891,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4154E7B6B4BCC).檢(expr))},
+				q{((0x415697B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9905,7 +9905,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4166A7B6B4BCC).檢 (expr))},
+				q{((0x416857B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -10007,8 +10007,8 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x422697B6B4BCC).檢(expr)) ((0x422877B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x422D77B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x422847B6B4BCC).檢(expr)) ((0x422A27B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x422F27B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: It throws ->
 								(常!(bool)(0)) (常!(bool)(1))
@@ -10049,6 +10049,7 @@ version(/+$DIDE_REGION+/all) {
 								/+Todo: cmt+/ 
 								/+Opt: cmt+/ /+Bug: cmt+/
 								/+Error: cmt+/ 
+								/+Exception: cmt+/ 
 								/+Warning: cmt+/ 
 								/+Deprecation: cmt+/
 								/+Console: cmt+/
@@ -12217,6 +12218,7 @@ l2
 		/+Note: note comment+/
 		//Link: link comment http://google.com
 		/*Error: error comment*/
+		//Exception: exception comment
 		/*Warning: warning comment*/
 		//Deprecation: deprecation comment
 		/+Code: if(1 + 1 == 2) print("xyz");+/

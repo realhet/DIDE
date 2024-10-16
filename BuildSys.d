@@ -879,7 +879,7 @@ Experimental:
 	{
 		mixin((
 			(表([
-				[q{/+Note: Type+/},q{/+Note: Prefixes+/},q{/+Note: ShortCaption+/},q{/+Note: ColorCode+/},q{/+Note: Color+/},q{/+Note: Syntax+/}],
+				[q{/+Note: Type : ubyte+/},q{/+Note: Prefixes+/},q{/+Note: ShortCaption+/},q{/+Note: ColorCode+/},q{/+Note: Color+/},q{/+Note: Syntax+/}],
 				[q{unknown},q{""},q{""},q{""},q{clBlack},q{skWhitespace}],
 				[],
 				[q{find},q{"Find: "},q{"Find"},q{""},q{clSilver},q{skFoundAct}],
@@ -897,6 +897,7 @@ Experimental:
 				}],
 			]))
 		) .GEN!q{GEN_enumTable}); 
+		private enum exceptionPrefix = "Exception: "; //handled specuially
 		
 		CodeLocation location; 
 		Type type; 
@@ -907,6 +908,8 @@ Experimental:
 		DMDMessage[] subMessages; //it's a tree
 		
 		protected uint hash_; @property hash() => hash_; 
+		
+		bool isException; //It's a special error message. It looks red/yellow in DIDE.
 		
 		this(
 			CodeLocation location_, 
@@ -952,6 +955,13 @@ Experimental:
 		{ return location.lineIdx; } @property mixinLine() const
 		{ return location.mixinLineIdx; } 
 		
+		@property typePrefix() const {
+			return ((
+				type==Type.error 
+				&& isException
+			)?("Exception: ") :(typePrefixes[type])); 
+		} 
+		
 		bool opEquals(in DMDMessage b)const
 		{
 			return 	location 	== b.location 	&&
@@ -983,19 +993,32 @@ Experimental:
 		{
 			if(type!=Type.unknown) return; 
 			
-			foreach(i, prefix; typePrefixes)
-			if(i && content.startsWith(prefix))
+			bool doit(string prefix)
 			{
-				content = content[prefix.length .. $]; 
-				type = cast(Type) i; 
-				break; 
+				if(content.startsWith(prefix))
+				{
+					content = content[prefix.length .. $]; 
+					return true; 
+				}
+				return false; 
+			} 
+			
+			
+			foreach(i, prefix; typePrefixes)
+			if(i && doit(prefix))
+			{ type = (cast(Type)(i));  return; }
+			
+			if(doit(exceptionPrefix))
+			{
+				/+Note: It's counted as an error, but looks different in DIDE+/
+				type = Type.error; isException = true; return; 
 			}
 		} 
 		string toString_internal(int level, bool enableColor, string indentStr) const
 		{
 			auto res = 	indentStr.replicate(level) ~
 				withEndingColon(location.text) ~
-				((enableColor)?(typeColorCode[type]):("")) ~ typePrefixes[type] ~
+				((enableColor)?(typeColorCode[type]):("")) ~ typePrefix ~
 				((enableColor)?("\33\7"):("")) ~ content; 
 			
 			foreach(const ref sm; subMessages)
@@ -1057,7 +1080,7 @@ Experimental:
 			{
 				auto lines = allRecursiveContentLines; 
 				
-				lines[0] = typePrefixes[type] ~ lines[0]; 
+				lines[0] = typePrefix ~ lines[0]; 
 				if(lines.length>1)
 				{
 					//Outdent all lines but the first.
@@ -1071,7 +1094,7 @@ Experimental:
 			}
 			
 			auto res = 	"\t".replicate(level) ~
-				typePrefixes[type] ~
+				typePrefix ~
 				encapsulateCodeBlocks(safeDCommentBody(content.stripLeft)) ~
 				((location)?(" /+$DIDE_LOC "~location.text~"+/"):("")); 
 			
@@ -1092,6 +1115,9 @@ Experimental:
 			res ~= m.allLocations; 
 			return res; 
 		} 
+		
+		string oneLineText() const
+		{ return typePrefix~content.firstLine; } 
 	} 
 	
 	
@@ -1160,7 +1186,7 @@ Experimental:
 		private static bool keepMessage(in DMDMessage m)
 		{
 			foreach(f; messageFilters)
-			if(joiner(only(DMDMessage.typePrefixes[m.type], m.content)).startsWith(f))
+			if(joiner(only(m.typePrefix, m.content)).startsWith(f))
 			return false; 
 			
 			return true; 
