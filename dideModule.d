@@ -9091,7 +9091,7 @@ version(/+$DIDE_REGION+/all) {
 			NiceExpressionType type; 
 			SyntaxKind syntax; 
 			NodeStyle invertMode; 
-			string example, operator, textCode, rearrangeCode, drawCode, initCode; 
+			string example, operator, textCode, rearrangeCode, drawCode, initCode, uiCode; 
 		} 
 		
 		version(/+$DIDE_REGION Mixin Table helpers+/all)
@@ -9795,8 +9795,6 @@ version(/+$DIDE_REGION+/all) {
 				Todo: HalfSize or other components.  Index and blocks, strings and indices 
 				are the most important ones.  HalfSize is only works for glyphs now.
 			+/
-			//Todo: Epsylon 𝜀 is invalid identifier char.  Make a 'macro' for it.
-			//Todo: Exponential function ℯ e  <- also an invalid identifier char...
 			
 			{
 				"iteration_map", 
@@ -9891,7 +9889,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x415697B6B4BCC).檢(expr))},
+				q{((0x414D67B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9905,7 +9903,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x416857B6B4BCC).檢 (expr))},
+				q{((0x415F27B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9925,7 +9923,10 @@ version(/+$DIDE_REGION+/all) {
 				q{
 					switch(controlType)
 					{
-						case "bool": { put(operator); op(0); put('('); put((controlValue)?('1'):('0')); put(')'); }break; 
+						case "bool": {
+							put(operator); op(0); 
+							put('('); put((controlValue)?('1'):('0')); put(')'); 
+						}break; 
 						default: put(operator); op(0); op(1); 
 					}
 				},
@@ -9943,10 +9944,40 @@ version(/+$DIDE_REGION+/all) {
 						default: put(operator); op(0); op(1); //unknown type
 					}
 				},
-				q{if(!isnan(controlValue)) moduleOf(this).visibleConstantNodes ~= this; }
+				q{
+					if(!isnan(controlValue))
+					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
+					
+				},
+				uiCode: 
+				q{
+					if(operands[0] && operands[1])
+					{
+						const type = operands[0].extractThisLevelDString.text; 
+						switch(type)
+						{
+							case "bool": {
+								//Todo: edit permission, cooperate with Undo/Redo
+								const b1 = !!this.controlValue; 
+								bool b2 = b1; 
+								style.bkColor = this.bkColor; 
+								style.fontColor = syntaxFontColor(skIdentifier1); 
+								ChkBox(
+									b2, "", {
+										flags.targetSurface = 0; 
+										outerPos = this.worldInnerPos; 
+									}, 
+									enable(enabled_), ((this.identityStr).genericArg!q{id})
+								); 
+								if(b1!=b2) { this.controlValue = b2; this.setChanged; }
+							}break; 
+							default: 
+						}
+					}
+				}
 			}
 		]; 
-		class ToolPalette : Column
+		class ToolPalette : Module
 		{
 			Page[] pages = /+Todo: Indentation is a problem here.  Ineffective and for multiline strings it's unreliable.+/ /+/+Link: https://en.wikipedia.org/wiki/Greek_letters_used_in_mathematics,_science,_and_engineering+/+/
 			[
@@ -9955,10 +9986,11 @@ version(/+$DIDE_REGION+/all) {
 					q{
 						(表([
 							[q{"expression blocks"},q{
-								{ a; }(a) [a] 
-								"S" r"S" `S` 
-								'S' q{S} $(a)
-								i"S" i`S` iq{S}
+								a: 	a; 
+								{a}	(a)	[a] 
+								"S"	r"S"	`S`
+								'S'	q{S}	$(a)
+								i"S"	i`S`	iq{S}
 							}],
 							[q{"math letters"},q{
 								π ℯ ℂ α β γ µ σ
@@ -9967,9 +9999,9 @@ version(/+$DIDE_REGION+/all) {
 							[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 							[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 							[q{"floor, 
-	ceil, 
-	round, 
-	trunc"},q{
+ceil, 
+round, 
+trunc"},q{
 								(floor(x)) (ifloor(x)) (lfloor(x))
 								(ceil(x)) (iceil(x)) (lceil(x))
 								(round(x)) (iround(x)) (lround(x))
@@ -9977,7 +10009,7 @@ version(/+$DIDE_REGION+/all) {
 							}],
 							[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
 							[q{"multiply, divide, 
-	dot, cross"},q{
+dot, cross"},q{
 								((a).dot(b)) ((a).cross(b))
 								((a)*(b)) ((a)/(b))
 							}],
@@ -9998,21 +10030,23 @@ version(/+$DIDE_REGION+/all) {
 								((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
 							}],
 							[q{"lambda, 
-	anonym method"},q{
+anonym method"},q{
 								((a)=>(a+1)) 	((a){ f; })
 								((a) =>(a+1))	((a) { f; })
 							}],
 							[q{"named param, 
-	struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
+struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
 							[q{"enum member 
-	blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
+blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x422847B6B4BCC).檢(expr)) ((0x422A27B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x422F27B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x425207B6B4BCC).檢(expr)) ((0x4253E7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4258E7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: It throws ->
 								(常!(bool)(0)) (常!(bool)(1))
 							+/}],
+							[],
+							[q{"It throws"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
 				},
@@ -10056,11 +10090,11 @@ version(/+$DIDE_REGION+/all) {
 								//$DIDE_LOC file.d(1,2)
 							}],
 							[q{"regions"},q{
-								version(/+$DIDE_REGION RGN+/all) { s; }version(/+$DIDE_REGION+/all) { s; }
-								version(/+$DIDE_REGION RGN+/none) { s; }version(/+$DIDE_REGION+/none) { s; }
 								version(/+$DIDE_REGION RGN+/all)
 								{ s; }version(/+$DIDE_REGION RGN+/none)
 								{ s; }
+								version(/+$DIDE_REGION RGN+/all) { s; }version(/+$DIDE_REGION+/all) { s; }
+								version(/+$DIDE_REGION RGN+/none) { s; }version(/+$DIDE_REGION+/none) { s; }
 							}],
 							[q{"directives"},q{
 								#
@@ -10225,7 +10259,7 @@ version(/+$DIDE_REGION+/all) {
 								else	{ g; }
 							}],
 							[q{"debug blocks
-	with condition"},q{
+with condition"},q{
 								debug(d) { f; }
 								debug(d) { f; }else { g; }
 								debug(d)
@@ -10257,19 +10291,21 @@ version(/+$DIDE_REGION+/all) {
 					{
 						_module = new Module(null, source, StructureLevel.managed); 
 						if(_module)
-						if(auto mCol = _module.content)
-						if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
-						if(auto tCol = table.operands[0])
-						foreach(tRow; tCol.rows)
-						if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
 						{
-							string comment; 
-							if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
-							comment = cntr0.content.sourceText; 
-							//Todo: implement ?. null coalescing NiceExpression from C#
-							entries ~= Entry(cntr1, comment); 
-							cntr1.setParent(parent); //from here worldPos() calculations work
-							cntr1.measure; 
+							if(auto mCol = _module.content)
+							if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
+							if(auto tCol = table.operands[0])
+							foreach(tRow; tCol.rows)
+							if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
+							{
+								string comment; 
+								if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
+								comment = cntr0.content.sourceText; 
+								//Todo: implement ?. null coalescing NiceExpression from C#
+								entries ~= Entry(cntr1, comment); 
+								cntr1.setParent(parent); //from here worldPos() calculations work
+								cntr1.measure; 
+							}
 						}
 					} 
 				} 
@@ -10277,7 +10313,11 @@ version(/+$DIDE_REGION+/all) {
 				string[] captions; 
 				
 				this()
-				{ (mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; } 
+				{
+					super(null); file = File("$toolPalette"); 
+					
+					(mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; 
+				} 
 				Page* actPage, lastPage; //cached
 				uint lastTick; 
 				
@@ -10288,38 +10328,35 @@ version(/+$DIDE_REGION+/all) {
 					im.Text(text(a)); 
 				} 
 				
+				override void rearrange()
+				{
+					if(actPage)	subCells = actPage.entries.map!"a.cell".array; 
+					else	subCells = []; 
+					
+					const maxW = subCells.map!"a.outerWidth".maxElement(0); 
+					subCells.each!((a){ a.outerWidth = maxW; }); 
+					subCells.spreadV; 
+					innerSize = calcContentSize; 
+					
+					bkColor = syntaxBkColor(skWhitespace); 
+				} 
+				
 				void UI(ref string actPageCaption)
 				{
 					im.BtnRow(actPageCaption, captions); 
-					const actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
-					if(actPageIdx<0)
+					auto actPageIdx = pages.map!"a.caption".countUntil(actPageCaption); 
+					if(actPageIdx<0 && pages.length) actPageIdx = 0; //select first page if anything...
+					actPage = actPageIdx.inRange(pages) ? &pages[actPageIdx] : null; 
+					
+					if(lastPage.chkSet(actPage))
 					{
-						actPage = null; 
-						if(pages.length)
-						{
-							//select first page if anything...
-							actPageCaption = pages[0].caption; 
-						}
+						needMeasure; 
+						/+Todo: Column aligning is totally fucked up...+/
 					}
-					else {
-						auto actPage = &pages[actPageIdx]; 
-						
-						if(lastPage.chkSet(actPage))
-						{
-							subCells = actPage.entries.map!"a.cell".array; 
-							
-							const maxW = subCells.map!"a.outerWidth".maxElement(0); 
-							subCells.each!((a){ a.outerWidth = maxW; }); 
-							subCells.spreadV; 
-							innerSize = calcContentSize; 
-							
-							/+Todo: Column aligning is totally fucked up...+/
-						}
-						
-						
-						id = "$ToolPalette$"; //it will be on the hitStack
-						im.actContainer.appendCell(this); 
-					}
+					
+					measure; 
+					id = "$ToolPalette$"; //it will be on the hitStack
+					if(actPage) im.actContainer.appendCell(this); 
 					
 					detectMouseLocation; 
 					detectTemplate; 
@@ -10823,64 +10860,7 @@ version(/+$DIDE_REGION+/all) {
 			override CodeColumn* accessBuildMessageColumn()
 			{ return &buildMessageColumn; } 
 		}
-		
-		override void draw(Drawing dr)
-		{
-			super.draw(dr); 
-			
-			with(dr)
-			{
-				void setupLine()
-				{
-					color = syntaxFontColor(skSymbol); 
-					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
-				} 
-				
-				void drawRoot()
-				{
-					setupLine; 
-					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
-					moveRel(-8, -12); 
-					lineRel(1, 0); 
-					lineRel(2, 5); 
-					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
-					lineRel(operands[0].outerWidth-2, 0); 
-				} 
-				
-				void drawInspector()
-				{
-					static if(0)
-					{
-						ulong id; 
-						if(auto m = moduleOf(this))
-						{ id = m.getInspectorId(this); }
-						dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
-					}
-					
-					
-					{
-						//highlight changed debugvalues
-						const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
-						if(du<1)
-						{
-							const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
-							dr.alpha = sqr(1-du); dr.color = mix(clYellow, clWhite, 1-dc); 
-							dr.lineWidth = -4; 
-							dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
-							dr.alpha = 1; 
-						}
-					}
-				} 
-				
-				{
-					sw: switch(templateIdx)
-					{
-						static foreach(a; niceExpressionTemplates.map!"a.drawCode".enumerate)
-						{ case a.index: { mixin(a.value); }break sw; }default: 
-					}
-				}
-			}
-		} 
+		
 		
 		
 		version(/+$DIDE_REGION DebugValue support+/all)
@@ -11051,7 +11031,264 @@ version(/+$DIDE_REGION+/all) {
 			}
 		} 
 		
-		
+		override void buildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder) {
+				void op(int i)
+				{ put("(", operands[i], ")"); } 
+				
+				string opAsIdentifier(int i)
+				{
+					//Todo: some error checking would be better.
+					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
+				} 
+				
+				void buildMixinText(string opSymbol)
+				{
+					put("mixin"); 
+					put('('); 
+						put(opSymbol~'!'); 
+						put('('); 
+							op(0); put(','); put("q{", operands[1], "}"); 
+						put(')'); 
+					put(')'); 
+				} 
+				
+				void buildSigmaOp()
+				{
+					put("mixin("~operator~"("); 
+					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
+					put("))"); 
+				} 
+				
+				void buildMixinTable()
+				{
+					auto tbl = operands[0], scr = operands[1]; 
+					void putTable()
+					{
+						version(/+$DIDE_REGION+/all) {
+							if(!tbl.flags.columnIsTable)
+							{
+								put(tbl); 
+								return; //D compiler will fail on it, but it keeps the unknown content.
+							}
+							
+							put("["); 
+							
+							const isMultiLine = tbl.rows.length>1; 
+							
+							if(isMultiLine) indentCount++; 
+						}/+
+							Note: Mixin Table format
+							
+							Rows are /+Code: string[]+/ arrays.  And the whole table is an array of those rows:  /+Code: string[][]+/
+							
+							Cell type  	Manual entry  	Stored on disk	Internal CodeContainer
+							cString	/+Code: "blabla\t"+/	/+Code: q{"blabla\t"}+/	/+Code: "blabla\t"+/	//escaped string, only if entered as single token
+							dString	/+Code: `blabla\t`+/	/+Code: `blabla\t`+/	/+Code: `blabla	`+/	//WYSIWYG string, only if entered as single token
+							code	/+Code: fun*1+2+/	/+Code: q{fun*1+2}+/	/+Code: q{fun*1+2}+/	//when unable to detect a single string
+							dComment	/+Code: /+cmt+/+/	/+Code: q{/+cmt+/}+/ 	/+Code: /+cmt+/+/	//The comment must be extracted from the tokenString.
+							last resolt		/+Code: q{/+Error: cmt+/}+/	/+Code: /+Error: cmt+/+/	//Displayed without the `Error:` title
+							
+							If a row only has a single /+Code: [q{/+comment+/}]+/, thats a grouping row. That must be stretched horizontally.
+						+/
+						foreach(row; tbl.rows)
+						{
+							//ignore ending VT, but append it at the end of the [] line.
+							const hasVerticalTab = row.isBreakRow; 
+							
+							if(isMultiLine) putNL; put("["); 
+							
+							bool anyItems = false; void beforeItem() { if(anyItems) put(','); anyItems = true; } 
+							
+							foreach(entry; row.subCells[0 .. $-hasVerticalTab].splitWhen!mixinTableSplitFun.array)
+							{
+								bool tryPutContainer(Cell node)
+								{
+									if(auto str = (cast(CodeString)(node)))
+									{
+										beforeItem; 
+										if(str.type == CodeString.Type.tokenString)	{ { put(str); }}
+										else
+										{
+											put("q{"); 
+											put(str); 
+											put("}"); 
+											/+
+												Only tokenString will left unchanged.
+												Other strings will be placed 
+												into a tonekString.
+											+/
+										}
+									}
+									else if(auto cmt = (cast(CodeComment)(node)))
+									{
+										beforeItem; 
+										put("q{"); 
+										put(cmt); 
+										if(cmt.prefix.among("//","#")) putNL; 
+										put("}"); 
+									}
+									else if(auto cntr = (cast(CodeContainer)(node)))
+									{
+										beforeItem; 
+										put("q{"); 
+										put(cntr); //akarmi lehet ez...
+										put("}"); 
+									}
+									else
+									{ return false; }
+									return true; 
+								} void putSource(string src)
+								{
+									if(src.isValidDLang)
+									{
+										/+Note: First, it tries to detect complete string literals or comments.+/
+										enum enableSingleDString 	= false, 
+										enableSingleCString 	= false; 
+										if(enableSingleDString && isSingleDString(src))
+										{ beforeItem; put(src); }
+										else if(enableSingleCString && isSingleCString(src))
+										{ beforeItem; put(src); }
+										else if(isSingleDComment(src))
+										{ beforeItem; put("q{"~src~"}"); }
+										else
+										{
+											/+
+												Note: Then it tries a complete re-parse, to detect 
+												multiple composite parts, without any text in between them.
+											+/
+											auto mod = scoped!Module(null, src, StructureLevel.managed); 
+											if(mod && mod.content.byCell.all!isMixinTableCell)
+											{
+												/+
+													Note: All the cells in the src text are composite objects.
+													No tabs are handled here. because the 
+													copy operation can't produce them.
+												+/
+												foreach(node; mod.content.byNode)
+												{ tryPutContainer(node); }
+											}
+											else
+											{
+												//Note: Text only solution.  Last resort.  LDC2 will verify this anyways.
+												beforeItem; 
+												put("q{"); 
+												put(src); if(
+													src.canFind("//") || 
+													src.canFind('#')
+													/+Todo: search this for the last row only.+/
+												) putNL; 
+												put("}"); 
+											}
+										}
+									}
+									else
+									{
+										beforeItem; 
+										put(
+											"q{/+Error:" ~ (
+												src	.replace("/+", "/ +")
+													.replace("+/", "+ /")
+											) ~ "+/}"
+										); 
+									}
+								} if(!tryPutContainer(entry.front))
+								{
+									void putAsStringLiteral(R)(R entry)
+									{
+										//process fresh manual input
+										SourceTextBuilder builder; 
+										builder.put(entry); 
+										putSource(builder.result); 
+									} 
+									foreach(
+										tabSeparatedEntry; entry.splitter!(
+											a=>	(cast(Glyph)(a)) &&
+												(cast(Glyph)(a)).ch=='\t'
+										)
+									)
+									{ putAsStringLiteral(tabSeparatedEntry); }
+								}
+							}
+							
+							put("]"); put(","); /+Extra comma at end, but IDC...+/
+							if(hasVerticalTab) put('\v'); 
+						}
+						if(isMultiLine) { indentCount--; putNL; }
+						put("]"); 
+					} 
+					
+					
+					/+
+						Todo: Must support multiline cells.
+						It should be a preprocessing algo: 
+							It goes through every row and tries to fetch one cell at a time.
+							If it is needed, it can look ahead to the next rows, until a valid mixinTableCell
+					+/
+					
+					//Todo: error handling for both operands! They must be in D syntax!
+					if(scr !is null)
+					{
+						//((){with(op(expr)){expr}}())
+						put("()"); 
+						put("{"); 
+							put("with"); put("("); 
+								put(operator); put("("); putTable; put(")"); 
+							put(")"); 
+							put("{", scr, "}"); 
+						put("}"); 
+						put("()"); 
+					}
+					else
+					{
+						//Single operand version: (op(expr))
+						put(operator); put("("); putTable; put(")"); 
+					}
+				} 
+				
+				void buildMixinGenerator()
+				{
+					put("mixin"); put('('); 
+						op(0); put(operator); put("q{", operands[1], "}"); 
+					put(')'); 
+				} 
+				
+				void buildMixinFunctionCall()
+				{
+					put("mixin"); put('('); 
+						op(0); put("."~operator~"!"); put(operands[1]); 
+					put(')'); 
+				} 
+				
+				void buildInspector()
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{
+						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
+						else	id = m.getInspectorId(this); 
+					}
+					put("(0x"~id.to!string(16)~")"); put(operator); op(1); 
+				} 
+				
+				
+				
+				//------------------------------------------------------------------------
+				
+				
+				const brackets = getTemplate.type.hasListBrackets; 
+				if(brackets) put("("); 
+				{
+					sw: switch(templateIdx)
+					{
+						static foreach(a; niceExpressionTemplates.map!"a.textCode".enumerate)
+						{ case a.index: { mixin(a.value); }break sw; }default: 
+					}
+				}
+				if(brackets) put(")"); 
+			}
+		} 
 		override void rearrange()
 		{
 			const inverseMode = getTemplate.invertMode; 
@@ -11491,265 +11728,77 @@ version(/+$DIDE_REGION+/all) {
 		
 		
 		
-		override void buildSourceText(ref SourceTextBuilder builder)
+		override void draw(Drawing dr)
 		{
-			with(builder) {
-				void op(int i)
-				{ put("(", operands[i], ")"); } 
-				
-				string opAsIdentifier(int i)
+			super.draw(dr); 
+			
+			with(dr)
+			{
+				void setupLine()
 				{
-					//Todo: some error checking would be better.
-					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
+					color = syntaxFontColor(skSymbol); 
+					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
 				} 
 				
-				void buildMixinText(string opSymbol)
+				void drawRoot()
 				{
-					put("mixin"); 
-					put('('); 
-						put(opSymbol~'!'); 
-						put('('); 
-							op(0); put(','); put("q{", operands[1], "}"); 
-						put(')'); 
-					put(')'); 
+					setupLine; 
+					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
+					moveRel(-8, -12); 
+					lineRel(1, 0); 
+					lineRel(2, 5); 
+					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
+					lineRel(operands[0].outerWidth-2, 0); 
 				} 
 				
-				void buildSigmaOp()
+				void drawInspector()
 				{
-					put("mixin("~operator~"("); 
-					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
-					put("))"); 
-				} 
-				
-				void buildMixinTable()
-				{
-					auto tbl = operands[0], scr = operands[1]; 
-					void putTable()
+					static if(0)
 					{
-						version(/+$DIDE_REGION+/all) {
-							if(!tbl.flags.columnIsTable)
-							{
-								put(tbl); 
-								return; //D compiler will fail on it, but it keeps the unknown content.
-							}
-							
-							put("["); 
-							
-							const isMultiLine = tbl.rows.length>1; 
-							
-							if(isMultiLine) indentCount++; 
-						}/+
-							Note: Mixin Table format
-							
-							Rows are /+Code: string[]+/ arrays.  And the whole table is an array of those rows:  /+Code: string[][]+/
-							
-							Cell type  	Manual entry  	Stored on disk	Internal CodeContainer
-							cString	/+Code: "blabla\t"+/	/+Code: q{"blabla\t"}+/	/+Code: "blabla\t"+/	//escaped string, only if entered as single token
-							dString	/+Code: `blabla\t`+/	/+Code: `blabla\t`+/	/+Code: `blabla	`+/	//WYSIWYG string, only if entered as single token
-							code	/+Code: fun*1+2+/	/+Code: q{fun*1+2}+/	/+Code: q{fun*1+2}+/	//when unable to detect a single string
-							dComment	/+Code: /+cmt+/+/	/+Code: q{/+cmt+/}+/ 	/+Code: /+cmt+/+/	//The comment must be extracted from the tokenString.
-							last resolt		/+Code: q{/+Error: cmt+/}+/	/+Code: /+Error: cmt+/+/	//Displayed without the `Error:` title
-							
-							If a row only has a single /+Code: [q{/+comment+/}]+/, thats a grouping row. That must be stretched horizontally.
-						+/
-						foreach(row; tbl.rows)
+						ulong id; 
+						if(auto m = moduleOf(this))
+						{ id = m.getInspectorId(this); }
+						dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+					}
+					
+					
+					{
+						//highlight changed debugvalues
+						const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
+						if(du<1)
 						{
-							//ignore ending VT, but append it at the end of the [] line.
-							const hasVerticalTab = row.isBreakRow; 
-							
-							if(isMultiLine) putNL; put("["); 
-							
-							bool anyItems = false; void beforeItem() { if(anyItems) put(','); anyItems = true; } 
-							
-							foreach(entry; row.subCells[0 .. $-hasVerticalTab].splitWhen!mixinTableSplitFun.array)
-							{
-								bool tryPutContainer(Cell node)
-								{
-									if(auto str = (cast(CodeString)(node)))
-									{
-										beforeItem; 
-										if(str.type == CodeString.Type.tokenString)	{ { put(str); }}
-										else
-										{
-											put("q{"); 
-											put(str); 
-											put("}"); 
-											/+
-												Only tokenString will left unchanged.
-												Other strings will be placed 
-												into a tonekString.
-											+/
-										}
-									}
-									else if(auto cmt = (cast(CodeComment)(node)))
-									{
-										beforeItem; 
-										put("q{"); 
-										put(cmt); 
-										if(cmt.prefix.among("//","#")) putNL; 
-										put("}"); 
-									}
-									else if(auto cntr = (cast(CodeContainer)(node)))
-									{
-										beforeItem; 
-										put("q{"); 
-										put(cntr); //akarmi lehet ez...
-										put("}"); 
-									}
-									else
-									{ return false; }
-									return true; 
-								} void putSource(string src)
-								{
-									if(src.isValidDLang)
-									{
-										/+Note: First, it tries to detect complete string literals or comments.+/
-										enum enableSingleDString 	= false, 
-										enableSingleCString 	= false; 
-										if(enableSingleDString && isSingleDString(src))
-										{ beforeItem; put(src); }
-										else if(enableSingleCString && isSingleCString(src))
-										{ beforeItem; put(src); }
-										else if(isSingleDComment(src))
-										{ beforeItem; put("q{"~src~"}"); }
-										else
-										{
-											/+
-												Note: Then it tries a complete re-parse, to detect 
-												multiple composite parts, without any text in between them.
-											+/
-											auto mod = scoped!Module(null, src, StructureLevel.managed); 
-											if(mod && mod.content.byCell.all!isMixinTableCell)
-											{
-												/+
-													Note: All the cells in the src text are composite objects.
-													No tabs are handled here. because the 
-													copy operation can't produce them.
-												+/
-												foreach(node; mod.content.byNode)
-												{ tryPutContainer(node); }
-											}
-											else
-											{
-												//Note: Text only solution.  Last resort.  LDC2 will verify this anyways.
-												beforeItem; 
-												put("q{"); 
-												put(src); if(
-													src.canFind("//") || 
-													src.canFind('#')
-													/+Todo: search this for the last row only.+/
-												) putNL; 
-												put("}"); 
-											}
-										}
-									}
-									else
-									{
-										beforeItem; 
-										put(
-											"q{/+Error:" ~ (
-												src	.replace("/+", "/ +")
-													.replace("+/", "+ /")
-											) ~ "+/}"
-										); 
-									}
-								} if(!tryPutContainer(entry.front))
-								{
-									void putAsStringLiteral(R)(R entry)
-									{
-										//process fresh manual input
-										SourceTextBuilder builder; 
-										builder.put(entry); 
-										putSource(builder.result); 
-									} 
-									foreach(
-										tabSeparatedEntry; entry.splitter!(
-											a=>	(cast(Glyph)(a)) &&
-												(cast(Glyph)(a)).ch=='\t'
-										)
-									)
-									{ putAsStringLiteral(tabSeparatedEntry); }
-								}
-							}
-							
-							put("]"); put(","); /+Extra comma at end, but IDC...+/
-							if(hasVerticalTab) put('\v'); 
+							const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
+							dr.alpha = sqr(1-du); dr.color = mix(clYellow, clWhite, 1-dc); 
+							dr.lineWidth = -4; 
+							dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
+							dr.alpha = 1; 
 						}
-						if(isMultiLine) { indentCount--; putNL; }
-						put("]"); 
-					} 
-					
-					
-					/+
-						Todo: Must support multiline cells.
-						It should be a preprocessing algo: 
-							It goes through every row and tries to fetch one cell at a time.
-							If it is needed, it can look ahead to the next rows, until a valid mixinTableCell
-					+/
-					
-					//Todo: error handling for both operands! They must be in D syntax!
-					if(scr !is null)
-					{
-						//((){with(op(expr)){expr}}())
-						put("()"); 
-						put("{"); 
-							put("with"); put("("); 
-								put(operator); put("("); putTable; put(")"); 
-							put(")"); 
-							put("{", scr, "}"); 
-						put("}"); 
-						put("()"); 
-					}
-					else
-					{
-						//Single operand version: (op(expr))
-						put(operator); put("("); putTable; put(")"); 
 					}
 				} 
-				
-				void buildMixinGenerator()
-				{
-					put("mixin"); put('('); 
-						op(0); put(operator); put("q{", operands[1], "}"); 
-					put(')'); 
-				} 
 				
-				void buildMixinFunctionCall()
-				{
-					put("mixin"); put('('); 
-						op(0); put("."~operator~"!"); put(operands[1]); 
-					put(')'); 
-				} 
-				
-				void buildInspector()
-				{
-					ulong id; 
-					if(auto m = moduleOf(this))
-					{
-						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
-						else	id = m.getInspectorId(this); 
-					}
-					put("(0x"~id.to!string(16)~")"); put(operator); op(1); 
-				} 
-				
-				
-				
-				//------------------------------------------------------------------------
-				
-				
-				const brackets = getTemplate.type.hasListBrackets; 
-				if(brackets) put("("); 
 				{
 					sw: switch(templateIdx)
 					{
-						static foreach(a; niceExpressionTemplates.map!"a.textCode".enumerate)
+						static foreach(a; niceExpressionTemplates.map!"a.drawCode".enumerate)
 						{ case a.index: { mixin(a.value); }break sw; }default: 
 					}
 				}
-				if(brackets) put(")"); 
 			}
 		} 
-		
+		
+		void generateUI(bool enabled_)
+		{
+			with(im)
+			{
+				{
+					sw: switch(templateIdx)
+					{
+						static foreach(a; niceExpressionTemplates.map!"a.uiCode".enumerate)
+						{ case a.index: { mixin(a.value); }break sw; }default: 
+					}
+				}
+			}
+		} 
 		
 	} 
 }

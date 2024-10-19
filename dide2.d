@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-//@release
+///@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -1347,44 +1347,22 @@ version(/+$DIDE_REGION main+/all)
 				with(im)
 				{
 					auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
-					if(enabledModule && enabledModule.isReadOnly) enabledModule = null; 
-					
 					const oldStyle = style; scope(exit) style = oldStyle; 
 					
-					foreach(m; workspace.modules)
+					void doit(Module m, bool en)
 					{
-						//baszik mukodni igy: im.root ~= m; 
 						foreach(n; m.visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
-						{
-							if(n.operands[0] && n.operands[1])
-							{
-								const type = n.operands[0].extractThisLevelDString.text; 
-								switch(type)
-								{
-									case "bool": {
-										//Todo: edit permission
-										//Todo: put this next to niceexpression
-										const b1 = !!n.controlValue; 
-										bool b2 = b1; 
-										style.bkColor = n.bkColor; 
-										style.fontColor = syntaxFontColor(skIdentifier1); 
-										ChkBox(
-											b2, "", {
-												flags.targetSurface = 0; 
-												outerPos = n.worldInnerPos; 
-											}, 
-											enable(m is enabledModule), ((n.identityStr).genericArg!q{id})
-										); 
-										if(b1!=b2) {
-											n.controlValue = b2; 
-											n.setChanged; 
-										}
-									}break; 
-									default: 
-								}
-							}
-						}
+						{ n.generateUI(en); }
+					} 
+					
+					foreach(m; chain(workspace.modules, only(toolPalette)))
+					{
+						const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
+						doit(m, moduleIsEnabled); 
 					}
+					
+					doit(toolPalette, false); 
+					toolPalette.visibleConstantNodes.clear; 
 				}
 			}
 			
