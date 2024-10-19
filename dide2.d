@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -777,6 +777,8 @@ version(/+$DIDE_REGION main+/all)
 		{
 			//onPaint ///////////////////////////////////////
 			gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); 
+			
+			toolPalette.visibleConstantNodes.clear; 
 		} 
 		
 		void drawOverlay(Drawing dr)
@@ -942,7 +944,6 @@ version(/+$DIDE_REGION main+/all)
 										
 								case MenuPage.Palette: 	with(toolPalette) {
 									UI(toolPalettePage); 
-									
 									if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
 									workspace.insertNode(templateSource, subColumnIdx); 
 								}	break; 
@@ -1349,20 +1350,10 @@ version(/+$DIDE_REGION main+/all)
 					auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
 					const oldStyle = style; scope(exit) style = oldStyle; 
 					
-					void doit(Module m, bool en)
-					{
-						foreach(n; m.visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
-						{ n.generateUI(en); }
-					} 
-					
-					foreach(m; chain(workspace.modules, only(toolPalette)))
-					{
+					(mixin(求each(q{m},q{workspace.modules},q{
 						const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
-						doit(m, moduleIsEnabled); 
-					}
-					
-					doit(toolPalette, false); 
-					toolPalette.visibleConstantNodes.clear; 
+						m.UI_constantNodes(moduleIsEnabled); 
+					}))); 
 				}
 			}
 			

@@ -6699,7 +6699,15 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		version(/+$DIDE_REGION Constant Node handling+/all)
-		{ CodeNode[] visibleConstantNodes; }
+		{
+			CodeNode[] visibleConstantNodes; 
+			
+			void UI_constantNodes(bool en, int targetSurface_=0)
+			{
+				foreach(node; visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
+				{ node.generateUI(en, targetSurface_); }
+			} 
+		}
 		
 		
 	} 
@@ -9889,7 +9897,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x414D67B6B4BCC).檢(expr))},
+				q{((0x415B07B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9903,7 +9911,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x415F27B6B4BCC).檢 (expr))},
+				q{((0x416CC7B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9949,6 +9957,8 @@ version(/+$DIDE_REGION+/all) {
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
 					
 				},
+				initCode: 
+				q{/+Todo: ide kellene a controltype, controlvalue dekodolas.+/},
 				uiCode: 
 				q{
 					if(operands[0] && operands[1])
@@ -9964,7 +9974,7 @@ version(/+$DIDE_REGION+/all) {
 								style.fontColor = syntaxFontColor(skIdentifier1); 
 								ChkBox(
 									b2, "", {
-										flags.targetSurface = 0; 
+										flags.targetSurface = targetSurface_; 
 										outerPos = this.worldInnerPos; 
 									}, 
 									enable(enabled_), ((this.identityStr).genericArg!q{id})
@@ -10039,14 +10049,9 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x425207B6B4BCC).檢(expr)) ((0x4253E7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4258E7B6B4BCC).檢((update間(_間)))); }],
-							[q{"interactive literals"},q{/+
-								Todo: It throws ->
-								(常!(bool)(0)) (常!(bool)(1))
-							+/}],
-							[],
-							[q{"It throws"},q{(常!(bool)(0)) (常!(bool)(1))}],
+							[q{"debug inspector"},q{((0x4265D7B6B4BCC).檢(expr)) ((0x4267B7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x426CB7B6B4BCC).檢((update間(_間)))); }],
+							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
 				},
@@ -10314,7 +10319,10 @@ with condition"},q{
 				
 				this()
 				{
-					super(null); file = File("$toolPalette"); 
+					super(null); 
+					id = "$ToolPalette$"; 
+					file = File(id); 
+					
 					
 					(mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; 
 				} 
@@ -10355,8 +10363,14 @@ with condition"},q{
 					}
 					
 					measure; 
-					id = "$ToolPalette$"; //it will be on the hitStack
-					if(actPage) im.actContainer.appendCell(this); 
+					
+					im.Container(
+						{
+							im.actContainer.id = "$ToolPaletteContainer$"; 
+							if(actPage) im.actContainer.appendCell(this); 
+							this.UI_constantNodes(false, 1); 
+						}
+					); 
 					
 					detectMouseLocation; 
 					detectTemplate; 
@@ -10375,27 +10389,37 @@ with condition"},q{
 					hoveredRow=null; hoveredCell = null; innerCol =  null; 
 					auto hs = hitTestManager.lastHitStack; 
 					
-					const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
-					if(toolPaletteIdx>=0)
+					//print(hs.enumerate.map!(a=>(a.index.text~":"~a.value.id)).join("|")); 
+					
+					if(hs.length && hs.back.id.isWild("$ToolPaletteContainer$.*[NiceExpression(*)]"))
 					{
-						hs = hs[toolPaletteIdx..$]; 
-						T idTo(T)(string id)
+						//interactive constantNode
+						hoveredCell = (cast(NiceExpression)((cast(void*)(wild[1].to!ulong(16))))); 
+					}
+					else
+					{
+						const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
+						if(toolPaletteIdx>=0)
 						{
-							if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
-							else	return null; 
-						} 
-						
-						if(auto node = idTo!CodeNode(hs.get(4).id))
-						{
-							hoveredCell = node; 
-							innerCol = idTo!CodeColumn(hs.get(5).id); 
-						}
-						else if(auto row = idTo!CodeRow(hs.get(3).id))
-						if(auto glyph = (cast(Glyph)(row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest))))
-						if(!glyph.isWhite)
-						{
-							hoveredCell = glyph; 
-							hoveredRow = row; 
+							hs = hs[toolPaletteIdx..$]; 
+							T idTo(T)(string id)
+							{
+								if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
+								else	return null; 
+							} 
+							
+							if(auto node = idTo!CodeNode(hs.get(4).id))
+							{
+								hoveredCell = node; 
+								innerCol = idTo!CodeColumn(hs.get(5).id); 
+							}
+							else if(auto row = idTo!CodeRow(hs.get(3).id))
+							if(auto glyph = (cast(Glyph)(row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest))))
+							if(!glyph.isWhite)
+							{
+								hoveredCell = glyph; 
+								hoveredRow = row; 
+							}
 						}
 					}
 				} 
@@ -10861,12 +10885,13 @@ with condition"},q{
 			{ return &buildMessageColumn; } 
 		}
 		
-		
+		
 		
 		version(/+$DIDE_REGION DebugValue support+/all)
 		{
 			string debugValue; 
-			DateTime prevDebugValueUpdatedTime, debugValueUpdatedTime, debugValueChangedTime; //Todo: should be in another class... It's inspector exclusive.
+			DateTime prevDebugValueUpdatedTime, debugValueUpdatedTime, debugValueChangedTime; 
+			//Todo: should be in another class... It's inspector exclusive.
 			
 			void updateDebugValue(string value)
 			{
@@ -10886,6 +10911,19 @@ with condition"},q{
 				return ((Δt>=1)?(1):(max(sqrt(Δt), .1f))); 
 			} 
 		}
+		
+		static private string GEN_switch(string field)
+		=>q{
+			{
+				sw: switch(templateIdx)
+				{
+					static foreach(a; niceExpressionTemplates.map!"a.$".enumerate)
+					{ case a.index: { mixin(a.value); }break sw; }default: 
+				}
+			}
+		}
+		.replace("$", field); 
+		
 		
 		void initialize()
 		{
@@ -11022,13 +11060,7 @@ with condition"},q{
 			
 			
 			
-			{
-				sw: switch(templateIdx)
-				{
-					static foreach(a; niceExpressionTemplates.map!"a.initCode".enumerate)
-					{ case a.index: { mixin(a.value); }break sw; }default: 
-				}
-			}
+			mixin(("initCode").調!GEN_switch); 
 		} 
 		
 		override void buildSourceText(ref SourceTextBuilder builder)
@@ -11279,13 +11311,7 @@ with condition"},q{
 				
 				const brackets = getTemplate.type.hasListBrackets; 
 				if(brackets) put("("); 
-				{
-					sw: switch(templateIdx)
-					{
-						static foreach(a; niceExpressionTemplates.map!"a.textCode".enumerate)
-						{ case a.index: { mixin(a.value); }break sw; }default: 
-					}
-				}
+				mixin(("textCode").調!GEN_switch); 
 				if(brackets) put(")"); 
 			}
 		} 
@@ -11707,13 +11733,7 @@ with condition"},q{
 				
 				version(/+$DIDE_REGION Call the plugin function, finalize+/all)
 				{
-					{
-						sw: switch(templateIdx)
-						{
-							static foreach(a; niceExpressionTemplates.map!"a.rearrangeCode".enumerate)
-							{ case a.index: { mixin(a.value); }break sw; }default: 
-						}
-					}
+					mixin(("rearrangeCode").調!GEN_switch); 
 					
 					if(!rearrangeNodeWasCalled)
 					{
@@ -11776,29 +11796,12 @@ with condition"},q{
 					}
 				} 
 				
-				{
-					sw: switch(templateIdx)
-					{
-						static foreach(a; niceExpressionTemplates.map!"a.drawCode".enumerate)
-						{ case a.index: { mixin(a.value); }break sw; }default: 
-					}
-				}
+				mixin(("drawCode").調!GEN_switch); 
 			}
 		} 
 		
-		void generateUI(bool enabled_)
-		{
-			with(im)
-			{
-				{
-					sw: switch(templateIdx)
-					{
-						static foreach(a; niceExpressionTemplates.map!"a.uiCode".enumerate)
-						{ case a.index: { mixin(a.value); }break sw; }default: 
-					}
-				}
-			}
-		} 
+		void generateUI(bool enabled_, int targetSurface_=1)
+		{ with(im) mixin(("uiCode").調!GEN_switch); } 
 		
 	} 
 }
