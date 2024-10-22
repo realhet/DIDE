@@ -7908,6 +7908,9 @@ version(/+$DIDE_REGION+/all)
 		); 
 	} 
 	
+	bool isChar(Cell c, dchar ch)
+	{ if(auto g = (cast(Glyph)(c))) return g.ch==ch; return false; } 
+	
 	bool cellIsSpace(Cell c)
 	{
 		return c.castSwitch!(
@@ -9071,6 +9074,8 @@ version(/+$DIDE_REGION+/all) {
 				[q{tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note:+/}],
 				[q{binaryTokenStringOp},q{2},q{/+Code: (op(q{},q{}))+/},q{/+Note: 表! (old MixinTable)+/}],
 				[q{tenaryTokenStringOp},q{3},q{/+Code: (op(q{},q{},q{}))+/},q{/+Note: Sigma operations+/}],
+				[q{twoParamOp},q{2},q{/+Code: (op((expr),(expr)))+/},q{/+Note:+/}],
+				[q{threeParamOp},q{3},q{/+Code: (op((expr),(expr),(expr)))+/},q{/+Note:+/}],
 				[q{mixinTableInjectorOp},q{2},q{/+Code: ((){with(op(expr)){expr}}())+/},q{/+Note: 表 new MixinTable+/}],
 				[q{anonymMethod},q{2},q{/+Code: ((expr)op{code})+/},q{/+Note: anonym method (without attrs)+/}],
 				[q{mixinGeneratorOp},q{2},q{/+Code: mixin((expr)opq{script})+/},q{/+Note: .GEN!+/}],
@@ -9897,7 +9902,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x415B07B6B4BCC).檢(expr))},
+				q{((0x416B27B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9911,7 +9916,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x416CC7B6B4BCC).檢 (expr))},
+				q{((0x417CE7B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9919,9 +9924,9 @@ version(/+$DIDE_REGION+/all) {
 				q{drawInspector; },
 				initCode: q{initInspector; }
 			},
-			
+			
 			{
-				"const_bool", 
+				"constValue", 
 				NET.castOp,
 				skIdentifier1,
 				NodeStyle.dim,
@@ -9955,13 +9960,81 @@ version(/+$DIDE_REGION+/all) {
 				q{
 					if(!isnan(controlValue))
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
-					
 				},
 				initCode: 
 				q{/+Todo: ide kellene a controltype, controlvalue dekodolas.+/},
 				uiCode: 
 				q{
 					if(operands[0] && operands[1])
+					{
+						const type = operands[0].extractThisLevelDString.text; 
+						switch(type)
+						{
+							case "bool": {
+								//Todo: edit permission, cooperate with Undo/Redo
+								const b1 = !!this.controlValue; 
+								bool b2 = b1; 
+								style.bkColor = this.bkColor; 
+								style.fontColor = syntaxFontColor(skIdentifier1); 
+								ChkBox(
+									b2, "", {
+										flags.targetSurface = targetSurface_; 
+										outerPos = this.worldInnerPos; 
+									}, 
+									enable(enabled_), ((this.identityStr).genericArg!q{id})
+								); 
+								if(b1!=b2) { this.controlValue = b2; this.setChanged; }
+							}break; 
+							default: 
+						}
+					}
+				}
+			}
+			,
+			{
+				"interactiveValue", 
+				NET.threeParamOp,
+				skIdentifier1,
+				NodeStyle.dim,
+				q{(互!(bool,0,0x123456))(互!(bool,1,0x1234))},
+				
+				"互!",
+				q{
+					ulong h = result.length<<32 /+upprt 32 bits+/; 
+					if(auto m = moduleOf(this)) h |= m.fileNameHash /+lower 32 bits+/; 
+					put(operator); put('('); 
+						op(0); put(','); 
+						put('('); switch(controlType)
+					{
+						case "bool": { put((controlValue)?('1'):('0')); }break; 
+						default: put(controlValue.text); 
+					}put(')'); put(','); 
+						put("(0x"~h.to!string(16)~')'); //locationHash
+					put(')'); 
+				},
+				q{
+					controlType = operands[0].byShallowChar.text; 
+					const value = operands[1].byShallowChar.text; 
+					switch(controlType)
+					{
+						case "bool": {
+							put(' '); subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
+							const b = 	value=="true" || 
+								!!value.to!float.ifThrown(0); 
+							controlValue = b ? 1 : 0; 
+						}break; 
+						default: put(operator); op(0); op(1); //unknown type
+					}
+				},
+				q{
+					if(!isnan(controlValue))
+					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
+				},
+				initCode: 
+				q{/+Todo: ide kellene a controltype, controlvalue dekodolas.+/},
+				uiCode: 
+				q{
+					if(operands[0] && operands[1] && operands[2])
 					{
 						const type = operands[0].extractThisLevelDString.text; 
 						switch(type)
@@ -10049,8 +10122,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x4265D7B6B4BCC).檢(expr)) ((0x4267B7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x426CB7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x42F5D7B6B4BCC).檢(expr)) ((0x42F7B7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x42FCB7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
@@ -10525,25 +10598,37 @@ with condition"},q{
 				return null; 
 			} 
 			
-			static CodeColumn[] extractTokenStringParams(CodeColumn col)
+			static CodeColumn[] extractCodeColumnParams(string what)(CodeColumn col)
 			{
-				//unpacks (q{},q{},...)
+				//unpacks (*,*,...)
 				if(col.rowCount==1)
 				{
 					auto row = col.rows[0]; 
 					const cc = row.cellCount; 
 					if((cc&1) /+cellCount must be odd+/)
 					{
-						if(iota(1, cc, 2).all!(i=>row.chars[i]==',')/+must be separated by commas+/)
+						if(iota(1, cc, 2).all!((i)=>(row.chars[i]==','))/+must be separated by commas+/)
 						{
-							auto params = iota(0, cc, 2).map!(i=>(cast(CodeString)(row.subCells[i]))).array; 
-							if(params.all!(s=>(s && s.type==CodeString.Type.tokenString)))
-							{ return params.map!(p=>p.content).array; }
+							static if(what=="q{}")
+							{
+								auto params = iota(0, cc, 2).map!((i)=>((cast(CodeString)(row.subCells[i])))).array; 
+								if(params.all!((s)=>(s && s.type==CodeString.Type.tokenString)))
+								{ return params.map!((p)=>(p.content)).array; }
+							}
+							else if(what=="()")
+							{
+								auto params = iota(0, cc, 2).map!((i)=>((cast(CodeBlock)(row.subCells[i])))).array; 
+								if(params.all!((b)=>(b && b.type==CodeBlock.Type.list)))
+								{ return params.map!((p)=>(p.content)).array; }
+							}
 						}
 					}
 				}
 				return []; 
 			} 
+			
+			alias 	extractTokenStringParams 	= extractCodeColumnParams!"q{}",
+				extractListParams 	= extractCodeColumnParams!"()"; 
 			
 			//Todo: NiceExpressions not working inside   enum ;
 			
@@ -10563,7 +10648,7 @@ with condition"},q{
 			
 			//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
 			
-			
+			
 			void processStatementRow(CodeRow statementRow)
 			{
 				assert(statementRow); 
@@ -10656,6 +10741,7 @@ with condition"},q{
 				void processOpList(string op, CodeColumn content)
 				{
 					if(TRY((mixin(舉!((NiceExpressionType),q{unaryOp}))) /+Note: (op(expr))+/, op, content)) return; 
+					//Opt: check the type of the first item and the first row's length, then only call one of these
 					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
@@ -10664,6 +10750,16 @@ with condition"},q{
 					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
+						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
+					}
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{twoParamOp}))) /+Note: (op(expr,expr))+/, op))
+					{
+						auto params = extractListParams(content); 
+						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
+					}
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamOp}))) /+Note: (op(expr,expr,expr))+/, op))
+					{
+						auto params = extractListParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
 				} 
@@ -11301,7 +11397,8 @@ with condition"},q{
 						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
 						else	id = m.getInspectorId(this); 
 					}
-					put("(0x"~id.to!string(16)~")"); put(operator); op(1); 
+					const h = "0x" ~ id.to!string(16); 
+					put("(" ~ h ~ ")"); put(operator); op(1); 
 				} 
 				
 				
