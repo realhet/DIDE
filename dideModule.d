@@ -9934,25 +9934,20 @@ version(/+$DIDE_REGION+/all) {
 				
 				"常!",
 				q{
+					put(operator); op(0); put('('); 
 					switch(controlType)
 					{
-						case "bool": {
-							put(operator); op(0); 
-							put('('); put((controlValue)?('1'):('0')); put(')'); 
-						}break; 
-						default: put(operator); op(0); op(1); 
+						case "bool": put((controlValue)?('1'):('0')); break; 
+						default: put(controlValue.text); 
 					}
+					put(')'); 
 				},
 				q{
-					controlType = operands[0].byShallowChar.text; 
-					const value = operands[1].byShallowChar.text; 
 					switch(controlType)
 					{
 						case "bool": {
-							put(' '); subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
-							const b = 	value=="true" || 
-								!!value.to!float.ifThrown(0); 
-							controlValue = b ? 1 : 0; 
+							put(' '); /+Just a placeholder.+/
+							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
 						}break; 
 						default: put(operator); op(0); op(1); //unknown type
 					}
@@ -9962,31 +9957,30 @@ version(/+$DIDE_REGION+/all) {
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
 				},
 				initCode: 
-				q{/+Todo: ide kellene a controltype, controlvalue dekodolas.+/},
+				q{
+					controlType = operands[0].byShallowChar.text; 
+					controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
+				},
 				uiCode: 
 				q{
-					if(operands[0] && operands[1])
+					switch(controlType)
 					{
-						const type = operands[0].extractThisLevelDString.text; 
-						switch(type)
-						{
-							case "bool": {
-								//Todo: edit permission, cooperate with Undo/Redo
-								const b1 = !!this.controlValue; 
-								bool b2 = b1; 
-								style.bkColor = this.bkColor; 
-								style.fontColor = syntaxFontColor(skIdentifier1); 
-								ChkBox(
-									b2, "", {
-										flags.targetSurface = targetSurface_; 
-										outerPos = this.worldInnerPos; 
-									}, 
-									enable(enabled_), ((this.identityStr).genericArg!q{id})
-								); 
-								if(b1!=b2) { this.controlValue = b2; this.setChanged; }
-							}break; 
-							default: 
-						}
+						case "bool": {
+							//Todo: edit permission, cooperate with Undo/Redo
+							const act = !!this.controlValue; 
+							bool next = act; 
+							style.bkColor = this.bkColor; 
+							style.fontColor = syntaxFontColor(skIdentifier1); 
+							ChkBox(
+								next, "", {
+									flags.targetSurface = targetSurface_; 
+									outerPos = this.worldInnerPos; 
+								}, 
+								enable(enabled_), ((this.identityStr).genericArg!q{id})
+							); 
+							if(act!=next) { this.controlValue = next; this.setChanged; }
+						}break; 
+						default: 
 					}
 				}
 			}
@@ -9996,7 +9990,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skIdentifier1,
 				NodeStyle.dim,
-				q{(互!(bool,0,0x123456))(互!(bool,1,0x1234))},
+				q{(互!((bool),(0),(0x123456)))(互!((bool),(1),(0x1234)))},
 				
 				"互!",
 				q{
@@ -10004,58 +9998,58 @@ version(/+$DIDE_REGION+/all) {
 					if(auto m = moduleOf(this)) h |= m.fileNameHash /+lower 32 bits+/; 
 					put(operator); put('('); 
 						op(0); put(','); 
-						put('('); switch(controlType)
+						put('('); 
+							switch(controlType)
 					{
 						case "bool": { put((controlValue)?('1'):('0')); }break; 
 						default: put(controlValue.text); 
-					}put(')'); put(','); 
+					}
+						put(')'); put(','); 
 						put("(0x"~h.to!string(16)~')'); //locationHash
 					put(')'); 
 				},
 				q{
-					controlType = operands[0].byShallowChar.text; 
-					const value = operands[1].byShallowChar.text; 
 					switch(controlType)
 					{
 						case "bool": {
-							put(' '); subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
-							const b = 	value=="true" || 
-								!!value.to!float.ifThrown(0); 
-							controlValue = b ? 1 : 0; 
+							put(' '); /+placeholder+/
+							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
 						}break; 
 						default: put(operator); op(0); op(1); //unknown type
 					}
 				},
 				q{
+					this.bkColor = syntaxBkColor(skInteract); //the color can change
+					if(auto glyph = (cast(Glyph)(subCells.get(0)))) glyph.bkColor = this.bkColor; 
+					
 					if(!isnan(controlValue))
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
 				},
 				initCode: 
-				q{/+Todo: ide kellene a controltype, controlvalue dekodolas.+/},
+				q{
+					controlType = operands[0].byShallowChar.text; 
+					controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
+				},
 				uiCode: 
 				q{
-					if(operands[0] && operands[1] && operands[2])
+					switch(controlType)
 					{
-						const type = operands[0].extractThisLevelDString.text; 
-						switch(type)
-						{
-							case "bool": {
-								//Todo: edit permission, cooperate with Undo/Redo
-								const b1 = !!this.controlValue; 
-								bool b2 = b1; 
-								style.bkColor = this.bkColor; 
-								style.fontColor = syntaxFontColor(skIdentifier1); 
-								ChkBox(
-									b2, "", {
-										flags.targetSurface = targetSurface_; 
-										outerPos = this.worldInnerPos; 
-									}, 
-									enable(enabled_), ((this.identityStr).genericArg!q{id})
-								); 
-								if(b1!=b2) { this.controlValue = b2; this.setChanged; }
-							}break; 
-							default: 
-						}
+						case "bool": {
+							//Todo: edit permission, cooperate with Undo/Redo
+							const act = !!this.controlValue; 
+							bool next = act; 
+							style.bkColor = syntaxBkColor(skInteract); 
+							style.fontColor = syntaxFontColor(skInteract); 
+							ChkBox(
+								next, "", {
+									flags.targetSurface = targetSurface_; 
+									outerPos = this.worldInnerPos; 
+								}, 
+								enable(enabled_), ((this.identityStr).genericArg!q{id})
+							); 
+							if(act!=next) { this.controlValue = next; this.setChanged; }
+						}break; 
+						default: 
 					}
 				}
 			}
@@ -10122,8 +10116,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42F5D7B6B4BCC).檢(expr)) ((0x42F7B7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x42FCB7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x42E337B6B4BCC).檢(expr)) ((0x42E517B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x42EA17B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}

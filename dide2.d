@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -784,6 +784,9 @@ version(/+$DIDE_REGION main+/all)
 		void drawOverlay(Drawing dr)
 		{
 			if(0) dr.mmGrid(view); 
+			
+			workspace.customDraw(dr); 
+			
 			
 			scope(exit) dr.alpha = 1; 
 			dr.alpha = .5f; 
@@ -6548,7 +6551,7 @@ class Workspace : Container, WorkspaceInterface
 			structureMap.beginCollect; 
 			super.draw(dr); 
 			structureMap.endCollect(dr); 
-			customDraw(dr); 
+			//customDraw(dr); 
 		} 
 	}
 } 
