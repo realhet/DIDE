@@ -9930,7 +9930,10 @@ version(/+$DIDE_REGION+/all) {
 				NET.castOp,
 				skIdentifier1,
 				NodeStyle.dim,
-				q{(常!(bool)(0))(常!(bool)(1))},
+				q{
+					(常!(bool)(0))(常!(bool)(1))
+					(常!(float)(0.3))
+				},
 				
 				"常!",
 				q{
@@ -9938,6 +9941,7 @@ version(/+$DIDE_REGION+/all) {
 					switch(controlType)
 					{
 						case "bool": put((controlValue)?('1'):('0')); break; 
+						case "float": put(controlValue.format!"%.3f"); break; 
 						default: put(controlValue.text); 
 					}
 					put(')'); 
@@ -9948,6 +9952,10 @@ version(/+$DIDE_REGION+/all) {
 						case "bool": {
 							put(' '); /+Just a placeholder.+/
 							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
+						}break; 
+						case "float": {
+							put(' '); /+Just a placeholder.+/
+							subCells.back.outerSize = vec2(10, 1) * DefaultFontHeight; 
 						}break; 
 						default: put(operator); op(0); op(1); //unknown type
 					}
@@ -9980,6 +9988,24 @@ version(/+$DIDE_REGION+/all) {
 							); 
 							if(act!=next) { this.controlValue = next; this.setChanged; }
 						}break; 
+						case "float": {
+							//Todo: edit permission, cooperate with Undo/Redo
+							const act = this.controlValue; 
+							float next = act; 
+							style.bkColor = this.bkColor; 
+							style.fontColor = syntaxFontColor(skIdentifier1); 
+							theme = "tool"; 
+							Slider(
+								next, range(0.0f, 1.0f), 
+								{
+									flags.targetSurface = targetSurface_; 
+									outerPos = this.worldInnerPos; 
+									outerSize = this.innerSize; 
+								},
+								enable(enabled_), ((this.identityStr).genericArg!q{id})
+							); 
+							if(act!=next) { this.controlValue = next; this.setChanged; }
+						}break; 
 						default: 
 					}
 				}
@@ -9990,12 +10016,12 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skIdentifier1,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x123456)))(互!((bool),(1),(0x1234)))},
+				q{(互!((bool),(0),(0x422797B6B4BCC)))(互!((bool),(1),(0x4229D7B6B4BCC)))},
 				
 				"互!",
 				q{
-					ulong h = result.length<<32 /+upprt 32 bits+/; 
-					if(auto m = moduleOf(this)) h |= m.fileNameHash /+lower 32 bits+/; 
+					if(auto m = moduleOf(this))
+					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
 					put(operator); put('('); 
 						op(0); put(','); 
 						put('('); 
@@ -10005,7 +10031,7 @@ version(/+$DIDE_REGION+/all) {
 						default: put(controlValue.text); 
 					}
 						put(')'); put(','); 
-						put("(0x"~h.to!string(16)~')'); //locationHash
+						put("(0x"~controlId.to!string(16)~')'); //locationHash
 					put(')'); 
 				},
 				q{
@@ -10019,7 +10045,8 @@ version(/+$DIDE_REGION+/all) {
 					}
 				},
 				q{
-					this.bkColor = syntaxBkColor(skInteract); //the color can change
+					const exeIsRunning = !!dbgsrv.exe_pid; 
+					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.5f))); //the color can change
 					if(auto glyph = (cast(Glyph)(subCells.get(0)))) glyph.bkColor = this.bkColor; 
 					
 					if(!isnan(controlValue))
@@ -10027,8 +10054,9 @@ version(/+$DIDE_REGION+/all) {
 				},
 				initCode: 
 				q{
-					controlType = operands[0].byShallowChar.text; 
-					controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
+					controlType 	= operands[0].byShallowChar.text,
+					controlValue 	= operands[1].byShallowChar.text.to!float.ifThrown(0),
+					controlId	= operands[2].byShallowChar.text.withoutStarting("0x").to!ulong(16).ifThrown(0); 
 				},
 				uiCode: 
 				q{
@@ -10036,9 +10064,26 @@ version(/+$DIDE_REGION+/all) {
 					{
 						case "bool": {
 							//Todo: edit permission, cooperate with Undo/Redo
-							const act = !!this.controlValue; 
+							const exeIsRunning = !!dbgsrv.exe_pid; 
+							
+							const def = !!this.controlValue; 
+							bool act = def; 
+							
+							float* interactiveRef; 
+							if(exeIsRunning && controlId)
+							{
+								auto iv = &dbgsrv.data.interactiveValues; 
+								if(controlId!=iv.ids.get(controlIndex))
+								ignoreExceptions({ controlIndex = iv.resolveIndex(controlId, def.to!float); }); 
+								if(controlId==iv.ids.get(controlIndex))
+								{
+									interactiveRef = &iv.floats[controlIndex]; 
+									act = !!*interactiveRef; 
+								}
+							}
+							
 							bool next = act; 
-							style.bkColor = syntaxBkColor(skInteract); 
+							style.bkColor = this.bkColor; 
 							style.fontColor = syntaxFontColor(skInteract); 
 							ChkBox(
 								next, "", {
@@ -10047,7 +10092,13 @@ version(/+$DIDE_REGION+/all) {
 								}, 
 								enable(enabled_), ((this.identityStr).genericArg!q{id})
 							); 
-							if(act!=next) { this.controlValue = next; this.setChanged; }
+							
+							if(act!=next) {
+								if(exeIsRunning)
+								{ if(interactiveRef) *interactiveRef = next; }
+								else
+								{ this.controlValue = next; this.setChanged; }
+							}
 						}break; 
 						default: 
 					}
@@ -10116,8 +10167,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42E337B6B4BCC).檢(expr)) ((0x42E517B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x42EA17B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x434F37B6B4BCC).檢(expr)) ((0x435117B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x435617B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
@@ -10905,6 +10956,8 @@ with condition"},q{
 		//controller only
 		string controlType; 
 		float controlValue; 
+		ulong controlId; 
+		int controlIndex=-1; 
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		

@@ -1108,7 +1108,7 @@ version(/+$DIDE_REGION main+/all)
 									//style.fontHeight = 18+6;
 									//buildSystemWorkerState.UI; 
 									
-									if(dbgsrv.active)
+									if(dbgsrv.isActive)
 									{
 										if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
 										if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
@@ -1346,17 +1346,30 @@ version(/+$DIDE_REGION main+/all)
 			workspace.update(view, buildResult); 
 			im.root ~= workspace; 
 			
+			
 			version(/+$DIDE_REGION Interactive controls on modules+/all)
 			{
 				with(im)
 				{
-					auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
-					const oldStyle = style; scope(exit) style = oldStyle; 
+					Container
+					(
+						{
+							version(/+$DIDE_REGION Temporarily switch to 'view' surface. Slider needs the correct mousePos.+/all)
+							{ selectTargetSurface(0); scope(exit) selectTargetSurface(1); }
+							
+							//	flags.targetSurface = 0; 
+							
+							auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
+							const oldStyle = style; scope(exit) style = oldStyle; 
+							
+							(mixin(求each(q{m},q{workspace.modules},q{
+								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
+								m.UI_constantNodes(moduleIsEnabled, 0); 
+							}))); 
+						}
+					); 
 					
-					(mixin(求each(q{m},q{workspace.modules},q{
-						const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
-						m.UI_constantNodes(moduleIsEnabled); 
-					}))); 
+					root ~= removeLastContainer.subCells; //no need for the container, just the controls
 				}
 			}
 			

@@ -1208,7 +1208,8 @@ Experimental:
 		
 		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
 			/+1:fn 2:drive       3      4        5      6       7+/
-			/+drive:\ is optional.+/; 
+			/+drive:\ is optional.+/
+			/+Todo: detect multiple mixin line indices!+/; 
 		
 		static int decodeColumnMarker(string s)
 		{
@@ -1309,6 +1310,10 @@ Experimental:
 				enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
 				auto m = matchFirst(line, rx); 
 				return m.empty ? File.init : fileNameFixer(m[1]); 
+				/+
+					Todo: This file marker is kinda deprecated. 
+					No need to collect all the messages from all modules into a single text.
+				+/
 			} 
 			
 			static DMDMessage fetchDMDMessage(ref string[] lines, FileNameFixer fileNameFixer)
