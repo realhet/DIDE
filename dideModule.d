@@ -9932,43 +9932,26 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{
 					(常!(bool)(0))(常!(bool)(1))
-					(常!(float)(0.3))
+					(常!(float)(0.300))
 				},
 				
 				"常!",
 				q{
-					put(operator); op(0); put('('); 
-					switch(controlType)
-					{
-						case "bool": put((controlValue)?('1'):('0')); break; 
-						case "float": put(controlValue.format!"%.3f"); break; 
-						default: put(controlValue.text); 
-					}
-					put(')'); 
+					const valStr = controlType.predSwitch
+						(
+						"bool", 	((controlValue)?("1"):("0")),
+						"float", 	controlValue.format!"%.3f",
+							controlValue.text
+					); 
+					
+					put(iq{$(operator)($(controlType))($(valStr))}.text); 
 				},
-				q{
-					switch(controlType)
-					{
-						case "bool": {
-							put(' '); /+Just a placeholder.+/
-							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
-						}break; 
-						case "float": {
-							put(' '); /+Just a placeholder.+/
-							subCells.back.outerSize = vec2(10, 1) * DefaultFontHeight; 
-						}break; 
-						default: put(operator); op(0); op(1); //unknown type
-					}
-				},
+				q{arrangeInteractiveNode; },
 				q{
 					if(!isnan(controlValue))
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
 				},
-				initCode: 
-				q{
-					controlType = operands[0].byShallowChar.text; 
-					controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
-				},
+				initCode: q{initInteractiveNode; },
 				uiCode: 
 				q{
 					switch(controlType)
@@ -10016,34 +9999,24 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skIdentifier1,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x422797B6B4BCC)))(互!((bool),(1),(0x4229D7B6B4BCC)))},
+				q{(互!((bool),(0),(0x4207A7B6B4BCC)))(互!((bool),(1),(0x4209E7B6B4BCC)))},
 				
 				"互!",
 				q{
 					if(auto m = moduleOf(this))
 					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
-					put(operator); put('('); 
-						op(0); put(','); 
-						put('('); 
-							switch(controlType)
-					{
-						case "bool": { put((controlValue)?('1'):('0')); }break; 
-						default: put(controlValue.text); 
-					}
-						put(')'); put(','); 
-						put("(0x"~controlId.to!string(16)~')'); //locationHash
-					put(')'); 
+					const idStr = "0x"~controlId.to!string(16); 
+					
+					const valStr = controlType.predSwitch
+						(
+						"bool", 	((controlValue)?("1"):("0")),
+						"float", 	controlValue.format!"%.3f",
+							controlValue.text
+					); 
+					
+					put(iq{$(operator)(($(controlType)),($(valStr)),($(idStr)))}.text); 
 				},
-				q{
-					switch(controlType)
-					{
-						case "bool": {
-							put(' '); /+placeholder+/
-							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
-						}break; 
-						default: put(operator); op(0); op(1); //unknown type
-					}
-				},
+				q{arrangeInteractiveNode; },
 				q{
 					const exeIsRunning = !!dbgsrv.exe_pid; 
 					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.5f))); //the color can change
@@ -10052,12 +10025,7 @@ version(/+$DIDE_REGION+/all) {
 					if(!isnan(controlValue))
 					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
 				},
-				initCode: 
-				q{
-					controlType 	= operands[0].byShallowChar.text,
-					controlValue 	= operands[1].byShallowChar.text.to!float.ifThrown(0),
-					controlId	= operands[2].byShallowChar.text.withoutStarting("0x").to!ulong(16).ifThrown(0); 
-				},
+				initCode: q{initInteractiveNode; },
 				uiCode: 
 				q{
 					switch(controlType)
@@ -10167,8 +10135,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x434F37B6B4BCC).檢(expr)) ((0x435117B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x435617B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x431317B6B4BCC).檢(expr)) ((0x4314F7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4319F7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
@@ -11201,7 +11169,21 @@ with condition"},q{
 				}
 			} 
 			
-			
+			void initInteractiveNode()
+			{
+				//data type
+				controlType = operands[0].byShallowChar.text; 
+				
+				//compile time value
+				controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
+				
+				//optional locationId
+				controlId = ((operands[2])?(
+					operands[2].byShallowChar.text
+					.withoutStarting("0x")
+					.to!ulong(16).ifThrown(0)
+				):(0)); 
+			} 
 			
 			mixin(("initCode").調!GEN_switch); 
 		} 
@@ -11870,6 +11852,22 @@ with condition"},q{
 							
 							operands[0] = col; op(0); //reuse former operand of ID
 						}
+					}
+				} 
+				
+				void arrangeInteractiveNode()
+				{
+					switch(controlType)
+					{
+						case "bool": {
+							put(' '); /+placeholder+/
+							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
+						}break; 
+						case "float": {
+							put(' '); /+Just a placeholder.+/
+							subCells.back.outerSize = vec2(10, 1) * DefaultFontHeight; 
+						}break; 
+						default: put(operator); op(0); op(1); //unknown type
 					}
 				} 
 				
