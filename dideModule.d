@@ -9767,7 +9767,7 @@ version(/+$DIDE_REGION+/all) {
 				q{},
 				initCode: q{initMixinTable(1); }
 			},
-			
+			
 			{
 				"mixinGenerator1", 
 				NET.mixinGeneratorOp, 
@@ -9803,7 +9803,7 @@ version(/+$DIDE_REGION+/all) {
 				q{arrangeMixinFunctionCall; }
 				
 			},
-			
+			
 			/+
 				Todo: HalfSize or other components.  Index and blocks, strings and indices 
 				are the most important ones.  HalfSize is only works for glyphs now.
@@ -9858,14 +9858,6 @@ version(/+$DIDE_REGION+/all) {
 			
 			
 			
-			
-			
-			
-			
-			
-			
-			
-			
 			{
 				"perf_start", 
 				NET.specialStatementOp, 
@@ -9902,7 +9894,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x416B27B6B4BCC).檢(expr))},
+				q{((0x4168A7B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9916,7 +9908,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x417CE7B6B4BCC).檢 (expr))},
+				q{((0x417A67B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9924,7 +9916,7 @@ version(/+$DIDE_REGION+/all) {
 				q{drawInspector; },
 				initCode: q{initInspector; }
 			},
-			
+			
 			{
 				"constValue", 
 				NET.castOp,
@@ -9936,70 +9928,22 @@ version(/+$DIDE_REGION+/all) {
 				},
 				
 				"常!",
-				q{
-					const valStr = controlType.predSwitch
-						(
-						"bool", 	((controlValue)?("1"):("0")),
-						"float", 	controlValue.format!"%.3f",
-							controlValue.text
-					); 
-					
-					put(iq{$(operator)($(controlType))($(valStr))}.text); 
-				},
+				q{put(iq{$(operator)($(controlType))($(controlValueText))}.text); },
 				q{arrangeInteractiveNode; },
-				q{
-					if(!isnan(controlValue))
-					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
-				},
-				initCode: q{initInteractiveNode; },
-				uiCode: 
-				q{
-					switch(controlType)
-					{
-						case "bool": {
-							//Todo: edit permission, cooperate with Undo/Redo
-							const act = !!this.controlValue; 
-							bool next = act; 
-							style.bkColor = this.bkColor; 
-							style.fontColor = syntaxFontColor(skIdentifier1); 
-							ChkBox(
-								next, "", {
-									flags.targetSurface = targetSurface_; 
-									outerPos = this.worldInnerPos; 
-								}, 
-								enable(enabled_), ((this.identityStr).genericArg!q{id})
-							); 
-							if(act!=next) { this.controlValue = next; this.setChanged; }
-						}break; 
-						case "float": {
-							//Todo: edit permission, cooperate with Undo/Redo
-							const act = this.controlValue; 
-							float next = act; 
-							style.bkColor = this.bkColor; 
-							style.fontColor = syntaxFontColor(skIdentifier1); 
-							theme = "tool"; 
-							Slider(
-								next, range(0.0f, 1.0f), 
-								{
-									flags.targetSurface = targetSurface_; 
-									outerPos = this.worldInnerPos; 
-									outerSize = this.innerSize; 
-								},
-								enable(enabled_), ((this.identityStr).genericArg!q{id})
-							); 
-							if(act!=next) { this.controlValue = next; this.setChanged; }
-						}break; 
-						default: 
-					}
-				}
-			}
-			,
+				q{queueInteractiveDraw; },
+				initCode: 	q{initInteractiveNode; },
+				uiCode: 	q{interactiveUI(false); }
+			},
+			
 			{
 				"interactiveValue", 
 				NET.threeParamOp,
-				skIdentifier1,
+				skInteract,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x4207A7B6B4BCC)))(互!((bool),(1),(0x4209E7B6B4BCC)))},
+				q{
+					(互!((bool),(0),(0x41A737B6B4BCC)))(互!((bool),(1),(0x41A977B6B4BCC)))
+					(互!((float),(1),(0x41AC27B6B4BCC)))
+				},
 				
 				"互!",
 				q{
@@ -10007,70 +9951,19 @@ version(/+$DIDE_REGION+/all) {
 					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
 					const idStr = "0x"~controlId.to!string(16); 
 					
-					const valStr = controlType.predSwitch
-						(
-						"bool", 	((controlValue)?("1"):("0")),
-						"float", 	controlValue.format!"%.3f",
-							controlValue.text
-					); 
-					
-					put(iq{$(operator)(($(controlType)),($(valStr)),($(idStr)))}.text); 
+					put(iq{$(operator)(($(controlType)),($(controlValueText)),($(idStr)))}.text); 
 				},
 				q{arrangeInteractiveNode; },
 				q{
 					const exeIsRunning = !!dbgsrv.exe_pid; 
-					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.5f))); //the color can change
-					if(auto glyph = (cast(Glyph)(subCells.get(0)))) glyph.bkColor = this.bkColor; 
-					
-					if(!isnan(controlValue))
-					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
+					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.33f))); 
+					if(subCells.length==1)
+					if(auto glyph = (cast(Glyph)(subCells.get(0))))
+					glyph.bkColor = this.bkColor; 
+					queueInteractiveDraw; 
 				},
 				initCode: q{initInteractiveNode; },
-				uiCode: 
-				q{
-					switch(controlType)
-					{
-						case "bool": {
-							//Todo: edit permission, cooperate with Undo/Redo
-							const exeIsRunning = !!dbgsrv.exe_pid; 
-							
-							const def = !!this.controlValue; 
-							bool act = def; 
-							
-							float* interactiveRef; 
-							if(exeIsRunning && controlId)
-							{
-								auto iv = &dbgsrv.data.interactiveValues; 
-								if(controlId!=iv.ids.get(controlIndex))
-								ignoreExceptions({ controlIndex = iv.resolveIndex(controlId, def.to!float); }); 
-								if(controlId==iv.ids.get(controlIndex))
-								{
-									interactiveRef = &iv.floats[controlIndex]; 
-									act = !!*interactiveRef; 
-								}
-							}
-							
-							bool next = act; 
-							style.bkColor = this.bkColor; 
-							style.fontColor = syntaxFontColor(skInteract); 
-							ChkBox(
-								next, "", {
-									flags.targetSurface = targetSurface_; 
-									outerPos = this.worldInnerPos; 
-								}, 
-								enable(enabled_), ((this.identityStr).genericArg!q{id})
-							); 
-							
-							if(act!=next) {
-								if(exeIsRunning)
-								{ if(interactiveRef) *interactiveRef = next; }
-								else
-								{ this.controlValue = next; this.setChanged; }
-							}
-						}break; 
-						default: 
-					}
-				}
+				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
 			}
 		]; 
 		class ToolPalette : Module
@@ -10135,8 +10028,8 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x431317B6B4BCC).檢(expr)) ((0x4314F7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4319F7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x425897B6B4BCC).檢(expr)) ((0x425A77B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x425F77B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
 						]))
 					}
@@ -10921,11 +10814,21 @@ with condition"},q{
 		int templateIdx;  //Todo: 0 should mean invalid
 		CodeColumn[3] operands; 
 		
-		//controller only
-		string controlType; 
-		float controlValue; 
-		ulong controlId; 
-		int controlIndex=-1; 
+		version(/+$DIDE_REGION Controller / Interactive value+/all)
+		{
+			string controlType; 
+			float controlValue; 
+			
+			ulong controlId; 
+			int controlIndex=-1; 
+			
+			const @property controlValueText() => controlType.predSwitch
+				(
+				"bool", 	((controlValue)?("1"):("0")),
+				"float", 	controlValue.format!"%.3f",
+					controlValue.text
+			); 
+		}
 		
 		//Todo: Nicexpressions should work inside (parameter) block too!
 		
@@ -11429,8 +11332,6 @@ with condition"},q{
 					const h = "0x" ~ id.to!string(16); 
 					put("(" ~ h ~ ")"); put(operator); op(1); 
 				} 
-				
-				
 				
 				//------------------------------------------------------------------------
 				
@@ -11938,12 +11839,79 @@ with condition"},q{
 					}
 				} 
 				
+				void queueInteractiveDraw()
+				{
+					if(!isnan(controlValue))
+					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
+				} 
+				
 				mixin(("drawCode").調!GEN_switch); 
 			}
 		} 
-		
+		
 		void generateUI(bool enabled_, int targetSurface_=1)
-		{ with(im) mixin(("uiCode").調!GEN_switch); } 
+		{
+			with(im)
+			{
+				void interactiveUI(bool useDbgValues)
+				{
+					void doit(T)()
+					{
+						style.bkColor = this.bkColor; 
+						style.fontColor = syntaxFontColor(skIdentifier1); 
+						
+						//Todo: edit permission, cooperate with Undo/Redo
+						T act = this.controlValue.to!T; 
+						
+						float* interactiveRef; 
+						if(useDbgValues && controlId)
+						{
+							auto iv = &dbgsrv.data.interactiveValues; 
+							if(controlId!=iv.ids.get(controlIndex))
+							ignoreExceptions({ controlIndex = iv.resolveIndex(controlId, act.to!float); }); 
+							if(controlId==iv.ids.get(controlIndex))
+							{
+								interactiveRef = &iv.floats[controlIndex]; 
+								act = (*interactiveRef).to!T; 
+							}
+						}
+						
+						T next = act; 
+						
+						auto commonParams() => tuple
+							(
+							enable(enabled_), ((this.identityStr).genericArg!q{id}),
+							{ flags.targetSurface = targetSurface_; outerPos = this.worldInnerPos; }
+						); 
+						
+						static if(is(T==bool))
+						{ ChkBox(next, "", commonParams[]); }
+						else static if(is(T==float))
+						{
+							theme = "tool"; 
+							Slider(next, range(0, 1), commonParams[], { outerSize = this.innerSize; }); 
+						}
+						
+						if(act!=next) {
+							if(useDbgValues)
+							{ if(interactiveRef) *interactiveRef = next; }
+							else
+							{ this.controlValue = next; this.setChanged; }
+						}
+					} 
+					
+					switch(controlType)
+					{
+						case "bool": 	doit!bool; break; 
+						case "float": 	doit!float; break; 
+						default: 
+					}
+				} 
+				
+				mixin(("uiCode").調!GEN_switch); 
+			}
+			
+		} 
 		
 	} 
 }
