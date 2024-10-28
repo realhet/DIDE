@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -1370,6 +1370,12 @@ version(/+$DIDE_REGION main+/all)
 					); 
 					
 					root ~= removeLastContainer.subCells; //no need for the container, just the controls
+				}
+				
+				if(dbgsrv.isActive /+Remove 'hold' on modified values. (Only hold them for a short period)+/)
+				{
+					const t0 = application.tick; 
+					foreach(ref t; dbgsrv.data.interactiveValues.ticks) if(t<t0) t = 0; 
 				}
 			}
 			

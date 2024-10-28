@@ -9076,6 +9076,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{tenaryTokenStringOp},q{3},q{/+Code: (op(q{},q{},q{}))+/},q{/+Note: Sigma operations+/}],
 				[q{twoParamOp},q{2},q{/+Code: (op((expr),(expr)))+/},q{/+Note:+/}],
 				[q{threeParamOp},q{3},q{/+Code: (op((expr),(expr),(expr)))+/},q{/+Note:+/}],
+				[q{threeParamEQEOp},q{3},q{/+Code: (op((expr),q{},(expr)))+/},q{/+Note:+/}],
 				[q{mixinTableInjectorOp},q{2},q{/+Code: ((){with(op(expr)){expr}}())+/},q{/+Note: 表 new MixinTable+/}],
 				[q{anonymMethod},q{2},q{/+Code: ((expr)op{code})+/},q{/+Note: anonym method (without attrs)+/}],
 				[q{mixinGeneratorOp},q{2},q{/+Code: mixin((expr)opq{script})+/},q{/+Note: .GEN!+/}],
@@ -9894,7 +9895,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4168A7B6B4BCC).檢(expr))},
+				q{((0x416DC7B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9908,7 +9909,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x417A67B6B4BCC).檢 (expr))},
+				q{((0x417F87B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9941,8 +9942,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x41A737B6B4BCC)))(互!((bool),(1),(0x41A977B6B4BCC)))
-					(互!((float),(1),(0x41AC27B6B4BCC)))
+					(互!((bool),(0),(0x41AC57B6B4BCC)))(互!((bool),(1),(0x41AE97B6B4BCC)))
+					(互!((float),(1.000),(0x41B147B6B4BCC)))
 				},
 				
 				"互!",
@@ -9963,6 +9964,48 @@ version(/+$DIDE_REGION+/all) {
 					queueInteractiveDraw; 
 				},
 				initCode: q{initInteractiveNode; },
+				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
+			},
+			
+			{
+				"synchedValue", 
+				NET.tenaryMixinTokenStringOp,
+				skInteract,
+				NodeStyle.dim,
+				q{
+					(互!((bool),(0),(0x41E8C7B6B4BCC)))(互!((bool),(1),(0x41EB07B6B4BCC)))
+					(互!((float),(1.000),(0x41EDB7B6B4BCC)))
+				},
+				
+				"同!",
+				q{
+					if(auto m = moduleOf(this))
+					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
+					const idStr = "0x"~controlId.to!string(16); 
+					static ts(string s) => "q{"~s~'}'; 
+					put(iq{mixin($(operator)($(ts(controlType)),$(ts(operands[1].sourceText)),$(ts(idStr))))}.text); 
+				},
+				q{
+					/+
+						if(operands[1].isDLangIdentifier)
+						with(operands[1]) { fillColor(style.fontColor, style.bkColor); applyHalfSize; }
+					+/
+					operands[1].bkColor = syntaxBkColor(skIdentifier1); 
+					op(1); /+putNL; +/
+					
+					arrangeInteractiveNode; 
+				},
+				q{
+					/+
+						const exeIsRunning = !!dbgsrv.exe_pid; 
+						this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.33f))); 
+						if(subCells.length==1)
+						if(auto glyph = (cast(Glyph)(subCells.get(0))))
+						glyph.bkColor = this.bkColor; 
+					+/
+					queueInteractiveDraw; 
+				},
+				initCode: q{initInteractiveNode; /+controlValue = float.nan; +/},
 				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
 			}
 		]; 
@@ -10028,9 +10071,14 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x425897B6B4BCC).檢(expr)) ((0x425A77B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x425F77B6B4BCC).檢((update間(_間)))); }],
-							[q{"interactive literals"},q{(常!(bool)(0)) (常!(bool)(1))}],
+							[q{"debug inspector"},q{((0x42B0B7B6B4BCC).檢(expr)) ((0x42B297B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x42B797B6B4BCC).檢((update間(_間)))); }],
+							[q{"interactive literals"},q{
+								(常!(bool)(0)) (常!(bool)(1))
+								(常!(float)(0.300))
+								(互!((bool),(0),(0x42C1F7B6B4BCC))) (互!((bool),(1),(0x42C447B6B4BCC)))
+								(互!((float),(1.000),(0x42C727B6B4BCC)))
+							}],
 						]))
 					}
 				},
@@ -10527,14 +10575,33 @@ with condition"},q{
 								if(params.all!((b)=>(b && b.type==CodeBlock.Type.list)))
 								{ return params.map!((p)=>(p.content)).array; }
 							}
+							else if(what=="()q{}"/+the 2nd param is a tokenString, rest are brackets+/)
+							{
+								auto params = iota(0, cc, 2).map!
+								((i){
+									auto c = (cast(CodeContainer)(row.subCells[i])); 
+									if(i==2)	{
+										if(auto s=(cast(CodeString)(c)))
+										if(s.type==CodeString.Type.tokenString) return c; 
+									}
+									else	{
+										if(auto b=(cast(CodeBlock)(c)))
+										if(b.type==CodeBlock.Type.list) return c; 
+									}
+									return null; 
+								}).array; 
+								if(params.all)
+								{ return params.map!((p)=>(p.content)).array; }
+							}
 						}
 					}
 				}
 				return []; 
 			} 
 			
-			alias 	extractTokenStringParams 	= extractCodeColumnParams!"q{}",
-				extractListParams 	= extractCodeColumnParams!"()"; 
+			alias extractTokenStringParams 	= extractCodeColumnParams!"q{}",
+			extractListParams 	= extractCodeColumnParams!"()",
+			extractListTokenStringParams 	= extractCodeColumnParams!"()q{}"; 
 			
 			//Todo: NiceExpressions not working inside   enum ;
 			
@@ -10668,6 +10735,12 @@ with condition"},q{
 						auto params = extractListParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamEQEOp}))) /+Note: (op(expr,q{},expr))+/, op))
+					{
+						auto params = extractListTokenStringParams(content); 
+						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
+					}
+					//Todo: This function is getting out of hand...
 				} 
 				
 				
@@ -11859,11 +11932,12 @@ with condition"},q{
 					{
 						style.bkColor = this.bkColor; 
 						style.fontColor = syntaxFontColor(skIdentifier1); 
+						auto placeholder = this.subCells.back; 
 						
 						//Todo: edit permission, cooperate with Undo/Redo
 						T act = this.controlValue.to!T; 
 						
-						float* interactiveRef; 
+						float* interactiveRef; uint* interactiveTick; 
 						if(useDbgValues && controlId)
 						{
 							auto iv = &dbgsrv.data.interactiveValues; 
@@ -11872,6 +11946,7 @@ with condition"},q{
 							if(controlId==iv.ids.get(controlIndex))
 							{
 								interactiveRef = &iv.floats[controlIndex]; 
+								interactiveTick = &iv.ticks[controlIndex]; 
 								act = (*interactiveRef).to!T; 
 							}
 						}
@@ -11881,23 +11956,29 @@ with condition"},q{
 						auto commonParams() => tuple
 							(
 							enable(enabled_), ((this.identityStr).genericArg!q{id}),
-							{ flags.targetSurface = targetSurface_; outerPos = this.worldInnerPos; }
+							{ flags.targetSurface = targetSurface_; outerPos = this.worldInnerPos + placeholder.outerPos; }
 						); 
 						
+						bool userModified; 
 						static if(is(T==bool))
-						{ ChkBox(next, "", commonParams[]); }
+						{ userModified = ChkBox(next, "", commonParams[]).clicked; }
 						else static if(is(T==float))
 						{
 							theme = "tool"; 
-							Slider(next, range(0, 1), commonParams[], { outerSize = this.innerSize; }); 
+							userModified = Slider(next, range(0, 1), commonParams[], { outerSize = placeholder.innerSize; }); 
 						}
 						
-						if(act!=next) {
-							if(useDbgValues)
-							{ if(interactiveRef) *interactiveRef = next; }
-							else
-							{ this.controlValue = next; this.setChanged; }
+						if(useDbgValues)
+						{
+							if(userModified && interactiveRef)
+							{
+								enum holdDurationTicks = 5/+Todo: ->settings+/; 
+								*interactiveRef 	= next,
+								*interactiveTick 	= application.tick + holdDurationTicks; 
+							}
 						}
+						else
+						{ if(act!=next) { this.controlValue = next; this.setChanged; }}
 					} 
 					
 					switch(controlType)
