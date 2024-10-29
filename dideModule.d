@@ -2187,11 +2187,12 @@ class CodeRow: Row
 	auto byNode(T : CodeNode = CodeNode)()
 	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
 	
-	auto lastNode(T : CodeNode = CodeNode)()
+	auto lastCell(T : Cell = Cell)()
 	{ return (cast(T)(subCells.backOrNull)); } 
 	
-	auto lastComment()
-	{ return lastNode!CodeComment; } 
+	auto lastNode() => lastCell!CodeNode; 
+	auto lastComment() => lastCell!CodeComment; 
+	
 	
 	auto glyphs()
 	{ return subCells.map!(c => cast(Glyph)c); } //can return nulls
@@ -3332,6 +3333,13 @@ class CodeRow: Row
 	
 	auto byNode(T : CodeNode = CodeNode)()
 	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
+	
+	T lastCell(T : Cell = Cell)()
+	{ if(auto row = lastRow) return row.lastCell!T; else return null; } 
+	
+	auto lastNode() => lastCell!CodeNode; 
+	auto lastComment() => lastCell!CodeComment; 
+	
 	
 	Cell singleCellOrNull()
 	{ return rows.length==1 ? rows[0].singleCellOrNull : null; } 
@@ -9137,9 +9145,48 @@ version(/+$DIDE_REGION+/all) {
 			
 			//Todo: This should be an enum.
 		} 
+		
+		struct InteractiveControlProps
+		{
+			float w=0, h=0, min=0, max=1, step = 0.1; 
+			int type; //0: linear, 1:logarithmic, 2:circular 3:endless
+			int hideExpr; 
+			int halfSize; 
+			int newLine, sameBk; 
+		} 
 		
+		string extractTrailingCommentText(string prefix)(CodeColumn col)
+		{
+			if(col)
+			{
+				if(auto cmt = col.lastComment)
+				if(cmt.content.firstRow.chars.startsWith(prefix))
+				{
+					auto res = cmt.content.shallowText; 
+					col.rows.back.subCells.length--; //remove the comment
+					return res; 
+				}
+			}
+			return ""; 
+		} 
 		
-		
+		auto commandLineToStruct(S)(string txt)
+		{
+			S res; 
+			if(txt.length)
+			{
+				auto props = txt.CommandLine; 
+				static foreach(field; FieldAndFunctionNamesWithUDA!(S, STORED, true))
+				{
+					{
+						alias f = __traits(getMember, res, field); 
+						__traits(getMember, res, field) = props.option(field, __traits(getMember, res, field)); 
+						/+Opt: This is too slow for sparse settings.+/
+					}
+				}
+			}
+			return res; 
+		} 
 		
 		
 		static immutable NiceExpressionTemplate[] niceExpressionTemplates =
@@ -9895,7 +9942,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x416DC7B6B4BCC).檢(expr))},
+				q{((0x41BBC7B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9909,7 +9956,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x417F87B6B4BCC).檢 (expr))},
+				q{((0x41CD87B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9929,7 +9976,7 @@ version(/+$DIDE_REGION+/all) {
 				},
 				
 				"常!",
-				q{put(iq{$(operator)($(controlType))($(controlValueText))}.text); },
+				q{put(iq{$(operator)($(controlTypeWithComment))($(controlValueText))}.text); },
 				q{arrangeInteractiveNode; },
 				q{queueInteractiveDraw; },
 				initCode: 	q{initInteractiveNode; },
@@ -9942,8 +9989,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x41AC57B6B4BCC)))(互!((bool),(1),(0x41AE97B6B4BCC)))
-					(互!((float),(1.000),(0x41B147B6B4BCC)))
+					(互!((bool),(0),(0x41FB07B6B4BCC)))(互!((bool),(1),(0x41FD47B6B4BCC)))
+					(互!((float),(1.000),(0x41FFF7B6B4BCC)))
 				},
 				
 				"互!",
@@ -9952,7 +9999,7 @@ version(/+$DIDE_REGION+/all) {
 					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
 					const idStr = "0x"~controlId.to!string(16); 
 					
-					put(iq{$(operator)(($(controlType)),($(controlValueText)),($(idStr)))}.text); 
+					put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(idStr)))}.text); 
 				},
 				q{arrangeInteractiveNode; },
 				q{
@@ -9973,8 +10020,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x41E8C7B6B4BCC)))(互!((bool),(1),(0x41EB07B6B4BCC)))
-					(互!((float),(1.000),(0x41EDB7B6B4BCC)))
+					(互!((bool),(0),(0x423827B6B4BCC)))(互!((bool),(1),(0x423A67B6B4BCC)))
+					(互!((float),(1.000),(0x423D17B6B4BCC)))
 				},
 				
 				"同!",
@@ -9983,28 +10030,25 @@ version(/+$DIDE_REGION+/all) {
 					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
 					const idStr = "0x"~controlId.to!string(16); 
 					static ts(string s) => "q{"~s~'}'; 
-					put(iq{mixin($(operator)($(ts(controlType)),$(ts(operands[1].sourceText)),$(ts(idStr))))}.text); 
+					put(iq{mixin($(operator)($(ts(controlTypeWithComment)),$(ts(operands[1].sourceText)),$(ts(idStr))))}.text); 
 				},
 				q{
-					/+
-						if(operands[1].isDLangIdentifier)
-						with(operands[1]) { fillColor(style.fontColor, style.bkColor); applyHalfSize; }
-					+/
-					operands[1].bkColor = syntaxBkColor(skIdentifier1); 
-					op(1); /+putNL; +/
+					if(!controlProps.hideExpr) {
+						if(controlProps.sameBk)
+						operands[1].fillColor(
+							syntaxFontColor(skInteract),
+							syntaxBkColor(skInteract)
+						); 
+						else
+						operands[1].bkColor = syntaxBkColor(skIdentifier1); 
+						if(controlProps.halfSize) operands[1].applyHalfSize; 
+						op(1); 
+						if(controlProps.newLine) putNL;  
+					}
 					
 					arrangeInteractiveNode; 
 				},
-				q{
-					/+
-						const exeIsRunning = !!dbgsrv.exe_pid; 
-						this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.33f))); 
-						if(subCells.length==1)
-						if(auto glyph = (cast(Glyph)(subCells.get(0))))
-						glyph.bkColor = this.bkColor; 
-					+/
-					queueInteractiveDraw; 
-				},
+				q{queueInteractiveDraw; },
 				initCode: q{initInteractiveNode; /+controlValue = float.nan; +/},
 				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
 			}
@@ -10071,13 +10115,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42B0B7B6B4BCC).檢(expr)) ((0x42B297B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x42B797B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x42F787B6B4BCC).檢(expr)) ((0x42F967B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x42FE67B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x42C1F7B6B4BCC))) (互!((bool),(1),(0x42C447B6B4BCC)))
-								(互!((float),(1.000),(0x42C727B6B4BCC)))
+								(互!((bool),(0),(0x4308C7B6B4BCC))) (互!((bool),(1),(0x430B17B6B4BCC)))
+								(互!((float),(1.000),(0x430DF7B6B4BCC)))
 							}],
 						]))
 					}
@@ -10895,6 +10939,12 @@ with condition"},q{
 			ulong controlId; 
 			int controlIndex=-1; 
 			
+			string controlPropsText; 
+			InteractiveControlProps controlProps; 
+			
+			@property controlTypeWithComment() => controlType ~
+				((controlPropsText.empty)?(""):("/+"~controlPropsText~"+/")); 
+			
 			const @property controlValueText() => controlType.predSwitch
 				(
 				"bool", 	((controlValue)?("1"):("0")),
@@ -11137,7 +11187,7 @@ with condition"},q{
 				ulong id; 
 				if(auto m = moduleOf(this))
 				{
-					auto s = operands[0].extractThisLevelDString.text.strip; 
+					auto s = operands[0].shallowText.strip; 
 					ulong a; 
 					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
 					else	a = a.to!ulong.ifThrown(0); 
@@ -11147,8 +11197,11 @@ with condition"},q{
 			
 			void initInteractiveNode()
 			{
+				controlPropsText = operands[0].extractTrailingCommentText!""; 
+				controlProps = controlPropsText.commandLineToStruct!InteractiveControlProps; 
+				
 				//data type
-				controlType = operands[0].byShallowChar.text; 
+				controlType = operands[0].byShallowChar.text /+Bug: If this type in unknown, it crashes!!!+/; 
 				
 				//compile time value
 				controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
@@ -11837,9 +11890,13 @@ with condition"},q{
 							put(' '); /+placeholder+/
 							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
 						}break; 
-						case "float": {
+						case 	"float",
+							"int": {
 							put(' '); /+Just a placeholder.+/
-							subCells.back.outerSize = vec2(10, 1) * DefaultFontHeight; 
+							subCells.back.outerSize = vec2(
+								controlProps.w.ifz(10), 
+								controlProps.h.ifz(1)
+							) * DefaultFontHeight; 
 						}break; 
 						default: put(operator); op(0); op(1); //unknown type
 					}
@@ -11965,8 +12022,14 @@ with condition"},q{
 						else static if(is(T==float))
 						{
 							theme = "tool"; 
-							userModified = Slider(next, range(0, 1), commonParams[], { outerSize = placeholder.innerSize; }); 
+							userModified = Slider(next, range(controlProps.min, controlProps.max, controlProps.step, cast(RangeType)controlProps.type), commonParams[], { outerSize = placeholder.innerSize; }); 
 						}
+						else static if(is(T==int))
+						{
+							theme = "tool"; 
+							userModified = Slider(next, range(controlProps.min, controlProps.max, controlProps.step, cast(RangeType)controlProps.type), commonParams[], { outerSize = placeholder.innerSize; }); 
+						}
+						
 						
 						if(useDbgValues)
 						{
@@ -11985,6 +12048,7 @@ with condition"},q{
 					{
 						case "bool": 	doit!bool; break; 
 						case "float": 	doit!float; break; 
+						case "int": 	doit!int; break; 
 						default: 
 					}
 				} 
