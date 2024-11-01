@@ -9153,6 +9153,12 @@ version(/+$DIDE_REGION+/all) {
 			int hideExpr; 
 			int halfSize; 
 			int newLine, sameBk; 
+			int rulerSides, /+bit0:topLeft, bit1:bottomRight+/
+				rulerDiv0, rulerDiv1; 
+			
+			int btnEvent; //0 = no button, 1=hold
+			string btnCaption; 
+			
 		} 
 		
 		string extractTrailingCommentText(string prefix)(CodeColumn col)
@@ -9942,7 +9948,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41BBC7B6B4BCC).檢(expr))},
+				q{((0x41C5B7B6B4BCC).檢(expr))},
 				
 				".檢",
 				q{buildInspector; },
@@ -9956,7 +9962,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41CD87B6B4BCC).檢 (expr))},
+				q{((0x41D777B6B4BCC).檢 (expr))},
 				
 				".檢 ",
 				q{buildInspector; },
@@ -9989,8 +9995,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x41FB07B6B4BCC)))(互!((bool),(1),(0x41FD47B6B4BCC)))
-					(互!((float),(1.000),(0x41FFF7B6B4BCC)))
+					(互!((bool),(0),(0x4204F7B6B4BCC)))(互!((bool),(1),(0x420737B6B4BCC)))
+					(互!((float),(1.000),(0x4209E7B6B4BCC)))
 				},
 				
 				"互!",
@@ -10020,8 +10026,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x423827B6B4BCC)))(互!((bool),(1),(0x423A67B6B4BCC)))
-					(互!((float),(1.000),(0x423D17B6B4BCC)))
+					(互!((bool),(0),(0x424217B6B4BCC)))(互!((bool),(1),(0x424457B6B4BCC)))
+					(互!((float),(1.000),(0x424707B6B4BCC)))
 				},
 				
 				"同!",
@@ -10047,6 +10053,21 @@ version(/+$DIDE_REGION+/all) {
 					}
 					
 					arrangeInteractiveNode; 
+					
+					if(!controlProps.hideExpr && controlProps.newLine)
+					{
+						super.rearrange; 
+						if(subCells.length==3)
+						{
+							//align center
+							const maxWidth = max(
+								subCells.front.outerWidth, 
+								subCells.back.outerWidth
+							); 
+							foreach(a; only(subCells.front, subCells.back))
+							a.outerPos.x = (maxWidth - a.outerWidth)/2; 
+						}
+					}
 				},
 				q{queueInteractiveDraw; },
 				initCode: q{initInteractiveNode; /+controlValue = float.nan; +/},
@@ -10115,13 +10136,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42F787B6B4BCC).檢(expr)) ((0x42F967B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x42FE67B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x431A57B6B4BCC).檢(expr)) ((0x431C37B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x432137B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x4308C7B6B4BCC))) (互!((bool),(1),(0x430B17B6B4BCC)))
-								(互!((float),(1.000),(0x430DF7B6B4BCC)))
+								(互!((bool),(0),(0x432B97B6B4BCC))) (互!((bool),(1),(0x432DE7B6B4BCC)))
+								(互!((float),(1.000),(0x4330C7B6B4BCC)))
 							}],
 						]))
 					}
@@ -11888,7 +11909,10 @@ with condition"},q{
 					{
 						case "bool": {
 							put(' '); /+placeholder+/
-							subCells.back.outerSize = vec2(1, 1) * DefaultFontHeight; 
+							subCells.back.outerSize = vec2(
+								controlProps.w.ifz(controlProps.btnEvent ? 3 : 1), 
+								controlProps.h.ifz(controlProps.btnEvent ? 1.25 : 1), 
+							) * DefaultFontHeight; 
 						}break; 
 						case 	"float",
 							"int": {
@@ -12017,18 +12041,49 @@ with condition"},q{
 						); 
 						
 						bool userModified; 
+						void doSlider(T)(ref T val)
+						{
+							theme = "tool"; 
+							userModified = Slider
+								(
+								val, commonParams[], 
+								range(
+									controlProps.min, controlProps.max, controlProps.step, 
+									cast(RangeType)controlProps.type
+								), 
+								{
+									outerSize = placeholder.innerSize; 
+									with((cast(SliderClass)(actContainer)))
+									{
+										rulerSides 	= (cast(ubyte)(controlProps.rulerSides)),
+										rulerDiv0 	= controlProps.rulerDiv0,
+										rulerDiv1 	= controlProps.rulerDiv1; 
+									}
+								}
+							); 
+						} 
+						
 						static if(is(T==bool))
-						{ userModified = ChkBox(next, "", commonParams[]).clicked; }
+						{
+							theme = "tool"; 
+							
+							if(controlProps.btnEvent)
+							{
+								auto capt = controlProps.btnCaption; 
+								if(capt.empty && operator=="同!") capt = operands[1].byShallowChar.text.strip; 
+								next = Btn(
+									capt, commonParams[], VAlign.center,
+									{ outerSize = placeholder.innerSize; }
+								).down; 
+								userModified = next != act; 
+							}
+							else
+							{ userModified = ChkBox(next, "", commonParams[]).clicked; }
+						}
 						else static if(is(T==float))
-						{
-							theme = "tool"; 
-							userModified = Slider(next, range(controlProps.min, controlProps.max, controlProps.step, cast(RangeType)controlProps.type), commonParams[], { outerSize = placeholder.innerSize; }); 
-						}
+						{ doSlider(next); }
 						else static if(is(T==int))
-						{
-							theme = "tool"; 
-							userModified = Slider(next, range(controlProps.min, controlProps.max, controlProps.step, cast(RangeType)controlProps.type), commonParams[], { outerSize = placeholder.innerSize; }); 
-						}
+						{ doSlider(next); }
 						
 						
 						if(useDbgValues)
