@@ -9106,6 +9106,8 @@ version(/+$DIDE_REGION+/all) {
 		)
 		auto aaaa = ((){ with(op(expr1)) { expr2; }}()); 
 		
+		enum NiceExpressionClass { NiceExpression, Inspector } 
+		private alias NEC = NiceExpressionClass; 
 		
 		struct NiceExpressionTemplate
 		{
@@ -9113,7 +9115,9 @@ version(/+$DIDE_REGION+/all) {
 			NiceExpressionType type; 
 			SyntaxKind syntax; 
 			NodeStyle invertMode; 
-			string example, operator, textCode, rearrangeCode, drawCode, initCode, uiCode; 
+			string example, operator; 
+			string textCode, rearrangeCode, drawCode, initCode, uiCode; 
+			NiceExpressionClass customClass; 
 		} 
 		
 		version(/+$DIDE_REGION Mixin Table helpers+/all)
@@ -9948,13 +9952,11 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41C5B7B6B4BCC).檢(expr))},
+				q{((0x41CF57B6B4BCC).檢(expr))},
 				
-				".檢",
-				q{buildInspector; },
-				q{arrangeInspector(No.isHalfSize); },
-				q{drawInspector; },
-				initCode: q{initInspector; }
+				".檢", 
+				customClass: NEC.Inspector
+				
 			},
 			
 			{
@@ -9962,13 +9964,11 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41D777B6B4BCC).檢 (expr))},
+				q{((0x41DB87B6B4BCC).檢 (expr))},
 				
-				".檢 ",
-				q{buildInspector; },
-				q{arrangeInspector(No.isHalfSize); },
-				q{drawInspector; },
-				initCode: q{initInspector; }
+				".檢 ", 
+				customClass: NEC.Inspector
+				
 			},
 			
 			{
@@ -9995,8 +9995,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x4204F7B6B4BCC)))(互!((bool),(1),(0x420737B6B4BCC)))
-					(互!((float),(1.000),(0x4209E7B6B4BCC)))
+					(互!((bool),(0),(0x420377B6B4BCC)))(互!((bool),(1),(0x4205B7B6B4BCC)))
+					(互!((float),(1.000),(0x420867B6B4BCC)))
 				},
 				
 				"互!",
@@ -10026,8 +10026,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x424217B6B4BCC)))(互!((bool),(1),(0x424457B6B4BCC)))
-					(互!((float),(1.000),(0x424707B6B4BCC)))
+					(互!((bool),(0),(0x424097B6B4BCC)))(互!((bool),(1),(0x4242D7B6B4BCC)))
+					(互!((float),(1.000),(0x424587B6B4BCC)))
 				},
 				
 				"同!",
@@ -10136,13 +10136,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x431A57B6B4BCC).檢(expr)) ((0x431C37B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x432137B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4318D7B6B4BCC).檢(expr)) ((0x431AB7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x431FB7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x432B97B6B4BCC))) (互!((bool),(1),(0x432DE7B6B4BCC)))
-								(互!((float),(1.000),(0x4330C7B6B4BCC)))
+								(互!((bool),(0),(0x432A17B6B4BCC))) (互!((bool),(1),(0x432C67B6B4BCC)))
+								(互!((float),(1.000),(0x432F47B6B4BCC)))
 							}],
 						]))
 					}
@@ -10696,7 +10696,7 @@ with condition"},q{
 					with(statementRow)
 					{
 						clearSubCells; 
-						appendCell(new NiceExpression(statementRow, tIdx, args)); 
+						appendCell(NiceExpression.create(statementRow, tIdx, args)); 
 						needMeasure; 
 					}
 				} bool TRY(Args...)(NiceExpressionType type, string op, Args args)
@@ -10767,7 +10767,7 @@ with condition"},q{
 					static if(is(Unqual!(Args[0])==int))
 					{
 						if(args[0]) {
-							outerCell = new NiceExpression(blk.parent, args[0], args[1..$]); 
+							outerCell = NiceExpression.create(blk.parent, args[0], args[1..$]); 
 							return true; 
 						}
 						return false; 
@@ -11035,6 +11035,28 @@ with condition"},q{
 			initialize; 
 		} 
 		
+		static NiceExpression create(
+			Container parent, int templateIdx_, 
+			CodeColumn col0=null, CodeColumn col1 = null, 
+			CodeColumn col2 = null
+		)
+		{
+			//this constructor will create the appropriate class.
+			enforce(templateIdx_.inRange(niceExpressionTemplates)); 
+			
+			final switch(niceExpressionTemplates[templateIdx_].customClass)
+			{
+				static foreach(n; EnumMemberNames!NEC)
+				mixin(
+					iq{
+						case NEC.$(n): 
+						return new $(n)(__traits(parameters)); 
+					}.text
+				); 
+			}
+			
+		} 
+		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
 			CodeColumn buildMessageColumn; 
@@ -11203,19 +11225,6 @@ with condition"},q{
 					}
 				}
 			} 
-			void initInspector()
-			{
-				ulong id; 
-				if(auto m = moduleOf(this))
-				{
-					auto s = operands[0].shallowText.strip; 
-					ulong a; 
-					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
-					else	a = a.to!ulong.ifThrown(0); 
-					id = m.addInspector(this, (cast(uint)(a>>32))); 
-				}
-			} 
-			
 			void initInteractiveNode()
 			{
 				controlPropsText = operands[0].extractTrailingCommentText!""; 
@@ -11238,9 +11247,20 @@ with condition"},q{
 			mixin(("initCode").調!GEN_switch); 
 		} 
 		
-		override void buildSourceText(ref SourceTextBuilder builder)
+		final override void buildSourceText(ref SourceTextBuilder builder)
 		{
 			with(builder) {
+				const brackets = getTemplate.type.hasListBrackets; 
+				if(brackets) put('('); 
+				
+				doBuildSourceText(builder); 
+				
+				if(brackets) put(')'); 
+			}
+		} void doBuildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder)
+			{
 				void op(int i)
 				{ put("(", operands[i], ")"); } 
 				
@@ -11468,32 +11488,17 @@ with condition"},q{
 					put(')'); 
 				} 
 				
-				void buildInspector()
-				{
-					ulong id; 
-					if(auto m = moduleOf(this))
-					{
-						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
-						else	id = m.getInspectorId(this); 
-					}
-					const h = "0x" ~ id.to!string(16); 
-					put("(" ~ h ~ ")"); put(operator); op(1); 
-				} 
-				
 				//------------------------------------------------------------------------
 				
-				
-				const brackets = getTemplate.type.hasListBrackets; 
-				if(brackets) put("("); 
 				mixin(("textCode").調!GEN_switch); 
-				if(brackets) put(")"); 
 			}
 		} 
-		override void rearrange()
+		final override void rearrange()
 		{
 			const inverseMode = getTemplate.invertMode; 
 			rearrangeNodeWasCalled = false; //this flag will be set inside CodeNode.rearrange()
-			with(nodeBuilder(syntax, inverseMode))
+			auto builder = nodeBuilder(syntax, inverseMode); 
+			with(builder)
 			{
 				version(/+$DIDE_REGION initialize stuff+/all)
 				{
@@ -11503,7 +11508,29 @@ with condition"},q{
 					//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
 					
 					foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
+				}
+				
+				doRearrange(builder); 
+				
+				version(/+$DIDE_REGION finalize+/all)
+				{
+					if(!rearrangeNodeWasCalled)
+					{
+						//If super.rearrange() is not called in the plugins, this will call now.
+						super.rearrange; 
+					}
 					
+					rearrange_appendBuildMessages; 
+				}
+			}
+		} 
+		
+		void doRearrange(ref CodeNodeBuilder builder)
+		{
+			with(builder)
+			{
+				version(/+$DIDE_REGION scripting helper functions+/all)
+				{
 					void op(int i)
 					{ put(operands[i]); } 
 					
@@ -11846,63 +11873,7 @@ with condition"},q{
 					putNL; op(0); 
 				} 
 				
-				void arrangeInspector(Flag!"isHalfSize" isHalfSize)
-				{
-					ulong id; 
-					if(auto m = moduleOf(this))
-					{ id = m.getInspectorId(this); }
-					
-					op(1); //op(1) is the the expression, op(0) is the id, but it is not used.
-					
-					bkColor = border.color = clBlack; 
-					with(style) {
-						fontColor 	= clWhite,
-						bkColor 	= clBlack,
-						fontHeight 	= ((isHalfSize)?(DefaultSubScriptFontHeight) :(DefaultFontHeight)),
-						bold 	= false; 
-					}
-					
-					
-					const hasNewLine = operator.endsWith(' '); 
-					
-					if(debugValue!="")
-					{
-						if(hasNewLine) putNL; else put(' '); 
-						
-						enum DideCodePrefix = "$"~"DIDE_CODE "; 
-						if(debugValue.startsWith(DideCodePrefix))
-						{
-							//Note: Insert dlang managed code. It's full size.
-							const src = debugValue[DideCodePrefix.length .. $]; 
-							auto col = new CodeColumn(this, src, (mixin(舉!((TextFormat),q{managed_optionalBlock}))), lineIdx)
-							; 
-							
-							operands[0] = col; op(0); //reuse former operand of ID
-						}
-						else
-						{
-							//just insert plain text fast
-							auto 	cells 	= (mixin(求map(q{line},q{
-								debugValue
-								.splitLines
-							},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
-								col 	= new CodeColumn(this, cells); 
-							
-							with(col) {
-								margin.set(0); 
-								border = Border.init; 
-								padding.set(0, 2); 
-								bkColor = clBlack; 
-							}
-							
-							if(isHalfSize)
-							{ col.halfSize = true; (mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); }
-							
-							operands[0] = col; op(0); //reuse former operand of ID
-						}
-					}
-				} 
-				
+				
 				void arrangeInteractiveNode()
 				{
 					switch(controlType)
@@ -11928,18 +11899,7 @@ with condition"},q{
 				
 				////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 				
-				version(/+$DIDE_REGION Call the plugin function, finalize+/all)
-				{
-					mixin(("rearrangeCode").調!GEN_switch); 
-					
-					if(!rearrangeNodeWasCalled)
-					{
-						//If super.rearrange() is not called in the plugins, this will call now.
-						super.rearrange; 
-					}
-					
-					rearrange_appendBuildMessages; 
-				}
+				mixin(("rearrangeCode").調!GEN_switch); 
 			}
 		} 
 		
@@ -11966,31 +11926,6 @@ with condition"},q{
 					lineRel(2, 5); 
 					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
 					lineRel(operands[0].outerWidth-2, 0); 
-				} 
-				
-				void drawInspector()
-				{
-					static if(0)
-					{
-						ulong id; 
-						if(auto m = moduleOf(this))
-						{ id = m.getInspectorId(this); }
-						dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
-					}
-					
-					
-					{
-						//highlight changed debugvalues
-						const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
-						if(du<1)
-						{
-							const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
-							dr.alpha = sqr(1-du); dr.color = mix(clYellow, clWhite, 1-dc); 
-							dr.lineWidth = -4; 
-							dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
-							dr.alpha = 1; 
-						}
-					}
 				} 
 				
 				void queueInteractiveDraw()
@@ -12112,7 +12047,131 @@ with condition"},q{
 			}
 			
 		} 
+		
 		
+		static class Inspector : NiceExpression
+		{
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{
+				super(__traits(parameters)); 
+				
+				/+ulong id; +/
+				if(auto m = moduleOf(this))
+				{
+					auto s = operands[0].shallowText.strip; 
+					ulong a; 
+					if(s.startsWith("0x"))	a = s[2..$].to!ulong(16).ifThrown(0); 
+					else	a = a.to!ulong.ifThrown(0); 
+					/+id = +/m.addInspector(this, (cast(uint)(a>>32))); 
+				}
+			} 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{
+						if(m.isSaving)	id = m.addInspector(this, (cast(uint)(result.length))); 
+						else	id = m.getInspectorId(this); 
+					}
+					const h = "0x" ~ id.to!string(16); 
+					put("(" ~ h ~ ")"); put(operator); put("(", operands[1], ")"); 
+				}
+			} 
+			
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
+				{
+					enum isHalfSize = false; 
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{ id = m.getInspectorId(this); }
+					
+					put(operands[1]); //op(1) is the the expression, op(0) is the id, but it is not used.
+					
+					bkColor = border.color = clBlack; 
+					with(style) {
+						fontColor 	= clWhite,
+						bkColor 	= clBlack,
+						fontHeight 	= ((isHalfSize)?(DefaultSubScriptFontHeight) :(DefaultFontHeight)),
+						bold 	= false; 
+					}
+					
+					
+					const hasNewLine = operator.endsWith(' '); 
+					
+					if(debugValue!="")
+					{
+						if(hasNewLine) putNL; else put(' '); 
+						
+						enum DideCodePrefix = "$"~"DIDE_CODE "; 
+						if(debugValue.startsWith(DideCodePrefix))
+						{
+							//Note: Insert dlang managed code. It's full size.
+							const src = debugValue[DideCodePrefix.length .. $]; 
+							auto col = new CodeColumn(this, src, (mixin(舉!((TextFormat),q{managed_optionalBlock}))), lineIdx)
+							; 
+							
+							operands[0] = col; put(operands[0]); //reuse former operand of ID
+						}
+						else
+						{
+							//just insert plain text fast
+							auto 	cells 	= (mixin(求map(q{line},q{
+								debugValue
+								.splitLines
+							},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
+								col 	= new CodeColumn(this, cells); 
+							
+							with(col) {
+								margin.set(0); 
+								border = Border.init; 
+								padding.set(0, 2); 
+								bkColor = clBlack; 
+							}
+							
+							if(isHalfSize)
+							{ col.halfSize = true; (mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); }
+							
+							operands[0] = col; put(operands[0]); //reuse former operand of ID
+						}
+					}
+				}
+			} 
+			
+			override void draw(Drawing dr)
+			{
+				super.draw(dr); 
+				
+				static if(0)
+				{
+					ulong id; 
+					if(auto m = moduleOf(this))
+					{ id = m.getInspectorId(this); }
+					dr.color = clWhite; dr.fontHeight = 3; dr.textOut(outerPos, "0x"~id.to!string(16)); 
+				}
+				
+				
+				{
+					//highlight changed debugvalues
+					const du = (application.tickTime-debugValueUpdatedTime).value(0.5f*second); 
+					if(du<1)
+					{
+						const dc = (application.tickTime-debugValueChangedTime).value(0.5f*second).min(0, 1); 
+						dr.alpha = sqr(1-du); dr.color = mix(clYellow, clWhite, 1-dc); 
+						dr.lineWidth = -4; 
+						dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
+						dr.alpha = 1; 
+					}
+				}
+			} 
+		} 
 	} 
 }
 
