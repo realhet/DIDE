@@ -38,6 +38,7 @@ version(/+$DIDE_REGION+/all)
 	
 	//Todo: Vertical tab a commentbe is.
 	
+	
 	/+
 		Todo: Ctrl+Alt+LMB multicursor bug
 		01,
@@ -7059,8 +7060,8 @@ version(/+$DIDE_REGION+/all)
 					case "function", "invariant": 	return clSilver; 
 					case "__region": 	return clGray; 
 						
-					case "try": 	return (RGB(200, 250, 189)); 
-					case "scope": 	return (RGB(50, 250, 189)); 
+					case "try": 	return RGB(200, 250, 189); 
+					case "scope": 	return RGB(50, 250, 189); 
 						
 					case "auto": 	return clAqua; 
 					
@@ -9134,7 +9135,17 @@ version(/+$DIDE_REGION+/all) {
 		)
 		auto aaaa = ((){ with(op(expr1)) { expr2; }}()); 
 		
-		enum NiceExpressionClass { NiceExpression, ColorNode, MixinNode, MixinTable, SigmaOp, Inspector, InteractiveValue } 
+		enum NiceExpressionClass
+		{
+			NiceExpression, 
+			ColorNode, 
+			MixinNode, 
+			MixinGenerator, 
+			MixinTable, 
+			SigmaOp, 
+			Inspector, 
+			InteractiveValue 
+		} 
 		private alias NEC = NiceExpressionClass; 
 		
 		struct NiceExpressionTemplate
@@ -9312,7 +9323,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.unaryOp, 
 				skBasicType, 
 				NodeStyle.dim,
-				q{(RGB(64, 128, 255))},
+				q{RGB(64, 128, 255)},
 				"RGB",
 				customClass: NEC.ColorNode
 			},
@@ -9322,7 +9333,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.unaryOp, 
 				skBasicType, 
 				NodeStyle.dim,
-				q{(RGBA(64, 32, 255, 128))},
+				q{RGBA(64, 32, 255, 128)},
 				"RGBA",
 				customClass: NEC.ColorNode
 			},
@@ -9730,7 +9741,7 @@ version(/+$DIDE_REGION+/all) {
 				"體",
 				customClass: NEC.MixinNode,
 				rearrangeCode: q{
-					customRerrange
+					customRearrange
 					(builder, structuredColor("struct"), "{", "}"); 
 				}
 			},
@@ -9744,7 +9755,7 @@ version(/+$DIDE_REGION+/all) {
 				"舉",
 				customClass: NEC.MixinNode,
 				rearrangeCode: q{
-					customRerrange
+					customRearrange
 					(builder, structuredColor("enum"), ".", ""); 
 				}
 			},
@@ -9758,7 +9769,7 @@ version(/+$DIDE_REGION+/all) {
 				"幟",
 				customClass: NEC.MixinNode,
 				rearrangeCode: q{
-					customRerrange
+					customRearrange
 					(builder, structuredColor("enum"), "(", ")"); 
 				}
 			},
@@ -9865,23 +9876,19 @@ version(/+$DIDE_REGION+/all) {
 				"mixinGenerator1", 
 				NET.mixinGeneratorOp, 
 				skKeyword, NodeStyle.bright,
-				q{mixin((expr).GEN!q{script}); },
-				
+				q{mixin((expr).GEN!q{script}); },
 				".GEN!",
-				q{buildMixinGenerator; },
-				q{arrangeMixinGenerator(false); }
-				
+				customClass: NEC.MixinGenerator
 			},
 			
 			{
 				"mixinGenerator2", 
 				NET.mixinGeneratorOp, 
 				skKeyword, NodeStyle.bright,
-				q{mixin((expr) .GEN!q{script}); },
-				
+				q{mixin((expr) .GEN!q{script}); },
 				" .GEN!",
-				q{buildMixinGenerator; },
-				q{arrangeMixinGenerator(true); }
+				customClass: NEC.MixinGenerator,
+				initCode: q{isMultiLine = true; }
 				
 			},
 			
@@ -9889,12 +9896,10 @@ version(/+$DIDE_REGION+/all) {
 				"mixinGenerator3", 
 				NET.mixinFunctionCallOp, 
 				skKeyword, NodeStyle.bright,
-				q{mixin((expr).調!fun); },
-				
+				q{mixin((expr).調!fun); },
 				"調",
-				q{buildMixinFunctionCall; },
-				q{arrangeMixinFunctionCall; }
-				
+				customClass: NEC.MixinGenerator,
+				initCode: q{isFunctionCall = true; }
 			},
 			
 			/+
@@ -9988,7 +9993,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x420B37B6B4BCC).檢(expr))},
+				q{((0x420C47B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10000,7 +10005,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x421767B6B4BCC).檢 (expr))},
+				q{((0x421877B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10030,8 +10035,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x423F77B6B4BCC)))(互!((bool),(1),(0x4241B7B6B4BCC)))
-					(互!((float),(1.000),(0x424467B6B4BCC)))
+					(互!((bool),(0),(0x424087B6B4BCC)))(互!((bool),(1),(0x4242C7B6B4BCC)))
+					(互!((float),(1.000),(0x424577B6B4BCC)))
 				},
 				
 				"互!",
@@ -10047,8 +10052,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x426247B6B4BCC)))(互!((bool),(1),(0x426487B6B4BCC)))
-					(互!((float),(1.000),(0x426737B6B4BCC)))
+					(互!((bool),(0),(0x426357B6B4BCC)))(互!((bool),(1),(0x426597B6B4BCC)))
+					(互!((float),(1.000),(0x426847B6B4BCC)))
 				},
 				
 				"同!",
@@ -10099,8 +10104,8 @@ dot, cross"},q{
 							}],
 							[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
 							[q{"color literals"},q{
-								(RGB( , , )) 
-								(RGBA( , , , ))
+								(RGB , , ) 
+								(RGBA , , , )
 							}],
 						]))
 					}
@@ -10123,13 +10128,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42FED7B6B4BCC).檢(expr)) ((0x4300B7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4305B7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x42FFA7B6B4BCC).檢(expr)) ((0x430187B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x430687B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x431017B6B4BCC))) (互!((bool),(1),(0x431267B6B4BCC)))
-								(互!((float),(1.000),(0x431547B6B4BCC)))
+								(互!((bool),(0),(0x4310E7B6B4BCC))) (互!((bool),(1),(0x431337B6B4BCC)))
+								(互!((float),(1.000),(0x431617B6B4BCC)))
 							}],
 						]))
 					}
@@ -10711,7 +10716,7 @@ with condition"},q{
 							if(auto right = asTokenString(row.subCells.back))
 							{
 								const op = row.chars[1..$-1].text; 
-								{ if(TRY((mixin(舉!((NiceExpressionType),q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
+								{ if(TRY((mixin(舉!(NiceExpressionType,q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
 							}
 							if(row.length>=4 && row.chars[1]=='.')
 							{
@@ -10720,7 +10725,7 @@ with condition"},q{
 								{
 									const op = row.chars[2..exclIdx].text; 
 									{
-										if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
+										if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
 										{
 											//only leave the function part on the row.
 											row.subCells = row.subCells[exclIdx+1..$]; row.refreshTabIdx; 
@@ -10737,7 +10742,7 @@ with condition"},q{
 				else if(lastCh>=lowestSpecialUnicodeChar)
 				{
 					const op = statementRow.chars.text; 
-					{ if(TRY((mixin(舉!((NiceExpressionType),q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
+					{ if(TRY((mixin(舉!(NiceExpressionType,q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
 				}
 			} 
 			
@@ -10765,29 +10770,29 @@ with condition"},q{
 				
 				void processOpList(string op, CodeColumn content)
 				{
-					if(TRY((mixin(舉!((NiceExpressionType),q{unaryOp}))) /+Note: (op(expr))+/, op, content)) return; 
+					if(TRY((mixin(舉!(NiceExpressionType,q{unaryOp}))) /+Note: (op(expr))+/, op, content)) return; 
 					//Opt: check the type of the first item and the first row's length, then only call one of these
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
 						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{twoParamOp}))) /+Note: (op(expr,expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{twoParamOp}))) /+Note: (op(expr,expr))+/, op))
 					{
 						auto params = extractListParams(content); 
 						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamOp}))) /+Note: (op(expr,expr,expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{threeParamOp}))) /+Note: (op(expr,expr,expr))+/, op))
 					{
 						auto params = extractListParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamEQEOp}))) /+Note: (op(expr,q{},expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{threeParamEQEOp}))) /+Note: (op(expr,q{},expr))+/, op))
 					{
 						auto params = extractListTokenStringParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
@@ -10798,7 +10803,7 @@ with condition"},q{
 				
 				void processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
 				{
-					if(TRY((mixin(舉!((NiceExpressionType),q{binaryOp}))) /+Note: ((expr)op(expr))+/, op, leftContent, rightContent)) return; 
+					if(TRY((mixin(舉!(NiceExpressionType,q{binaryOp}))) /+Note: ((expr)op(expr))+/, op, leftContent, rightContent)) return; 
 					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryOp}))) /+Note: ((expr)op(expr)op(expr))+/, op))
 					{
 						const mIdx = op.countUntil('￼'); 
@@ -10823,7 +10828,7 @@ with condition"},q{
 							const innerOp = headerRow.chars[0..$-1].text; 
 							if(
 								TRY(
-									(mixin(舉!((NiceExpressionType),q{mixinTableInjectorOp}))) /+Note: ((){with(op(expr)){expr}}())+/, 
+									(mixin(舉!(NiceExpressionType,q{mixinTableInjectorOp}))) /+Note: ((){with(op(expr)){expr}}())+/, 
 									innerOp, expr1.content, with_.block
 								)
 							) return; 
@@ -10838,7 +10843,7 @@ with condition"},q{
 					{
 						string mixinOp = row2.chars[0].text; 
 						{
-							if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryMixinEQOp}))) /+Note: (mixin(op!((expr),q{code})))+/, mixinOp))
+							if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{binaryMixinEQOp}))) /+Note: (mixin(op!((expr),q{code})))+/, mixinOp))
 							if(auto right2 = asListBlock(row2.subCells.back))
 							if(right2.content.rowCount==1)
 							if(auto row3 = right2.content.rows[0])
@@ -10853,16 +10858,16 @@ with condition"},q{
 						auto params = extractTokenStringParams(right2.content); 
 						const mixinOp = row2.chars[0..$-1].text; 
 						if(params.length==1)
-						{ if(TRY((mixin(舉!((NiceExpressionType),q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
+						{ if(TRY((mixin(舉!(NiceExpressionType,q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
 						else if(params.length==2)
-						{ if(TRY((mixin(舉!((NiceExpressionType),q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
+						{ if(TRY((mixin(舉!(NiceExpressionType,q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
 						else if(params.length==3)
-						{ if(TRY((mixin(舉!((NiceExpressionType),q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
+						{ if(TRY((mixin(舉!(NiceExpressionType,q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
 					}
 					else
 					{
 						const mixinOp = row2.chars.text; 
-						if(TRY((mixin(舉!((NiceExpressionType),q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
+						if(TRY((mixin(舉!(NiceExpressionType,q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
 					}
 				} 
 				
@@ -10888,7 +10893,7 @@ with condition"},q{
 							if(op.endsWith('￼'))
 							{
 								if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
-								{ { if(TRY((mixin(舉!((NiceExpressionType),q{castOp}))) /+Note: (op(expr)(expr))+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
+								{ { if(TRY((mixin(舉!(NiceExpressionType,q{castOp}))) /+Note: (op(expr)(expr))+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
 							}
 							else
 							{ processOpList(op, right.content); }
@@ -10902,7 +10907,7 @@ with condition"},q{
 						const op = row.chars[1..$-1].text; 
 						{
 							//Example: op = .genericArg!`
-							if(TRY((mixin(舉!((NiceExpressionType),q{namedUnaryOp}))) /+Note: ((expr)op q{code})+/, op, left.content, right.content)) return; 
+							if(TRY((mixin(舉!(NiceExpressionType,q{namedUnaryOp}))) /+Note: ((expr)op q{code})+/, op, left.content, right.content)) return; 
 						}
 					}
 				}
@@ -10912,7 +10917,7 @@ with condition"},q{
 					if(left.content)
 					{
 						const op = row.chars[1..$-1].text; //No attributes handled here.
-						{ if(TRY((mixin(舉!((NiceExpressionType),q{anonymMethod}))) /+Note: ((expr)op{code})+/, op, left.content, rightContent)) return; }
+						{ if(TRY((mixin(舉!(NiceExpressionType,q{anonymMethod}))) /+Note: ((expr)op{code})+/, op, left.content, rightContent)) return; }
 					}
 				}
 			} 
@@ -11098,7 +11103,7 @@ with condition"},q{
 		.replace("$", field); 
 		
 		final void initialize()
-		{ mixin(("initCode").調!GEN_switch); } 
+		{ mixin(("initCode").調!((((GEN_switch))))); } 
 		
 		final override void buildSourceText(ref SourceTextBuilder builder)
 		{
@@ -11125,25 +11130,12 @@ with condition"},q{
 					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
 				} 
 				
-				void buildMixinGenerator()
-				{
-					put("mixin"); put('('); 
-						op(0); put(operator); put("q{", operands[1], "}"); 
-					put(')'); 
-				} 
-				
-				void buildMixinFunctionCall()
-				{
-					put("mixin"); put('('); 
-						op(0); put("."~operator~"!"); put(operands[1]); 
-					put(')'); 
-				} 
-				
 				//------------------------------------------------------------------------
 				
-				mixin(("textCode").調!GEN_switch); 
+				mixin(("textCode").調!((((GEN_switch))))); 
 			}
-		} 
+		} 
+		
 		final override void rearrange()
 		{
 			const inverseMode = getTemplate.invertMode; 
@@ -11175,7 +11167,7 @@ with condition"},q{
 				}
 			}
 		} 
-		
+		
 		void doRearrange(ref CodeNodeBuilder builder)
 		{
 			with(builder)
@@ -11227,43 +11219,14 @@ with condition"},q{
 					}
 				} 
 				
-				void arrangeMixinGenerator(bool isMultiLine)
-				{
-					if(isMultiLine) flags.hAlign = HAlign.right; 
-					style.bkColor = bkColor = structuredColor("static if"); 
-					op(0); if(isMultiLine) putNL; 
-					put(" mixin "); op(1); 
-					
-					super.rearrange; 
-					
-					subCells[0].outerPos.x = 0; 
-				} 
-				
-				void arrangeMixinFunctionCall()
-				{
-					style.bkColor = bkColor = structuredColor("static if"); 
-					
-					if(const isSimple = operands[1].isDLangIdentifier)
-					{
-						with(operands[1]) {
-							fillColor(style.fontColor, style.bkColor); 
-							applyHalfSize; 
-						}
-						style.fontHeight = DefaultSubScriptFontHeight; 
-					}
-					
-					put(" mixin "); op(1); 
-					putNL; op(0); 
-				} 
-				
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 				
-				mixin(("rearrangeCode").調!GEN_switch); 
+				mixin(("rearrangeCode").調!((((GEN_switch))))); 
 			}
 		} 
 		
 		
-		
+		
 		override void draw(Drawing dr)
 		{
 			super.draw(dr); 
@@ -11287,12 +11250,12 @@ with condition"},q{
 					lineRel(operands[0].outerWidth-2, 0); 
 				} 
 				
-				mixin(("drawCode").調!GEN_switch); 
+				mixin(("drawCode").調!((((GEN_switch))))); 
 			}
 		} 
 		
 		final void generateUI(bool enabled_, int targetSurface_=1)
-		{ with(im) { mixin(("uiCode").調!GEN_switch); }} 
+		{ with(im) { mixin(("uiCode").調!((((GEN_switch))))); }} 
 		
 		static class ColorNode : NiceExpression
 		{
@@ -11305,7 +11268,7 @@ with condition"},q{
 			override void doBuildSourceText(ref SourceTextBuilder builder)
 			{
 				with(builder)
-				{ put(operator); put(operands[0]); }
+				{ put(operator); put("(", operands[0], ")"); }
 			} 
 			
 			override void doRearrange(ref CodeNodeBuilder builder)
@@ -11361,13 +11324,13 @@ with condition"},q{
 					put('('); 
 						put(operator~'!'); 
 						put('('); 
-							put(operands[0]); put(','); put("q{", operands[1], "}"); 
+							put("(", operands[0], ")"); put(','); put("q{", operands[1], "}"); 
 						put(')'); 
 					put(')'); 
 				}
 			} 
 			
-			void customRerrange(ref CodeNodeBuilder builder, RGB targetColor, string prefix, string postfix)
+			void customRearrange(ref CodeNodeBuilder builder, RGB targetColor, string prefix, string postfix)
 			{
 				with(builder)
 				{
@@ -11389,6 +11352,64 @@ with condition"},q{
 					}
 					
 					put(operands[0]); putNL; put(prefix); put(operands[1]); put(postfix); 
+				}
+			} 
+		} 
+		
+		static class MixinGenerator : NiceExpression
+		{
+			bool 	isMultiLine, 
+				isFunctionCall; 
+			
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{
+					put("mixin"); put('('); 
+						put("(", operands[0], ")"); 
+						if(isFunctionCall)	{ put("."~operator~"!"); put(operands[1]); }
+					else	{ put(operator); put("q{", operands[1], "}"); }
+					put(')'); 
+				}
+			} 
+			
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
+				{
+					if(isFunctionCall)
+					{
+						style.bkColor = bkColor = structuredColor("static if"); 
+						
+						if(const isSimple = operands[1].isDLangIdentifier)
+						{
+							with(operands[1]) {
+								fillColor(style.fontColor, style.bkColor); 
+								applyHalfSize; 
+							}
+							style.fontHeight = DefaultSubScriptFontHeight; 
+						}
+						
+						put(" mixin "); put(operands[1]); 
+						putNL; put(operands[0]); 
+					}
+					else
+					{
+						if(isMultiLine) flags.hAlign = HAlign.right; 
+						style.bkColor = bkColor = structuredColor("static if"); 
+						put(operands[0]); if(isMultiLine) putNL; 
+						put(" mixin "); put(operands[1]); 
+						
+						CodeNode.rearrange; 
+						
+						subCells[0].outerPos.x = 0; 
+					}
 				}
 			} 
 		} 
@@ -11988,7 +12009,7 @@ with condition"},q{
 						{
 							//Note: Insert dlang managed code. It's full size.
 							const src = debugValue[DideCodePrefix.length .. $]; 
-							auto col = new CodeColumn(this, src, (mixin(舉!((TextFormat),q{managed_optionalBlock}))), lineIdx)
+							auto col = new CodeColumn(this, src, (mixin(舉!(TextFormat,q{managed_optionalBlock}))), lineIdx)
 							; 
 							
 							operands[0] = col; put(operands[0]); //reuse former operand of ID
@@ -12859,8 +12880,8 @@ l2
 		{
 			//Note: this is deprecated. There is a new Table based showcase.
 			
-			(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGB(r, g, b))
-			((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBA(r, g, b, a))
+			(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGBr, g, b)
+			((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBAr, g, b, a)
 			((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
 			
 			//Note: scalar operations
@@ -12883,13 +12904,13 @@ l2
 			((a).cross(b)); 	//cross: ((a).cross(b))
 			
 			//Note: color constants
-			RGB(68, 255,   0), RGB(.5, 1, 0), RGBA(0xFF00FF80),
-			(RGB(68, 255,   0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
+			(RGB(68, 255,		 0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)),
+			(RGB(68, 255,		 0)), (RGB(.5, 1, 0)), (RGBA(0xFF00FF80)); 
 			//Todo: Should go inside enum; !!!
 			
 			
 			//Note: named parameters
-			Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); //Todo: multiline style
+			Text(((clRed).genericArg!q{fontColor}), (((RGB0xFF0040)).genericArg!q{bkColor}), "text"); //Todo: multiline style
 			//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
 			
 			//Note: tenary operator
@@ -12904,9 +12925,9 @@ l2
 				
 			((x).PR!(/++/)); 	//probe: ((x).PR!(`result text`))
 			
-			auto a = (mixin(體!((RGB),q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
-			auto a = (mixin(舉!((GPUVendor),q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
-			auto a = (mixin(幟!((CardSuit),q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
+			auto a = (mixin(體!(RGB,q{red: 29, green: 255, blue: 50}))); 	/+/+Code: auto a = (mixin(體!((Type),q{StructInitializer})));+/+/
+			auto a = (mixin(舉!(GPUVendor,q{AMD}))); 	/+/+Code: auto a = (mixin(舉!((Type),q{EnumProperty})));+/+/
+			auto a = (mixin(幟!(CardSuit,q{hearts | caro}))); 	/+/+Code: auto a = (mixin(幟!((Type),q{Flags})));+/+/
 			
 			auto a = 	(cast(shared int)(1.5f+rnd(3))) +
 				(cast (shared int)(1.5f+rnd(3)+blablabla)); /+
