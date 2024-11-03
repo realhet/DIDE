@@ -11103,7 +11103,7 @@ with condition"},q{
 		.replace("$", field); 
 		
 		final void initialize()
-		{ mixin(("initCode").調!((((GEN_switch))))); } 
+		{ mixin(("initCode").調!GEN_switch); } 
 		
 		final override void buildSourceText(ref SourceTextBuilder builder)
 		{
@@ -11132,7 +11132,7 @@ with condition"},q{
 				
 				//------------------------------------------------------------------------
 				
-				mixin(("textCode").調!((((GEN_switch))))); 
+				mixin(("textCode").調!GEN_switch); 
 			}
 		} 
 		
@@ -11221,7 +11221,7 @@ with condition"},q{
 				
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 				
-				mixin(("rearrangeCode").調!((((GEN_switch))))); 
+				mixin(("rearrangeCode").調!GEN_switch); 
 			}
 		} 
 		
@@ -11250,12 +11250,12 @@ with condition"},q{
 					lineRel(operands[0].outerWidth-2, 0); 
 				} 
 				
-				mixin(("drawCode").調!((((GEN_switch))))); 
+				mixin(("drawCode").調!GEN_switch); 
 			}
 		} 
 		
 		final void generateUI(bool enabled_, int targetSurface_=1)
-		{ with(im) { mixin(("uiCode").調!((((GEN_switch))))); }} 
+		{ with(im) { mixin(("uiCode").調!GEN_switch); }} 
 		
 		static class ColorNode : NiceExpression
 		{
