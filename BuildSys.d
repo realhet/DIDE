@@ -1206,7 +1206,7 @@ Experimental:
 		} 
 		
 		
-		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?\(([0-9]+),([0-9]+)\): (.*)`
+		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))*\(([0-9]+),([0-9]+)\): (.*)`
 			/+1:fn 2:drive       3      4        5      6       7+/
 			/+drive:\ is optional.+/
 			/+Todo: detect multiple mixin line indices!+/; 
