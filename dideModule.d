@@ -1947,6 +1947,34 @@ version(/+$DIDE_REGION+/all)
 			put(block); 
 			if(showFix) put(postfix); 
 		} 
+		
+		// helper functions for NiceExpressions ----------------------------
+		void setSubscript()
+		{ style.fontHeight = DefaultSubScriptFontHeight; node.flags.yAlign = YAlign.bottom; } 
+		
+		void setFontColor(SyntaxKind sk)
+		{ style.fontColor = syntaxFontColor(sk); } 
+		
+		void withScaledFontHeight(float sc, void delegate() fun)
+		{
+			const oldFontHeight = style.fontHeight; scope(exit) style.fontHeight = oldFontHeight; 
+			style.fontHeight = (cast(ubyte)((iround(DefaultFontHeight * sc)))); 
+			fun(); 
+		} 
+		
+		void putNumberSubscript(string s)
+		{
+			setSubscript; 
+			setFontColor(skNumber); 
+			style.bold = false; 
+			put(s); 
+		}  void putTypeSubscript(string s)
+		{
+			setSubscript; 
+			setFontColor(skBasicType); 
+			style.bold = false; //not much room
+			put(s); 
+		} 
 	} 
 	
 }version(/+$DIDE_REGION+/all)
@@ -9106,7 +9134,7 @@ version(/+$DIDE_REGION+/all) {
 		)
 		auto aaaa = ((){ with(op(expr1)) { expr2; }}()); 
 		
-		enum NiceExpressionClass { NiceExpression, Inspector } 
+		enum NiceExpressionClass { NiceExpression, ColorNode, MixinNode, MixinTable, SigmaOp, Inspector, InteractiveValue } 
 		private alias NEC = NiceExpressionClass; 
 		
 		struct NiceExpressionTemplate
@@ -9286,8 +9314,7 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{(RGB(64, 128, 255))},
 				"RGB",
-				q{put(operator); op(0); },
-				q{arrangeRGB; /+Warning: !!!!!!!+/}
+				customClass: NEC.ColorNode
 			},
 			
 			{
@@ -9297,8 +9324,7 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{(RGBA(64, 32, 255, 128))},
 				"RGBA",
-				q{put(operator); op(0); },
-				q{arrangeRGB; /+Warning: !!!!!!!+/}
+				customClass: NEC.ColorNode
 			},
 			
 			
@@ -9663,40 +9689,6 @@ version(/+$DIDE_REGION+/all) {
 				}
 			},
 			
-			
-			{
-				"mixinStruct", 
-				NET.binaryMixinEQOp, 
-				skIdentifier1, 
-				NodeStyle.bright, 
-				q{(mixin(體!((Type),q{field: value, ...})))},
-				"體",
-				q{buildMixinText(operator); },
-				q{arrangeMixin(structuredColor("struct"), "{", "}"); }
-			},
-			
-			{
-				"mixinEnum", 
-				NET.binaryMixinEQOp, 
-				skIdentifier1, 
-				NodeStyle.bright, 
-				q{(mixin(舉!((Enum),q{member})))},      
-				"舉",
-				q{buildMixinText(operator); },
-				q{arrangeMixin(structuredColor("enum"), ".", ""); }
-			},
-			
-			{
-				"mixinFlags", 
-				NET.binaryMixinEQOp, 
-				skIdentifier1, 
-				NodeStyle.bright, 
-				q{(mixin(幟!((Enum),q{member1 | ...})))},
-				"幟",
-				q{buildMixinText(operator); },
-				q{arrangeMixin(structuredColor("enum"), "(", ")"); }
-			},
-			
 			{
 				"cast_0", 
 				NET.castOp, 
@@ -9728,6 +9720,49 @@ version(/+$DIDE_REGION+/all) {
 				}
 			},
 			
+			
+			{
+				"mixinStruct", 
+				NET.binaryMixinEQOp, 
+				skIdentifier1, 
+				NodeStyle.bright, 
+				q{(mixin(體!((Type),q{field: value, ...})))},
+				"體",
+				customClass: NEC.MixinNode,
+				rearrangeCode: q{
+					customRerrange
+					(builder, structuredColor("struct"), "{", "}"); 
+				}
+			},
+			
+			{
+				"mixinEnum", 
+				NET.binaryMixinEQOp, 
+				skIdentifier1, 
+				NodeStyle.bright, 
+				q{(mixin(舉!((Enum),q{member})))},      
+				"舉",
+				customClass: NEC.MixinNode,
+				rearrangeCode: q{
+					customRerrange
+					(builder, structuredColor("enum"), ".", ""); 
+				}
+			},
+			
+			{
+				"mixinFlags", 
+				NET.binaryMixinEQOp, 
+				skIdentifier1, 
+				NodeStyle.bright, 
+				q{(mixin(幟!((Enum),q{member1 | ...})))},
+				"幟",
+				customClass: NEC.MixinNode,
+				rearrangeCode: q{
+					customRerrange
+					(builder, structuredColor("enum"), "(", ")"); 
+				}
+			},
+			
 			
 			{
 				"mixinTable1", 
@@ -9751,17 +9786,17 @@ version(/+$DIDE_REGION+/all) {
 				},
 				
 				"表",
-				q{buildMixinTable; },
+				customClass: NEC.MixinTable,
+				initCode: 
 				q{
-					arrangeMixinTable(1)
+					doubleGridStyle 	= 1,
+					gridStyle 	= 1; 
 					/+
 						gridStyle: 	0 simple grid
 							1 +darker background
 							2 double line grid
-					+/; 
-				},
-				q{},
-				initCode: q{initMixinTable(1); }
+					+/
+				}
 			},
 			{
 				"mixinTable2", 
@@ -9813,17 +9848,17 @@ version(/+$DIDE_REGION+/all) {
 				},
 				
 				"表",
-				q{buildMixinTable; },
+				customClass: NEC.MixinTable,
+				initCode: 
 				q{
-					arrangeMixinTable(1)
+					doubleGridStyle 	= 1,
+					gridStyle 	= 1; 
 					/+
 						gridStyle: 	0 simple grid
 							1 +darker background
 							2 double line grid
-					+/; 
-				},
-				q{},
-				initCode: q{initMixinTable(1); }
+					+/
+				}
 			},
 			
 			{
@@ -9874,8 +9909,9 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{(mixin(求map(q{i=0},q{N-1},q{expr})))},
 				"求map",
-				q{buildSigmaOp; },
-				q{arrangeSigmaOp('⇶'); }
+				customClass: NEC.SigmaOp,
+				initCode: q{symbol = '⇶'; }
+				
 				//Todo: [sigma] => .array
 			},
 			
@@ -9886,8 +9922,8 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{(mixin(求each(q{i=0},q{N-1},q{expr})))},
 				"求each",
-				q{buildSigmaOp; },
-				q{arrangeSigmaOp('∀'); }
+				customClass: NEC.SigmaOp,
+				initCode: q{symbol = '∀'; }
 				
 				/+Todo: test 'ref variable'  'foreach ref'+/
 			},
@@ -9899,8 +9935,8 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim, 
 				q{(mixin(求sum(q{i},q{1, 2, 3},q{expr})))},
 				"求sum",
-				q{buildSigmaOp; },
-				q{arrangeSigmaOp('∑'); }
+				customClass: NEC.SigmaOp,
+				initCode: q{symbol = '∑'; }
 			},
 			
 			{
@@ -9910,8 +9946,8 @@ version(/+$DIDE_REGION+/all) {
 				NodeStyle.dim,
 				q{(mixin(求product(q{i=0},q{N-1},q{expr})))},
 				"求product",
-				q{buildSigmaOp; },
-				q{arrangeSigmaOp('∏'); }
+				customClass: NEC.SigmaOp,
+				initCode: q{symbol = '∏'; }
 			},
 			
 			
@@ -9952,7 +9988,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41CF57B6B4BCC).檢(expr))},
+				q{((0x420B37B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -9964,7 +10000,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x41DB87B6B4BCC).檢 (expr))},
+				q{((0x421767B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -9983,10 +10019,9 @@ version(/+$DIDE_REGION+/all) {
 				
 				"常!",
 				q{put(iq{$(operator)($(controlTypeWithComment))($(controlValueText))}.text); },
-				q{arrangeInteractiveNode; },
-				q{queueInteractiveDraw; },
-				initCode: 	q{initInteractiveNode; },
-				uiCode: 	q{interactiveUI(false); }
+				q{customRearrange(builder, false); },
+				customClass: 	NEC.InteractiveValue,
+				uiCode: 	q{interactiveUI(false, enabled_, targetSurface_); }
 			},
 			
 			{
@@ -9995,29 +10030,15 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x420377B6B4BCC)))(互!((bool),(1),(0x4205B7B6B4BCC)))
-					(互!((float),(1.000),(0x420867B6B4BCC)))
+					(互!((bool),(0),(0x423F77B6B4BCC)))(互!((bool),(1),(0x4241B7B6B4BCC)))
+					(互!((float),(1.000),(0x424467B6B4BCC)))
 				},
 				
 				"互!",
-				q{
-					if(auto m = moduleOf(this))
-					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
-					const idStr = "0x"~controlId.to!string(16); 
-					
-					put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(idStr)))}.text); 
-				},
-				q{arrangeInteractiveNode; },
-				q{
-					const exeIsRunning = !!dbgsrv.exe_pid; 
-					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.33f))); 
-					if(subCells.length==1)
-					if(auto glyph = (cast(Glyph)(subCells.get(0))))
-					glyph.bkColor = this.bkColor; 
-					queueInteractiveDraw; 
-				},
-				initCode: q{initInteractiveNode; },
-				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
+				q{put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(generateIdStr(result.length))))}.text); },
+				q{customRearrange(builder, false); },
+				customClass: 	NEC.InteractiveValue,
+				uiCode: q{interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); }
 			},
 			
 			{
@@ -10026,52 +10047,18 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x424097B6B4BCC)))(互!((bool),(1),(0x4242D7B6B4BCC)))
-					(互!((float),(1.000),(0x424587B6B4BCC)))
+					(互!((bool),(0),(0x426247B6B4BCC)))(互!((bool),(1),(0x426487B6B4BCC)))
+					(互!((float),(1.000),(0x426737B6B4BCC)))
 				},
 				
 				"同!",
 				q{
-					if(auto m = moduleOf(this))
-					if(m.isSaving) controlId = (result.length<<32) | m.fileNameHash; 
-					const idStr = "0x"~controlId.to!string(16); 
 					static ts(string s) => "q{"~s~'}'; 
-					put(iq{mixin($(operator)($(ts(controlTypeWithComment)),$(ts(operands[1].sourceText)),$(ts(idStr))))}.text); 
+					put(iq{mixin($(operator)($(ts(controlTypeWithComment)),$(ts(operands[1].sourceText)),$(ts(generateIdStr(result.length)))))}.text); 
 				},
-				q{
-					if(!controlProps.hideExpr) {
-						if(controlProps.sameBk)
-						operands[1].fillColor(
-							syntaxFontColor(skInteract),
-							syntaxBkColor(skInteract)
-						); 
-						else
-						operands[1].bkColor = syntaxBkColor(skIdentifier1); 
-						if(controlProps.halfSize) operands[1].applyHalfSize; 
-						op(1); 
-						if(controlProps.newLine) putNL;  
-					}
-					
-					arrangeInteractiveNode; 
-					
-					if(!controlProps.hideExpr && controlProps.newLine)
-					{
-						super.rearrange; 
-						if(subCells.length==3)
-						{
-							//align center
-							const maxWidth = max(
-								subCells.front.outerWidth, 
-								subCells.back.outerWidth
-							); 
-							foreach(a; only(subCells.front, subCells.back))
-							a.outerPos.x = (maxWidth - a.outerWidth)/2; 
-						}
-					}
-				},
-				q{queueInteractiveDraw; },
-				initCode: q{initInteractiveNode; /+controlValue = float.nan; +/},
-				uiCode: q{interactiveUI(!!dbgsrv.exe_pid); }
+				q{customRearrange(builder, true); },
+				customClass: 	NEC.InteractiveValue,
+				uiCode: q{interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); }
 			}
 		]; 
 		class ToolPalette : Module
@@ -10136,13 +10123,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x4318D7B6B4BCC).檢(expr)) ((0x431AB7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x431FB7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x42FED7B6B4BCC).檢(expr)) ((0x4300B7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4305B7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x432A17B6B4BCC))) (互!((bool),(1),(0x432C67B6B4BCC)))
-								(互!((float),(1.000),(0x432F47B6B4BCC)))
+								(互!((bool),(0),(0x431017B6B4BCC))) (互!((bool),(1),(0x431267B6B4BCC)))
+								(互!((float),(1.000),(0x431547B6B4BCC)))
 							}],
 						]))
 					}
@@ -11098,17 +11085,325 @@ with condition"},q{
 				sw: switch(templateIdx)
 				{
 					static foreach(a; niceExpressionTemplates.map!"a.$".enumerate)
-					{ case a.index: { mixin(a.value); }break sw; }default: 
+					{
+						case a.index: 
+						with((cast(mixin(niceExpressionTemplates[a.index].customClass.text))(this)))
+						{ mixin(a.value); }
+						break sw; 
+					}
+					default: 
 				}
 			}
 		}
 		.replace("$", field); 
 		
-		
-		void initialize()
+		final void initialize()
+		{ mixin(("initCode").調!GEN_switch); } 
+		
+		final override void buildSourceText(ref SourceTextBuilder builder)
 		{
-			void initMixinTable(int doubleGridStyle)
+			with(builder) {
+				const brackets = getTemplate.type.hasListBrackets; 
+				if(brackets) put('('); 
+				
+				doBuildSourceText(builder); 
+				
+				if(brackets) put(')'); 
+			}
+		} 
+		
+		void doBuildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder)
 			{
+				void op(int i)
+				{ put("(", operands[i], ")"); } 
+				
+				string opAsIdentifier(int i)
+				{
+					//Todo: some error checking would be better.
+					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
+				} 
+				
+				void buildMixinGenerator()
+				{
+					put("mixin"); put('('); 
+						op(0); put(operator); put("q{", operands[1], "}"); 
+					put(')'); 
+				} 
+				
+				void buildMixinFunctionCall()
+				{
+					put("mixin"); put('('); 
+						op(0); put("."~operator~"!"); put(operands[1]); 
+					put(')'); 
+				} 
+				
+				//------------------------------------------------------------------------
+				
+				mixin(("textCode").調!GEN_switch); 
+			}
+		} 
+		final override void rearrange()
+		{
+			const inverseMode = getTemplate.invertMode; 
+			rearrangeNodeWasCalled = false; //this flag will be set inside CodeNode.rearrange()
+			auto builder = nodeBuilder(syntax, inverseMode); 
+			with(builder)
+			{
+				version(/+$DIDE_REGION initialize stuff+/all)
+				{
+					if(!inverseMode) style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
+					
+					//style.bold = syntax!=skSymbol; 
+					//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
+					
+					foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
+				}
+				
+				doRearrange(builder); 
+				
+				version(/+$DIDE_REGION finalize+/all)
+				{
+					if(!rearrangeNodeWasCalled)
+					{
+						//If super.rearrange() is not called in the plugins, this will call now.
+						super.rearrange; 
+					}
+					
+					rearrange_appendBuildMessages; 
+				}
+			}
+		} 
+		
+		void doRearrange(ref CodeNodeBuilder builder)
+		{
+			with(builder)
+			{
+				version(/+$DIDE_REGION scripting helper functions+/all)
+				{
+					void op(int i)
+					{ put(operands[i]); } 
+				}
+				
+				//--------------------------- Custom helper functions -----------------------------------------------
+				
+				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
+				{
+					//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
+					static immutable 	superScriptShift	= 0.625f,
+						superScriptOffset	= round(DefaultFontHeight * superScriptShift); 
+					
+					/+
+						Todo: HalfSize
+						if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
+						It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
+					+/
+					
+					put(left); put(right); 
+					super.rearrange;  /+
+						Note: It's in the middle, called manually. 
+						At the end int's automatic.
+					+/
+					
+					lower.outerPos.y = innerHeight - lower.outerHeight; 
+					upper.outerPos.y = 0; 
+					
+					/+
+						Make sure that the superscript is higher than the lower part
+						check the upper and the lower edges too.
+						Both of them should indicate that one of the two operands is in superscript position.
+					+/
+					foreach(i; 0..2) {
+						auto getY(CodeColumn col)
+						{ return i ? col.outerTop : col.outerBottom; } 
+						const diff = getY(lower) - getY(upper); 
+						if(diff < superScriptOffset)
+						{
+							const extra = superScriptOffset - diff; 
+							lower.outerPos.y += extra; 
+							outerHeight += extra; 
+						}
+					}
+				} 
+				
+				void arrangeMixinGenerator(bool isMultiLine)
+				{
+					if(isMultiLine) flags.hAlign = HAlign.right; 
+					style.bkColor = bkColor = structuredColor("static if"); 
+					op(0); if(isMultiLine) putNL; 
+					put(" mixin "); op(1); 
+					
+					super.rearrange; 
+					
+					subCells[0].outerPos.x = 0; 
+				} 
+				
+				void arrangeMixinFunctionCall()
+				{
+					style.bkColor = bkColor = structuredColor("static if"); 
+					
+					if(const isSimple = operands[1].isDLangIdentifier)
+					{
+						with(operands[1]) {
+							fillColor(style.fontColor, style.bkColor); 
+							applyHalfSize; 
+						}
+						style.fontHeight = DefaultSubScriptFontHeight; 
+					}
+					
+					put(" mixin "); op(1); 
+					putNL; op(0); 
+				} 
+				
+				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+				
+				mixin(("rearrangeCode").調!GEN_switch); 
+			}
+		} 
+		
+		
+		
+		override void draw(Drawing dr)
+		{
+			super.draw(dr); 
+			
+			with(dr)
+			{
+				void setupLine()
+				{
+					color = syntaxFontColor(skSymbol); 
+					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
+				} 
+				
+				void drawRoot()
+				{
+					setupLine; 
+					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
+					moveRel(-8, -12); 
+					lineRel(1, 0); 
+					lineRel(2, 5); 
+					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
+					lineRel(operands[0].outerWidth-2, 0); 
+				} 
+				
+				mixin(("drawCode").調!GEN_switch); 
+			}
+		} 
+		
+		final void generateUI(bool enabled_, int targetSurface_=1)
+		{ with(im) { mixin(("uiCode").調!GEN_switch); }} 
+		
+		static class ColorNode : NiceExpression
+		{
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{ put(operator); put(operands[0]); }
+			} 
+			
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
+				{
+					put(operator); 
+					applySyntax(style, skSymbol); 
+					style.bkColor = bkColor; //preserve the bkColor
+					style.bold = true; //Todo: it's config.NodeStyleBold
+					put('('); put(operands[0]); put(')'); CodeNode.rearrange; 
+					
+					//decode the color
+					//Todo: make a good rgba decoder here!
+					RGB decodeColor()
+					{
+						//Todo: copy this RGB decoder into Colors.d
+						const parts = operands[0].shallowText.split(',').map!strip.array; 
+						switch(parts.length)
+						{
+							case 1: 	return RGB(parts[0].toInt!uint); //Todo: support # formats
+							case 3, 4: 	return RGB(parts.map!(toInt!ubyte).take(3).array); //Todo: support float formats
+							default: 	raise("unknown format"); assert(0); 
+						}
+					} 
+					
+					ignoreExceptions
+					(
+						{
+							const 	c = decodeColor, 
+								bw = blackOrWhiteFor(c); 
+							operands[0].fillColor(bw, c); 
+							//Todo: Do something if decoding fails.
+						}  
+					); 
+				}
+			} 
+		} 
+		
+		static class MixinNode : NiceExpression
+		{
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{
+					put("mixin"); 
+					put('('); 
+						put(operator~'!'); 
+						put('('); 
+							put(operands[0]); put(','); put("q{", operands[1], "}"); 
+						put(')'); 
+					put(')'); 
+				}
+			} 
+			
+			void customRerrange(ref CodeNodeBuilder builder, RGB targetColor, string prefix, string postfix)
+			{
+				with(builder)
+				{
+					//Note: Instead of overloading, it calls this member from script with extra parameters.
+					const sk = skIdentifier1; 
+					style.fontColor = sk.syntaxBkColor; 
+					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
+					
+					if(
+						operands[0].isDLangIdentifier
+						/+
+							operands[0].rowCount==1 &&
+							operands[0].rows[0].subCells.all!((c)=>((cast(Glyph)(c)) !is null))
+						+/
+					)
+					with(operands[0]) {
+						fillColor(style.fontColor, style.bkColor); 
+						applyHalfSize; 
+					}
+					
+					put(operands[0]); putNL; put(prefix); put(operands[1]); put(postfix); 
+				}
+			} 
+		} 
+		
+		static class MixinTable : NiceExpression
+		{
+			int doubleGridStyle, gridStyle; 
+			
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{
+				super(__traits(parameters)); 
+				
 				static isFiller(Cell c)
 				{
 					const g = cast(Glyph)c; 
@@ -11225,70 +11520,9 @@ with condition"},q{
 					}
 				}
 			} 
-			void initInteractiveNode()
+			override void doBuildSourceText(ref SourceTextBuilder builder)
 			{
-				controlPropsText = operands[0].extractTrailingCommentText!""; 
-				controlProps = controlPropsText.commandLineToStruct!InteractiveControlProps; 
-				
-				//data type
-				controlType = operands[0].byShallowChar.text /+Bug: If this type in unknown, it crashes!!!+/; 
-				
-				//compile time value
-				controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
-				
-				//optional locationId
-				controlId = ((operands[2])?(
-					operands[2].byShallowChar.text
-					.withoutStarting("0x")
-					.to!ulong(16).ifThrown(0)
-				):(0)); 
-			} 
-			
-			mixin(("initCode").調!GEN_switch); 
-		} 
-		
-		final override void buildSourceText(ref SourceTextBuilder builder)
-		{
-			with(builder) {
-				const brackets = getTemplate.type.hasListBrackets; 
-				if(brackets) put('('); 
-				
-				doBuildSourceText(builder); 
-				
-				if(brackets) put(')'); 
-			}
-		} void doBuildSourceText(ref SourceTextBuilder builder)
-		{
-			with(builder)
-			{
-				void op(int i)
-				{ put("(", operands[i], ")"); } 
-				
-				string opAsIdentifier(int i)
-				{
-					//Todo: some error checking would be better.
-					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
-				} 
-				
-				void buildMixinText(string opSymbol)
-				{
-					put("mixin"); 
-					put('('); 
-						put(opSymbol~'!'); 
-						put('('); 
-							op(0); put(','); put("q{", operands[1], "}"); 
-						put(')'); 
-					put(')'); 
-				} 
-				
-				void buildSigmaOp()
-				{
-					put("mixin("~operator~"("); 
-					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
-					put("))"); 
-				} 
-				
-				void buildMixinTable()
+				with(builder)
 				{
 					auto tbl = operands[0], scr = operands[1]; 
 					void putTable()
@@ -11472,192 +11706,68 @@ with condition"},q{
 						//Single operand version: (op(expr))
 						put(operator); put("("); putTable; put(")"); 
 					}
-				} 
-				
-				void buildMixinGenerator()
-				{
-					put("mixin"); put('('); 
-						op(0); put(operator); put("q{", operands[1], "}"); 
-					put(')'); 
-				} 
-				
-				void buildMixinFunctionCall()
-				{
-					put("mixin"); put('('); 
-						op(0); put("."~operator~"!"); put(operands[1]); 
-					put(')'); 
-				} 
-				
-				//------------------------------------------------------------------------
-				
-				mixin(("textCode").調!GEN_switch); 
-			}
-		} 
-		final override void rearrange()
-		{
-			const inverseMode = getTemplate.invertMode; 
-			rearrangeNodeWasCalled = false; //this flag will be set inside CodeNode.rearrange()
-			auto builder = nodeBuilder(syntax, inverseMode); 
-			with(builder)
-			{
-				version(/+$DIDE_REGION initialize stuff+/all)
-				{
-					if(!inverseMode) style.bkColor = bkColor = mix(darkColor, halfColor, .3f); 
-					
-					//style.bold = syntax!=skSymbol; 
-					//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
-					
-					foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
 				}
-				
-				doRearrange(builder); 
-				
-				version(/+$DIDE_REGION finalize+/all)
+			} 
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
 				{
-					if(!rearrangeNodeWasCalled)
+					if(operands[1])
 					{
-						//If super.rearrange() is not called in the plugins, this will call now.
-						super.rearrange; 
+						//Table + script
+						put(operands[0]); putNL; 
+						put("↦"); put(operands[1]); flags.hAlign = HAlign.right; 
+						with(padding) left = right = top = 5; 
+					}
+					else
+					{
+						//Single operand table.  It has no script.
+						put(operands[0]); padding.set(5); 
 					}
 					
-					rearrange_appendBuildMessages; 
+					CodeNode.rearrange; 
+					
+					if(operands[1]) { subCells[0].outerPos.x = 0; }
+					
+					
+					
+					if(doubleGridStyle==0)
+					{
+						operands[0].bkColor = bkColor; 
+						/+
+							Minimalistic table look: The color of the table grid is
+							inherited from the Node's surface.
+						+/
+					}
+					else if(doubleGridStyle==1)
+					{ operands[0].bkColor = mix(style.fontColor, bkColor, .33f); }
 				}
-			}
+			} 
 		} 
 		
-		void doRearrange(ref CodeNodeBuilder builder)
+		static class SigmaOp : NiceExpression
 		{
-			with(builder)
+			dchar symbol; 
+			
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
 			{
-				version(/+$DIDE_REGION scripting helper functions+/all)
+				with(builder)
 				{
-					void op(int i)
-					{ put(operands[i]); } 
-					
-					void setSubscript()
-					{ style.fontHeight = DefaultSubScriptFontHeight; flags.yAlign = YAlign.bottom; } 
-					
-					void setFontColor(SyntaxKind sk)
-					{ style.fontColor = syntaxFontColor(sk); } 
-					
-					void withScaledFontHeight(float sc, void delegate() fun)
-					{
-						const oldFontHeight = style.fontHeight; scope(exit) style.fontHeight = oldFontHeight; 
-						style.fontHeight = (cast(ubyte)((iround(DefaultFontHeight * sc)))); 
-						fun(); 
-					} 
-					
-					void putNumberSubscript(string s)
-					{
-						setSubscript; 
-						setFontColor(skNumber); 
-						style.bold = false; 
-						put(s); 
-					}  void putTypeSubscript(string s)
-					{
-						setSubscript; 
-						setFontColor(skBasicType); 
-						style.bold = false; //nit much room
-						put(s); 
-					} 
+					put("mixin("~operator~"("); 
+					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
+					put("))"); 
 				}
-				
-				//--------------------------- Custom helper functions -----------------------------------------------
-				
-				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
-				{
-					//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
-					static immutable 	superScriptShift	= 0.625f,
-						superScriptOffset	= round(DefaultFontHeight * superScriptShift); 
-					
-					/+
-						Todo: HalfSize
-						if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
-						It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
-					+/
-					
-					put(left); put(right); 
-					super.rearrange;  /+
-						Note: It's in the middle, called manually. 
-						At the end int's automatic.
-					+/
-					
-					lower.outerPos.y = innerHeight - lower.outerHeight; 
-					upper.outerPos.y = 0; 
-					
-					/+
-						Make sure that the superscript is higher than the lower part
-						check the upper and the lower edges too.
-						Both of them should indicate that one of the two operands is in superscript position.
-					+/
-					foreach(i; 0..2) {
-						auto getY(CodeColumn col)
-						{ return i ? col.outerTop : col.outerBottom; } 
-						const diff = getY(lower) - getY(upper); 
-						if(diff < superScriptOffset)
-						{
-							const extra = superScriptOffset - diff; 
-							lower.outerPos.y += extra; 
-							outerHeight += extra; 
-						}
-					}
-				} 
-				
-				void arrangeRGB()
-				{
-					put(operator); 
-					applySyntax(style, skSymbol); 
-					style.bkColor = bkColor; //preserve the bkColor
-					style.bold = true; //Todo: it's config.NodeStyleBold
-					put('('); op(0); put(')'); super.rearrange; 
-					
-					//decode the color
-					//Todo: make a good rgba decoder here!
-					RGB decodeColor()
-					{
-						//Todo: copy this RGB decoder into Colors.d
-						const parts = operands[0].shallowText.split(',').map!strip.array; 
-						switch(parts.length)
-						{
-							case 1: 	return RGB(parts[0].toInt!uint); //Todo: support # formats
-							case 3, 4: 	return RGB(parts.map!(toInt!ubyte).take(3).array); //Todo: support float formats
-							default: 	raise("unknown format"); assert(0); 
-						}
-					} 
-					
-					ignoreExceptions
-					(
-						{
-							const 	c = decodeColor, 
-								bw = blackOrWhiteFor(c); 
-							operands[0].fillColor(bw, c); 
-							//Todo: Do something if decoding fails.
-						}  
-					); 
-				} 
-				
-				void arrangeMixin(RGB targetColor, string prefix, string postfix)
-				{
-					const sk = skIdentifier1; 
-					style.fontColor = sk.syntaxBkColor; 
-					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
-					
-					if(
-						operands[0].isDLangIdentifier
-						/+
-							operands[0].rowCount==1 &&
-							operands[0].rows[0].subCells.all!((c)=>((cast(Glyph)(c)) !is null))
-						+/
-					)
-					with(operands[0]) {
-						fillColor(style.fontColor, style.bkColor); 
-						applyHalfSize; 
-					}
-					
-					op(0); putNL; put(prefix); op(1); put(postfix); 
-				} 
-				
-				void arrangeSigmaOp(dchar symbol)
+			} 
+			
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
 				{
 					version(/+$DIDE_REGION prepare and measure operands+/all)
 					{
@@ -11726,7 +11836,7 @@ with condition"},q{
 					}
 					assert(cSymbol); 
 					
-					super.rearrange; strictCellOrder = false/+Disable binary search among glyphs+/; 
+					CodeNode.rearrange; strictCellOrder = false/+Disable binary search among glyphs+/; 
 					
 					subCells = subCells.remove!cellIsNewLine; //remove all newlines.
 					
@@ -11809,246 +11919,9 @@ with condition"},q{
 							b = subCells.countUntil(operands[1]); 
 						if(a>=0 && b>=0 && a>b) swap(subCells[a], subCells[b]); 
 					}
-				} 
-				
-				void arrangeMixinTable(int doubleGridStyle)
-				{
-					if(operands[1])
-					{
-						//Table + script
-						op(0); putNL; 
-						put("↦"); op(1); flags.hAlign = HAlign.right; 
-						with(padding) left = right = top = 5; 
-					}
-					else
-					{
-						//Single operand table.  It has no script.
-						op(0); padding.set(5); 
-					}
-					
-					super.rearrange; 
-					
-					if(operands[1]) { subCells[0].outerPos.x = 0; }
-					
-					
-					
-					if(doubleGridStyle==0)
-					{
-						operands[0].bkColor = bkColor; 
-						/+
-							Minimalistic table look: The color of the table grid is
-							inherited from the Node's surface.
-						+/
-					}
-					else if(doubleGridStyle==1)
-					{ operands[0].bkColor = mix(style.fontColor, bkColor, .33f); }
-				} 
-				
-				void arrangeMixinGenerator(bool isMultiLine)
-				{
-					if(isMultiLine) flags.hAlign = HAlign.right; 
-					style.bkColor = bkColor = structuredColor("static if"); 
-					op(0); if(isMultiLine) putNL; 
-					put(" mixin "); op(1); 
-					
-					super.rearrange; 
-					
-					subCells[0].outerPos.x = 0; 
-				} 
-				
-				void arrangeMixinFunctionCall()
-				{
-					style.bkColor = bkColor = structuredColor("static if"); 
-					
-					if(const isSimple = operands[1].isDLangIdentifier)
-					{
-						with(operands[1]) {
-							fillColor(style.fontColor, style.bkColor); 
-							applyHalfSize; 
-						}
-						style.fontHeight = DefaultSubScriptFontHeight; 
-					}
-					
-					put(" mixin "); op(1); 
-					putNL; op(0); 
-				} 
-				
-				
-				void arrangeInteractiveNode()
-				{
-					switch(controlType)
-					{
-						case "bool": {
-							put(' '); /+placeholder+/
-							subCells.back.outerSize = vec2(
-								controlProps.w.ifz(controlProps.btnEvent ? 3 : 1), 
-								controlProps.h.ifz(controlProps.btnEvent ? 1.25 : 1), 
-							) * DefaultFontHeight; 
-						}break; 
-						case 	"float",
-							"int": {
-							put(' '); /+Just a placeholder.+/
-							subCells.back.outerSize = vec2(
-								controlProps.w.ifz(10), 
-								controlProps.h.ifz(1)
-							) * DefaultFontHeight; 
-						}break; 
-						default: put(operator); op(0); op(1); //unknown type
-					}
-				} 
-				
-				////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-				
-				mixin(("rearrangeCode").調!GEN_switch); 
-			}
-		} 
-		
-		
-		
-		override void draw(Drawing dr)
-		{
-			super.draw(dr); 
-			
-			with(dr)
-			{
-				void setupLine()
-				{
-					color = syntaxFontColor(skSymbol); 
-					lineWidth = 1.5;  //Todo: lineWidth settings: this should follow the boldness of the NodeStyle
-				} 
-				
-				void drawRoot()
-				{
-					setupLine; 
-					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
-					moveRel(-8, -12); 
-					lineRel(1, 0); 
-					lineRel(2, 5); 
-					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
-					lineRel(operands[0].outerWidth-2, 0); 
-				} 
-				
-				void queueInteractiveDraw()
-				{
-					if(!isnan(controlValue))
-					if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
-				} 
-				
-				mixin(("drawCode").調!GEN_switch); 
-			}
-		} 
-		
-		void generateUI(bool enabled_, int targetSurface_=1)
-		{
-			with(im)
-			{
-				void interactiveUI(bool useDbgValues)
-				{
-					void doit(T)()
-					{
-						style.bkColor = this.bkColor; 
-						style.fontColor = syntaxFontColor(skIdentifier1); 
-						auto placeholder = this.subCells.back; 
-						
-						//Todo: edit permission, cooperate with Undo/Redo
-						T act = this.controlValue.to!T; 
-						
-						float* interactiveRef; uint* interactiveTick; 
-						if(useDbgValues && controlId)
-						{
-							auto iv = &dbgsrv.data.interactiveValues; 
-							if(controlId!=iv.ids.get(controlIndex))
-							ignoreExceptions({ controlIndex = iv.resolveIndex(controlId, act.to!float); }); 
-							if(controlId==iv.ids.get(controlIndex))
-							{
-								interactiveRef = &iv.floats[controlIndex]; 
-								interactiveTick = &iv.ticks[controlIndex]; 
-								act = (*interactiveRef).to!T; 
-							}
-						}
-						
-						T next = act; 
-						
-						auto commonParams() => tuple
-							(
-							enable(enabled_), ((this.identityStr).genericArg!q{id}),
-							{ flags.targetSurface = targetSurface_; outerPos = this.worldInnerPos + placeholder.outerPos; }
-						); 
-						
-						bool userModified; 
-						void doSlider(T)(ref T val)
-						{
-							theme = "tool"; 
-							userModified = Slider
-								(
-								val, commonParams[], 
-								range(
-									controlProps.min, controlProps.max, controlProps.step, 
-									cast(RangeType)controlProps.type
-								), 
-								{
-									outerSize = placeholder.innerSize; 
-									with((cast(SliderClass)(actContainer)))
-									{
-										rulerSides 	= (cast(ubyte)(controlProps.rulerSides)),
-										rulerDiv0 	= controlProps.rulerDiv0,
-										rulerDiv1 	= controlProps.rulerDiv1; 
-									}
-								}
-							); 
-						} 
-						
-						static if(is(T==bool))
-						{
-							theme = "tool"; 
-							
-							if(controlProps.btnEvent)
-							{
-								auto capt = controlProps.btnCaption; 
-								if(capt.empty && operator=="同!") capt = operands[1].byShallowChar.text.strip; 
-								next = Btn(
-									capt, commonParams[], VAlign.center,
-									{ outerSize = placeholder.innerSize; }
-								).down; 
-								userModified = next != act; 
-							}
-							else
-							{ userModified = ChkBox(next, "", commonParams[]).clicked; }
-						}
-						else static if(is(T==float))
-						{ doSlider(next); }
-						else static if(is(T==int))
-						{ doSlider(next); }
-						
-						
-						if(useDbgValues)
-						{
-							if(userModified && interactiveRef)
-							{
-								enum holdDurationTicks = 5/+Todo: ->settings+/; 
-								*interactiveRef 	= next,
-								*interactiveTick 	= application.tick + holdDurationTicks; 
-							}
-						}
-						else
-						{ if(act!=next) { this.controlValue = next; this.setChanged; }}
-					} 
-					
-					switch(controlType)
-					{
-						case "bool": 	doit!bool; break; 
-						case "float": 	doit!float; break; 
-						case "int": 	doit!int; break; 
-						default: 
-					}
-				} 
-				
-				mixin(("uiCode").調!GEN_switch); 
-			}
-			
-		} 
-		
-		
+				}
+			} 
+		} 
 		static class Inspector : NiceExpression
 		{
 			this(
@@ -12083,7 +11956,7 @@ with condition"},q{
 					put("(" ~ h ~ ")"); put(operator); put("(", operands[1], ")"); 
 				}
 			} 
-			
+			
 			override void doRearrange(ref CodeNodeBuilder builder)
 			{
 				with(builder)
@@ -12168,6 +12041,225 @@ with condition"},q{
 						dr.lineWidth = -4; 
 						dr.drawRect(outerBounds.inflated(dr.lineWidth/2)); 
 						dr.alpha = 1; 
+					}
+				}
+			} 
+		} 
+		static class InteractiveValue : NiceExpression
+		{
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{
+				super(__traits(parameters)); 
+				
+				controlPropsText = operands[0].extractTrailingCommentText!""; 
+				controlProps = controlPropsText.commandLineToStruct!InteractiveControlProps; 
+				
+				//data type
+				controlType = operands[0].byShallowChar.text /+Bug: If this type in unknown, it crashes!!!+/; 
+				
+				//compile time value
+				controlValue = operands[1].byShallowChar.text.to!float.ifThrown(0); 
+				
+				//optional locationId
+				controlId = ((operands[2])?(
+					operands[2].byShallowChar.text
+					.withoutStarting("0x")
+					.to!ulong(16).ifThrown(0)
+				):(0)); 
+			} 
+			
+			auto generateIdStr(size_t result_length)
+			{
+				if(auto m = moduleOf(this))
+				if(m.isSaving) controlId = (result_length<<32) | m.fileNameHash; 
+				return "0x"~controlId.to!string(16); 
+			} 
+			
+			/+
+				override void doBuildSourceText(ref SourceTextBuilder builder)
+				{
+					with(builder)
+					{}
+				} 
+			+/
+			
+			void customRearrange(ref CodeNodeBuilder builder, bool hasExpr)
+			{
+				with(builder)
+				{
+					if(hasExpr && !controlProps.hideExpr)
+					{
+						if(controlProps.sameBk)
+						operands[1].fillColor(
+							syntaxFontColor(skInteract),
+							syntaxBkColor(skInteract)
+						); 
+						else
+						operands[1].bkColor = syntaxBkColor(skIdentifier1); 
+						if(controlProps.halfSize) operands[1].applyHalfSize; 
+						put(operands[1]); 
+						if(controlProps.newLine) putNL;  
+					}
+					
+					switch(controlType)
+					{
+						case "bool": {
+							put(' '); /+placeholder+/
+							subCells.back.outerSize = vec2(
+								controlProps.w.ifz(controlProps.btnEvent ? 3 : 1), 
+								controlProps.h.ifz(controlProps.btnEvent ? 1.25 : 1), 
+							) * DefaultFontHeight; 
+						}break; 
+						case 	"float",
+							"int": {
+							put(' '); /+Just a placeholder.+/
+							subCells.back.outerSize = vec2(
+								controlProps.w.ifz(10), 
+								controlProps.h.ifz(1)
+							) * DefaultFontHeight; 
+						}break; 
+						default: put(operator); put(operands[0]); put(operands[1]); //unknown type
+					}
+					
+					if(hasExpr && !controlProps.hideExpr && controlProps.newLine)
+					{
+						CodeNode.rearrange; 
+						if(subCells.length==3)
+						{
+							//align center
+							const maxWidth = max(
+								subCells.front.outerWidth, 
+								subCells.back.outerWidth
+							); 
+							foreach(a; only(subCells.front, subCells.back))
+							a.outerPos.x = (maxWidth - a.outerWidth)/2; 
+						}
+					}
+				}
+			} 
+			
+			override void draw(Drawing dr)
+			{
+				super.draw(dr); 
+				
+				if(templateName=="interactiveValue")
+				{
+					const exeIsRunning = !!dbgsrv.exe_pid; 
+					this.bkColor = mix(syntaxBkColor(skInteract), clGray, ((exeIsRunning)?(0):(.33f))); 
+					if(subCells.length==1)
+					if(auto glyph = (cast(Glyph)(subCells.get(0))))
+					glyph.bkColor = this.bkColor; 
+				}
+				
+				if(!isnan(controlValue))
+				if(auto m = moduleOf(this)) m.visibleConstantNodes ~= this; 
+			} 
+			
+			void interactiveUI(
+				bool useDbgValues,
+				bool enabled_, int targetSurface_
+			)
+			{
+				with(im)
+				{
+					void doit(T)()
+					{
+						style.bkColor = this.bkColor; 
+						style.fontColor = syntaxFontColor(skIdentifier1); 
+						auto placeholder = this.subCells.back; 
+						
+						//Todo: edit permission, cooperate with Undo/Redo
+						T act = this.controlValue.to!T; 
+						
+						float* interactiveRef; uint* interactiveTick; 
+						if(useDbgValues && controlId)
+						{
+							auto iv = &dbgsrv.data.interactiveValues; 
+							if(controlId!=iv.ids.get(controlIndex))
+							ignoreExceptions({ controlIndex = iv.resolveIndex(controlId, act.to!float); }); 
+							if(controlId==iv.ids.get(controlIndex))
+							{
+								interactiveRef = &iv.floats[controlIndex]; 
+								interactiveTick = &iv.ticks[controlIndex]; 
+								act = (*interactiveRef).to!T; 
+							}
+						}
+						
+						T next = act; 
+						
+						auto commonParams() => tuple
+							(
+							enable(enabled_), ((this.identityStr).genericArg!q{id}),
+							{ flags.targetSurface = targetSurface_; outerPos = this.worldInnerPos + placeholder.outerPos; }
+						); 
+						
+						bool userModified; 
+						void doSlider(T)(ref T val)
+						{
+							theme = "tool"; 
+							userModified = Slider
+								(
+								val, commonParams[], 
+								range(
+									controlProps.min, controlProps.max, controlProps.step, 
+									cast(RangeType)controlProps.type
+								), 
+								{
+									outerSize = placeholder.innerSize; 
+									with((cast(SliderClass)(actContainer)))
+									{
+										rulerSides 	= (cast(ubyte)(controlProps.rulerSides)),
+										rulerDiv0 	= controlProps.rulerDiv0,
+										rulerDiv1 	= controlProps.rulerDiv1; 
+									}
+								}
+							); 
+						} 
+						static if(is(T==bool))
+						{
+							theme = "tool"; 
+							
+							if(controlProps.btnEvent)
+							{
+								auto capt = controlProps.btnCaption; 
+								if(capt.empty && operator=="同!") capt = operands[1].byShallowChar.text.strip; 
+								next = Btn(
+									capt, commonParams[], VAlign.center,
+									{ outerSize = placeholder.innerSize; }
+								).down; 
+								userModified = next != act; 
+							}
+							else
+							{ userModified = ChkBox(next, "", commonParams[]).clicked; }
+						}
+						else static if(is(T==float))
+						{ doSlider(next); }
+						else static if(is(T==int))
+						{ doSlider(next); }
+						
+						
+						if(useDbgValues)
+						{
+							if(userModified && interactiveRef)
+							{
+								enum holdDurationTicks = 5/+Todo: ->settings+/; 
+								*interactiveRef 	= next,
+								*interactiveTick 	= application.tick + holdDurationTicks; 
+							}
+						}
+						else
+						{ if(act!=next) { this.controlValue = next; this.setChanged; }}
+					} 
+					
+					switch(controlType)
+					{
+						case "bool": 	doit!bool; break; 
+						case "float": 	doit!float; break; 
+						case "int": 	doit!int; break; 
+						default: 
 					}
 				}
 			} 
