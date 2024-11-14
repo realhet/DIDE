@@ -342,7 +342,11 @@ version(/+$DIDE_REGION main+/all)
 				xJsons 	= buildResult.incomingXJsons.fetchAll; 
 			
 			workspace.processBuildMessages(msgs); 
-			foreach(x; xJsons) {/+x.print; +/}
+			foreach(x; xJsons) {
+				print("######################### XJSON START ######################"); 
+				x.print; 
+				print("----------------------------- XJSON END ---------------------------"); 
+			}
 			
 			//Note: These operations are fast: only 0.015 ms
 			
@@ -5492,7 +5496,10 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Shift+Alt+]"},q{insertCurlyBlock_closing},q{insertNode("{\0}"); }],
 						[q{"Alt+`"},q{insertDString},q{insertNode("`\0`", 0); }],
 						[q{"Alt+'"},q{insertCChar},q{insertNode("'\0'"); }],
-						[q{"Shift+Alt+'"},q{insertCString},q{insertNode("\"\0\""); }],
+						[q{"Shift+Alt+'"},q{insertCString},q{insertNode("\"\0\"", 0); }],
+						[q{/+"Shift+Alt+I+'"q{insertInterpolatedCString}q{insertNode("i\"\0\"", 0); }+/}],
+						[q{/+"Alt+I+`"q{insertInterpolatedDString}q{insertNode("i`\0`", 0); }+/}],
+						[q{"Shift+Alt+4"},q{insertStringExpression},q{insertNode("$(\0)", 0); }],
 						[q{"Alt+/"},q{insertDComment},q{insertNode("/+\0+/", 0); }],
 						[q{"Shift+Alt+/"},q{insertTenary},q{
 							insertNode("((\0)?():())", 0); 
