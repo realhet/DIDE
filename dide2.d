@@ -163,6 +163,11 @@ version(/+$DIDE_REGION main+/all)
 			[ ] Minden regi szar kitorlese, sorok szama megfigyelve
 			[ ] memory leak
 		+/
+		
+		/+
+			Todo: Put named lamdba function declarations into a code node.
+			example: /+Code: auto fun() => 1+2;+/
+		+/
 	}
 	
 	//globals ////////////////////////////////////////
