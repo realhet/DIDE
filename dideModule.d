@@ -7261,6 +7261,7 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isRegion; //detected automatically
 	bool regionDisabled; 
+	bool isShortenedFunction; 
 	
 	Declaration lastJoinedPreposition()
 	{
@@ -7297,7 +7298,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		return res; 
 	} 
-	
+	
 	protected void setContentParent(Declaration p)
 	{
 		//used to set visual parents. The actual chain is stored in the linked list: nextJoinedPreposition.
@@ -7341,7 +7342,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		return res; 
 	} 
-	
+	
 	bool canHaveHeader() const
 	{
 		if(keyword.among("else", "unittest", "invariant", "try", "finally", "do")) return false; 
@@ -7353,6 +7354,7 @@ version(/+$DIDE_REGION+/all)
 	
 	bool isFunction()
 	{ return isBlock && !isRegion && keyword=="" && identifier!=""; } 
+	
 	
 	bool isAttributeBlock()
 	{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
@@ -7373,18 +7375,69 @@ version(/+$DIDE_REGION+/all)
 		else
 		enforce(0, "Invalid declaration ending: "~ending.text.quoted); 
 	} 
-	
+	
 	this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
 	{
 		assert(parent); 
 		super(parent); 
 		
-		auto detectInternalNewLine(Cell[][] a) //blabla
+		void processShortenedFunction()
 		{
-			if(!isBlock) return a; 
-			if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '") {
-				a.popBack; 
-				internalNewLineCount++; 
+			if(ending==';' && keyword=="" && !block && attrCells.empty && !headerCells.empty)
+			{
+				bool foundListBlock; 
+				foreach(y, row; headerCells)
+				foreach(x, node; row)
+				{
+					if(auto g = (cast(Glyph)(node)))
+					{
+						if(g.ch=='=')
+						{
+							if(!foundListBlock) return; // `()` must precede `=>`
+							
+							if(auto g2 = (cast(Glyph)(row.get(x+1))))
+							if(g2.ch=='>')
+							{
+								isShortenedFunction = true; 
+								
+								auto blockCells = headerCells[y..$]; 
+								headerCells = headerCells[0..y+1].dup; 
+								headerCells[y] = headerCells[y][0..x]; 
+								blockCells[0] = blockCells[0][x+2..$]; 
+								
+								block = new CodeColumn(this, blockCells.withoutStartingSpace); 
+								
+								return; 
+							}
+							return/+No more chances after a '='+/; 
+						}
+						if(
+							g.ch.inRange('#', '-') || g.ch.inRange(':', '?') || 
+							g.ch.among('/', '^', '|', '~') /+These chars aren't allowed.+/
+						) return; 
+					}
+					else if(auto b = (cast(CodeBlock)(node)))
+					{ if(b.type==CodeBlock.Type.list) foundListBlock = true; }
+				}
+			}
+		} 
+		
+		processShortenedFunction; 
+		
+		
+		auto detectInternalNewLine(Cell[][] a)
+		{
+			if(isBlock || isShortenedFunction)
+			{
+				if(a.length>1 && a.back.map!structuredCellToChar.all!"a==' '")
+				{
+					a.popBack; 
+					internalNewLineCount++; 
+					/+
+						Bug: It can destroy comments because 
+						comments are ' ' too.
+					+/
+				}
 			}
 			return a; 
 		} 
@@ -7412,7 +7465,11 @@ version(/+$DIDE_REGION+/all)
 		}
 		else if(isStatement)
 		{
-			if(keyword=="enum")	processHighLevelPatterns_goInside(header); 
+			if(isShortenedFunction)	{
+				processHighLevelPatterns_goInside(header); 
+				processHighLevelPatterns_goInside(block); 
+			}
+			else if(keyword=="enum")	processHighLevelPatterns_goInside(header); 
 			else if(keyword=="")	processHighLevelPatterns_statement(header); 
 		}
 		else if(isPreposition)
@@ -7450,10 +7507,10 @@ version(/+$DIDE_REGION+/all)
 	string type()
 	{
 		if(keyword.length) return keyword; 
+		if(isBlock || isShortenedFunction) return "function"; 
 		if(isStatement	) return "statement"; 
-		if(isPreposition	) return "preposition"; 
-		if(isSection	) return "section"; 
-		if(isBlock	) return "function"; 
+		if(isPreposition) return "preposition"; 
+		if(isSection) return "section"; 
 		return ""; 
 	} 
 	
@@ -7491,7 +7548,7 @@ version(/+$DIDE_REGION+/all)
 		
 		string calcIdentifier()
 		{
-			if(isBlock)
+			if(isBlock || isShortenedFunction)
 			{
 				if(keyword=="")
 				{
@@ -7502,12 +7559,13 @@ version(/+$DIDE_REGION+/all)
 						if(!q.empty && !q.back.isAttributeKeyword && !q.back.among("if", "in", "do")) return q.back; 
 					}
 				}
-				if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
+				else if(keyword.among("class", "struct", "interface", "union", "template", "mixin template", "enum"))
 				{
 					return header.shallowText.strip.wordAt(0); 
 					//Todo: this is nasty!!! Should use proper DLang identifier detection.
 				}
 			}
+			
 			return ""; 
 		} 
 		
@@ -7676,7 +7734,7 @@ version(/+$DIDE_REGION+/all)
 				}
 			} 
 			
-			if(isBlock)
+			void emitBlock()
 			{
 				if(isSimpleBlock)
 				{
@@ -7729,53 +7787,64 @@ version(/+$DIDE_REGION+/all)
 					put("{", block, "}"); 
 					if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); 
 				}
-			}
-			else if(isPreposition)
+			} 
+			
+			void emitRegion()
 			{
-				if(isRegion)
+				static if(UI)
 				{
-					static if(UI)
+					if(
+						!header.empty//optional header title
+					)
 					{
-						if(
-							!header.empty//optional header title
-						)
-						{
-							put(header); 
-							if(hasInternalNewLine) putNL; else put(' '); 
-						}
-						put(block); 
-						//region has a thin border and no braces.
-					}
-					else
-					{
-						//verify that header is valid for a /+comment+/
-						const src = header.sourceText; 
-						enforce(
-							isValidDLang("/+"~src~"+/"), 
-							"Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src
-						); 
-						
-						put(
-							"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
-							header,
-							"+/"~(regionDisabled ? "none":"all")~")"
-						); 
+						put(header); 
 						if(hasInternalNewLine) putNL; else put(' '); 
-						put("{", block, "}"); 
 					}
+					put(block); 
+					//region has a thin border and no braces.
 				}
 				else
-				{ emitPreposition(this); }
-			}
-			else
+				{
+					//verify that header is valid for a /+comment+/
+					const src = header.sourceText; 
+					enforce(
+						isValidDLang("/+"~src~"+/"), 
+						"Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src
+					); 
+					
+					put(
+						"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
+						header,
+						"+/"~(regionDisabled ? "none":"all")~")"
+					); 
+					if(hasInternalNewLine) putNL; else put(' '); 
+					put("{", block, "}"); 
+				}
+			} 
+			
+			void emitShortenedFunction()
 			{
-				//statement or section
+				put(header); 
+				static if(UI)	{
+					if(hasInternalNewLine) putNL; put(" ⇒ "); 
+					put(block); 
+				}
+				else	{
+					if(hasInternalNewLine) putNL; else put(' '); put("=> "); 
+					auto lastRow = block.rows.back; 
+					foreach(row; block.rows) { put(row); if(row !is lastRow) putNL; }
+				}
+				put(';'); 
+			} 
+			
+			void emitStatementOrSection()
+			{
 				if(keyword!="")
 				{
 					put(attributes); 
 					if(!attributes.empty) put(' '); 
 					put(keyword); 
-				}
+				}
 				if(canHaveHeader)
 				{
 					if(keyword!="") put(' '); 
@@ -7783,9 +7852,28 @@ version(/+$DIDE_REGION+/all)
 				}
 				else
 				put(ending); 
+			} 
+			
+			if(isBlock)
+			{ emitBlock; }
+			else if(isPreposition)
+			{
+				if(isRegion)	emitRegion; 
+				else	emitPreposition(this); 
+			}
+			else
+			{
+				//statement or section
+				if(isShortenedFunction)	emitShortenedFunction; 
+				else	emitStatementOrSection; 
 				
-				if(autoSpaceAfterDeclarations) put(' '); else putUi(' '); //this space makes the border thicker
-				
+				if(autoSpaceAfterDeclarations)
+				put(' '); 
+				else
+				{
+					putUi(' '); 
+					/+this space makes the border thicker+/
+				}
 			}
 		}
 	} 
@@ -7794,7 +7882,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		//_identifierValid = false;
 		
-		const isSimpleStatement = isStatement && keyword==""; 
+		const isSimpleStatement = isStatement && keyword=="" && !isShortenedFunction; 
 		
 		auto builder = nodeBuilder(
 			skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), 
@@ -7804,7 +7892,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			//set subColumn bkColors
 			if(isBlock || isPreposition) block.bkColor = mix(darkColor, brightColor, 0.125f); 
-			
+			else if(isShortenedFunction) block.bkColor = darkColor; 
 			
 			const canBeEmpty = !isPreposition; 
 			foreach(a; only(attributes, header))
@@ -9993,7 +10081,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x420C47B6B4BCC).檢(expr))},
+				q{((0x429877B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10005,7 +10093,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x421877B6B4BCC).檢 (expr))},
+				q{((0x42A4A7B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10035,8 +10123,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x424087B6B4BCC)))(互!((bool),(1),(0x4242C7B6B4BCC)))
-					(互!((float),(1.000),(0x424577B6B4BCC)))
+					(互!((bool),(0),(0x42CCB7B6B4BCC)))(互!((bool),(1),(0x42CEF7B6B4BCC)))
+					(互!((float),(1.000),(0x42D1A7B6B4BCC)))
 				},
 				
 				"互!",
@@ -10052,8 +10140,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x426357B6B4BCC)))(互!((bool),(1),(0x426597B6B4BCC)))
-					(互!((float),(1.000),(0x426847B6B4BCC)))
+					(互!((bool),(0),(0x42EF87B6B4BCC)))(互!((bool),(1),(0x42F1C7B6B4BCC)))
+					(互!((float),(1.000),(0x42F477B6B4BCC)))
 				},
 				
 				"同!",
@@ -10128,13 +10216,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x42FFA7B6B4BCC).檢(expr)) ((0x430187B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x430687B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x438BD7B6B4BCC).檢(expr)) ((0x438DB7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4392B7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1))
 								(常!(float)(0.300))
-								(互!((bool),(0),(0x4310E7B6B4BCC))) (互!((bool),(1),(0x431337B6B4BCC)))
-								(互!((float),(1.000),(0x431617B6B4BCC)))
+								(互!((bool),(0),(0x439D17B6B4BCC))) (互!((bool),(1),(0x439F67B6B4BCC)))
+								(互!((float),(1.000),(0x43A247B6B4BCC)))
 							}],
 						]))
 					}
@@ -10203,6 +10291,8 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 						(表([[q{`declaration blocks`},q{
 							s; 	auto f()
 							{ s; } 
+							auto f() => x; 	auto f()
+							=> x; 
 							import ; 	alias id; 
 							enum id; 	enum id
 							{} 
@@ -12566,6 +12656,16 @@ else
 	auto l5 = (){ lambda6; }  (); 
 	auto l6 = ()=>{ lambda7; }	 (); 
 	auto l7 = a=>{ lambda7; }	 .b; 
+	
+	auto f() => x; 
+	auto f()
+	=> x; 
+	
+	auto f() => x+
+	y; 
+	auto f()
+	=> x+
+	y; 
 	
 	struct S { int i; } /+Extra semicolon+/; 
 	S s1 = {}; 

@@ -3,6 +3,8 @@
 ///@release
 
 import het, het.parser; 
+
+
 /+
 	by kind
 	module: name, file
@@ -38,10 +40,10 @@ void main()
 	console(
 		{
 			auto _間=init間; 
-			Item[] i2; const txt = `c:\d\projects\karc\het.vulkan.json`.File.readText; 	((0x3E38F6F833B).檢((update間(_間)))); 
-			i2.fromJson(txt); 	((0x4258F6F833B).檢((update間(_間)))); 
-			((0x4548F6F833B).檢(i2.calcMem)); 	((0x4788F6F833B).檢((update間(_間)))); 
-			i2.each!(dump!`true`); 	((0x4BF8F6F833B).檢((update間(_間)))); 
+			Item[] i2; const txt = `c:\d\projects\karc\het.vulkan.json`.File.readText; 	((0x3E78F6F833B).檢((update間(_間)))); 
+			i2.fromJson(txt); 	((0x4298F6F833B).檢((update間(_間)))); 
+			((0x4588F6F833B).檢(i2.calcMem)); 	((0x47C8F6F833B).檢((update間(_間)))); 
+			i2.each!(dump!`true`); 	((0x4C38F6F833B).檢((update間(_間)))); 
 		}
 	); 
 } 

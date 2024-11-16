@@ -347,6 +347,7 @@ version(/+$DIDE_REGION main+/all)
 				xJsons 	= buildResult.incomingXJsons.fetchAll; 
 			
 			workspace.processBuildMessages(msgs); 
+			static if((常!(bool)(0)))
 			foreach(x; xJsons) {
 				print("######################### XJSON START ######################"); 
 				x.print; 
