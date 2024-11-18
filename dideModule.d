@@ -9196,7 +9196,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{nullaryMixinTokenStringOp},q{0},q{/+Code: (mixin(op))+/},q{/+Note:+/}],
 				[q{unaryMixinTokenStringOp},q{1},q{/+Code: (mixin(op(q{})))+/},q{/+Note:+/}],
 				[q{binaryMixinTokenStringOp},q{2},q{/+Code: (mixin(op(q{},q{})))+/},q{/+Note:+/}],
-				[q{tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note:+/}],
+				[q{tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note: 配 assign x,y = y,x+2+/}],
 				[q{binaryTokenStringOp},q{2},q{/+Code: (op(q{},q{}))+/},q{/+Note: 表! (old MixinTable)+/}],
 				[q{tenaryTokenStringOp},q{3},q{/+Code: (op(q{},q{},q{}))+/},q{/+Note: Sigma operations+/}],
 				[q{twoParamOp},q{2},q{/+Code: (op((expr),(expr)))+/},q{/+Note:+/}],
@@ -9772,6 +9772,31 @@ version(/+$DIDE_REGION+/all) {
 				q{op(0); putNL; put("{", operands[1], "}"); }
 			},
 			
+			
+			{
+				"tupleAssign", 
+				NET.tenaryMixinTokenStringOp, 
+				skIdentifier1, 
+				NodeStyle.normal,
+				q{(mixin(配(q{x,y},q{=},q{y,x})))},
+				
+				"配",
+				q{
+					put("mixin("); put(operator); put("("); 
+						foreach(i, o; operands[0..3])
+					{ if(i) put(','); put("q{", o, "}"); }
+					put(")"); put(")"); 
+				},
+				q{
+					operands[1].fillColor(syntaxFontColor(skSymbol), bkColor); 
+					operands[1].border.width=0; 
+					operands[1].padding = Padding.init; 
+					operands[1].margin = Margin.init; 
+					
+					foreach(o; operands) put(o); 
+				}
+			},
+			
 			{
 				"genericArg", 
 				NET.namedUnaryOp, 
@@ -10081,7 +10106,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x429877B6B4BCC).檢(expr))},
+				q{((0x42BF67B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10093,7 +10118,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42A4A7B6B4BCC).檢 (expr))},
+				q{((0x42CB97B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10105,10 +10130,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.castOp,
 				skIdentifier1,
 				NodeStyle.dim,
-				q{
-					(常!(bool)(0))(常!(bool)(1))
-					(常!(float)(0.300))
-				},
+				q{(常!(bool)(0))(常!(bool)(1))(常!(float/+w=6+/)(0.300))},
 				
 				"常!",
 				q{put(iq{$(operator)($(controlTypeWithComment))($(controlValueText))}.text); },
@@ -10122,10 +10144,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skInteract,
 				NodeStyle.dim,
-				q{
-					(互!((bool),(0),(0x42CCB7B6B4BCC)))(互!((bool),(1),(0x42CEF7B6B4BCC)))
-					(互!((float),(1.000),(0x42D1A7B6B4BCC)))
-				},
+				q{(互!((bool),(0),(0x42F267B6B4BCC)))(互!((bool),(1),(0x42F4A7B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x42F6E7B6B4BCC)))},
 				
 				"互!",
 				q{put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(generateIdStr(result.length))))}.text); },
@@ -10140,8 +10159,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x42EF87B6B4BCC)))(互!((bool),(1),(0x42F1C7B6B4BCC)))
-					(互!((float),(1.000),(0x42F477B6B4BCC)))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4314D7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4318E7B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x432027B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x432837B6B4BCC})))
 				},
 				
 				"同!",
@@ -10211,18 +10231,19 @@ anonym method"},q{
 								((a)=>(a+1)) 	((a){ f; })
 								((a) =>(a+1))	((a) { f; })
 							}],
+							[q{"tuple operation"},q{(mixin(配(q{x,y},q{=},q{y,x})))}],
 							[q{"named param, 
 struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x438BD7B6B4BCC).檢(expr)) ((0x438DB7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4392B7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43C8F7B6B4BCC).檢(expr)) ((0x43CAD7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43CFD7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
-								(常!(bool)(0)) (常!(bool)(1))
-								(常!(float)(0.300))
-								(互!((bool),(0),(0x439D17B6B4BCC))) (互!((bool),(1),(0x439F67B6B4BCC)))
-								(互!((float),(1.000),(0x43A247B6B4BCC)))
+								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
+								(互!((bool),(0),(0x43DA17B6B4BCC))) (互!((bool),(1),(0x43DC67B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43DEB7B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43E257B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43E677B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43ED57B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43F5A7B6B4BCC})))
 							}],
 						]))
 					}
@@ -11175,7 +11196,7 @@ with condition"},q{
 		}
 		
 		static private string GEN_switch(string field)
-		=>q{
+		=> q{
 			{
 				sw: switch(templateIdx)
 				{
