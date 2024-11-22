@@ -2887,6 +2887,7 @@ class CodeRow: Row
 				if(enableCodeLigatures) drawLigatures; 
 				
 				if(VisualizeCodeLineIndices) {
+					//Todo: csak akkor rajzolja ki, ha nagyon bele van zoomolva!!!
 					dr.color = clWhite; 
 					dr.fontHeight = 1.25; 
 					dr.textOut(vec2(0), format!"%sR"(lineIdx)); 
@@ -7420,6 +7421,8 @@ version(/+$DIDE_REGION+/all)
 					{ if(b.type==CodeBlock.Type.list) foundListBlock = true; }
 				}
 			}
+			
+			/+Bug: processShortenedFunction fails with multiline header: Fucked up, growing indtents on saving.+/
 		} 
 		
 		processShortenedFunction; 
@@ -10106,7 +10109,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42BF67B6B4BCC).檢(expr))},
+				q{((0x42CAA7B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10118,7 +10121,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42CB97B6B4BCC).檢 (expr))},
+				q{((0x42D6D7B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10137,6 +10140,11 @@ version(/+$DIDE_REGION+/all) {
 				q{customRearrange(builder, false); },
 				customClass: 	NEC.InteractiveValue,
 				uiCode: 	q{interactiveUI(false, enabled_, targetSurface_); }
+				/+
+					Todo: Mouse can't click on these on the tool palette.
+					There should be an 'unresponsive' style for these controls.
+					They are just there for the looks, ignoring any kind of interaction.
+				+/
 			},
 			
 			{
@@ -10144,7 +10152,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skInteract,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x42F267B6B4BCC)))(互!((bool),(1),(0x42F4A7B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x42F6E7B6B4BCC)))},
+				q{(互!((bool),(0),(0x430B37B6B4BCC)))(互!((bool),(1),(0x430D77B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x430FB7B6B4BCC)))},
 				
 				"互!",
 				q{put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(generateIdStr(result.length))))}.text); },
@@ -10159,9 +10167,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4314D7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4318E7B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x432027B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x432837B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x432DA7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4331B7B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4338F7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x434107B6B4BCC})))
 				},
 				
 				"同!",
@@ -10237,13 +10245,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43C8F7B6B4BCC).檢(expr)) ((0x43CAD7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43CFD7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43E1C7B6B4BCC).檢(expr)) ((0x43E3A7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43E8A7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x43DA17B6B4BCC))) (互!((bool),(1),(0x43DC67B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43DEB7B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43E257B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43E677B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43ED57B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43F5A7B6B4BCC})))
+								(互!((bool),(0),(0x43F2E7B6B4BCC))) (互!((bool),(1),(0x43F537B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43F787B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43FB27B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43FF47B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x440627B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x440E77B6B4BCC})))
 							}],
 						]))
 					}
