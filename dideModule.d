@@ -63,6 +63,8 @@ version(/+$DIDE_REGION+/all)
 	//Todo: hex string literals
 	//Todo: import expressions
 	
+	/+Todo: bug: /+Code: Cₙ,+/ Syntax highlight don't detect coma as a symbol here. -> universal identifier char!!! Here with a space it's ok:/+Code: Cₙ ,+/+/
+	
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
@@ -4239,6 +4241,7 @@ class CodeRow: Row
 		+/
 		//Todo: adjustWidth should be universal amongst all classes...
 		//Todo: cells are only expanding, not shrinking when edited...
+		//Todo: mouse click on a table cell on the surface below the empty row -> Put the cursor in the row!!!
 		
 		static struct ColWidths
 		{
@@ -10109,7 +10112,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42CAA7B6B4BCC).檢(expr))},
+				q{((0x42DB87B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10121,7 +10124,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42D6D7B6B4BCC).檢 (expr))},
+				q{((0x42E7B7B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10152,7 +10155,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skInteract,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x430B37B6B4BCC)))(互!((bool),(1),(0x430D77B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x430FB7B6B4BCC)))},
+				q{(互!((bool),(0),(0x431C17B6B4BCC)))(互!((bool),(1),(0x431E57B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x432097B6B4BCC)))},
 				
 				"互!",
 				q{put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(generateIdStr(result.length))))}.text); },
@@ -10167,9 +10170,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x432DA7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4331B7B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4338F7B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x434107B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x433E87B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x434297B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4349D7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4351E7B6B4BCC})))
 				},
 				
 				"同!",
@@ -10245,13 +10248,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43E1C7B6B4BCC).檢(expr)) ((0x43E3A7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43E8A7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43F2A7B6B4BCC).檢(expr)) ((0x43F487B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43F987B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x43F2E7B6B4BCC))) (互!((bool),(1),(0x43F537B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43F787B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43FB27B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43FF47B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x440627B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x440E77B6B4BCC})))
+								(互!((bool),(0),(0x4403C7B6B4BCC))) (互!((bool),(1),(0x440617B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x440867B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x440C07B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x441027B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441707B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x441F57B6B4BCC})))
 							}],
 						]))
 					}

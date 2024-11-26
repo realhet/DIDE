@@ -164,10 +164,7 @@ version(/+$DIDE_REGION main+/all)
 			[ ] memory leak
 		+/
 		
-		/+
-			Todo: Put named lamdba function declarations into a code node.
-			example: /+Code: auto fun() => 1+2;+/
-		+/
+		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
 	}
 	
 	//globals ////////////////////////////////////////
