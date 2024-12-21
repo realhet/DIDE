@@ -9286,7 +9286,7 @@ version(/+$DIDE_REGION+/all) {
 		struct InteractiveControlProps
 		{
 			float w=0, h=0, min=0, max=1, step = 0.1; 
-			int type; //0: linear, 1:logarithmic, 2:circular 3:endless
+			int type; /*0: linear, 1:logarithmic, 2:circular 3:endless*/
 			int hideExpr; 
 			int halfSize; 
 			int newLine, sameBk; 
@@ -9295,7 +9295,6 @@ version(/+$DIDE_REGION+/all) {
 			
 			int btnEvent; //0 = no button, 1=hold
 			string btnCaption; 
-			
 		} 
 		
 		string extractTrailingCommentText(string prefix)(CodeColumn col)
@@ -9348,8 +9347,8 @@ version(/+$DIDE_REGION+/all) {
 				q{
 					op(0); super.rearrange; 
 					const adjust = vec2(
-						10/+width if the root symbol+/, 
-						2 /+Height of the horizontal root line+/
+						4/+width if the root symbol+/, 
+						2/+Height of the horizontal root line+/
 					); 
 					operands[0].outerPos += adjust; outerSize += adjust; 
 				},
@@ -10112,7 +10111,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42DB87B6B4BCC).檢(expr))},
+				q{((0x42DB37B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10124,7 +10123,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42E7B7B6B4BCC).檢 (expr))},
+				q{((0x42E767B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10155,7 +10154,10 @@ version(/+$DIDE_REGION+/all) {
 				NET.threeParamOp,
 				skInteract,
 				NodeStyle.dim,
-				q{(互!((bool),(0),(0x431C17B6B4BCC)))(互!((bool),(1),(0x431E57B6B4BCC)))(互!((float/+w=6+/),(1.000),(0x432097B6B4BCC)))},
+				q{
+					(互!((bool),(0),(0x431C37B6B4BCC)))(互!((bool),(1),(0x431E77B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x4320B7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x432577B6B4BCC)))
+				},
 				
 				"互!",
 				q{put(iq{$(operator)(($(controlTypeWithComment)),($(controlValueText)),($(generateIdStr(result.length))))}.text); },
@@ -10170,9 +10172,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x433E87B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x434297B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4349D7B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4351E7B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4343C7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4347D7B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x434F17B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x435727B6B4BCC})))
 				},
 				
 				"同!",
@@ -10248,13 +10250,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43F2A7B6B4BCC).檢(expr)) ((0x43F487B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43F987B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43F7E7B6B4BCC).檢(expr)) ((0x43F9C7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43FEC7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4403C7B6B4BCC))) (互!((bool),(1),(0x440617B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x440867B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x440C07B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x441027B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441707B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x441F57B6B4BCC})))
+								(互!((bool),(0),(0x440907B6B4BCC))) (互!((bool),(1),(0x440B57B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x440DA7B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x441147B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x441567B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441C47B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x442497B6B4BCC})))
 							}],
 						]))
 					}
@@ -11077,11 +11079,11 @@ with condition"},q{
 			string controlPropsText; 
 			InteractiveControlProps controlProps; 
 			
-			@property controlTypeWithComment() => controlType ~
-				((controlPropsText.empty)?(""):("/+"~controlPropsText~"+/")); 
+			@property controlTypeWithComment() 
+			=> controlType ~ 	((controlPropsText.empty)?(""):("/+"~controlPropsText~"+/")); 
 			
-			const @property controlValueText() => controlType.predSwitch
-				(
+			const @property controlValueText() 
+			=> controlType.predSwitch	(
 				"bool", 	((controlValue)?("1"):("0")),
 				"float", 	controlValue.format!"%.3f",
 					controlValue.text
@@ -11305,8 +11307,8 @@ with condition"},q{
 				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
 				{
 					//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
-					static immutable 	superScriptShift	= 0.625f,
-						superScriptOffset	= round(DefaultFontHeight * superScriptShift); 
+					static immutable 	superScriptShift	= 0.25f,
+						superScriptOffset 	= round(DefaultFontHeight * superScriptShift); 
 					
 					/+
 						Todo: HalfSize
@@ -11314,6 +11316,7 @@ with condition"},q{
 						It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
 					+/
 					
+					upper.applyHalfSize; 
 					put(left); put(right); 
 					super.rearrange;  /+
 						Note: It's in the middle, called manually. 
@@ -11365,11 +11368,11 @@ with condition"},q{
 				{
 					setupLine; 
 					moveTo(innerPos + operands[0].outerPos + ivec2(0, operands[0].outerHeight)); 
-					moveRel(-8, -12); 
+					moveRel(-4, -12); 
 					lineRel(1, 0); 
 					lineRel(2, 5); 
-					lineTo(innerPos + operands[0].outerPos + ivec2(0, -1)); 
-					lineRel(operands[0].outerWidth-2, 0); 
+					lineTo(innerPos + operands[0].outerPos + ivec2(2, -1)); 
+					lineRel(operands[0].outerWidth-4, 0); 
 				} 
 				
 				mixin(("drawCode").調!GEN_switch); 
@@ -12253,7 +12256,7 @@ with condition"},q{
 							put(' '); /+placeholder+/
 							subCells.back.outerSize = vec2(
 								controlProps.w.ifz(controlProps.btnEvent ? 3 : 1), 
-								controlProps.h.ifz(controlProps.btnEvent ? 1.25 : 1), 
+								controlProps.h.ifz(controlProps.btnEvent ? 1 : 1), 
 							) * DefaultFontHeight; 
 						}break; 
 						case 	"float",
