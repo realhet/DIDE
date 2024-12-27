@@ -2,86 +2,36 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-//@release
-
+///@release
+	
 version(/+$DIDE_REGION main+/all)
 {
-	
-	/+
-		Todo: this crashes the StructureScanner:
-		
-					}
-					
-					__gshared const LodStruct lod;
-					
-					void setLod(float zoomFactor_)
-					{
-						with(cast(LodStruct*)(&lod))
-						{
-							zoomFactor = zoomFactor_;
-							pixelSize = 1/zoomFactor;
-							level = pixelSize>6 ? 2 :
-											pixelSize>2 ? 1 : 0;
-					
-							codeLevel = level==0;
-				
-		
-	+/
-	
-	//Todo: Multiline todo's
-	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
-	//Todo: Ability to change the whitespace after a	proposition: space, tab, newline
-	//Todo: Handle exceptions.
-	//Todo: longpressing Ctrl+F2 kill ldc2 processes.
-	//Todo: Insert unicode chars from other apps.	https://www.amp-what.com/unicode/search/watch
-	//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.
-	//Todo: WYSIWYG printf editor plan  (emailek kozott)
-	//Todo: automatic spaces around operators and ligatures.
-	//Todo: automatic space after ;
-	//Todo: toggle space/tab/newline after prepositions.
-	
-	/+
-		Todo: use japanese symbols to encode NiceExpressions.
-		- It's effective coding.  Much more effective than writing latin unique identifiers like: $DIDE_REGION
-		- It will be automated, so I don't have to write them manually.
-		- They will be hidden by a nice UI.
-	+/
-	
-	//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
-	
 	version(/+$DIDE_REGION Todo+/all)
 	{
+		//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
+		//Todo: Ability to change the whitespace after a	preposition: space, tab, newline
+		//Todo: toggle space/tab/newline after prepositions.
+		//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.  ldc2 -ftime-trace,  timetrace2txt, -> web perfetto.ui
+		//Todo: automatic spaces around operators and ligatures.
 		
-		//Note: debug is not needed to get proper exception information
-		
-		//Todo: buildSystem: the caches (objCache, etc) has no limits. Onli a rebuild clears them.
+		//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
 		
 		//Todo: wholeWords search (eleje/vege kulon)
 		//Todo: filter search results per file and per syntax (comment, string, code, etc)
-		
-		//Todo: Adam Ruppe search tool -> http://search.dpldocs.info/?q=sleep
 		
 		//Todo: het.math.cmp integration with std
 		
 		//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
 		
-		//Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
+		/+
+			Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen 
+			lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
+		+/
 		//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
 		
-		//Todo: Ctrl+ 1..9		 Copy to clipboard[n]        Esetleg Ctrl+C+1..9
-		//Todo: Alt + 1..9		 Paste from clipboard[n]
-		//Todo: Ctrl+Shift 1..9   Copy to and append to clipboard[n]
-		
-		//Todo: unstructured syntax highlight optimization: save and reuse tokenizer internal state on each source code blocks. No need to process ALL the source when the position of the modification is known.
-		
-		//Todo: unstructured view: fake local syntax highlight addig, amig a bacground syntax highlighter el nem keszul.
-		//Todo: unstructured view: immediate syntax highlight for smalles modules.
-		
 		//Todo: save/restore buildsystem cache on start/exit
-		//Todo: nem letezo modul import forditasakor CRASH
 		
 		//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
-		//Todo: DIDE syntax highlight vector .rgba postfixes
 		//Todo: kinetic scroll
 		
 		//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
@@ -90,33 +40,12 @@ version(/+$DIDE_REGION main+/all)
 		
 		//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
 		//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
-		//Bug: F9 -> invalid character FEFF (utf8 BOM)
-		//Todo: isUniAlpha support	(C99 identifier char set)
-		//Todo: MB4 MB5 should only	zoom when mouse is over the screen, not when over other windows.
 		
 		//Todo: markdown a commentekben.
-		
-		/+
-			Todo: Nagy blokkok mellett a magas zarojelek stretchelese: 
-						a) A ()[] a kozepen van megtoldva.
-						b) A {} a felso es also harmadanal van megtoldva.
-						c) A () a felso es also negyede kozott ciklikusan ismetelgetve van
-						d) A {} a felso es also harmadanal meg is van toldva illetve a kozepe ciklikusan ismetelgetve van.
-		+/
-		
-		//Todo: implement culling for Container. Can be tested using Workspace.
 		
 		//Todo: handle newline before and after else.
 		//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
 		//Todo: tab removal from the left side of multiline comments
-		
-		//Todo: dbgsrv: Disable debugLogClient in DIDE2
-		//Todo: dbgsrv: Use a trick (command line) to specify the client should have to connect somewhere
-		
-		//Todo: search in std, core, etc
-		//Todo: winapi help search
-		
-		//Todo: BOM handling in copy/paste operations
 		
 		//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
 		
@@ -124,45 +53,26 @@ version(/+$DIDE_REGION main+/all)
 			Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
 			Verify it still works in between adjacent preposition.
 		+/
-		//Todo: Managed level: Multiline //comment at a statement is commenting out the ; symbol at the end.
-		//Todo: selection across miltiple pages (vertical tab) is clipped wrongly
 		
 		//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
 		/+
 			Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
 				const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
 		+/
-		//Todo: On bracket errors, it should mark the opening bracket too. In the scannet there should be a way to remember the opening brackets in a stack.
 		
 		//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
 		
-		//Todo: Billentyuzetkiosztás beállíthatósága ()
-		//Todo: Vízszintes elválasztó vona (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
-		//Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
-		
-		//Todo: int a=5//comment;   << The ; is placed on the same line as the comment.
+		//Todo: Vízszintes elválasztó vonal (0x000C szabad): FormFeed. (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
+		/+
+			Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. 
+			Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
+		+/
 		
 		//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
 		
 		//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
 		//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
 		//Bug: multiselect.copy -> items are in RANDOM order
-		
-		/+
-			Todo: 240825
-			[x] Hint, CodeLocationPrefix -> BuildMessageHash:module/hash
-			[x] ScrollBox kezdemeny kiszedese a regi ErrorListBol
-			[x] Az elso errorra azonnal ugorjon rá!
-			[x] JumpTo megcsinalasa object-re
-			[x] Arrows
-			[-] NearestMessage priority: Errors first  Too complicated.
-			[x] MMB click on CodeLocations inside the source codes
-			[-] Display less CodeLocationComments: omit repeating ones. Arrows -> solved. Hints -> disabled.
-			
-			
-			[ ] Minden regi szar kitorlese, sorok szama megfigyelve
-			[ ] memory leak
-		+/
 		
 		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
 	}
@@ -3916,9 +3826,10 @@ class Workspace : Container, WorkspaceInterface
 					selectionAtMouse.cursors[1] = restrictedCursorAtMouse; 
 					
 					if(mouseTravelDistance>4)
-					scrollInRequest = restrictPos_normal(view.mousePos.vec2, bnd); //always normal clipping for mouse focus point
-					//Todo: only scroll to the mouse when the mouse was dragged for a minimal distance. For a single click, the screen shoud stay where it was.
-					//Todo: do this scrolling in the ModuleSelectionManager too.
+					{
+						scrollInRequest = restrictPos_normal(view.mousePos.vec2, bnd); 
+						//always normal clipping for mouse focus point
+					}
 				}
 			} 
 			
@@ -3983,7 +3894,17 @@ class Workspace : Container, WorkspaceInterface
 					
 					//if all are carets, remove those at line ends
 					if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
-					ts = ts.remove!"a.isAtLineEnd"; 
+					{
+						/+
+							Todo: Ctrl+Alt+LMB multicursor bug
+							01,
+							
+							02,
+							03
+							Can't put 3 cursors after the numbers, only 2.
+						+/
+						ts = ts.remove!"a.isAtLineEnd"; 
+					}
 					
 					ts = applyWordSelectArr(ts); 
 					

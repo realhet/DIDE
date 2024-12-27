@@ -1,22 +1,6 @@
 module didemodule; /+DIDE+/
 version(/+$DIDE_REGION+/all)
 {
-	
-	/+
-		23.01.05: StructuredEditor note: Make the structured editing possible
-				[ ] insert a space
-					-> didemodule.d(2502): @CodeColumn.resyntax:  Resyntax: Glyph expected ivec2(0, 0)
-					(CodeColumn.resyntax() - resyntaxer.appendHighlighted(sourceText))
-				[ ] insert a newline
-				[ ] delete a whitespace
-				[ ] delete a letter
-				[ ] delete a CodeNode
-				[ ] all the above works for root level
-				[ ] all the above works for a nested Comment
-				[ ] all the above works for a nested String
-				[ ] all the above works for a nested CodeNode
-	+/
-	
 	//Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
 	//Todo: Multiline #define is NOT allowed in D tokenStrings
 	//Todo: Multiline #directeve with \ backslash is not supported at all.
@@ -40,26 +24,16 @@ version(/+$DIDE_REGION+/all)
 	
 	
 	/+
-		Todo: Ctrl+Alt+LMB multicursor bug
-		01,
-		02,
-		03
-		Can't put 3 cursors after the numbers, only 2.
-	+/
-	
-	/+
 		Todo: Make regions out of attribute blocks: /+
 			Code: private /+$DIDE_REGION Comment+/
 			{ }
 		+/
 	+/
 	//Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
-	//Todo: Calculate avgColor for all	things. -> CodeRow, CodeColumn(what	about	short rows), CodeNode(diffocult))
 	//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
 	//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
 	//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
 	
-	//Todo: \u2028 \u2029 could be the vertical tab instead.  Vertical tab \0x0b should be used for something else.
 	//Todo: hex string literals
 	//Todo: import expressions
 	
@@ -10111,7 +10085,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42DB37B6B4BCC).檢(expr))},
+				q{((0x42A177B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10123,7 +10097,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42E767B6B4BCC).檢 (expr))},
+				q{((0x42ADA7B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10155,8 +10129,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x431C37B6B4BCC)))(互!((bool),(1),(0x431E77B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x4320B7B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x432577B6B4BCC)))
+					(互!((bool),(0),(0x42E277B6B4BCC)))(互!((bool),(1),(0x42E4B7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x42E6F7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x42EBB7B6B4BCC)))
 				},
 				
 				"互!",
@@ -10172,9 +10146,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4343C7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4347D7B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x434F17B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x435727B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x430A07B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x430E17B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x431557B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x431D67B6B4BCC})))
 				},
 				
 				"同!",
@@ -10250,13 +10224,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43F7E7B6B4BCC).檢(expr)) ((0x43F9C7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43FEC7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43BE27B6B4BCC).檢(expr)) ((0x43C007B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43C507B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x440907B6B4BCC))) (互!((bool),(1),(0x440B57B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x440DA7B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x441147B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x441567B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441C47B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x442497B6B4BCC})))
+								(互!((bool),(0),(0x43CF47B6B4BCC))) (互!((bool),(1),(0x43D197B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43D3E7B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43D787B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43DBA7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43E287B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43EAD7B6B4BCC})))
 							}],
 						]))
 					}
