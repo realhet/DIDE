@@ -2,8 +2,8 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
-	
+//@release
+
 version(/+$DIDE_REGION main+/all)
 {
 	version(/+$DIDE_REGION Todo+/all)

@@ -2584,7 +2584,7 @@ class CodeRow: Row
 	
 	protected
 	{
-		static immutable float 	NormalSpaceWidth	= 7.25f, //same as '0'..'9' and +-_
+		static immutable float 	NormalSpaceWidth	= (DefaultFontHeight/18.0f)*7.25f, //same as '0'..'9' and +-_
 			LeadingSpaceWidth 	= NormalSpaceWidth; 
 		
 		void adjustCharWidths()
@@ -9309,26 +9309,6 @@ version(/+$DIDE_REGION+/all) {
 		[
 			{"null" /+This will be rerturned when no template was found.+/},
 			
-			
-			{
-				"sqrt", 
-				NET.unaryOp, 
-				skSymbol, 
-				NodeStyle.dim,
-				q{(sqrt(a))},
-				"sqrt",
-				q{put(operator); op(0); },
-				q{
-					op(0); super.rearrange; 
-					const adjust = vec2(
-						4/+width if the root symbol+/, 
-						2/+Height of the horizontal root line+/
-					); 
-					operands[0].outerPos += adjust; outerSize += adjust; 
-				},
-				q{drawRoot; }
-			},
-			
 			{
 				"magnitude", 
 				NET.unaryOp, 
@@ -9572,7 +9552,7 @@ version(/+$DIDE_REGION+/all) {
 				q{((a)^^(b))},
 				"^^",
 				q{op(0); put(operator); op(1); },
-				q{arrangeRootPower(operands[0], operands[1], operands[0], operands[1]); },
+				q{arrangeRootPower; },
 			},
 			
 			{
@@ -9583,9 +9563,48 @@ version(/+$DIDE_REGION+/all) {
 				q{((a).root(b))},
 				".root",
 				q{op(0); put(operator); op(1); },
-				q{arrangeRootPower(operands[1], operands[0], operands[0], operands[1]); },
+				q{arrangeRootPower(Yes.leftRightSwap); },
 				q{drawRoot; }
 			},
+			
+			{
+				"sqrt", 
+				NET.unaryOp, 
+				skSymbol, 
+				NodeStyle.dim,
+				q{(sqrt(a))},
+				"sqrt",
+				q{put(operator); op(0); },
+				q{
+					op(0); super.rearrange; 
+					const adjust = vec2(
+						4/+width if the root symbol+/, 
+						2/+Height of the horizontal root line+/
+					); 
+					operands[0].outerPos += adjust; outerSize += adjust; 
+				},
+				q{drawRoot; }
+			},
+			
+			{
+				"index", 
+				NET.binaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim,
+				q{(mixin(q{a},q{1}))},
+				"指",
+				q{
+					put("mixin("); put(operator); put('('); 
+						put("q{", operands[0], "}"); put(','); 
+						put("q{", operands[1], "}"); 
+					put(')'); put(')'); 
+				},
+				q{arrangeSubscript; }
+			},
+			
+			
+			
+			/+Todo: subscript_index+/
 			
 			{
 				"mul", 
@@ -10085,7 +10104,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42A177B6B4BCC).檢(expr))},
+				q{((0x42B5F7B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10097,7 +10116,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42ADA7B6B4BCC).檢 (expr))},
+				q{((0x42C227B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10129,8 +10148,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x42E277B6B4BCC)))(互!((bool),(1),(0x42E4B7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x42E6F7B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x42EBB7B6B4BCC)))
+					(互!((bool),(0),(0x42F6F7B6B4BCC)))(互!((bool),(1),(0x42F937B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x42FB77B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x430037B6B4BCC)))
 				},
 				
 				"互!",
@@ -10146,9 +10165,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x430A07B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x430E17B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x431557B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x431D67B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x431E87B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x432297B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4329D7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4331E7B6B4BCC})))
 				},
 				
 				"同!",
@@ -10197,7 +10216,8 @@ dot, cross"},q{
 								((a).dot(b)) ((a).cross(b))
 								((a)*(b)) ((a)/(b))
 							}],
-							[q{"sqrt, root, power"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b))}],
+							[q{"sqrt, root, power,
+index"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
 							[q{"color literals"},q{
 								(RGB , , ) 
 								(RGBA , , , )
@@ -10224,13 +10244,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43BE27B6B4BCC).檢(expr)) ((0x43C007B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43C507B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43D4A7B6B4BCC).檢(expr)) ((0x43D687B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43DB87B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x43CF47B6B4BCC))) (互!((bool),(1),(0x43D197B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43D3E7B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43D787B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43DBA7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43E287B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43EAD7B6B4BCC})))
+								(互!((bool),(0),(0x43E5C7B6B4BCC))) (互!((bool),(1),(0x43E817B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43EA67B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43EE07B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43F227B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43F907B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x440157B6B4BCC})))
 							}],
 						]))
 					}
@@ -10814,7 +10834,7 @@ with condition"},q{
 							if(auto right = asTokenString(row.subCells.back))
 							{
 								const op = row.chars[1..$-1].text; 
-								{ if(TRY((mixin(舉!(NiceExpressionType,q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
+								{ if(TRY((mixin(舉!((NiceExpressionType),q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
 							}
 							if(row.length>=4 && row.chars[1]=='.')
 							{
@@ -10823,7 +10843,7 @@ with condition"},q{
 								{
 									const op = row.chars[2..exclIdx].text; 
 									{
-										if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
+										if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
 										{
 											//only leave the function part on the row.
 											row.subCells = row.subCells[exclIdx+1..$]; row.refreshTabIdx; 
@@ -10840,7 +10860,7 @@ with condition"},q{
 				else if(lastCh>=lowestSpecialUnicodeChar)
 				{
 					const op = statementRow.chars.text; 
-					{ if(TRY((mixin(舉!(NiceExpressionType,q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
+					{ if(TRY((mixin(舉!((NiceExpressionType),q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
 				}
 			} 
 			
@@ -10870,27 +10890,28 @@ with condition"},q{
 				{
 					if(TRY((mixin(舉!(NiceExpressionType,q{unaryOp}))) /+Note: (op(expr))+/, op, content)) return; 
 					//Opt: check the type of the first item and the first row's length, then only call one of these
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
+					
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryTokenStringOp}))) /+Note: (op(q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
 						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{tenaryTokenStringOp}))) /+Note: (op(q{},q{},q{}))+/, op))
 					{
 						auto params = extractTokenStringParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{twoParamOp}))) /+Note: (op(expr,expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{twoParamOp}))) /+Note: (op(expr,expr))+/, op))
 					{
 						auto params = extractListParams(content); 
 						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{threeParamOp}))) /+Note: (op(expr,expr,expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamOp}))) /+Note: (op(expr,expr,expr))+/, op))
 					{
 						auto params = extractListParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
 					}
-					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{threeParamEQEOp}))) /+Note: (op(expr,q{},expr))+/, op))
+					if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{threeParamEQEOp}))) /+Note: (op(expr,q{},expr))+/, op))
 					{
 						auto params = extractListTokenStringParams(content); 
 						if(params.length==3 && TRY(tIdx, params[0], params[1], params[2])) return; 
@@ -10926,7 +10947,7 @@ with condition"},q{
 							const innerOp = headerRow.chars[0..$-1].text; 
 							if(
 								TRY(
-									(mixin(舉!(NiceExpressionType,q{mixinTableInjectorOp}))) /+Note: ((){with(op(expr)){expr}}())+/, 
+									(mixin(舉!((NiceExpressionType),q{mixinTableInjectorOp}))) /+Note: ((){with(op(expr)){expr}}())+/, 
 									innerOp, expr1.content, with_.block
 								)
 							) return; 
@@ -10941,7 +10962,7 @@ with condition"},q{
 					{
 						string mixinOp = row2.chars[0].text; 
 						{
-							if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!(NiceExpressionType,q{binaryMixinEQOp}))) /+Note: (mixin(op!((expr),q{code})))+/, mixinOp))
+							if(const tIdx = findNiceExpressionTemplateIdx((mixin(舉!((NiceExpressionType),q{binaryMixinEQOp}))) /+Note: (mixin(op!((expr),q{code})))+/, mixinOp))
 							if(auto right2 = asListBlock(row2.subCells.back))
 							if(right2.content.rowCount==1)
 							if(auto row3 = right2.content.rows[0])
@@ -10956,16 +10977,16 @@ with condition"},q{
 						auto params = extractTokenStringParams(right2.content); 
 						const mixinOp = row2.chars[0..$-1].text; 
 						if(params.length==1)
-						{ if(TRY((mixin(舉!(NiceExpressionType,q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
+						{ if(TRY((mixin(舉!((NiceExpressionType),q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
 						else if(params.length==2)
-						{ if(TRY((mixin(舉!(NiceExpressionType,q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
+						{ if(TRY((mixin(舉!((NiceExpressionType),q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
 						else if(params.length==3)
-						{ if(TRY((mixin(舉!(NiceExpressionType,q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
+						{ if(TRY((mixin(舉!((NiceExpressionType),q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
 					}
 					else
 					{
 						const mixinOp = row2.chars.text; 
-						if(TRY((mixin(舉!(NiceExpressionType,q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
+						if(TRY((mixin(舉!((NiceExpressionType),q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
 					}
 				} 
 				
@@ -10991,7 +11012,7 @@ with condition"},q{
 							if(op.endsWith('￼'))
 							{
 								if(auto mid = asListBlock(row.subCells.get(row.subCells.length-2)))
-								{ { if(TRY((mixin(舉!(NiceExpressionType,q{castOp}))) /+Note: (op(expr)(expr))+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
+								{ { if(TRY((mixin(舉!((NiceExpressionType),q{castOp}))) /+Note: (op(expr)(expr))+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
 							}
 							else
 							{ processOpList(op, right.content); }
@@ -11005,7 +11026,7 @@ with condition"},q{
 						const op = row.chars[1..$-1].text; 
 						{
 							//Example: op = .genericArg!`
-							if(TRY((mixin(舉!(NiceExpressionType,q{namedUnaryOp}))) /+Note: ((expr)op q{code})+/, op, left.content, right.content)) return; 
+							if(TRY((mixin(舉!((NiceExpressionType),q{namedUnaryOp}))) /+Note: ((expr)op q{code})+/, op, left.content, right.content)) return; 
 						}
 					}
 				}
@@ -11015,7 +11036,7 @@ with condition"},q{
 					if(left.content)
 					{
 						const op = row.chars[1..$-1].text; //No attributes handled here.
-						{ if(TRY((mixin(舉!(NiceExpressionType,q{anonymMethod}))) /+Note: ((expr)op{code})+/, op, left.content, rightContent)) return; }
+						{ if(TRY((mixin(舉!((NiceExpressionType),q{anonymMethod}))) /+Note: ((expr)op{code})+/, op, left.content, rightContent)) return; }
 					}
 				}
 			} 
@@ -11278,44 +11299,57 @@ with condition"},q{
 				
 				//--------------------------- Custom helper functions -----------------------------------------------
 				
-				void arrangeRootPower(CodeColumn left, CodeColumn right, CodeColumn lower, CodeColumn upper)
+				void arrangeRootPower(Flag!"leftRightSwap" leftRightSwap = No.leftRightSwap)
 				{
+					auto 	bigger 	= operands[0],
+						smaller 	= operands[1]; auto 	left 	= bigger, 
+						right 	= smaller; if(leftRightSwap) swap(left, right); 
+					
 					//Todo: SuperScript with style: smaller font. Maybe recursively smaller...
 					static immutable 	superScriptShift	= 0.25f,
 						superScriptOffset 	= round(DefaultFontHeight * superScriptShift); 
 					
 					/+
 						Todo: HalfSize
-						if(type==Type.power) upper.applyHalfSize(style.fontColor, bkColor); 
+						if(type==Type.power) smaller.applyHalfSize(style.fontColor, bkColor); 
 						It's more complex: Needs to be resized recursively, also resize Nodes/Columns, not just Glyphs.
 					+/
 					
-					upper.applyHalfSize; 
+					smaller.applyHalfSize; 
 					put(left); put(right); 
 					super.rearrange;  /+
 						Note: It's in the middle, called manually. 
 						At the end int's automatic.
 					+/
 					
-					lower.outerPos.y = innerHeight - lower.outerHeight; 
-					upper.outerPos.y = 0; 
+					bigger.outerPos.y = innerHeight - bigger.outerHeight; 
+					smaller.outerPos.y = 0; 
 					
 					/+
-						Make sure that the superscript is higher than the lower part
-						check the upper and the lower edges too.
+						Make sure that the superscript is higher than the bigger part
+						check the upper and the bigger edges too.
 						Both of them should indicate that one of the two operands is in superscript position.
 					+/
 					foreach(i; 0..2) {
 						auto getY(CodeColumn col)
 						{ return i ? col.outerTop : col.outerBottom; } 
-						const diff = getY(lower) - getY(upper); 
+						const diff = getY(bigger) - getY(smaller); 
 						if(diff < superScriptOffset)
 						{
 							const extra = superScriptOffset - diff; 
-							lower.outerPos.y += extra; 
+							bigger.outerPos.y += extra; 
 							outerHeight += extra; 
 						}
 					}
+				} 
+				
+				void arrangeSubscript()
+				{
+					operands[1].applyHalfSize; put(operands[0]); put(operands[1]); super.rearrange; 
+					subCells.back.outerPos.y = innerHeight - subCells.back.outerHeight; 
+					const extra =  DefaultFontHeight * .125f; 
+					subCells.back.outerPos.y 	+= extra,
+					outerSize.y 	+= extra; 
 				} 
 				
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -11865,6 +11899,183 @@ with condition"},q{
 			} 
 		} 
 		
+		static class RootPowerOp : NiceExpression
+		{
+			dchar symbol; 
+			
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{
+					put("mixin("~operator~"("); 
+					foreach(i; 0..3) { if(i) put(","); put("q{", operands[i], "}"); }
+					put("))"); 
+				}
+			} 
+			
+			override void doRearrange(ref CodeNodeBuilder builder)
+			{
+				with(builder)
+				{
+					version(/+$DIDE_REGION prepare and measure operands+/all)
+					{
+						assert(operands[0..3].all); 
+						auto 	cLow 	= operands[0], 
+							cHigh 	= operands[1], 
+							cExpr 	= operands[2]; 
+						operands[0..2].each!((a){ a.applyHalfSize; }); 
+						operands[0..3].each!((a){ a.measure; }); 
+					}
+					
+					enum Layout { A, B, C } 
+					const layout = ((){
+						bool check(dstring s, char separ, int len)
+						{ return s.splitter(separ).take(len+1).walkLength==len; } 
+						const low = cLow.extractThisLevelDString; 
+						if(check(low, '<', 3)) return cHigh.empty ? Layout.B : Layout.A; 
+						if(check(low, '=', 2)) return Layout.A; 
+						return Layout.C; 
+					})(); 
+					
+					style.bold = false; 
+					with(flags) { hAlign = HAlign.center; yAlign = YAlign.center; }
+					style.fontHeight = DefaultSubScriptFontHeight; 
+					
+					enum symbolScale = 2; 
+					const reduceSymbolHeight = ((symbol.among('∑', '∏'))?(2.5f):(0)) * symbolScale; 
+					
+					Cell cSymbol; 
+					void putSymbol()
+					{
+						withScaledFontHeight(symbolScale, { put(symbol); }); 
+						cSymbol = subCells.back; 
+						cSymbol.outerHeight -= reduceSymbolHeight; 
+					} 
+					
+					final switch(layout)
+					{
+						case Layout.A
+						/+
+							Note: [high]
+							sigma [expr]
+							[low]
+						+/: 	{
+							put(cHigh); putNL; 
+							putSymbol; putNL; 
+							put(cLow); 
+						}	break; 
+						case Layout.B
+						/+
+							Note: sigma [expr]
+							[low] hidden([high])
+						+/: 	{
+							putSymbol; putNL; 
+							put(cLow); putNL; 
+							put(cHigh); //later will be hidden
+						}	break; 
+						case Layout.C
+						/+
+							Note: sigma [expr]
+							[low] ∈ [high]
+						+/: 	{
+							putSymbol; putNL; 
+							put(cLow); put('∈'); put(cHigh); 
+						}	break; 
+					}
+					assert(cSymbol); 
+					
+					CodeNode.rearrange; strictCellOrder = false/+Disable binary search among glyphs+/; 
+					
+					subCells = subCells.remove!cellIsNewLine; //remove all newlines.
+					
+					if(layout==Layout.B && subCells.canFind(cHigh)/+hide op(1) which is normally empty+/)
+					{
+						cHigh.outerPos = vec2(0, (cSymbol.outerBottom - cHigh.outerHeight)/2); 
+						this.outerHeight -= cHigh.outerHeight; 
+					}
+					
+					version(/+$DIDE_REGION Align the expression to the centerline of the symbol.+/all)
+					{
+						const 	blk 	= innerSize, 
+							symbolCenterY 	= cSymbol.outerTop + cSymbol.outerHeight/2; 
+						subCells ~= cExpr; 
+						
+						auto cExprCenterY()
+						{
+							/+Note: If the content is a single sigma op, then its' symbol's center is the center.+/
+							if(layout != Layout.A /+Bug: fix this for every layout!+/)
+							if(auto n = (cast(NiceExpression)(cExpr.singleCellOrNull)))
+							if(auto g = (cast(Glyph)(n.subCells.get(0))))
+							if(g.ch.among('∏', '∑', '∀', '⇶')/+Todo: centralize these literals+/)
+							return 	cExpr.topLeftGapSize.y*2.5f /+Todo: calculate the gap properly+/
+								+ g.outerTop + g.outerHeight/2; 
+							
+							return cExpr.outerHeight/2; 
+						} 
+						
+						cExpr.outerPos = vec2(blk.x, symbolCenterY - cExprCenterY); 
+						if(cExpr.outerTop<0)
+						{ subCells.each!((a){ a.outerPos.y -= cExpr.outerTop; }); }
+						//innerSize = vec2(cExpr.outerRight, max(blk.y, cExpr.outerBottom)); 
+						innerSize = calcContentSize; 
+					}
+					
+					version(/+$DIDE_REGION Try to shrink horizontally if the expression is small enough.+/all)
+					{
+						if(
+							cExpr.outerTop	>=cSymbol.outerTop &&
+							cExpr.outerBottom	<=cSymbol.outerBottom
+						)
+						{
+							const amount = cExpr.outerLeft - cSymbol.outerRight; 
+							if(amount>0)
+							{
+								cExpr.outerPos.x -= amount; 
+								
+								if(layout.among(Layout.B, Layout.C))
+								{
+									//shring it more to the left.
+									const extraSpaceLeft = min(
+										cSymbol.outerLeft, 
+										cExpr.outerRight-cLow.outerRight, 
+										cExpr.outerRight-cHigh.outerRight
+									); 
+									if(extraSpaceLeft>0)
+									{
+										cSymbol.outerPos.x -= extraSpaceLeft; 
+										cExpr.outerPos.x -= extraSpaceLeft; 
+									}
+								}
+								
+								innerSize = calcContentSize; 
+							}
+						}
+					}
+					
+					if(reduceSymbolHeight && cSymbol)
+					{
+						cSymbol.outerSize.y += reduceSymbolHeight; 
+						cSymbol.outerPos.y -= reduceSymbolHeight; 
+						
+						//put the symbol to the back in zOrder
+						subCells = cSymbol ~ subCells.filter!(a=>a !is cSymbol).array; 
+					}
+					
+					{
+						//fix tab order of low and high limits.
+						const 	a = subCells.countUntil(operands[0]),
+							b = subCells.countUntil(operands[1]); 
+						if(a>=0 && b>=0 && a>b) swap(subCells[a], subCells[b]); 
+					}
+				}
+			} 
+		} 
 		static class SigmaOp : NiceExpression
 		{
 			dchar symbol; 
