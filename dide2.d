@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-//@release
+///@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -2352,8 +2352,11 @@ class Workspace : Container, WorkspaceInterface
 			return validate(res); 
 		} 
 		
-		string wordAt(CellLocation[] st, bool canStepLeft = false/+can see one cell to the left+/, bounds2* globalBounds)
+		string wordAt(CellLocation[] st, bool canStepLeft = false/+can see one cell to the left+/, bounds2* globalBounds, TextSelection* ts)
 		{
+			if(globalBounds) *globalBounds = bounds2.init; 
+			if(ts) *ts = TextSelection.init; //Todo: refactor these wordat() results to a struct
+			
 			static isWordGlyph(Cell c)
 			{
 				if(auto g = (cast(Glyph)(c))) return g.ch.isDLangIdentifierCont /+|| g.ch=='.'+/; 
@@ -2369,14 +2372,25 @@ class Workspace : Container, WorkspaceInterface
 				
 				if(idx>=0 && isWordGlyph(row.subCells[idx]))
 				{
-					auto fw = row.subCells[idx..$].until!(not!isWordGlyph); 
-					auto bk = row.subCells[0..idx].retro.until!(not!isWordGlyph); 
+					auto fw() => row.subCells[idx..$].until!(not!isWordGlyph); 
+					auto bk() => row.subCells[0..idx].retro.until!(not!isWordGlyph); 
 					bounds2 bnd; 
 					auto res = chain(bk.array.retro, fw)	.map	!((n)=>((cast(Glyph)(n))))
 						.tee	!((g){ bnd |= g.outerBounds; })
 						.map	!((g)=>(g.ch)).text; 
 					bnd += row.worldInnerPos; 
+					
 					if(globalBounds) *globalBounds = bnd; 
+					if(ts)
+					{
+						const fwCnt = (cast(int)(fw.walkLength)); 
+						const bkCnt = (cast(int)(bk.walkLength)); 
+						const rowIdx = row.index; 
+						*ts = TextSelection(
+							TextCursor(row.parent, ivec2(idx-bkCnt, rowIdx)),
+							TextCursor(row.parent, ivec2(idx+fwCnt, rowIdx)), false
+						); 
+					}
 					
 					return res; 
 				}
@@ -2609,7 +2623,10 @@ class Workspace : Container, WorkspaceInterface
 					//Todo: check if selection is inside row boundaries.
 					return true; 
 				} 
-				return arr.filter!(a => validate(a)).array; //Todo: try to fix partially broken selections
+				
+				auto res = arr.filter!((a)=>(validate(a))).array; 
+				return res; 
+				//Todo: try to fix partially broken selections
 			} 
 		}
 		
@@ -2672,6 +2689,31 @@ class Workspace : Container, WorkspaceInterface
 				.merge; 
 		} 
 		
+		TextSelection searchResultToTextSelection(SearchResult sr)
+		{
+			if(sr.cells.length)
+			if(auto row = cast(CodeRow)sr.container)
+			if(auto col = row.parent)
+			{
+				auto 	rowIdx = row.index,
+					//Todo: could find other cells as well.
+					//If the user edits the document for example.
+					st = row.subCellIndex(sr.cells.front),
+					en = row.subCellIndex(sr.cells.back); 
+				if(rowIdx>=0 && st>=0 && en>=0)
+				{
+					auto ts = TextSelection
+					(
+						TextCursor(col, ivec2(st, rowIdx)), 
+						TextCursor(col, ivec2(en+1, rowIdx)),
+						false
+					); 
+					return validate(ts); 
+				}
+			}
+			return TextSelection.init; 
+		} 
+		
 		void selectSearchResults(R)(R arr)
 		if(isInputRange!(R, Container.SearchResult))
 		{
@@ -2679,33 +2721,11 @@ class Workspace : Container, WorkspaceInterface
 			//Todo: use this as a revalidator after the modules were changed under the search results.
 			//Maybe verify the search results while drawing. Cache the last change or something.
 			
-			TextSelection conv(SearchResult sr)
-			{
-				if(sr.cells.length)
-				if(auto row = cast(CodeRow)sr.container)
-				if(auto col = row.parent)
-				{
-					auto 	rowIdx = row.index,
-						//Todo: could find other cells as well.
-						//If the user edits the document for example.
-						st = row.subCellIndex(sr.cells.front),
-						en = row.subCellIndex(sr.cells.back); 
-					if(rowIdx>=0 && st>=0 && en>=0)
-					{
-						auto ts = TextSelection
-						(
-							TextCursor(col, ivec2(st, rowIdx)), 
-							TextCursor(col, ivec2(en+1, rowIdx)),
-							false
-						); 
-						return validate(ts); 
-					}
-				}
-				return TextSelection.init; 
-			} 
-			
 			//T0; scope(exit) DT.LOG;
-			textSelections = merge(arr.map!(a => conv(a)).filter!"a.valid".array); 
+			
+			//Todo: restrict to the current selection!
+			
+			textSelections = merge(arr.map!((a)=>(searchResultToTextSelection(a))).filter!"a.valid".array); 
 		} 
 		
 		void cancelSelection_impl()
@@ -4596,6 +4616,7 @@ class Workspace : Container, WorkspaceInterface
 	{
 		string actHelpQuery, actSearchKeyword; 
 		bounds2 actSearchKeywordBounds; 
+		TextSelection actSearchKeywordSelection; 
 		
 		void prepareHelpQuery(ref string s)
 		{
@@ -4987,6 +5008,43 @@ class Workspace : Container, WorkspaceInterface
 				); 
 				
 			}
+		} 
+		void selectAdjacentWord_impl(bool isPrev)()
+		{
+			auto ts = textSelections; ref actSel() => isPrev ? ts.front : ts.back; 
+			if(!ts.empty && !actSel.isZeroLength)
+			{
+				if(auto mod = actSel.moduleOf)
+				{
+					import std.algorithm : cmp; 
+					auto dissect(TextSelection s)
+					=> s.start.toReference.text.splitter('|').enumerate.map!((a)=>(((a.index)?(a.value[1..$].to!uint) :(a.value.xxh32)))); 
+					
+					auto srs = mod	.search(actSel.sourceText, mod.worldInnerPos, Yes.caseSensitive, Yes.wholeWords)
+						.map!((sr)=>(searchResultToTextSelection(sr))).array; 
+					static if(isPrev) srs = srs.retro.array; 
+					auto act = dissect(actSel); 
+					const idx = srs.countUntil!((a)=>(cmp(act, dissect(a))*((isPrev)?(-1):(1))<0)); 
+					if(idx.inRange(srs))
+					{
+						auto newSel = srs[idx]; 
+						textSelections = ((isPrev)?(newSel~ts):(ts~newSel)); 
+						addInspectorParticle(newSel.worldBounds, clWhite, actSel.worldBounds); 
+					}
+					else
+					im.flashWarning("No more matches."); 
+					
+					return; 
+				}
+			}
+			
+			//When there is no selection, try to make it from the hovered keyword
+			if(!actSearchKeywordSelection.isZeroLength)
+			{
+				textSelections = [actSearchKeywordSelection]; 
+				addInspectorParticle(actSearchKeywordSelection.worldBounds, clWhite, bounds2.init); 
+			}
+			else im.flashWarning("Nothing to select."); 
 		} 
 	}version(/+$DIDE_REGION Keyboard    +/all)
 	{
@@ -5182,7 +5240,10 @@ class Workspace : Container, WorkspaceInterface
 							modules.each!(m => m.flags.selected = false); 
 							//Note: left clicking on emptyness does this too.
 						}],
-						[q{"Esc"},q{cancelSelection},q{if(!im.wantKeys) cancelSelection_impl; }],
+						[q{"Esc"},q{cancelSelection},q{
+							if(!im.wantKeys) cancelSelection_impl; 
+							/+Todo: it closes the search box AND clears the selection too.+/
+						}],
 						[],
 					]))
 				) .GEN!q{GEN_verbs}); 
@@ -5290,7 +5351,12 @@ class Workspace : Container, WorkspaceInterface
 						}],
 						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
 						[],
-						[q{"Ctrl+F"},q{searchBoxActivate},q{searchBoxActivate_request = true; }],
+						[q{"Ctrl+F"},q{searchBoxActivate},q{
+							searchBoxActivate_request = true; 
+							searchText = ((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword)); 
+						}],
+						[q{"Ctrl+D"},q{selectNextWord},q{selectAdjacentWord_impl!false; }],
+						[q{"Ctrl+Shift+D"},q{selectPrevWord},q{selectAdjacentWord_impl!true; }],
 						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(getMarkerLayer(DMDMessage.Type.find)); }],
 						[q{"F3"},q{gotoNextFind},q{NOTIMPL; }],
 						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
@@ -5584,6 +5650,9 @@ class Workspace : Container, WorkspaceInterface
 			view.scale = min(view.scale, maxScale); 
 		} 
 		
+		@STORED searchCaseSensitive = false; 
+		@STORED searchWholeWords = false; 
+		
 		void UI_SearchBox(View2D view)
 		{
 			with(im)
@@ -5600,16 +5669,24 @@ class Workspace : Container, WorkspaceInterface
 					if(/+!searchBoxVisible && +/searchBoxActivate_request)
 					{ searchBoxVisible = needFocus = true; }
 					
-					searchBoxActivate_request = false; 
+					scope(exit) searchBoxActivate_request = false; 
 					
 					if(searchBoxVisible)
 					{
-						width = fh*12; 
+						width = fh*22; 
 						
 						Text("Find "); 
 						.Container editContainer; 
 						
-						if(Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; }))
+						const searcHash = searchText.hashOf([searchWholeWords, searchCaseSensitive].hashOf); 
+						static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+						const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+						
+						
+						if(
+							Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; })
+							|| searchBoxActivate_request || searchHashChanged
+						)
 						{
 							//refresh search results
 							if(searchText.startsWith(':'))
@@ -5631,13 +5708,23 @@ class Workspace : Container, WorkspaceInterface
 							else
 							{
 								clearMarkerLayer_find; 
-								foreach(m; selectedModulesOrAll) m.findSearchResults = m.search(searchText); 
+								foreach(m; selectedModulesOrAll)
+								m.findSearchResults = m.search
+									(
+									searchText, vec2(0),
+									(cast(Flag!"caseSensitive")(searchCaseSensitive)),
+									(cast(Flag!"wholeWords")(searchWholeWords))
+								); 
+								
 							}
 						}
 						
 						//display the number of matches. Also save the location of that number on the screen.
 						const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
 						Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
+						
+						if(Btn("aA", selected(searchCaseSensitive), hint("Case Sensitive"))) searchCaseSensitive.toggle; 
+						if(Btn("ww", selected(searchWholeWords), hint("Whole Words"))) searchWholeWords.toggle; 
 						
 						if(
 							Btn(
@@ -5754,7 +5841,7 @@ class Workspace : Container, WorkspaceInterface
 						//Todo: Don't get the actual source text becaus it can be very large.  Needs a size estimation first.
 					}
 					else
-					{ actSearchKeyword = wordAt(st, isCaret && !isAtLineEnd, &actSearchKeywordBounds); }
+					{ actSearchKeyword = wordAt(st, isCaret && !isAtLineEnd, &actSearchKeywordBounds, &actSearchKeywordSelection); }
 					actHelpQuery = extractHelpQuery(breadcrumbs, actSearchKeyword); 
 					
 					

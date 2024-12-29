@@ -178,11 +178,11 @@ version(/+$DIDE_REGION+/all)
 				}
 			} 
 			
-			void setup(CodeNode node, RGB color_, bounds2 srcRect, float initialLife = 1)
+			void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
 			{
 				color = color_; 
 				life = initialLife; 
-				auto b = node.worldOuterBounds; 
+				auto b = dstRect; 
 				dst = b.center; 
 				size = b.size; 
 			} 
@@ -221,12 +221,12 @@ version(/+$DIDE_REGION+/all)
 				}
 			} 
 			
-			void setup(CodeNode node, RGB color_, bounds2 srcRect, float initialLife = 1)
+			void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
 			{
 				color = color_; 
 				life = initialLife; 
 				{
-					auto b = node.worldOuterBounds; 
+					auto b = dstRect; 
 					dst = b.center; 
 				}
 				{
@@ -248,12 +248,15 @@ version(/+$DIDE_REGION+/all)
 			size_t inspectorParticleIdx = 0; 
 		} 
 		
-		void addInspectorParticle(CodeNode node, RGB color, bounds2 srcWorldBounds, float initialLife=1)
+		void addInspectorParticle(bounds2 dstWorldBounds, RGB color, bounds2 srcWorldBounds, float initialLife=1)
 		{
 			inspectorParticleIdx++; 
 			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-			inspectorParticles[inspectorParticleIdx].setup(node, color, srcWorldBounds, initialLife); 
+			inspectorParticles[inspectorParticleIdx].setup(dstWorldBounds, color, srcWorldBounds, initialLife); 
 		} 
+		
+		void addInspectorParticle(CodeNode node, RGB color, bounds2 srcWorldBounds, float initialLife=1)
+		{ addInspectorParticle(node.worldOuterBounds, color, srcWorldBounds, initialLife); } 
 	}
 }version(/+$DIDE_REGION Utility+/all)
 {
@@ -418,6 +421,7 @@ version(/+$DIDE_REGION+/all)
 		
 		bounds2 worldBounds(TextSelection ts)
 		{
+			//Todo: this works for single line only!
 			return ts.valid 	? worldBounds(ts.cursors[0]) | worldBounds(ts.cursors[1])
 				: bounds2.init; 
 		} 
@@ -9603,18 +9607,26 @@ version(/+$DIDE_REGION+/all) {
 			},
 			
 			
-			
-			/+Todo: subscript_index+/
-			
 			{
 				"mul", 
 				NET.binaryOp, 
 				skSymbol, 
 				NodeStyle.dim,
 				q{((a)*(b))},
-				"*", /+Todo: more than 2 factors+/
+				"*",
 				q{op(0); put(operator); op(1); },
 				q{op(0); op(1); }
+			},
+			
+			{
+				"mul3", 
+				NET.tenaryOp, 
+				skSymbol, 
+				NodeStyle.dim,
+				q{((a)*(b)*(c))},
+				"*￼*",
+				q{op(0); put('*'); op(1); put('*'); op(2); },
+				q{op(0); op(1); op(2); }
 			},
 			
 			{
@@ -10104,7 +10116,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42B5F7B6B4BCC).檢(expr))},
+				q{((0x42CD17B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10116,7 +10128,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42C227B6B4BCC).檢 (expr))},
+				q{((0x42D947B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10148,8 +10160,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x42F6F7B6B4BCC)))(互!((bool),(1),(0x42F937B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x42FB77B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x430037B6B4BCC)))
+					(互!((bool),(0),(0x430E17B6B4BCC)))(互!((bool),(1),(0x431057B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x431297B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x431757B6B4BCC)))
 				},
 				
 				"互!",
@@ -10165,9 +10177,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x431E87B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x432297B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4329D7B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4331E7B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4335A7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4339B7B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4340F7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x434907B6B4BCC})))
 				},
 				
 				"同!",
@@ -10214,13 +10226,13 @@ trunc"},q{
 							[q{"multiply, divide, 
 dot, cross"},q{
 								((a).dot(b)) ((a).cross(b))
-								((a)*(b)) ((a)/(b))
+								((a)*(b)) ((a)*(b)*(c)) ((a)/(b))
 							}],
 							[q{"sqrt, root, power,
 index"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
 							[q{"color literals"},q{
-								(RGB , , ) 
-								(RGBA , , , )
+								(RGB( , , )) 
+								(RGBA( , , , ))
 							}],
 						]))
 					}
@@ -10244,13 +10256,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43D4A7B6B4BCC).檢(expr)) ((0x43D687B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43DB87B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x43ECE7B6B4BCC).檢(expr)) ((0x43EEC7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x43F3C7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x43E5C7B6B4BCC))) (互!((bool),(1),(0x43E817B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x43EA67B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43EE07B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43F227B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43F907B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x440157B6B4BCC})))
+								(互!((bool),(0),(0x43FE07B6B4BCC))) (互!((bool),(1),(0x440057B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4402A7B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x440647B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x440A67B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441147B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x441997B6B4BCC})))
 							}],
 						]))
 					}
