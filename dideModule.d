@@ -2793,9 +2793,9 @@ class CodeRow: Row
 						static immutable Ligature[] ligatures = 
 						[
 							{ "==", '='},
-							{ "!=", '\u2260'},
-							{ "<=", '\u2264', .66},
-							{ ">=", '\u2265', .66},
+							{ "!=", '≠'},
+							{ "<=", '≤', .66},
+							{ ">=", '≥', .66},
 							{ "=>", '⇒', .66},
 							{ ">>=", '\0'},
 							{ "<<=", '\0'}
@@ -3269,7 +3269,6 @@ class CodeRow: Row
 	
 	bool containsBuildMessages; 
 	
-	
 	/// Minimal constructor creating an empty codeColumn with 0 rows.
 	this(Container parent)
 	{
@@ -3421,6 +3420,16 @@ class CodeRow: Row
 		
 		//Todo: advanced version that checks the surroundings at the insert position.
 	} 
+	
+	@property isPartOfBuildMessages()
+	{
+		foreach(a; this.thisAndAllParents)
+		if(auto c = (cast(CodeColumn)(a)))
+		if(c.containsBuildMessages) return true; 
+		return false; 
+	} 
+	
+	@property isPartOfSourceCode() => !isPartOfBuildMessages; 
 	
 	protected void refreshLineIdx()
 	{
@@ -9782,7 +9791,67 @@ version(/+$DIDE_REGION+/all) {
 				q{op(0); putNL; put("{", operands[1], "}"); }
 			},
 			
+			{
+				"tenary_eq_eq", 
+				NET.tenaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim, 
+				q{(mixin(等(q{a},q{b},q{c})))},
+				
+				"等",
+				q{buildTenaryRelation; },
+				q{arrangeTenaryRelation('=', '='); }
+			},
 			
+			{
+				"tenary_g_g", 
+				NET.tenaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim, 
+				q{(mixin(界0(q{a},q{b},q{c})))},
+				
+				"界0",
+				q{buildTenaryRelation; },
+				q{arrangeTenaryRelation('<', '<'); }
+			},
+			
+			{
+				"tenary_ge_g", 
+				NET.tenaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim, 
+				q{(mixin(界1(q{a},q{b},q{c})))},
+				
+				"界1",
+				q{buildTenaryRelation; },
+				q{arrangeTenaryRelation('≤', '<'); }
+			},
+			
+			{
+				"tenary_g_ge", 
+				NET.tenaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim, 
+				q{(mixin(界2(q{a},q{b},q{c})))},
+				
+				"界2",
+				q{buildTenaryRelation; },
+				q{arrangeTenaryRelation('<', '≤'); }
+			},
+			
+			{
+				"tenary_ge_ge", 
+				NET.tenaryMixinTokenStringOp, 
+				skSymbol, 
+				NodeStyle.dim, 
+				q{(mixin(界3(q{a},q{b},q{c})))},
+				
+				"界3",
+				q{buildTenaryRelation; },
+				q{arrangeTenaryRelation('≤', '≤'); }
+			},
+			
+			
 			{
 				"tupleAssign", 
 				NET.tenaryMixinTokenStringOp, 
@@ -10116,7 +10185,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42CD17B6B4BCC).檢(expr))},
+				q{((0x4328C7B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10128,7 +10197,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x42D947B6B4BCC).檢 (expr))},
+				q{((0x4334F7B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10160,8 +10229,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x430E17B6B4BCC)))(互!((bool),(1),(0x431057B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x431297B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x431757B6B4BCC)))
+					(互!((bool),(0),(0x4369C7B6B4BCC)))(互!((bool),(1),(0x436C07B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x436E47B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x437307B6B4BCC)))
 				},
 				
 				"互!",
@@ -10177,9 +10246,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4335A7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4339B7B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4340F7B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x434907B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x439157B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x439567B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x439CA7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43A4B7B6B4BCC})))
 				},
 				
 				"同!",
@@ -10201,16 +10270,11 @@ version(/+$DIDE_REGION+/all) {
 					q{
 						(表([
 							[q{"expression blocks"},q{
-								a: 	a; 
-								{a}	(a)	[a] 
-								"S"	r"S"	`S`
-								'S'	q{S}	$(a)
-								i"S"	i`S`	iq{S}
+								lbl: 	st; 	{blk}	(ex)	[idx] 
+								"s"	`s`	q{s}	r"s"	'\0'
+								i"s"	i`s`	iq{s}	$(a)	x"00"
 							}],
-							[q{"math letters"},q{
-								π ℯ ℂ α β γ µ σ
-								Δ δ ϕ ϑ ε ω
-							}],
+							[q{"math letters"},q{π ℯ ℂ α β γ µ σ Δ δ ϕ ϑ ε ω}],
 							[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 							[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 							[q{"floor, 
@@ -10223,17 +10287,16 @@ trunc"},q{
 								(trunc(x)) (itrunc(x)) (ltrunc(x))
 							}],
 							[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
-							[q{"multiply, divide, 
-dot, cross"},q{
-								((a).dot(b)) ((a).cross(b))
-								((a)*(b)) ((a)*(b)*(c)) ((a)/(b))
+							[q{"multiply,
+dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
+							[q{"divide, sqrt, root, 
+power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
+							[q{"tenary relation"},q{
+								(mixin(等(q{a},q{b},q{c})))
+								(mixin(界0(q{a},q{b},q{c}))) (mixin(界1(q{a},q{b},q{c})))
+								(mixin(界2(q{a},q{b},q{c}))) (mixin(界3(q{a},q{b},q{c})))
 							}],
-							[q{"sqrt, root, power,
-index"},q{(sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
-							[q{"color literals"},q{
-								(RGB( , , )) 
-								(RGBA( , , , ))
-							}],
+							[q{"color literals"},q{(RGB()) (RGBA())}],
 						]))
 					}
 				},
@@ -10256,13 +10319,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x43ECE7B6B4BCC).檢(expr)) ((0x43EEC7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x43F3C7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x445027B6B4BCC).檢(expr)) ((0x445207B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x445707B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x43FE07B6B4BCC))) (互!((bool),(1),(0x440057B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4402A7B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x440647B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x440A67B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x441147B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x441997B6B4BCC})))
+								(互!((bool),(0),(0x446147B6B4BCC))) (互!((bool),(1),(0x446397B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4465E7B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x446987B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x446DA7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x447487B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x447CD7B6B4BCC})))
 							}],
 						]))
 					}
@@ -11261,6 +11324,13 @@ with condition"},q{
 					return operands[i].shallowText.filter!isDLangIdentifierCont.text; 
 				} 
 				
+				void buildTenaryRelation()
+				{
+					put("mixin("); put(operator); put('('); 
+					foreach(i; 0..3) { if(i) put(','); put("q{", operands[i], "}"); }
+					put(')'); put(')'); 
+				} 
+				
 				//------------------------------------------------------------------------
 				
 				mixin(("textCode").調!GEN_switch); 
@@ -11362,6 +11432,16 @@ with condition"},q{
 					const extra =  DefaultFontHeight * .125f; 
 					subCells.back.outerPos.y 	+= extra,
 					outerSize.y 	+= extra; 
+				} 
+				
+				void arrangeTenaryRelation(dchar op1, dchar op2)
+				{
+					void putOp(dchar op)
+					{
+						if(op=='=') { put('='); subCells.back.outerSize.x *= 1.815f; }
+						else { put(' '); put(op); put(' '); }
+					} 
+					put('('); op(0); putOp(op1); op(1); putOp(op2); op(2); put(')'); 
 				} 
 				
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

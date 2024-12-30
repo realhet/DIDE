@@ -2,7 +2,7 @@
 //@compile --d-version=stringId,AnimatedCursors
 
 //@debug
-///@release
+//@release
 
 version(/+$DIDE_REGION main+/all)
 {
@@ -2711,6 +2711,7 @@ class Workspace : Container, WorkspaceInterface
 					return validate(ts); 
 				}
 			}
+			
 			return TextSelection.init; 
 		} 
 		
@@ -2725,6 +2726,7 @@ class Workspace : Container, WorkspaceInterface
 			
 			//Todo: restrict to the current selection!
 			
+			//Todo: dont select text inside error messages!
 			textSelections = merge(arr.map!((a)=>(searchResultToTextSelection(a))).filter!"a.valid".array); 
 		} 
 		
@@ -3186,6 +3188,8 @@ class Workspace : Container, WorkspaceInterface
 			//Opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
 			
 			return savedSelections.map!"a.fromReference".filter!"a.valid".array; 
+			
+			/+Bug: must not fail when text selected inside error messages!+/
 		} 
 		
 		bool cut_impl2(bool dontMeasure=false)(TextSelection[] sel, ref TextSelection[] res)
@@ -3427,6 +3431,8 @@ class Workspace : Container, WorkspaceInterface
 			//Opt: measure is terribly slow when editing het.utils. 8ms in debug. SavedSelections are not required all the time.
 			
 			return savedSelections.retro.map!"a.fromReference".filter!"a.valid".array; 
+			
+			/+Bug: must not fail when text selected inside error messages!+/
 		} 
 		
 		void insertNode(string source, int subColumnIdx=-1)
@@ -5021,7 +5027,8 @@ class Workspace : Container, WorkspaceInterface
 					=> s.start.toReference.text.splitter('|').enumerate.map!((a)=>(((a.index)?(a.value[1..$].to!uint) :(a.value.xxh32)))); 
 					
 					auto srs = mod	.search(actSel.sourceText, mod.worldInnerPos, Yes.caseSensitive, Yes.wholeWords)
-						.map!((sr)=>(searchResultToTextSelection(sr))).array; 
+						.map!((sr)=>(searchResultToTextSelection(sr)))
+						.filter!((ts)=>(ts.valid && ts.codeColumn.isPartOfSourceCode)).array; 
 					static if(isPrev) srs = srs.retro.array; 
 					auto act = dissect(actSel); 
 					const idx = srs.countUntil!((a)=>(cmp(act, dissect(a))*((isPrev)?(-1):(1))<0)); 
@@ -5033,6 +5040,8 @@ class Workspace : Container, WorkspaceInterface
 					}
 					else
 					im.flashWarning("No more matches."); 
+					
+					//Todo: must not select text inside error messages!
 					
 					return; 
 				}
@@ -5354,6 +5363,7 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Ctrl+F"},q{searchBoxActivate},q{
 							searchBoxActivate_request = true; 
 							searchText = ((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword)); 
+							/+Todo: Does nothing, then the search Edit is in focus.+/
 						}],
 						[q{"Ctrl+D"},q{selectNextWord},q{selectAdjacentWord_impl!false; }],
 						[q{"Ctrl+Shift+D"},q{selectPrevWord},q{selectAdjacentWord_impl!true; }],
