@@ -1400,13 +1400,15 @@ class Workspace : Container, WorkspaceInterface
 		
 		string[] extendSelectionStack; 
 		
-		bool searchBoxVisible, searchBoxActivate_request; 
-		string searchText; 
+		bool searchBoxActivate_request; 
+		@STORED
+		{
+			bool 	searchBoxVisible, 
+				advancedSearchOptionsVisible; 
+			string searchText; 
+			.Container.SearchOptions searchOptions; 
+		} 
 		
-		version(/+$DIDE_REGION+/none) {
-			@STORED bool showErrorList; 
-			Module errorModule; 
-		}
 		
 		struct MarkerLayerSettings {
 			const DMDMessage.Type type; //this is the identity
@@ -4540,6 +4542,8 @@ class Workspace : Container, WorkspaceInterface
 				
 				foreach(m; modules) m.updateSearchResults; 
 				updateMessageConnectionArrows; 
+				
+				static if(UseSearchFiber) updateSearchFiber; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -5660,114 +5664,184 @@ class Workspace : Container, WorkspaceInterface
 			view.scale = min(view.scale, maxScale); 
 		} 
 		
-		@STORED searchCaseSensitive = false; 
-		@STORED searchWholeWords = false; 
+		enum UseSearchFiber = true; 
+		static if(UseSearchFiber)
+		{
+			import core.thread.fiber; 
+			static class SearchFiber : Fiber
+			{
+				version(/+$DIDE_REGION+/all) {
+					Module[] modules; 
+					string searchText; 
+					Container.SearchOptions searchOptions; 
+					this(
+						Module[] modules, 
+						string searchText, 
+						Container.SearchOptions searchOptions
+					) {
+						this.modules = modules; 
+						this.searchText = searchText; 
+						this.searchOptions = searchOptions; 
+						super(&run, 16<<20); 
+					} 
+				}
+				
+				DateTime timeLimit; 
+				
+				private void run()
+				{
+					foreach(m; modules)
+					{ m.search(searchText, searchOptions, vec2(0), ((sr){ m.findSearchResults ~= sr; }), &timeLimit); }
+				} 
+			} 
+			
+			SearchFiber searchFiber; 
+			
+			void updateSearchFiber()
+			{
+				if(searchFiber && !searchBoxVisible) { searchFiber.free; }
+				
+				if(searchFiber)
+				{
+					if(searchFiber.state==Fiber.State.TERM) searchFiber.free; 
+					else {
+						searchFiber.timeLimit = now + 5*milli(second); 
+						searchFiber.call; 
+					}
+				}
+			} 
+		}
 		
 		void UI_SearchBox(View2D view)
 		{
 			with(im)
-			Row
-			(
-				{
-					//Keyboard shortcuts
-					auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
-						kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
-						kcFindClose	= KeyCombo("Esc"); //always
-					
-					//activate searchbox
-					bool needFocus; 
-					if(/+!searchBoxVisible && +/searchBoxActivate_request)
-					{ searchBoxVisible = needFocus = true; }
-					
-					scope(exit) searchBoxActivate_request = false; 
-					
-					if(searchBoxVisible)
+			{
+				Row(
 					{
-						width = fh*22; 
+						//Keyboard shortcuts
+						auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
+							kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
+							kcFindClose	= KeyCombo("Esc"); //always
 						
-						Text("Find "); 
-						.Container editContainer; 
+						//activate searchbox
+						bool justActivated; 
+						if(searchBoxActivate_request.chkClear)
+						{ searchBoxVisible = justActivated = true; }
 						
-						const searcHash = searchText.hashOf([searchWholeWords, searchCaseSensitive].hashOf); 
-						static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
-						const searchHashChanged = lastSearchHash.chkSet(searcHash); 
-						
-						
-						if(
-							Edit(searchText, genericArg!"focusEnter"(needFocus), { flex = 1; editContainer = actContainer; })
-							|| searchBoxActivate_request || searchHashChanged
-						)
+						if(searchBoxVisible)
 						{
-							//refresh search results
-							if(searchText.startsWith(':'))
+							width = fh*22; 
+							
+							Text("Find "); 
+							.Container editContainer; 
+							
+							const searcHash = searchText.hashOf(searchOptions.hashOf); 
+							static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+							const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+							
+							
+							if(
+								Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								|| justActivated || searchHashChanged
+							)
 							{
-								//goto line
-								//Todo: Ctrl+G not works inside Edit
-								//Todo: hint text: Enter line number. Negative line number starts from the end of the module.
-								//Todo: ez ugorhatna regionra is.
-								clearMarkerLayer_find; 
-								textSelections = []; 
-								if(auto mod = expectOneSelectedModule)
-								if(auto line = searchText[1..$].to!int.ifThrown(0))
+								//refresh search results
+								if(searchText.startsWith(':'))
 								{
-									jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
-									//Todo: show a highlight on that row...
+									//goto line
+									//Todo: Ctrl+G not works inside Edit
+									//Todo: Ctrl+F not works inside Edit
+									/+
+										Todo: hint text: Enter line number. 
+										Negative line number starts from the end of the module.
+									+/
+									//Todo: ez ugorhatna regionra is.
+									clearMarkerLayer_find; 
+									textSelections = []; 
+									if(auto mod = expectOneSelectedModule)
+									if(auto line = searchText[1..$].to!int.ifThrown(0))
+									{
+										jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
+										//Todo: show a highlight on that row...
+									}
+									
 								}
-								
+								else
+								{
+									clearMarkerLayer_find; 
+									
+									static if(UseSearchFiber)
+									{ searchFiber = new SearchFiber(selectedModulesOrAll, searchText, searchOptions); }
+									else
+									{
+										foreach(m; selectedModulesOrAll)
+										{ m.findSearchResults = m.search(searchText, searchOptions); }
+									}
+								}
 							}
-							else
-							{
-								clearMarkerLayer_find; 
-								foreach(m; selectedModulesOrAll)
-								m.findSearchResults = m.search
-									(
-									searchText, vec2(0),
-									(cast(Flag!"caseSensitive")(searchCaseSensitive)),
-									(cast(Flag!"wholeWords")(searchWholeWords))
-								); 
-								
-							}
+							
+							//display the number of matches. Also save the location of that number on the screen.
+							const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
+							Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
+							
+							BtnRow(
+								{
+									if(
+										Btn(
+											symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
+											enable(matchCnt>0), hint("Zoom screen on search results.")
+										)
+									)
+									{ zoomAt(view, getMarkerLayer_find); }
+									if(
+										Btn(
+											"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
+											enable(matchCnt>0), hint("Select search results.")
+										)
+									)
+									{ selectSearchResults(getMarkerLayer_find); }
+								}
+							); 
+							
+							BtnRow(
+								{
+									if(
+										Btn(
+											"aA", hint("Case Sensitive"),
+											selected(searchOptions.caseSensitive)
+										)
+									) searchOptions.caseSensitive.toggle; 
+									if(
+										Btn(
+											"ww", hint("Whole Words"),
+											selected(searchOptions.wholeWords)
+										)
+									) searchOptions.wholeWords_toggle; 
+									if(
+										Btn(
+											"…", hint("Advanced search options"),
+											selected(advancedSearchOptionsVisible)
+										)
+									) advancedSearchOptionsVisible.toggle; 
+								}
+							); 
+							
+							if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
+							{ searchBoxVisible = false; searchText = ""; clearMarkerLayer_find; }
 						}
-						
-						//display the number of matches. Also save the location of that number on the screen.
-						const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
-						Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
-						
-						if(Btn("aA", selected(searchCaseSensitive), hint("Case Sensitive"))) searchCaseSensitive.toggle; 
-						if(Btn("ww", selected(searchWholeWords), hint("Whole Words"))) searchWholeWords.toggle; 
-						
-						if(
-							Btn(
-								symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-								enable(matchCnt>0), hint("Zoom screen on search results.")
-							)
-						)
-						{ zoomAt(view, getMarkerLayer_find); }
-						if(
-							Btn(
-								"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-								enable(matchCnt>0), hint("Select search results.")
-							)
-						)
-						{ selectSearchResults(getMarkerLayer_find); }
-						
-						if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
+						else
 						{
-							searchBoxVisible = false; 
-							searchText = ""; 
-							clearMarkerLayer_find; 
+							if(Btn(symbol("Zoom"), hint("Start searching.")))
+							searchBoxActivate; 
+							//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
 						}
 					}
-					else
-					{
-						if(Btn(symbol("Zoom"), hint("Start searching.")))
-						searchBoxActivate; 
-						//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
-					}
-				}
-			); 
+				); 
+				if(advancedSearchOptionsVisible)
+				{ Row("Advanced search options"); }
+			}
 			
-		} 
+		} 
 		
 		void UI_selectedModulesHint()
 		{
@@ -5807,7 +5881,7 @@ class Workspace : Container, WorkspaceInterface
 				{ Row({ padding="0 8"; }, "No modules selected."); }
 			}
 		} 
-		
+		
 		void UI_mouseLocationHint(View2D view)
 		{
 			with(im) {
@@ -5882,7 +5956,7 @@ class Workspace : Container, WorkspaceInterface
 					); 
 				}
 			}
-		} 
+		} 
 		
 		
 		string lastNearestSearchResultReference; 
@@ -5936,7 +6010,7 @@ class Workspace : Container, WorkspaceInterface
 				actContainer.append(mouseOverHintCntr); 
 			}
 		} 
-		
+		
 		void UI_Popup()
 		{
 			version(/+$DIDE_REGION Popup menu+/all)
