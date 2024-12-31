@@ -84,6 +84,8 @@ version(/+$DIDE_REGION main+/all)
 	
 	import didemodule; 
 	
+	mixin SmartClassGenerator; 
+	
 	enum LogRequestPermissions	= false; 
 	
 	enum visualizeMarginsAndPaddingUnderMouse = false; //Todo: make this a debug option in a menu
@@ -5682,8 +5684,19 @@ class Workspace : Container, WorkspaceInterface
 						this.modules = modules; 
 						this.searchText = searchText; 
 						this.searchOptions = searchOptions; 
-						super(&run, 16<<20); 
+						super(&run, 256<<10 /+measured stack: level 84, 24K+/); 
 					} 
+				}
+				
+				//Todo: Do this with smartclass.  Damn I hate shoveling class fields... Dumbest redundant shit...
+				version(/+$DIDE_REGION+/none) {
+					mixin SmartClass!q{
+						Module[] modules, 
+						string searchText, 
+						Container.SearchOptions searchOptions
+					}; 
+					this() { super(&run, 256<<10/+measured stack: level 84, 24K+/); } 
+					void _construct() {} void _destruct() {} 
 				}
 				
 				DateTime timeLimit; 
@@ -5779,7 +5792,7 @@ class Workspace : Container, WorkspaceInterface
 									}
 								}
 							}
-							
+							
 							//display the number of matches. Also save the location of that number on the screen.
 							const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
 							Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
