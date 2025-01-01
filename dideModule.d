@@ -7006,26 +7006,26 @@ version(/+$DIDE_REGION+/all)
 			
 			enum clPiko : RGB8
 			{
-				G940 	= RGB(139, 59, 43).brighter(.25f),
-				G239 	= RGB(245, 156, 0),
-				G231 	= RGB(238, 114, 3),
-				G119 	= RGB(221, 11, 47).brighter(.35f),
-				G115 	= RGB(222, 0, 126),
-				G107 	= RGB(158, 25, 129),
-				G62 	= RGB(92, 36, 131).brighter(.25f),
-				R1 	= RGB(22, 186, 231),
-				R2 	= RGB(0, 134, 192),
-				R3 	= RGB(0, 105, 180),
-				R4 	= RGB(0, 79, 159),
-				R9 	= RGB(0, 48, 93),
-				W 	= RGB(134, 188, 37),
-				BW 	= RGB(101, 179, 46),
-				W3 	= RGB(0, 120, 88),
-				WY 	= RGB(0, 169, 132),
-				K15 	= RGB(255, 227, 126),
-				K30 	= RGB(255, 237, 0),
-				DKW 	= RGB(255, 204, 0),
-				GE31 	= RGB(157, 157, 156),
+				G940 	= (RGB(139,  59,  43)).brighter(.25f),
+				G239 	= (RGB(245, 156,   0)),
+				G231 	= (RGB(238, 114,   3)),
+				G119 	= (RGB(221,  11,  47)).brighter(.35f),
+				G115 	= (RGB(222,   0, 126)),
+				G107 	= (RGB(158,  25, 129)),
+				G62 	= (RGB( 92,  36, 131)).brighter(.25f),
+				R1 	= (RGB( 22, 186, 231)),
+				R2 	= (RGB(  0, 134, 192)),
+				R3 	= (RGB(  0, 105, 180)),
+				R4 	= (RGB(  0,  79, 159)),
+				R9 	= (RGB(  0,  48,  93)),
+				W 	= (RGB(134, 188,  37)),
+				BW 	= (RGB(101, 179,  46)),
+				W3 	= (RGB(  0, 120,  88)),
+				WY 	= (RGB(  0, 169, 132)),
+				K15 	= (RGB(255, 227, 126)),
+				K30 	= (RGB(255, 237,   0)),
+				DKW 	= (RGB(255, 204,   0)),
+				GE31 	= (RGB(157, 157, 156)),
 			} RGB structuredColor(string name, RGB def = clGray)
 			{
 				switch(name)
@@ -7048,7 +7048,7 @@ version(/+$DIDE_REGION+/all)
 					case "struct": 	return clPiko.W3; 
 					case "union": 	return clPiko.WY; 
 					case "mixin template": 	return clPiko.K15; 
-					case "mixin": 	return clPiko.DKW; 
+					case "mixin": 	return mix(clPiko.DKW, clPiko.G119, .85f); 
 					case "statement": 	return clGray; 
 					case "function", "invariant": 	return clSilver; 
 					case "__region": 	return clGray; 
@@ -7089,7 +7089,7 @@ version(/+$DIDE_REGION+/all)
 			[
 				"with (",
 				"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
-				"while (", 	"do",		
+				"while (", 	"do",			
 				"version (", 	"debug (",  	"debug", 	"scope (",
 				"if (", 	"static if (", 	"else if (", 	"else static if (",
 				"else", 	"else version (", 	"else debug (", 	"else debug", 
@@ -7097,35 +7097,10 @@ version(/+$DIDE_REGION+/all)
 				"try", 	"catch (", 	"finally",	
 				"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
 				"__region", //decoded from: version(/+$D*DE_REGION title+/all)
-				//Todo: mixin
+				
 				/+
-					mixin () <- ebbol kell egy node-t csinalni!
-					
-					
-					MixinDeclaration:
-					    mixin ( ArgumentList ) ;
-					MixinType:
-					    mixin ( ArgumentList )
-					MixinExpression:
-					    mixin ( ArgumentList )
-					MixinStatement:
-					    mixin ( ArgumentList ) ;
-					TemplateMixinDeclaration:
-					    mixin template Identifier TemplateParameters Constraintopt { DeclDefsopt }
-					
-					TemplateMixin:
-							  mixin MixinTemplateName TemplateArgumentsopt Identifieropt ;
-							  mixin Identifier = MixinTemplateName TemplateArgumentsopt ;
-					
-					MixinTemplateName:
-							  . MixinQualifiedIdentifier
-							  MixinQualifiedIdentifier
-							  Typeof . MixinQualifiedIdentifier
-					
-					MixinQualifiedIdentifier:
-							  Identifier
-							  Identifier . MixinQualifiedIdentifier
-							  TemplateInstance . MixinQualifiedIdentifier
+					Note: mixins: 	String mixins are processed later, at every () blocks.  
+						Template mixins are not processed yet, they are Statements now.
 				+/
 			].sort!"a>b".array; 
 			//Note: descending order is important.  "debug (" must be checked before "debug"
@@ -9084,6 +9059,19 @@ version(/+$DIDE_REGION+/all)
 		
 		//Todo: Can't detect structure initializer here: VkClearValue clearColor = { color: { float32: [ 0.8f, 0.2f, 0.6f, 1.0f ]}}; 
 	} 
+	
+	bool isHighLevelBlock(CodeColumn col)
+	{
+		bool found; 
+		foreach(cell; col.rows.map!(r => r.subCells).joiner) {
+			if(cast(Declaration) cell) { found = true; continue; }
+			if(cast(CodeComment) cell) continue; 
+			if(auto g = cast(Glyph) cell)
+			if(g.ch.isDLangWhitespace) continue; 
+			return false; 
+		}
+		return found; 
+	} 
 	
 	void processHighLevelPatterns_statement(CodeColumn col)
 	{
@@ -9107,22 +9095,17 @@ version(/+$DIDE_REGION+/all)
 		
 	} 
 	
-	bool isHighLevelBlock(CodeColumn col)
-	{
-		bool found; 
-		foreach(cell; col.rows.map!(r => r.subCells).joiner) {
-			if(cast(Declaration) cell) { found = true; continue; }
-			if(cast(CodeComment) cell) continue; 
-			if(auto g = cast(Glyph) cell)
-			if(g.ch.isDLangWhitespace) continue; 
-			return false; 
-		}
-		return found; 
-	} 
-	
 	void processHighLevelPatterns_goInside(CodeColumn col_)
 	{
-		//Todo: bad naming.
+		//Todo: Bad naming. I think this is must be the 'expression'.
+		
+		{
+			foreach(int i, row; col_.rows)
+			{
+				if(row.chars.canFind(`mixin`))
+				LOG("goInside row", i, row.extractThisLevelDString); 
+			}
+		}
 		
 		//Note: "goinside" means, don't threat this block as a statement block, just look recursively inside internal {} () [] q{} blocks.
 		foreach(ref cell; col_.rows.map!(r => r.subCells).joiner)
@@ -10244,7 +10227,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4392D7B6B4BCC).檢(expr))},
+				q{((0x4376E7B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10256,7 +10239,7 @@ version(/+$DIDE_REGION+/all) {
 				NET.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x439F07B6B4BCC).檢 (expr))},
+				q{((0x438317B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10288,8 +10271,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x43D3D7B6B4BCC)))(互!((bool),(1),(0x43D617B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x43D857B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x43DD17B6B4BCC)))
+					(互!((bool),(0),(0x43B7E7B6B4BCC)))(互!((bool),(1),(0x43BA27B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x43BC67B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x43C127B6B4BCC)))
 				},
 				
 				"互!",
@@ -10305,9 +10288,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43FB67B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43FF77B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4406B7B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x440EC7B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x43DF77B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x43E387B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x43EAC7B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x43F2D7B6B4BCC})))
 				},
 				
 				"同!",
@@ -10378,13 +10361,14 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x44BA37B6B4BCC).檢(expr)) ((0x44BC17B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x44C117B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x449E47B6B4BCC).檢(expr)) ((0x44A027B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x44A527B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x44CB57B6B4BCC))) (互!((bool),(1),(0x44CDA7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x44CFF7B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44D397B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44D7B7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44DE97B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44E6E7B6B4BCC})))
+								(互!((bool),(0),(0x44AF67B6B4BCC))) (互!((bool),(1),(0x44B1B7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x44B407B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44B7A7B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44BBC7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44C2A7B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44CAF7B6B4BCC})))
+								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
 					}
@@ -13429,6 +13413,59 @@ l2
 				return (mixin(和!(q{n=0},q{N-1},q{x[n] * ((ℯ)^^(-i*2*π*((k)/(N))*n))}))); 
 			} 
 		} 
+	}version(none)
+	{
+		
+		/+
+			Note: MixinDeclaration:	mixin ( ArgumentList ) ;
+			MixinType:    	mixin ( ArgumentList )
+			MixinExpression:    	mixin ( ArgumentList )
+			MixinStatement:    	mixin ( ArgumentList ) ;
+			
+			Detection:
+				Detect "mixin" keyword before ()
+				That CAN substituted into a niceExpression block.
+				Must be processed inside Statements and Expressions. (goInside = Expression)
+		+/
+		
+		/+0:+/mixin/+cmt+/("string mixin as declaration"); 
+		const mixin("string mixin as type") name; 
+		const a = mixin("string mixin expression"); 
+		const a = mixin("string mixin type")(mixin("string mixin expression1")+mixin("string mixin expression1")); 
+		mixin
+		/+comment+/
+		(); void f(mixin("arg"))
+		{
+			mixin("123").xyz; 
+			(mixin("123").xyz); 
+		} 
+		/+
+			Note: TemplateMixinDeclaration:  /+Link: -> DIDE.Declaration+/
+			    mixin template Identifier TemplateParameters Constraintopt { DeclDefsopt }
+			
+			TemplateMixin: 
+						 mixin MixinTemplateName TemplateArgumentsopt Identifieropt ;
+						 mixin Identifier = MixinTemplateName TemplateArgumentsopt ;
+			
+			MixinTemplateName:  /+It NEVER starts with ()+/
+						 . MixinQualifiedIdentifier
+						 MixinQualifiedIdentifier
+						 Typeof . MixinQualifiedIdentifier
+			
+			MixinQualifiedIdentifier:
+						 Identifier
+						 Identifier . MixinQualifiedIdentifier
+						 TemplateInstance . MixinQualifiedIdentifier
+		+/
+		
+		mixin SimpleTemplate; 
+		mixin .modul.TemplateName!(arg1, mixin("arg2")); 
+		mixin .modul.TemplateName!(arg1) instanceName2; 
+		/+
+			1.40 doesn't support this -> 
+			/+Code: mixin instanceName3 = .modul.TemplateName!(arg1); +/
+		+/
+		
 	}
 }
 debug debug = hehehe; else version = hahaha; 
