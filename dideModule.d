@@ -5996,27 +5996,29 @@ version(/+$DIDE_REGION+/all)
 	}
 } class CodeString : CodeContainer
 {
-	mixin((
-		(表([
-			[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
-			[q{dString},q{"`"},q{"`"}],
-			[q{cChar},q{"'"},q{"'"}],
-			[q{cString},q{`"`},q{`"`}],
-			[q{rString},q{`r"`},q{`"`}],
-			[q{qString_round},q{`q"(`},q{`)"`}],
-			[q{qString_square},q{`q"[`},q{`]"`}],
-			[q{qString_curly},q{`q"{`},q{`}"`}],
-			[q{qString_angle},q{`q"<`},q{`>"`}],
-			[q{qString_slash},q{`q"/`},q{`/"`}],
-			[q{tokenString},q{`q{`},q{`}`}],
-			[q{hexString},q{`x"`},q{`"`}],
-			[q{interpolated_cString},q{`i"`},q{`"`}],
-			[q{interpolated_dString},q{"i`"},q{"`"}],
-			[q{interpolated_tokenString},q{`iq{`},q{`}`}],
-			[q{//Todo: qString_id
-			}],
-		]))
-	).調!GEN_enumTable); 
+	mixin(
+		(
+			(表([
+				[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
+				[q{dString},q{"`"},q{"`"}],
+				[q{cChar},q{"'"},q{"'"}],
+				[q{cString},q{`"`},q{`"`}],
+				[q{rString},q{`r"`},q{`"`}],
+				[q{qString_round},q{`q"(`},q{`)"`}],
+				[q{qString_square},q{`q"[`},q{`]"`}],
+				[q{qString_curly},q{`q"{`},q{`}"`}],
+				[q{qString_angle},q{`q"<`},q{`>"`}],
+				[q{qString_slash},q{`q"/`},q{`/"`}],
+				[q{tokenString},q{`q{`},q{`}`}],
+				[q{hexString},q{`x"`},q{`"`}],
+				[q{interpolated_cString},q{`i"`},q{`"`}],
+				[q{interpolated_dString},q{"i`"},q{"`"}],
+				[q{interpolated_tokenString},q{`iq{`},q{`}`}],
+				[q{//Todo: qString_id
+				}],
+			]))
+		).調!GEN_enumTable
+	); 
 	
 	enum CharSize
 	{ default_, c, w, d} 
@@ -6675,7 +6677,6 @@ version(/+$DIDE_REGION+/all)
 		
 		void save()
 		{
-			raise("Module saving is DISABLED!"); 
 			if(isReadOnly) return; 
 			clearInspectors; 
 			isSaving = true; scope(exit) isSaving = false; 
@@ -9263,42 +9264,44 @@ version(/+$DIDE_REGION+/all) {
 	{
 		enum lowestSpecialUnicodeChar = '\u3000' /+Contains all chinese chars used in NiceExpressions+/; 
 		
-		mixin((
-			(表([
-				[q{/+Note: NiceExpressionPattern : ubyte+/},q{/+Note: OpCnt+/}],
-				[q{unaryOp},q{1},q{/+Code: op(expr)+/},q{/+Note: ^^  .pow+/}],
-				[q{binaryOp},q{2},q{/+Code: (expr)op(expr)+/},q{/+Note: sqrt RGB+/}],
-				[q{tenaryOp},q{3},q{/+Code: (expr)op(expr)op(expr)+/},q{/+Note: ?:+/}],
-				[q{castOp},q{2},q{/+Code: op(expr)(expr)+/},q{/+Note: cast+/}],
-				[q{namedUnaryOp},q{2},q{/+Code: (expr)opq{code}+/},q{/+Note: genericArg!+/}],
-				[q{binaryTokenStringOp},q{2},q{/+Code: op(q{},q{})+/},q{/+Note: 表! (old MixinTable)+/}],
-				[q{tenaryTokenStringOp},q{3},q{/+Code: op(q{},q{},q{})+/},q{/+Note: Sigma operations+/}],
-				[q{twoParamOp},q{2},q{/+Code: op((expr),(expr))+/},q{/+Note:+/}],
-				[q{threeParamOp},q{3},q{/+Code: op((expr),(expr),(expr))+/},q{/+Note:+/}],
-				[q{twoParamEQOp},q{2},q{/+Code: op((expr),q{})+/},q{/+Note:+/}],
-				[q{threeParamEQEOp},q{3},q{/+Code: op((expr),q{},(expr))+/},q{/+Note:+/}],
-				[q{mixinTableInjectorOp},q{2},q{/+Code: (){with(op(expr)){expr}}()+/},q{/+Note: 表 new MixinTable+/}],
-				[q{anonymMethod},q{2},q{/+Code: (expr)op{code}+/},q{/+Note: anonym method (without attrs)+/}],
-				[],
-				[q{deprecated binaryMixinEQOp_new},q{2},q{/+Code: op!((expr),q{code})+/},q{/+Note: op is 1 char only+/}],
-				[q{mixinFunctionCallOp_new},q{2},q{/+Code: (expr).op!fun+/},q{/+Note: /+Todo:+/調, the third way to mixin a table+/}],
-				[],
-				[q{/+Note: (mixin()) -> mixin()+/}],
-				[q{deprecated binaryMixinEQOp_old},q{2},q{/+Code: (mixin(op!((expr),q{code})))+/},q{/+Note: 體 (EnumFields, StructInitializer)+/}],
-				[q{deprecated nullaryMixinTokenStringOp},q{0},q{/+Code: (mixin(op))+/},q{/+Note:+/}],
-				[q{deprecated unaryMixinTokenStringOp},q{1},q{/+Code: (mixin(op(q{})))+/},q{/+Note:+/}],
-				[q{deprecated binaryMixinTokenStringOp},q{2},q{/+Code: (mixin(op(q{},q{})))+/},q{/+Note:+/}],
-				[q{deprecated tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note: 配 assign x,y = y,x+2+/}],
-				[],
-				[q{deprecated mixinGeneratorOp},q{2},q{/+Code: mixin((expr)opq{script})+/},q{/+Note: statement only,  .GEN!+/}],
-				[q{deprecated mixinFunctionCallOp},q{2},q{/+Code: mixin((expr).op!fun)+/},q{/+Note: statement only, 調, the third way to mixin a table+/}],
-				[],
-				[q{deprecated nobr_binaryMixinTokenStringOp},q{2},q{/+Code: mixin(op(q{expr},q{script}))+/},q{/+Note: statement only,+/}],
-				[],
-				[q{/+Note: special statement: any statement where the last char must is a unicode special char+/}],
-				[q{specialStatementOp},q{0},q{/+Code: op+/},q{/+Note: statement only, auto 間T=now間 //Last char must be a unicode special char+/}],
-			]))
-		).調!GEN_enumTable); 
+		mixin(
+			(
+				(表([
+					[q{/+Note: NiceExpressionPattern : ubyte+/},q{/+Note: OpCnt+/}],
+					[q{unaryOp},q{1},q{/+Code: op(expr)+/},q{/+Note: ^^  .pow+/}],
+					[q{binaryOp},q{2},q{/+Code: (expr)op(expr)+/},q{/+Note: sqrt RGB+/}],
+					[q{tenaryOp},q{3},q{/+Code: (expr)op(expr)op(expr)+/},q{/+Note: ?:+/}],
+					[q{castOp},q{2},q{/+Code: op(expr)(expr)+/},q{/+Note: cast+/}],
+					[q{namedUnaryOp},q{2},q{/+Code: (expr)opq{code}+/},q{/+Note: genericArg!+/}],
+					[q{binaryTokenStringOp},q{2},q{/+Code: op(q{},q{})+/},q{/+Note: 表! (old MixinTable)+/}],
+					[q{tenaryTokenStringOp},q{3},q{/+Code: op(q{},q{},q{})+/},q{/+Note: Sigma operations+/}],
+					[q{twoParamOp},q{2},q{/+Code: op((expr),(expr))+/},q{/+Note:+/}],
+					[q{threeParamOp},q{3},q{/+Code: op((expr),(expr),(expr))+/},q{/+Note:+/}],
+					[q{twoParamEQOp},q{2},q{/+Code: op((expr),q{})+/},q{/+Note:+/}],
+					[q{threeParamEQEOp},q{3},q{/+Code: op((expr),q{},(expr))+/},q{/+Note:+/}],
+					[q{mixinTableInjectorOp},q{2},q{/+Code: (){with(op(expr)){expr}}()+/},q{/+Note: 表 new MixinTable+/}],
+					[q{anonymMethod},q{2},q{/+Code: (expr)op{code}+/},q{/+Note: anonym method (without attrs)+/}],
+					[],
+					[q{deprecated binaryMixinEQOp_new},q{2},q{/+Code: op!((expr),q{code})+/},q{/+Note: op is 1 char only+/}],
+					[q{mixinFunctionCallOp_new},q{2},q{/+Code: (expr).op!fun+/},q{/+Note: 調, the third way to mixin a table+/}],
+					[],
+					[q{/+Note: (mixin()) -> mixin()+/}],
+					[q{deprecated binaryMixinEQOp_old},q{2},q{/+Code: (mixin(op!((expr),q{code})))+/},q{/+Note: 體 (EnumFields, StructInitializer)+/}],
+					[q{deprecated nullaryMixinTokenStringOp},q{0},q{/+Code: (mixin(op))+/},q{/+Note:+/}],
+					[q{deprecated unaryMixinTokenStringOp},q{1},q{/+Code: (mixin(op(q{})))+/},q{/+Note:+/}],
+					[q{deprecated binaryMixinTokenStringOp},q{2},q{/+Code: (mixin(op(q{},q{})))+/},q{/+Note:+/}],
+					[q{deprecated tenaryMixinTokenStringOp},q{3},q{/+Code: (mixin(op(q{},q{},q{})))+/},q{/+Note: 配 assign x,y = y,x+2+/}],
+					[],
+					[q{deprecated mixinGeneratorOp},q{2},q{/+Code: mixin((expr)opq{script})+/},q{/+Note: statement only,  .GEN!+/}],
+					[q{deprecated mixinFunctionCallOp},q{2},q{/+Code: mixin((expr).op!fun)+/},q{/+Note: statement only, 調, the third way to mixin a table+/}],
+					[],
+					[q{deprecated nobr_binaryMixinTokenStringOp},q{2},q{/+Code: mixin(op(q{expr},q{script}))+/},q{/+Note: statement only,+/}],
+					[],
+					[q{/+Note: special statement: any statement where the last char must is a unicode special char+/}],
+					[q{specialStatementOp},q{0},q{/+Code: op+/},q{/+Note: statement only, auto 間T=now間 //Last char must be a unicode special char+/}],
+				]))
+			).調!GEN_enumTable
+		); 
 		
 		enum NiceExpressionBlockType : ubyte { list, stringMixin, specialStatement } 
 		
@@ -9500,7 +9503,7 @@ version(/+$DIDE_REGION+/all) {
 				"RGBA",
 				customClass: NEC.ColorNode
 			},
-			
+			 
 			
 			{
 				"floor", 
@@ -9882,7 +9885,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(等(q{a},q{b},q{c})))},
+				q{mixin(等(q{a},q{b},q{c}))},
 				
 				"等",
 				q{buildTenaryRelation; },
@@ -9894,7 +9897,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(界0(q{a},q{b},q{c})))},
+				q{mixin(界0(q{a},q{b},q{c}))},
 				
 				"界0",
 				q{buildTenaryRelation; },
@@ -9906,7 +9909,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(界1(q{a},q{b},q{c})))},
+				q{mixin(界1(q{a},q{b},q{c}))},
 				
 				"界1",
 				q{buildTenaryRelation; },
@@ -9918,7 +9921,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(界2(q{a},q{b},q{c})))},
+				q{mixin(界2(q{a},q{b},q{c}))},
 				
 				"界2",
 				q{buildTenaryRelation; },
@@ -9930,7 +9933,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(界3(q{a},q{b},q{c})))},
+				q{mixin(界3(q{a},q{b},q{c}))},
 				
 				"界3",
 				q{buildTenaryRelation; },
@@ -9942,7 +9945,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.binaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim,
-				q{(mixin(指(q{a},q{2})))},
+				q{mixin(指(q{a},q{2}))},
 				
 				"指",
 				q{
@@ -9961,7 +9964,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skIdentifier1, 
 				NodeStyle.normal,
-				q{(mixin(配(q{x,y},q{=},q{y,x})))},
+				q{mixin(配(q{x,y},q{=},q{y,x}))},
 				
 				"配",
 				q{
@@ -10208,7 +10211,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim,
-				q{(mixin(求map(q{i=0},q{N-1},q{expr})))},
+				q{mixin(求map(q{i=0},q{N-1},q{expr}))},
 				"求map",
 				customClass: NEC.SigmaOp,
 				initCode: q{symbol = '⇶'; }
@@ -10221,7 +10224,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim,
-				q{(mixin(求each(q{i=0},q{N-1},q{expr})))},
+				q{mixin(求each(q{i=0},q{N-1},q{expr}))},
 				"求each",
 				customClass: NEC.SigmaOp,
 				initCode: q{symbol = '∀'; }
@@ -10234,7 +10237,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim, 
-				q{(mixin(求sum(q{i},q{1, 2, 3},q{expr})))},
+				q{mixin(求sum(q{i},q{1, 2, 3},q{expr}))},
 				"求sum",
 				customClass: NEC.SigmaOp,
 				initCode: q{symbol = '∑'; }
@@ -10245,7 +10248,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim,
-				q{(mixin(求product(q{i=0},q{N-1},q{expr})))},
+				q{mixin(求product(q{i=0},q{N-1},q{expr}))},
 				"求product",
 				customClass: NEC.SigmaOp,
 				initCode: q{symbol = '∏'; }
@@ -10289,7 +10292,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.list, NEP.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x4444B7B6B4BCC).檢(expr))},
+				q{((0x4444A7B6B4BCC).檢(expr))},
 				
 				".檢", 
 				customClass: NEC.Inspector
@@ -10301,7 +10304,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.list, NEP.binaryOp, 
 				skIdentifier1, 
 				NodeStyle.dim,
-				q{((0x445187B6B4BCC).檢 (expr))},
+				q{((0x445177B6B4BCC).檢 (expr))},
 				
 				".檢 ", 
 				customClass: NEC.Inspector
@@ -10333,8 +10336,8 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(互!((bool),(0),(0x448797B6B4BCC)))(互!((bool),(1),(0x4489D7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x448C17B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x4490D7B6B4BCC)))
+					(互!((bool),(0),(0x448787B6B4BCC)))(互!((bool),(1),(0x4489C7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x448C07B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x4490C7B6B4BCC)))
 				},
 				
 				"互!",
@@ -10350,9 +10353,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44AFE7B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44B3F7B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44BB37B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44C347B6B4BCC})))
+					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44B037B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44B447B6B4BCC})))
+					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44BB87B6B4BCC})))
+					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44C397B6B4BCC})))
 				},
 				
 				"同!",
@@ -10396,9 +10399,9 @@ dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
 							[q{"divide, sqrt, root, 
 power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
 							[q{"tenary relation"},q{
-								(mixin(等(q{a},q{b},q{c})))
-								(mixin(界0(q{a},q{b},q{c}))) (mixin(界1(q{a},q{b},q{c})))
-								(mixin(界2(q{a},q{b},q{c}))) (mixin(界3(q{a},q{b},q{c})))
+								(mixin(mixin(mixin(等(q{a},q{b},q{c})))))
+								(mixin(mixin(mixin(界0(q{a},q{b},q{c}))))) (mixin(mixin(mixin(界1(q{a},q{b},q{c})))))
+								(mixin(mixin(mixin(界2(q{a},q{b},q{c}))))) (mixin(mixin(mixin(界3(q{a},q{b},q{c})))))
 							}],
 							[q{"color literals"},q{(RGB()) (RGBA())}],
 						]))
@@ -10423,13 +10426,13 @@ struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: v
 							[q{"enum member 
 blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x456E47B6B4BCC).檢(expr)) ((0x457027B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x457527B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x457297B6B4BCC).檢(expr)) ((0x457477B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x457977B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x457F67B6B4BCC))) (互!((bool),(1),(0x4581B7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x458407B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4587A7B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x458BC7B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4592A7B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x459AF7B6B4BCC})))
+								(互!((bool),(0),(0x4583B7B6B4BCC))) (互!((bool),(1),(0x458607B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x458857B6B4BCC)))
+								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x458C57B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x459077B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x459757B6B4BCC})))
+								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x459FA7B6B4BCC})))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -10902,9 +10905,9 @@ with condition"},q{
 				}
 				return null; 
 			} 
-			alias asListBlock = asCodeBlock!q{list}; 
-			alias asStringMixinBlock = asCodeBlock!q{stringMixin}; 
-			alias asTokenStringBlock = asCodeBlock!q{tokenString}; 
+			alias asListBlock 	= asCodeBlock!q{list},
+			asStringMixinBlock 	= asCodeBlock!q{stringMixin},
+			asTokenStringBlock 	= asCodeBlock!q{tokenString}; 
 			
 			static auto asStatementBlockDeclaration(Cell cell)
 			{ if(auto dcl = (cast(Declaration)(cell))) if(dcl.isBlock && dcl.keyword=="" && dcl.attributes.empty) return dcl; return null; } 
@@ -10966,7 +10969,8 @@ with condition"},q{
 			extractListParams 	= extractCodeColumnParams!"()",
 			extractListTokenStringParams 	= extractCodeColumnParams!"()q{}"; 
 			
-		}
+		}
+		
 		void processNiceStatementRow(CodeRow statementRow)
 		{
 			assert(statementRow); 
@@ -10974,109 +10978,47 @@ with condition"},q{
 			void ADD(Args...)(int tIdx, Args args)
 			{
 				with(statementRow)
-				{
-					clearSubCells; 
-					appendCell(NiceExpression.create(statementRow, tIdx, args)); 
-					needMeasure; 
-				}
-			} bool TRY(Args...)(NiceExpressionPattern pattern, string op, Args args)
+				{ clearSubCells; appendCell(NiceExpression.create(statementRow, tIdx, args)); needMeasure; }
+			} 
+			bool TRY(Args...)(NiceExpressionPattern pattern, string op, Args args)
 			{
 				if(const tIdx = findNiceExpressionTemplateIdx(NEB.specialStatement, pattern, op))
-				{
-					ADD(tIdx, args); 
-					return true; 
-				}
+				{ ADD(tIdx, args); return true; }
 				return false; 
 			} 
 			
 			if(statementRow.subCells.empty) return; 
 			const lastCh = statementRow.chars.back; 
-			if(lastCh=='￼')
-			{
-				if(statementRow.subCells.map!structuredCellToChar.equal("mixin("))
-				{
-					if(auto blk = asListBlock(statementRow.subCells.back))
-					if(blk.content.rows.length==1)
-					if(auto row = blk.content.rows[0])
-					if(row.length>=2)
-					{
-						if(auto left = asListBlock(row.subCells.front))
-						{
-							if(auto right = asTokenStringBlock(row.subCells.back))
-							{
-								const op = row.chars[1..$-1].text; 
-								{ if(TRY((mixin(舉!((NiceExpressionPattern),q{mixinGeneratorOp}))) /+Note: mixin((expr)op q{script})+/, op, left.content, right.content)) return; }
-							}
-							if(row.length>=4 && row.chars[1]=='.')
-							{
-								const exclIdx = row.chars.countUntil('!'); 
-								if(exclIdx>=3)
-								{
-									const op = row.chars[2..exclIdx].text; 
-									{
-										if(const tIdx = findNiceExpressionTemplateIdx(NEB.specialStatement, (mixin(舉!((NiceExpressionPattern),q{mixinFunctionCallOp}))) /+Note: mixin((expr).op!fun)+/, op))
-										{
-											//only leave the function part on the row.
-											row.subCells = row.subCells[exclIdx+1..$]; row.refreshTabIdx; 
-											auto rightCol = row.parent; 
-											
-											ADD(tIdx, left.content, rightCol); return; 
-										}
-									}
-								}
-							}
-						}
-						if(auto innerBlk = asListBlock(row.subCells.back))
-						{
-							const op = row.chars[0..$-1].text; 
-							{
-								if(const tIdx = findNiceExpressionTemplateIdx(NEB.specialStatement, (mixin(舉!((NiceExpressionPattern),q{nobr_binaryMixinTokenStringOp}))) /+Note: mixin(op(q{expr},q{script}))+/, op))
-								if(innerBlk.content.rowCount==1)
-								if(auto innerRow = innerBlk.content.rows[0])
-								if(innerRow.length==3 && innerRow.chars[1]==',')
-								if(auto left = asTokenStringBlock(innerRow.subCells.front))
-								if(auto right = asTokenStringBlock(innerRow.subCells.back))
-								{ ADD(tIdx, left.content, right.content); return; }
-							}
-						}
-					}
-				}
-			}
-			else if(lastCh>=lowestSpecialUnicodeChar)
+			if(lastCh>=lowestSpecialUnicodeChar && lastCh!='￼')
 			{
 				const op = statementRow.chars.text; 
 				{ if(TRY((mixin(舉!((NiceExpressionPattern),q{specialStatementOp}))) /+Note: op  //last char is special unicode+/, op)) return; }
 			}
 		} 
-		void processNiceExpressionBlock(ref Cell outerCell)
+		void processNiceExpressionBlock(ref Cell outerCell) /+Note: This is called on each block of (possible) high level code Do simple code transformations here.+/
 		{
-			/+
-				Note: This is called on each block of (possible) high level code
-				Do simple code transformations here.
-			+/
-			
-			//Todo: NiceExpressions not working inside   enum ;
-			
-			/+
-				Todo: There are more to tenary.
-				The condition could be 2 rows high when it contains a content a comment.
-				But the alignment should be more clever.
-				/+
-					Code: ((
-						sample.avgColor>192
-						//the error and mask is in the alpha.
-					)?(clRed) :(sample.avgColor.rgb))
-				+/
-			+/
-			//Todo: Double _ could be a subText. Example: dir__start
-			
-			
-			//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
-			
-			
 			if(auto blk = (cast(CodeBlock)(outerCell)))
 			if(blk.content && blk.content.rowCount==1)
 			{
+				
+				//Todo: NiceExpressions not working inside   enum ;
+				
+				/+
+					Todo: There are more to tenary.
+					The condition could be 2 rows high when it contains a content a comment.
+					But the alignment should be more clever.
+					/+
+						Code: ((
+							sample.avgColor>192
+							//the error and mask is in the alpha.
+						)?(clRed) :(sample.avgColor.rgb))
+					+/
+				+/
+				//Todo: Double _ could be a subText. Example: dir__start
+				
+				
+				//Todo: ((.1).mul(second))   nice scientific measurement unit display: .1 s
+				
 				assert(blk && blk.content && blk.content.rowCount==1); 
 				
 				const bt = blk.type.predSwitch(
@@ -11139,7 +11081,7 @@ with condition"},q{
 						if(params.length==2 && TRY(tIdx, params[0], params[1])) return; 
 					}
 					//Todo: This function is getting out of hand...
-				} 
+				} 
 				
 				
 				void processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
@@ -11174,51 +11116,6 @@ with condition"},q{
 								)
 							) return; 
 						}
-					}
-				} 
-				
-				void processMixinExpr(CodeRow row2)
-				{
-					if(
-						row2.subCells.length==3/+
-							Warning: 💀DEAD💀
-							🦴CODE🦴
-						+/
-					)
-					if(row2.chars[1]=='!')
-					{
-						string mixinOp = row2.chars[0].text; 
-						{
-							if(const tIdx = findNiceExpressionTemplateIdx(bt, (mixin(舉!((NiceExpressionPattern),q{binaryMixinEQOp_new}))) /+Note: op!((expr),q{code})+/, mixinOp))
-							if(auto right2 = asListBlock(row2.subCells.back))
-							if(right2.content.rowCount==1)
-							if(auto row3 = right2.content.rows[0])
-							if(row3.cellCount==3 && row3.chars[1]==',')
-							if(auto left3 = asListBlock(row3.subCells[0]))
-							if(auto right3 = asTokenStringBlock(row3.subCells[2]))
-							{ if(TRY(tIdx, left3.content, right3.content)) return; }
-						}
-					}
-					
-					if(auto right2 = asListBlock(row2.subCells.back))
-					{
-						/+
-							Warning: 💀DEAD💀
-							🦴CODE🦴
-						+/
-						auto params = extractTokenStringParams(right2.content); 
-						const mixinOp = row2.chars[0..$-1].text; 
-						if(params.length==1)
-						{ if(TRY(bt, (mixin(舉!((NiceExpressionPattern),q{unaryMixinTokenStringOp}))) /+Note: (mixin(op(q{})))+/, mixinOp, params[0])) return; }
-						else if(params.length==2)
-						{ if(TRY(bt, (mixin(舉!((NiceExpressionPattern),q{binaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{})))+/, mixinOp, params[0], params[1])) return; }
-						else if(params.length==3)
-						{ if(TRY(bt, (mixin(舉!((NiceExpressionPattern),q{tenaryMixinTokenStringOp}))) /+Note: (mixin(op(q{},q{},q{})))+/, mixinOp, params[0], params[1], params[2])) return; }
-					}
-					else
-					{
-						const mixinOp = row2.chars.text; 
-						if(TRY(bt, (mixin(舉!((NiceExpressionPattern),q{nullaryMixinTokenStringOp}))) /+Note: (mixin(op))+/, mixinOp)) return; 
 					}
 				} 
 				
@@ -11490,9 +11387,9 @@ with condition"},q{
 				
 				void buildTenaryRelation()
 				{
-					putSeparatorSpace; put("mixin("); put(operator); put('('); 
+					put(operator); put('('); 
 					foreach(i; 0..3) { if(i) put(','); put("q{", operands[i], "}"); }
-					put(')'); put(')'); 
+					put(')'); 
 				} 
 				
 				//------------------------------------------------------------------------
@@ -11709,7 +11606,7 @@ with condition"},q{
 			{
 				with(builder)
 				{
-					put(operator~'!'); 
+					put(operator); 
 					put('('); 
 						put("(", operands[0], ")"); put(','); put("q{", operands[1], "}"); 
 					put(')'); 
@@ -12578,10 +12475,12 @@ with condition"},q{
 						else
 						{
 							//just insert plain text fast
-							auto 	cells 	= (mixin(求map(q{line},q{
-								debugValue
-								.splitLines
-							},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))).array,
+							auto 	cells 	= (
+								mixin(求map(q{line},q{
+									debugValue
+									.splitLines
+								},q{(mixin(求map(q{ch},q{line},q{(cast(Cell)(new Glyph(ch, style, skConsole)))}))).array}))
+							).array,
 								col 	= new CodeColumn(this, cells); 
 							
 							with(col) {
