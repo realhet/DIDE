@@ -113,19 +113,14 @@ void main()
 			/+(等!((2),(i),(4-i))).print;+/
 			
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
-			(
-				mixin(
-					求each(
-						q{i=0},q{4},q{
-							((0xB9A8F6F833B).檢((mixin(指(q{x},q{0}))) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-							((0xBF58F6F833B).檢((mixin(指(q{x},q{1}))) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-							((0xC508F6F833B).檢((mixin(指(q{x},q{2}))) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-							((0xCAB8F6F833B).檢((mixin(指(q{x},q{3}))) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-							((0xD068F6F833B).檢((mixin(指(q{x},q{4}))) ~= a(mixin(等(q{2},q{i},q{4-i})))))
-						}
-					)
-				)
-			); 
+			mixin(求each(q{i=0},q{4},q{
+				((0xB818F6F833B).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0xBD78F6F833B).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0xC2D8F6F833B).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0xC838F6F833B).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0xCD98F6F833B).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+			})); 
+			
 			
 			/+
 				Code: //first version.	Flaw: aliases can't hold expressions.
