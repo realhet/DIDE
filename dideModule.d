@@ -7923,7 +7923,7 @@ version(/+$DIDE_REGION+/all)
 		
 		super.rearrange; 
 		
-		(mixin(求each(q{a},q{allJoinedPrepositionsFromThis},q{a.rearrange_appendBuildMessages}))); 
+		mixin(求each(q{a},q{allJoinedPrepositionsFromThis},q{a.rearrange_appendBuildMessages})); 
 	} 
 	
 	override void buildSourceText(ref SourceTextBuilder builder)
@@ -10224,7 +10224,7 @@ version(/+$DIDE_REGION+/all) {
 				NEB.stringMixin, NEP.tenaryTokenStringOp, 
 				skSymbol, 
 				NodeStyle.dim,
-				q{mixin(求each(q{i=0},q{N-1},q{expr}))},
+				q{mixin(求each(q{i=0},q{N-1},q{expr})); },
 				"求each",
 				customClass: NEC.SigmaOp,
 				initCode: q{symbol = '∀'; }
@@ -10353,9 +10353,9 @@ version(/+$DIDE_REGION+/all) {
 				skInteract,
 				NodeStyle.dim,
 				q{
-					(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44B037B6B4BCC})))(mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44B447B6B4BCC})))
-					(mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44BB87B6B4BCC})))
-					(mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44C397B6B4BCC})))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x44B027B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x44B417B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x44BB37B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x44C327B6B4BCC}))
 				},
 				
 				"同!",
@@ -10397,11 +10397,11 @@ trunc"},q{
 							[q{"multiply,
 dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
 							[q{"divide, sqrt, root, 
-power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) (mixin(指(q{a},q{b})))}],
+power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
 							[q{"tenary relation"},q{
-								(mixin(mixin(mixin(等(q{a},q{b},q{c})))))
-								(mixin(mixin(mixin(界0(q{a},q{b},q{c}))))) (mixin(mixin(mixin(界1(q{a},q{b},q{c})))))
-								(mixin(mixin(mixin(界2(q{a},q{b},q{c}))))) (mixin(mixin(mixin(界3(q{a},q{b},q{c})))))
+								mixin(等(q{a},q{b},q{c}))
+								mixin(界0(q{a},q{b},q{c})) mixin(界1(q{a},q{b},q{c}))
+								mixin(界2(q{a},q{b},q{c})) mixin(界3(q{a},q{b},q{c}))
 							}],
 							[q{"color literals"},q{(RGB()) (RGBA())}],
 						]))
@@ -10420,19 +10420,19 @@ anonym method"},q{
 								((a)=>(a+1)) 	((a){ f; })
 								((a) =>(a+1))	((a) { f; })
 							}],
-							[q{"tuple operation"},q{(mixin(配(q{x,y},q{=},q{y,x})))}],
+							[q{"tuple operation"},q{mixin(配(q{x,y},q{=},q{y,x}))}],
 							[q{"named param, 
-struct initializer"},q{((value).genericArg!q{name}) (mixin(體!((Type),q{name: val, ...})))}],
+struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
 							[q{"enum member 
-blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))}],
+blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x457297B6B4BCC).檢(expr)) ((0x457477B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x457977B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x456C77B6B4BCC).檢(expr)) ((0x456E57B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x457357B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4583B7B6B4BCC))) (互!((bool),(1),(0x458607B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x458857B6B4BCC)))
-								(mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x458C57B6B4BCC}))) (mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x459077B6B4BCC}))) (mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x459757B6B4BCC})))
-								(mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x459FA7B6B4BCC})))
+								(互!((bool),(0),(0x457D97B6B4BCC))) (互!((bool),(1),(0x457FE7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x458237B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x458627B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x458A27B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4590E7B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x459917B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -10452,10 +10452,10 @@ blocks"},q{(mixin(舉!((Enum),q{member}))) (mixin(幟!((Enum),q{member | ...})))
 								mixin((src) .GEN!q{script}); mixin((expr).調!fun); 
 								mixin((src).GEN!q{script}); 
 							}],
-							[q{`map`},q{(mixin(求map(q{i=0},q{N},q{expr})))(mixin(求map(q{0<i<N},q{},q{expr})))(mixin(求map(q{i},q{1, 2, 3},q{expr})))}],
-							[q{`map`},q{(mixin(求each(q{i=0},q{N},q{expr})))(mixin(求each(q{0<i<N},q{},q{expr})))(mixin(求each(q{i},q{1, 2, 3},q{expr})))}],
-							[q{`sum`},q{(mixin(求sum(q{i=0},q{N},q{expr})))(mixin(求sum(q{0<i<N},q{},q{expr})))(mixin(求sum(q{i},q{1, 2, 3},q{expr})))}],
-							[q{`product`},q{(mixin(求product(q{i=0},q{N},q{expr})))(mixin(求product(q{0<i<N},q{},q{expr})))(mixin(求product(q{i},q{1, 2, 3},q{expr})))}],
+							[q{`map`},q{mixin(求map(q{i=0},q{N},q{expr}))mixin(求map(q{0<i<N},q{},q{expr}))mixin(求map(q{i},q{1, 2, 3},q{expr}))}],
+							[q{`sum`},q{mixin(求sum(q{i=0},q{N},q{expr}))mixin(求sum(q{0<i<N},q{},q{expr}))mixin(求sum(q{i},q{1, 2, 3},q{expr}))}],
+							[q{`product`},q{mixin(求product(q{i=0},q{N},q{expr}))mixin(求product(q{0<i<N},q{},q{expr}))mixin(求product(q{i},q{1, 2, 3},q{expr}))}],
+							[q{"each"},q{mixin(求each(q{i=0},q{N},q{f})); mixin(求each(q{0<i<N},q{},q{f})); mixin(求each(q{i},q{1, 2, 3},q{f})); }],
 						]))
 					}
 				},
@@ -10709,7 +10709,7 @@ with condition"},q{
 					file = File(id); 
 					
 					
-					(mixin(求each(q{ref a},q{pages},q{a.initialize(this)}))); captions = (mixin(求map(q{ref a},q{pages},q{a.caption}))).array; 
+					mixin(求each(q{ref a},q{pages},q{a.initialize(this)})); captions = mixin(求map(q{ref a},q{pages},q{a.caption})).array; 
 				} 
 				Page* actPage, lastPage; //cached
 				uint lastTick; 
@@ -12491,7 +12491,7 @@ with condition"},q{
 							}
 							
 							if(isHalfSize)
-							{ col.halfSize = true; (mixin(求each(q{r},q{col.rows},q{r.halfSize = true}))); }
+							{ col.halfSize = true; mixin(求each(q{r},q{col.rows},q{r.halfSize = true})); }
 							
 							operands[0] = col; put(operands[0]); //reuse former operand of ID
 						}

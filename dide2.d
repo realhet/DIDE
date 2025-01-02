@@ -199,7 +199,7 @@ version(/+$DIDE_REGION main+/all)
 		
 		MSQueue!string dbgRerouteQueue; 
 		
-		Bitmap[File] debugImageBlobs; void clearDebugImageBlobs() { (mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); }))); } 
+		Bitmap[File] debugImageBlobs; void clearDebugImageBlobs() { mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); })); } 
 		
 		ToolPalette _toolPalette; @property toolPalette()
 		{ if(!_toolPalette) _toolPalette = new ToolPalette; return _toolPalette; } 
@@ -1281,10 +1281,10 @@ version(/+$DIDE_REGION main+/all)
 							auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
 							const oldStyle = style; scope(exit) style = oldStyle; 
 							
-							(mixin(求each(q{m},q{workspace.modules},q{
+							mixin(求each(q{m},q{workspace.modules},q{
 								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
 								m.UI_constantNodes(moduleIsEnabled, 0); 
-							}))); 
+							})); 
 						}
 					); 
 					
@@ -1868,7 +1868,7 @@ class Workspace : Container, WorkspaceInterface
 					if(!rows.map!"a.lineIdx".isSorted)
 					ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
 					
-					(mixin(求each(q{r},q{rows},q{visitRow(r)}))); 
+					mixin(求each(q{r},q{rows},q{visitRow(r)})); 
 				}
 			} 
 			
@@ -1884,12 +1884,14 @@ class Workspace : Container, WorkspaceInterface
 					/+Opt: binary search+/
 					if(cells.length)
 					{
-						res ~= (mixin(體!((Container.SearchResult),q{
-							cells 	: cells,
-							container	: row,
-							absInnerPos	: row.worldInnerPos,
-							reference	: reference
-						}))); 
+						res ~= (
+							mixin(體!((Container.SearchResult),q{
+								cells 	: cells,
+								container	: row,
+								absInnerPos	: row.worldInnerPos,
+								reference	: reference
+							}))
+						); 
 						//Opt: appender
 					}
 				} 
@@ -1943,7 +1945,7 @@ class Workspace : Container, WorkspaceInterface
 						{ ERR("Standard LineLocator failed:", loc); }
 					}
 					
-					if(res.length>1) (mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false}))); 
+					if(res.length>1) mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false})); 
 					
 					return res; 
 				} 
@@ -1963,12 +1965,14 @@ class Workspace : Container, WorkspaceInterface
 		
 		auto nodeToSearchResult(CodeNode node, Object reference)
 		{
-			return (mixin(體!((Container.SearchResult),q{
-				cells 	: [node],
-				container	: node.parent,
-				absInnerPos	: node.parent.worldInnerPos,
-				reference	: reference
-			}))); 
+			return (
+				mixin(體!((Container.SearchResult),q{
+					cells 	: [node],
+					container	: node.parent,
+					absInnerPos	: node.parent.worldInnerPos,
+					reference	: reference
+				}))
+			); 
 		} 
 		
 		CodeRow[string] messageUICache; 
@@ -2014,7 +2018,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		
 		void processBuildMessages(DMDMessage[] messages)
-		{ (mixin(求each(q{m},q{messages},q{processBuildMessage(m)}))); } 
+		{ mixin(求each(q{m},q{messages},q{processBuildMessage(m)})); } 
 		
 		static CodeNode renderBuildMessage(DMDMessage msg)
 		{
@@ -6747,7 +6751,7 @@ class Workspace : Container, WorkspaceInterface
 			
 			drawMessageConnectionArrows(dr); 
 			
-			(mixin(求each(q{ref p},q{inspectorParticles},q{p.updateAndDraw(dr)}))); 
+			mixin(求each(q{ref p},q{inspectorParticles},q{p.updateAndDraw(dr)})); 
 			
 			drawTextSelections(dr, frmMain.view); //Bug: this will not work for multiple workspace views!!!
 			
@@ -6772,7 +6776,7 @@ class Workspace : Container, WorkspaceInterface
 			globalVisualizeSpacesAndTabs = !textSelections_internal.empty; 
 			
 			globalChangeindicatorsAppender.clear; 
-			(mixin(求each(q{m},q{modules},q{m.visibleConstantNodes.clear}))); 
+			mixin(求each(q{m},q{modules},q{m.visibleConstantNodes.clear})); 
 			
 			structureMap.beginCollect; 
 			super.draw(dr); 

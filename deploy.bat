@@ -22,7 +22,7 @@ SET RAREXE="%ProgramFiles%\WinRAR\Rar.exe"
 
 echo Creating backup: RARFILE
 
-%RAREXE% a %RARFILE% dide2.exe dide2.map dide2.d dideModule.d
+%RAREXE% a %RARFILE% dide2.exe dide2.map dide2.d dideModule.d BuildSys.d
 
 copy dide2.exe dide2_dev.exe
 copy dide2.map dide2_dev.map
