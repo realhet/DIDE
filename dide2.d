@@ -76,6 +76,25 @@ version(/+$DIDE_REGION main+/all)
 		
 		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
 	}
+	
+	static if(0)
+	void playground()
+	{
+		
+		// display messages cyclically until the shop is closed
+		outer: 
+		while(true)
+		{
+			foreach(msg; messages)
+			{
+				if(shop.isClosed())
+				break outer; // end the while loop
+				
+				display(msg); 
+			}
+		}
+		display("opens at 9am"); 
+	} 
 	
 	//globals ////////////////////////////////////////
 	
