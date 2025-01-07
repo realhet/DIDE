@@ -7492,6 +7492,7 @@ version(/+$DIDE_REGION+/all)
 		
 		bool promoteMixinStatement()
 		{
+			/+Todo: Handle attributes preceding template mixins!+/
 			enforce(!block && keyword=="" && ending==';'); 
 			enum kw = "mixin"; 
 			if(header.byCell.map!structuredCellToChar.startsWith(kw~' '))
@@ -9785,247 +9786,245 @@ version(/+$DIDE_REGION+/all) {
 		
 		
 		
-		mixin 入 !(
-			(
-				(表([
-					[q{/+Note: Name+/},q{/+Note: Example+/},q{/+Note: Pattern+/},q{/+Note: op+/},q{/+Note: Style+/},q{/+Note: Syntax+/},q{/+Note: Class+/},q{/+Note: Scripts @init: @text @node @draw @ui+/}],
-					[q{null_},q{},q{/+Code:+/},q{""},q{dim},q{Whitespace},q{NiceExpression},q{}],
-					[q{magnitude},q{(magnitude(a))},q{/+Code: (op(expr))+/},q{"magnitude"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('|'); op(0); put('|'); }],
-					[q{normalize},q{(normalize(a))},q{/+Code: (op(expr))+/},q{"normalize"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('‖'); op(0); put('‖'); }],
-					[q{float_},q{(float(a))},q{/+Code: (op(expr))+/},q{"float"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("F"); }],
-					[q{double_},q{(double(a))},q{/+Code: (op(expr))+/},q{"double"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("D"); }],
-					[q{real_},q{(real(a))},q{/+Code: (op(expr))+/},q{"real"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("real"); }],
-					[q{RGB},q{(RGB(64, 128, 255))},q{/+Code: (op(expr))+/},q{"RGB"},q{dim},q{BasicType},q{ColorNode},q{}],
-					[q{RGBA},q{(RGBA(0xFF8040AA))},q{/+Code: (op(expr))+/},q{"RGBA"},q{dim},q{BasicType},q{ColorNode},q{}],
-					[q{floor},q{(floor(a))},q{/+Code: (op(expr))+/},q{"floor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); }],
-					[q{ceil},q{(ceil(a))},q{/+Code: (op(expr))+/},q{"ceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); }],
-					[q{round},q{(round(a))},q{/+Code: (op(expr))+/},q{"round"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⁅'); op(0); put('⁆'); }],
-					[q{trunc},q{(trunc(a))},q{/+Code: (op(expr))+/},q{"trunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); }],
-					[q{ifloor},q{(ifloor(a))},q{/+Code: (op(expr))+/},q{"ifloor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); putTypeSubscript("int"); }],
-					[q{iceil},q{(iceil(a))},q{/+Code: (op(expr))+/},q{"iceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); putTypeSubscript("int"); }],
-					[q{iround},q{(iround(a))},q{/+Code: (op(expr))+/},q{"iround"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⁅'); op(0); put('⁆'); putTypeSubscript("int"); }],
-					[q{itrunc},q{(itrunc(a))},q{/+Code: (op(expr))+/},q{"itrunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); putTypeSubscript("int"); }],
-					[q{lfloor},q{(lfloor(a))},q{/+Code: (op(expr))+/},q{"lfloor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); putTypeSubscript("long"); }],
-					[q{lceil},q{(lceil(a))},q{/+Code: (op(expr))+/},q{"lceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); putTypeSubscript("long"); }],
-					[q{lround},q{(lround(a))},q{/+Code: (op(expr))+/},q{"lround"},q{dim},q{Symbol},q{NiceExpression},q{
-						@text: 	put(operator); op(0); 
-						@node: 	{
-							put('⁅'); op(0); put('⁆'); putTypeSubscript("long"); 
-							super.rearrange; stretchGlyphs(0, 2); 
-						}
-					}],
-					[q{ltrunc},q{(ltrunc(a))},q{/+Code: (op(expr))+/},q{"ltrunc"},q{dim},q{Symbol},q{NiceExpression},q{
-						@text: 	put(operator); op(0); 
-						@node: 	{
-							put('⎡'); op(0); put('⎦'); putTypeSubscript("long"); 
-							super.rearrange; stretchGlyphs(0, 2); 
-						}
-					}],
-					[q{divide},q{((a)/(b))},q{/+Code: ((expr)op(expr))+/},q{"/"},q{dim},q{Symbol},q{NiceExpression},q{
-						@text: 	op(0); put(operator); op(1); 
-						@node: 	{
-							op(0); putNL; op(1); super.rearrange; 
-							foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2; 
-							const h = 2; operands[1].outerPos.y += h; outerHeight += h; 
-						}
-						@draw: 	{
-							setupLine; 
-							hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
-						}
-					}],
-					[q{power},q{((a)^^(b))},q{/+Code: ((expr)op(expr))+/},q{"^^"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: arrangeRootPower; }],
-					[q{root},q{((a).root(b))},q{/+Code: ((expr)op(expr))+/},q{".root"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: arrangeRootPower(Yes.leftRightSwap); @draw: drawRoot; }],
-					[q{sqrt},q{(sqrt(a))},q{/+Code: (op(expr))+/},q{"sqrt"},q{dim},q{Symbol},q{NiceExpression},q{
-						@text: 	put(operator); op(0); 
-						@node: 	{
-							op(0); super.rearrange; 
-							const adjust = vec2(
-								4/+width if the root symbol+/, 
-								2/+Height of the horizontal root line+/
-							); 
-							operands[0].outerPos += adjust; outerSize += adjust; 
-						}
-						@draw: 	drawRoot; 
-					}],
-					[q{mul},q{((a)*(b))},q{/+Code: ((expr)op(expr))+/},q{"*"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); op(1); }],
-					[q{mul3},q{((a)*(b)*(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"*￼*"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put('*'); op(1); put('*'); op(2); @node: op(0); op(1); op(2); }],
-					[q{dot},q{((a).dot(b))},q{/+Code: ((expr)op(expr))+/},q{".dot"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); put('\u22C5'); op(1); }],
-					[q{cross},q{((a).cross(b))},q{/+Code: ((expr)op(expr))+/},q{".cross"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); put('\u2A2F'); op(1); }],
-					[],
-					[q{tenary_0},q{((a)?(b):(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼:"},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put('?'); op(1); put(':'); op(2); 
-						@node: put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); 
-					}],
-					[q{tenary_1},q{((a) ?(b):(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{" ?￼:"},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put(" ?"); op(1); put(':'); op(2); 
-						@node: 	put(' '); op(0); 	put(' '); putNL; 
-							put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
-					}],
-					[q{tenary_2},q{((a)?(b) :(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼ :"},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put('?'); op(1); put(" :"); op(2); 
-						@node: 	put(' '); op(0); 	put("\t?\t"); 	op(1); put(' '); putNL; 
-							put(' '); 	put("\t:\t"); 	op(2); put(' '); 
-							super.rearrange; /+Todo: align the condition centered+/
-					}],
-					[q{tenary_2b},q{((a)?(b) : (c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼ : "},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put('?'); op(1); put(" : "); op(2); 
-						@node: 	put(' '); op(0); put(" ? "); op(1); put(' '); putNL; 
-							put(" : "); op(2); put(' '); 
-					}],
-					[q{tenary_3},q{((a) ?(b) :(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{" ?￼ :"},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put(" ?"); op(1); put(" :"); op(2); 
-						@node: 	put(' '); op(0); 		put(' '); putNL; 
-							put(" ?\t"); 	op(1); 	put(' '); putNL; 
-							put(" :\t"); 	op(2); 	put(' '); 
-					}],
-					[q{lambda_0},q{((a)=>(a+1))},q{/+Code: ((expr)op(expr))+/},q{"=>"},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put("=>"); op(1); @node: op(0); put('⇒'); op(1); }],
-					[q{lambda_1},q{((a) =>(a+1))},q{/+Code: ((expr)op(expr))+/},q{" =>"},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put(" =>"); op(1); @node: op(0); putNL; put('⇒'); op(1); }],
-					[q{anonymMethod_0},q{((){}) ((a){ a; })},q{/+Code: ((expr)op{code})+/},q{""},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put("{", operands[1], "}"); @node: op(0); put("{", operands[1], "}"); }],
-					[q{anonymMethod_1},q{
-						(() {}) ((x) {
-							a; 
-							b; 
-						})
-					},q{/+Code: ((expr)op{code})+/},q{" "},q{bright},q{Symbol},q{NiceExpression},q{
-						@text: op(0); put(" "); put("{", operands[1], "}"); 
-						@node: op(0); putNL; put("{", operands[1], "}"); 
-					}],
-					[q{tenary_eq_eq},q{mixin(等(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"等"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('=', '='); }],
-					[q{tenary_g_g},q{mixin(界0(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界0"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('<', '<'); }],
-					[q{tenary_ge_g},q{mixin(界1(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界1"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('≤', '<'); }],
-					[q{tenary_g_ge},q{mixin(界2(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界2"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('<', '≤'); }],
-					[q{tenary_ge_ge},q{mixin(界3(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界3"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('≤', '≤'); }],
-					[q{index},q{mixin(指(q{a},q{2}))},q{/+Code: mixin(op(q{},q{}))+/},q{"指"},q{dim},q{Symbol},q{NiceExpression},q{
-						@text: 	put(operator); put('('); 
-								put("q{", operands[0], "}"); put(','); 		put("q{", operands[1], "}"); 
-							put(')'); 
-						@node: arrangeSubscript; 
-					}],
-					[q{tupleAssign},q{mixin(配(q{x,y},q{=},q{y,x}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"配"},q{normal},q{Identifier1},q{NiceExpression},q{
-						@text: 	{
-							put(operator); put("("); 
-								foreach(i, o; operands[0..3])
-							{ if(i) put(','); put("q{", o, "}"); }
-							put(")"); 
-						}
-						@node: 	{
-							operands[1].fillColor(syntaxFontColor(skSymbol), bkColor); 
-							operands[1].border.width=0; 
-							operands[1].padding = Padding.init; 
-							operands[1].margin = Margin.init; 
-							
-							foreach(o; operands) put(o); 
-						}
-					}],
-					[q{genericArg},q{((value).genericArg!q{name})},q{/+Code: ((expr)opq{code})+/},q{".genericArg!"},q{bright},q{Identifier1},q{NiceExpression},q{
-						@text: 	op(0); put(operator); put("q{"); put(opAsIdentifier(1)); put('}'); 
-						@node: 	operands[1].fillColor(darkColor, bkColor); 
-							put(operands[1]); put(':'); put(operands[0]); 
-							/+Todo: Use chinese symbol for genericArg!+/
-					}],
-					[],
-					[q{cast_0},q{(cast(Type)(expr))},q{/+Code: (op(expr)(expr))+/},q{"cast"},q{bright},q{Attribute},q{NiceExpression},q{@text: put("cast"); op(0); op(1); @node: op(1); put(0 ? ".cast" : "↦"); op(0); }],
-					[q{cast_1},q{(cast (Type)(expr))},q{/+Code: (op(expr)(expr))+/},q{"cast "},q{bright},q{Attribute},q{NiceExpression},q{
-						@text: 	put("cast "); op(0); op(1); 
-						@node: 	{
-							op(1); 
-							putNL; flags.hAlign = HAlign.right; 
-							put(0 ? ".cast" : "↦"); op(0); 
-							super.rearrange; 
-							subCells[0].outerPos.x = 0; 
-						}
-					}],
-					[q{mixinStruct},q{(mixin(體!((Type),q{field: value, ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"體!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("struct"), "{", "}"); }],
-					[q{mixinEnum},q{(mixin(舉!((Enum),q{member})))},q{/+Code: mixin(op((expr),q{}))+/},q{"舉!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), ".", ""); }],
-					[q{mixinFlags},q{(mixin(幟!((Enum),q{member1 | ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"幟!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), "(", ")"); }],
-					[q{mixinTable1},q{
-						(表([
-							[q{/+Note: Hdr+/}],
-							[q{Cell}],
-						])); 
-					},q{/+Code: (op(expr))+/},q{"表"},q{bright},q{Identifier1},q{MixinTable},q{
-						@init: 	doubleGridStyle 	= 1,
-						gridStyle 	= 1; /+
-							gridStyle: 	0 simple grid
-								1 +darker background
-								2 double line grid
-						+/
-					}],
-					[q{mixinTable2},q{((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return scr; }}())},q{/+Code: ((){with(op(expr)){expr}}())+/},q{"表"},q{bright},q{Identifier1},q{MixinTable},q{
-						@init: 	doubleGridStyle 	= 1,
-						gridStyle 	= 1; 
-					}],
-					[],
-					[q{stringMixin1},q{mixin((expr).GEN!q{scr}); },q{/+Code: mixin((expr)opq{code})+/},q{".GEN!"},q{normal},q{Symbol},q{MixinGenerator},q{}],
-					[q{stringMixin2},q{mixin((expr) .GEN!q{scr}); },q{/+Code: mixin((expr)opq{code})+/},q{" .GEN!"},q{normal},q{Symbol},q{MixinGenerator},q{@init: isMultiLine = true; }],
-					[q{stringMixin3},q{mixin((expr).調!(fun, args...)); },q{/+Code: mixin((expr)op(expr))+/},q{".調!"},q{normal},q{Symbol},q{MixinGenerator},q{@init: isFunctionCall = true; }],
-					[],
-					[q{templateMixin1},q{mixin 入!((expr),q{scr}); },q{/+Code: mixin op((expr),q{})+/},q{"入!"},q{bright},q{Symbol},q{MixinGenerator},q{@init: isTemplate = true; }],
-					[q{templateMixin2},q{mixin 入 !((expr),q{scr}); },q{/+Code: mixin op((expr),q{})+/},q{"入 !"},q{bright},q{Symbol},q{MixinGenerator},q{@init: isTemplate = true; isMultiLine = true; }],
-					[],
-					[q{iteration_map},q{mixin(求map(q{i=0},q{N-1},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求map"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '⇶'; }],
-					[q{iteration_eachExpr},q{mixin(求each(q{i=0},q{N-1},q{expr})); },q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求each"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∀'; }],
-					[q{iteration_sum},q{mixin(求sum(q{i},q{1, 2, 3},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求sum"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∑'; }],
-					[q{iteration_product},q{mixin(求product(q{i=0},q{N-1},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求product"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∏'; }],
-					[q{perf_start},q{auto _間=init間; },q{/+Code: specialStatement+/},q{"auto _間=init間"},q{bright},q{BasicType},q{NiceExpression},q{
-						@text: 	put(operator); 
-						@node: 	style.bold = false; put("⏱.init"); 
-					}],
-					[q{perf_measure},q{(update間(_間)); },q{/+Code: (op(expr))+/},q{"update間"},q{bright},q{BasicType},q{NiceExpression},q{
-						@text: 	put(operator); put("(_間)"); 
-						@node: 	style.bold = false; put("⏱"); 
-					}],
-					[q{inspect1},q{((0x4608A7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-					[q{inspect2},q{((0x4610F7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
-					[q{constValue},q{
-						(常!(bool)(0))(常!(bool)(1))
-						(常!(float/+w=6+/)(0.300))
-					},q{/+Code: (op(expr)(expr))+/},q{"常!"},q{dim},q{Identifier1},q{InteractiveValue},q{
-						@text: 	const 	ctwc 	= controlTypeWithComment,
-							cvt	= controlValueText; 
-							put(iq{$(operator)($(ctwc))($(cvt))}.text); 
-						@node: 	customRearrange(builder, false); 
-						@ui: 	interactiveUI(false, enabled_, targetSurface_); 
-					}],
-					[q{interactiveValue},q{
-						(互!((bool),(0),(0x463697B6B4BCC)))(互!((bool),(1),(0x4638D7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x463B17B6B4BCC)))
-						(互!((float/+w=6+/),(1.000),(0x463FE7B6B4BCC)))
-					},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
-						@text: 	const 	ctwc 	= controlTypeWithComment,
-							cvt	= controlValueText,
-							id	= generateIdStr(result.length); 
-							put(iq{$(operator)(($(ctwc)),($(cvt)),($(id)))}.text); 
-						@node: 	customRearrange(builder, false); 
-						@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
-					}],
-					[q{synchedValue},q{
-						mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x465FF7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4663E7B6B4BCC}))
-						mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x466B17B6B4BCC}))
-						mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x467317B6B4BCC}))
-					},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
-						@text: 	static ts(string s) => "q{"~s~'}'; 
-							const 	ctwc	= ts(controlTypeWithComment),
-							op1src 	= ts(operands[1].sourceText),
-							id	= ts(generateIdStr(result.length)); 
-							put(iq{$(operator)($(ctwc),$(op1src),$(id))}.text); 
-						@node: 	customRearrange(builder, true); 
-						@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
-					}],
-				]))
-			),q{
-				static if((常!(bool)(1))/+Note: fast way+/) {
-					mixin(iq{enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} }.text); 
-					static immutable niceExpressionTemplates = _data.rows.map!makeNiceExpressionTemplate.array; /+Note: <- ✔ This is the preferable way!+/
-				}else {
-					mixin(
-						iq{
-							enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} 
-							static immutable niceExpressionTemplates = $(_data.text/+Note: <- ❌ Extremely slow text conversion.+/).rows.map!makeNiceExpressionTemplate.array; 
-						}.text
-					); 
-				}
+		mixin 入 !((
+			(表([
+				[q{/+Note: Name+/},q{/+Note: Example+/},q{/+Note: Pattern+/},q{/+Note: op+/},q{/+Note: Style+/},q{/+Note: Syntax+/},q{/+Note: Class+/},q{/+Note: Scripts @init: @text @node @draw @ui+/}],
+				[q{null_},q{},q{/+Code:+/},q{""},q{dim},q{Whitespace},q{NiceExpression},q{}],
+				[q{magnitude},q{(magnitude(a))},q{/+Code: (op(expr))+/},q{"magnitude"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('|'); op(0); put('|'); }],
+				[q{normalize},q{(normalize(a))},q{/+Code: (op(expr))+/},q{"normalize"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('‖'); op(0); put('‖'); }],
+				[q{float_},q{(float(a))},q{/+Code: (op(expr))+/},q{"float"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("F"); }],
+				[q{double_},q{(double(a))},q{/+Code: (op(expr))+/},q{"double"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("D"); }],
+				[q{real_},q{(real(a))},q{/+Code: (op(expr))+/},q{"real"},q{bright},q{Number},q{NiceExpression},q{@text: put(operator); op(0); @node: op(0); setSubscript; put("real"); }],
+				[q{RGB},q{(RGB(64, 128, 255))},q{/+Code: (op(expr))+/},q{"RGB"},q{dim},q{BasicType},q{ColorNode},q{}],
+				[q{RGBA},q{(RGBA(0xFF8040AA))},q{/+Code: (op(expr))+/},q{"RGBA"},q{dim},q{BasicType},q{ColorNode},q{}],
+				[q{floor},q{(floor(a))},q{/+Code: (op(expr))+/},q{"floor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); }],
+				[q{ceil},q{(ceil(a))},q{/+Code: (op(expr))+/},q{"ceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); }],
+				[q{round},q{(round(a))},q{/+Code: (op(expr))+/},q{"round"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⁅'); op(0); put('⁆'); }],
+				[q{trunc},q{(trunc(a))},q{/+Code: (op(expr))+/},q{"trunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); }],
+				[q{ifloor},q{(ifloor(a))},q{/+Code: (op(expr))+/},q{"ifloor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); putTypeSubscript("int"); }],
+				[q{iceil},q{(iceil(a))},q{/+Code: (op(expr))+/},q{"iceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); putTypeSubscript("int"); }],
+				[q{iround},q{(iround(a))},q{/+Code: (op(expr))+/},q{"iround"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⁅'); op(0); put('⁆'); putTypeSubscript("int"); }],
+				[q{itrunc},q{(itrunc(a))},q{/+Code: (op(expr))+/},q{"itrunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); putTypeSubscript("int"); }],
+				[q{lfloor},q{(lfloor(a))},q{/+Code: (op(expr))+/},q{"lfloor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); putTypeSubscript("long"); }],
+				[q{lceil},q{(lceil(a))},q{/+Code: (op(expr))+/},q{"lceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); putTypeSubscript("long"); }],
+				[q{lround},q{(lround(a))},q{/+Code: (op(expr))+/},q{"lround"},q{dim},q{Symbol},q{NiceExpression},q{
+					@text: 	put(operator); op(0); 
+					@node: 	{
+						put('⁅'); op(0); put('⁆'); putTypeSubscript("long"); 
+						super.rearrange; stretchGlyphs(0, 2); 
+					}
+				}],
+				[q{ltrunc},q{(ltrunc(a))},q{/+Code: (op(expr))+/},q{"ltrunc"},q{dim},q{Symbol},q{NiceExpression},q{
+					@text: 	put(operator); op(0); 
+					@node: 	{
+						put('⎡'); op(0); put('⎦'); putTypeSubscript("long"); 
+						super.rearrange; stretchGlyphs(0, 2); 
+					}
+				}],
+				[q{divide},q{((a)/(b))},q{/+Code: ((expr)op(expr))+/},q{"/"},q{dim},q{Symbol},q{NiceExpression},q{
+					@text: 	op(0); put(operator); op(1); 
+					@node: 	{
+						op(0); putNL; op(1); super.rearrange; 
+						foreach(o; operands[0..2]) o.outerPos.x += (innerWidth - o.outerWidth)/2; 
+						const h = 2; operands[1].outerPos.y += h; outerHeight += h; 
+					}
+					@draw: 	{
+						setupLine; 
+						hLine(innerPos.x, innerPos.y + operands[1].outerPos.y - 1, innerPos.x + innerWidth); 
+					}
+				}],
+				[q{power},q{((a)^^(b))},q{/+Code: ((expr)op(expr))+/},q{"^^"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: arrangeRootPower; }],
+				[q{root},q{((a).root(b))},q{/+Code: ((expr)op(expr))+/},q{".root"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: arrangeRootPower(Yes.leftRightSwap); @draw: drawRoot; }],
+				[q{sqrt},q{(sqrt(a))},q{/+Code: (op(expr))+/},q{"sqrt"},q{dim},q{Symbol},q{NiceExpression},q{
+					@text: 	put(operator); op(0); 
+					@node: 	{
+						op(0); super.rearrange; 
+						const adjust = vec2(
+							4/+width if the root symbol+/, 
+							2/+Height of the horizontal root line+/
+						); 
+						operands[0].outerPos += adjust; outerSize += adjust; 
+					}
+					@draw: 	drawRoot; 
+				}],
+				[q{mul},q{((a)*(b))},q{/+Code: ((expr)op(expr))+/},q{"*"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); op(1); }],
+				[q{mul3},q{((a)*(b)*(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"*￼*"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put('*'); op(1); put('*'); op(2); @node: op(0); op(1); op(2); }],
+				[q{dot},q{((a).dot(b))},q{/+Code: ((expr)op(expr))+/},q{".dot"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); put('\u22C5'); op(1); }],
+				[q{cross},q{((a).cross(b))},q{/+Code: ((expr)op(expr))+/},q{".cross"},q{dim},q{Symbol},q{NiceExpression},q{@text: op(0); put(operator); op(1); @node: op(0); put('\u2A2F'); op(1); }],
+				[],
+				[q{tenary_0},q{((a)?(b):(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼:"},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put('?'); op(1); put(':'); op(2); 
+					@node: put(' '); op(0); put(" ? "); op(1); put(" : "); op(2); put(' '); 
+				}],
+				[q{tenary_1},q{((a) ?(b):(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{" ?￼:"},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put(" ?"); op(1); put(':'); op(2); 
+					@node: 	put(' '); op(0); 	put(' '); putNL; 
+						put(" ? "); op(1); put(" : "); op(2); 	put(' '); 
+				}],
+				[q{tenary_2},q{((a)?(b) :(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼ :"},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put('?'); op(1); put(" :"); op(2); 
+					@node: 	put(' '); op(0); 	put("\t?\t"); 	op(1); put(' '); putNL; 
+						put(' '); 	put("\t:\t"); 	op(2); put(' '); 
+						super.rearrange; /+Todo: align the condition centered+/
+				}],
+				[q{tenary_2b},q{((a)?(b) : (c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{"?￼ : "},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put('?'); op(1); put(" : "); op(2); 
+					@node: 	put(' '); op(0); put(" ? "); op(1); put(' '); putNL; 
+						put(" : "); op(2); put(' '); 
+				}],
+				[q{tenary_3},q{((a) ?(b) :(c))},q{/+Code: ((expr)op(expr)op(expr))+/},q{" ?￼ :"},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put(" ?"); op(1); put(" :"); op(2); 
+					@node: 	put(' '); op(0); 		put(' '); putNL; 
+						put(" ?\t"); 	op(1); 	put(' '); putNL; 
+						put(" :\t"); 	op(2); 	put(' '); 
+				}],
+				[q{lambda_0},q{((a)=>(a+1))},q{/+Code: ((expr)op(expr))+/},q{"=>"},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put("=>"); op(1); @node: op(0); put('⇒'); op(1); }],
+				[q{lambda_1},q{((a) =>(a+1))},q{/+Code: ((expr)op(expr))+/},q{" =>"},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put(" =>"); op(1); @node: op(0); putNL; put('⇒'); op(1); }],
+				[q{anonymMethod_0},q{((){}) ((a){ a; })},q{/+Code: ((expr)op{code})+/},q{""},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put("{", operands[1], "}"); @node: op(0); put("{", operands[1], "}"); }],
+				[q{anonymMethod_1},q{
+					(() {}) ((x) {
+						a; 
+						b; 
+					})
+				},q{/+Code: ((expr)op{code})+/},q{" "},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put(" "); put("{", operands[1], "}"); 
+					@node: op(0); putNL; put("{", operands[1], "}"); 
+				}],
+				[q{tenary_eq_eq},q{mixin(等(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"等"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('=', '='); }],
+				[q{tenary_g_g},q{mixin(界0(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界0"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('<', '<'); }],
+				[q{tenary_ge_g},q{mixin(界1(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界1"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('≤', '<'); }],
+				[q{tenary_g_ge},q{mixin(界2(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界2"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('<', '≤'); }],
+				[q{tenary_ge_ge},q{mixin(界3(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界3"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('≤', '≤'); }],
+				[q{index},q{mixin(指(q{a},q{2}))},q{/+Code: mixin(op(q{},q{}))+/},q{"指"},q{dim},q{Symbol},q{NiceExpression},q{
+					@text: 	put(operator); put('('); 
+							put("q{", operands[0], "}"); put(','); 		put("q{", operands[1], "}"); 
+						put(')'); 
+					@node: arrangeSubscript; 
+				}],
+				[q{tupleAssign},q{mixin(配(q{x,y},q{=},q{y,x}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"配"},q{normal},q{Identifier1},q{NiceExpression},q{
+					@text: 	{
+						put(operator); put("("); 
+							foreach(i, o; operands[0..3])
+						{ if(i) put(','); put("q{", o, "}"); }
+						put(")"); 
+					}
+					@node: 	{
+						operands[1].fillColor(syntaxFontColor(skSymbol), bkColor); 
+						operands[1].border.width=0; 
+						operands[1].padding = Padding.init; 
+						operands[1].margin = Margin.init; 
+						
+						foreach(o; operands) put(o); 
+					}
+				}],
+				[q{genericArg},q{((value).genericArg!q{name})},q{/+Code: ((expr)opq{code})+/},q{".genericArg!"},q{bright},q{Identifier1},q{NiceExpression},q{
+					@text: 	op(0); put(operator); put("q{"); put(opAsIdentifier(1)); put('}'); 
+					@node: 	operands[1].fillColor(darkColor, bkColor); 
+						put(operands[1]); put(':'); put(operands[0]); 
+						/+Todo: Use chinese symbol for genericArg!+/
+				}],
+				[],
+				[q{cast_0},q{(cast(Type)(expr))},q{/+Code: (op(expr)(expr))+/},q{"cast"},q{bright},q{Attribute},q{NiceExpression},q{@text: put("cast"); op(0); op(1); @node: op(1); put(0 ? ".cast" : "↦"); op(0); }],
+				[q{cast_1},q{(cast (Type)(expr))},q{/+Code: (op(expr)(expr))+/},q{"cast "},q{bright},q{Attribute},q{NiceExpression},q{
+					@text: 	put("cast "); op(0); op(1); 
+					@node: 	{
+						op(1); 
+						putNL; flags.hAlign = HAlign.right; 
+						put(0 ? ".cast" : "↦"); op(0); 
+						super.rearrange; 
+						subCells[0].outerPos.x = 0; 
+					}
+				}],
+				[q{mixinStruct},q{(mixin(體!((Type),q{field: value, ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"體!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("struct"), "{", "}"); }],
+				[q{mixinEnum},q{(mixin(舉!((Enum),q{member})))},q{/+Code: mixin(op((expr),q{}))+/},q{"舉!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), ".", ""); }],
+				[q{mixinFlags},q{(mixin(幟!((Enum),q{member1 | ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"幟!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), "(", ")"); }],
+				[q{mixinTable1},q{
+					(表([
+						[q{/+Note: Hdr+/}],
+						[q{Cell}],
+					])); 
+				},q{/+Code: (op(expr))+/},q{"表"},q{bright},q{Identifier1},q{MixinTable},q{
+					@init: 	doubleGridStyle 	= 1,
+					gridStyle 	= 1; /+
+						gridStyle: 	0 simple grid
+							1 +darker background
+							2 double line grid
+					+/
+				}],
+				[q{mixinTable2},q{((){with(表([[q{/+Note: Hdr+/},q{Cell}],])){ return scr; }}())},q{/+Code: ((){with(op(expr)){expr}}())+/},q{"表"},q{bright},q{Identifier1},q{MixinTable},q{
+					@init: 	doubleGridStyle 	= 1,
+					gridStyle 	= 1; 
+				}],
+				[],
+				[q{stringMixin1},q{mixin((expr).GEN!q{scr}); },q{/+Code: mixin((expr)opq{code})+/},q{".GEN!"},q{normal},q{Symbol},q{MixinGenerator},q{}],
+				[q{stringMixin2},q{mixin((expr) .GEN!q{scr}); },q{/+Code: mixin((expr)opq{code})+/},q{" .GEN!"},q{normal},q{Symbol},q{MixinGenerator},q{@init: isMultiLine = true; }],
+				[q{stringMixin3},q{mixin((expr).調!(fun, args...)); },q{/+Code: mixin((expr)op(expr))+/},q{".調!"},q{normal},q{Symbol},q{MixinGenerator},q{@init: isFunctionCall = true; }],
+				[],
+				[q{templateMixin1},q{mixin 入!((expr),q{scr}); },q{/+Code: mixin op((expr),q{})+/},q{"入!"},q{bright},q{Symbol},q{MixinGenerator},q{@init: isTemplate = true; }],
+				[q{templateMixin2},q{mixin 入 !((expr),q{scr}); },q{/+Code: mixin op((expr),q{})+/},q{"入 !"},q{bright},q{Symbol},q{MixinGenerator},q{@init: isTemplate = true; isMultiLine = true; }],
+				[],
+				[q{iteration_map},q{mixin(求map(q{i=0},q{N-1},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求map"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '⇶'; }],
+				[q{iteration_eachExpr},q{mixin(求each(q{i=0},q{N-1},q{expr})); },q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求each"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∀'; }],
+				[q{iteration_sum},q{mixin(求sum(q{i},q{1, 2, 3},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求sum"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∑'; }],
+				[q{iteration_product},q{mixin(求product(q{i=0},q{N-1},q{expr}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"求product"},q{dim},q{Symbol},q{SigmaOp},q{@init: symbol = '∏'; }],
+				[q{perf_start},q{auto _間=init間; },q{/+Code: specialStatement+/},q{"auto _間=init間"},q{bright},q{BasicType},q{NiceExpression},q{
+					@text: 	put(operator); 
+					@node: 	style.bold = false; put("⏱.init"); 
+				}],
+				[q{perf_measure},q{(update間(_間)); },q{/+Code: (op(expr))+/},q{"update間"},q{bright},q{BasicType},q{NiceExpression},q{
+					@text: 	put(operator); put("(_間)"); 
+					@node: 	style.bold = false; put("⏱"); 
+				}],
+				[q{inspect1},q{((0x460037B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x460877B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{constValue},q{
+					(常!(bool)(0))(常!(bool)(1))
+					(常!(float/+w=6+/)(0.300))
+				},q{/+Code: (op(expr)(expr))+/},q{"常!"},q{dim},q{Identifier1},q{InteractiveValue},q{
+					@text: 	const 	ctwc 	= controlTypeWithComment,
+						cvt	= controlValueText; 
+						put(iq{$(operator)($(ctwc))($(cvt))}.text); 
+					@node: 	customRearrange(builder, false); 
+					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
+				}],
+				[q{interactiveValue},q{
+					(互!((bool),(0),(0x462D57B6B4BCC)))(互!((bool),(1),(0x462F97B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x4631D7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x463697B6B4BCC)))
+				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
+					@text: 	const 	ctwc 	= controlTypeWithComment,
+						cvt	= controlValueText,
+						id	= generateIdStr(result.length); 
+						put(iq{$(operator)(($(ctwc)),($(cvt)),($(id)))}.text); 
+					@node: 	customRearrange(builder, false); 
+					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
+				}],
+				[q{synchedValue},q{
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x465607B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4659F7B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x466117B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x466907B6B4BCC}))
+				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
+					@text: 	static ts(string s) => "q{"~s~'}'; 
+						const 	ctwc	= ts(controlTypeWithComment),
+						op1src 	= ts(operands[1].sourceText),
+						id	= ts(generateIdStr(result.length)); 
+						put(iq{$(operator)($(ctwc),$(op1src),$(id))}.text); 
+					@node: 	customRearrange(builder, true); 
+					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
+				}],
+			]))
+		),q{
+			static if((常!(bool)(1))/+Note: fast way+/) {
+				mixin(iq{enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} }.text); 
+				static immutable niceExpressionTemplates = _data.rows.map!makeNiceExpressionTemplate.array; /+Note: <- ✔ This is the preferable way!+/
+			}else {
+				mixin(
+					iq{
+						enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} 
+						static immutable niceExpressionTemplates = $(_data.text/+Note: <- ❌ Extremely slow text conversion.+/).rows.map!makeNiceExpressionTemplate.array; 
+					}.text
+				); 
 			}
-		); 
+		}); 
 		static assert(niceExpressionTemplates[0].name=="null_"); /+Todo: Enum legyen a templateIdx!+/
 		
 		
@@ -10089,13 +10088,13 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x475427B6B4BCC).檢(expr)) ((0x475607B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x475B07B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x474867B6B4BCC).檢(expr)) ((0x474A47B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x474F47B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x476547B6B4BCC))) (互!((bool),(1),(0x476797B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4769E7B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x476DD7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4771D7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x477897B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4780C7B6B4BCC}))
+								(互!((bool),(0),(0x475987B6B4BCC))) (互!((bool),(1),(0x475BD7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x475E27B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x476217B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x476617B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x476CD7B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x477507B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
