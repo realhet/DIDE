@@ -44,6 +44,7 @@ version(/+$DIDE_REGION+/all)
 	enum autoSpaceAfterDeclarations = true; //automatic space handling right after "statements; " and "labels:" and "blocks{}"
 	
 	//version identifiers: AnimatedCursors
+	enum AnimatedCursors = (常!(bool)(1)); 
 	enum MaxAnimatedCursors = 100; 
 	
 	enum rearrangeLOG = false; 
@@ -802,7 +803,7 @@ version(/+$DIDE_REGION+/all)
 		ivec2 pos; 
 		float desiredX=0; //used for up down movement, after left right movements.
 		
-		version(AnimatedCursors)
+		static if(AnimatedCursors)
 		{
 			vec2 	targetPos	= vec2(float.nan),
 				animatedPos 	= vec2(float.nan); 
@@ -1659,15 +1660,6 @@ version(/+$DIDE_REGION+/all)
 		const i = ts.cursors[0].valid ? 0 : 1; 
 		return TextSelection(ts.cursors[i], ts.cursors[i], ts.primary); 
 	} 
-	
-	/+
-		void animate(ref TextSelection sel, )
-			{
-				version(AnimatedCursors){
-			
-				}
-			}
-	+/
 	
 	struct SourceTextBuilder
 	{
@@ -2033,10 +2025,10 @@ version(/+$DIDE_REGION+/all)
 		if(chkSet(unittested))
 		{
 			alias f = reduceTextSelectionReferenceStringToStart; 
-			enforce(f("a|b|c5*"	)=="a|b|c5*"	 ); 
-			enforce(f("a|b1|c1|=>|b1|e2*"	)=="a|b1|c1*"	 ); 
-			enforce(f("a|b|a0000|=>|a001"	)=="a|b|a0000"	 ); 
-			enforce(f("a|b|a0001|=>|0"	)=="a|b|0"	 ); 
+			enforce(f("a|b|c5*"	)=="a|b|c5*"	); 
+			enforce(f("a|b1|c1|=>|b1|e2*"	)=="a|b1|c1*"	); 
+			enforce(f("a|b|a0000|=>|a001"	)=="a|b|a0000"	); 
+			enforce(f("a|b|a0001|=>|0"	)=="a|b|0"	); 
 		}
 		
 		int toNum(string s)
@@ -2226,7 +2218,7 @@ class CodeRow: Row
 		return !!sk.among(skWhitespace, skComment); 
 		/+don't count string literals, their indent must be preserved!+/
 	} 
-	
+	
 	//Todo: refactor isCode* to isIndentable*
 	private static bool isCodeSpace(Cell c)
 	{
@@ -2269,7 +2261,7 @@ class CodeRow: Row
 	bool isDLangIdentifier()
 	{ return chars.isDLangIdentifier; } 
 	
-	
+	
 	this(CodeColumn parent_)
 	{
 		parent = enforce(parent_); 
@@ -2309,7 +2301,7 @@ class CodeRow: Row
 		//Note: tabIdx is already refreshed by appendCode
 		//spreadElasticNeedMeasure;
 	} 
-	
+	
 	this(CodeColumn parent_, string line)
 	{
 		this(parent_); 
@@ -2364,7 +2356,7 @@ class CodeRow: Row
 	
 	vec2 newLinePos()
 	{ return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); } 
-	
+	
 	/// Returns inserted count
 	int insertSomething(int at, void delegate() appendFun)
 	{
@@ -2403,7 +2395,7 @@ class CodeRow: Row
 		
 		return res; 
 	} 
-	
+	
 	/// Splits row into 2 rows. Returns the newli created row which is NOT yet inserted to the column.
 	CodeRow splitRow(int x)
 	{
@@ -2437,8 +2429,8 @@ class CodeRow: Row
 			assert(i>=0); 
 			
 			//simple but unefficient criteria: has any tabs or not
-			foreach(a; parent.rows[0..i].retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
-			foreach(a; parent.rows[i+1..$]  .until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
+			foreach(a; mixin(指(q{parent.rows},q{0..i})).retro.until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
+			foreach(a; mixin(指(q{parent.rows},q{i+1..$})).until!"!a.tabIdxInternal.length") if(!a.needMeasure) break; 
 		}
 	} 
 	
@@ -3395,14 +3387,14 @@ class CodeRow: Row
 		{ return m.structureLevel; }
 		return StructureLevel.plain; 
 	} 
-	
+	
 	bool isStructuredCode() //Todo: constness
 	{ return getStructureLevel >= StructureLevel.structured; } 
 	
 	bool isDLangIdentifier()
 	{ return rowCount==1 && rows[0].isDLangIdentifier; } 
 	
-	
+	
 	SyntaxKind getSyntax(dchar ch)
 	{
 		if(getStructureLevel==StructureLevel.plain) {
@@ -4132,7 +4124,8 @@ class CodeRow: Row
 			dr.lineWidth = -2; 
 			dr.drawRect(outerBounds); 
 		}
-	} 
+	} 
+	
 	
 	@property RGB avgColor()
 	{
@@ -4148,7 +4141,7 @@ class CodeRow: Row
 	} 
 	
 	
-	
+	
 	void removeVerticalTabs()
 	{
 		foreach(row; rows) row.removeVerticalTab; 
@@ -7025,7 +7018,7 @@ version(/+$DIDE_REGION+/all)
 			RGB brighter(RGB a, float f)
 			{ return (a.from_unorm*(1+f)).to_unorm; } 
 			
-			enum clPiko : RGB8
+			enum clPiko : RGB
 			{
 				G940 	= (RGB(139,  59,  43)).brighter(.25f),
 				G239 	= (RGB(245, 156,   0)),
@@ -7054,9 +7047,9 @@ version(/+$DIDE_REGION+/all)
 					case "template": 	return clPiko.G940; 
 					case "enum": 	return clPiko.G239; 
 					case "alias": 	return clPiko.G231; 
-					case "if", "switch", "final switch", "else": 	return clPiko.G119; 
-					case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66); 
-					case "version", "debug", "static if", "static foreach", "static foreach_reverse": 	return mix(clPiko.G115, clPiko.G119, .5); 
+					case "if", "switch", "final switch", "else": 	return clPiko.G119.brighter(.25f); 
+					case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66f).brighter(.25f); 
+					case "version", "debug", "static if", "static foreach", "static foreach_reverse", "static assert": 	return mix(clPiko.G115, clPiko.G119, .5f).brighter(.25f); 
 					case "module", "import": 	return clPiko.G107; 
 					case "unittest": 	return clPiko.G62; 
 						
@@ -7076,7 +7069,8 @@ version(/+$DIDE_REGION+/all)
 						
 					case "try": 	return RGB(200, 250, 189); 
 					case "scope": 	return RGB(50, 250, 189); 
-						
+					case "assert", "break", "continue", "goto", "goto case", "return"	, "enforce": 	return mix(RGB(0x5C00F6/+skKeyword+/), clWhite, .5); 
+					
 					case "auto": 	return clAqua; 
 					
 					default: 	return def; 
@@ -7289,7 +7283,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		return res; 
 	} 
-	
+	
 	protected void setContentParent(Declaration p)
 	{
 		//used to set visual parents. The actual chain is stored in the linked list: nextJoinedPreposition.
@@ -7322,7 +7316,7 @@ version(/+$DIDE_REGION+/all)
 		return a; 
 		return null; 
 	} 
-	
+	
 	Declaration[] allNestedPrepositions()
 	{
 		Declaration[] res; 
@@ -7340,8 +7334,19 @@ version(/+$DIDE_REGION+/all)
 		return true; 
 	} 
 	
+	bool onlyShowHeaderWhenNotEmpty() const
+	{ return !!keyword.among("return", "break", "continue", "goto case", "goto"); } 
+	
 	@property canHaveAttributes()const 
-	=> !(keyword=="mixin"); 
+	=> !(
+		keyword.among(
+			"mixin", "return", "break", "continue", "goto case", "goto",
+			"assert", "static assert", "enforce"
+		)
+	); 
+	
+	@property headerHasBrackets() const
+	=> !!keyword.among("enforce","assert","static assert"); 
 	/+
 		Todo: when the mixinTemplate is a declaration it can be 'const' for example.
 		But because of mixin(), it can't go well along whit the preposition 'system'.
@@ -7444,7 +7449,7 @@ version(/+$DIDE_REGION+/all)
 								
 								return; 
 							}
-							return/+No more chances after a '='+/; 
+							return; 
 						}
 						if(
 							g.ch.inRange('#', '-') || g.ch.inRange(':', '?') || 
@@ -7489,22 +7494,58 @@ version(/+$DIDE_REGION+/all)
 		decodeSpecial; 
 		
 		verify; 
-		
-		bool promoteMixinStatement()
+		
+		bool promoteStatement()
 		{
 			/+Todo: Handle attributes preceding template mixins!+/
 			enforce(!block && keyword=="" && ending==';'); 
-			enum kw = "mixin"; 
-			if(header.byCell.map!structuredCellToChar.startsWith(kw~' '))
+			
+			bool kw_space_expr(string kw)
 			{
-				with(header.rows[0]) {
-					subCells = subCells[(kw.length+1).min($) .. $]; 
-					refreshTabIdx; needMeasure; 
-				}
-				this.keyword = kw; 
-				return true; 
-			}
-			return false; 
+				if(header.byCell.map!structuredCellToChar.startsWith(kw~' '))
+				{
+					with(header.rows[0]) {
+						subCells = subCells[(kw.length+1).min($) .. $]; 
+						refreshTabIdx; needMeasure; 
+					}
+					this.keyword = kw; return true; 
+				}else return false; 
+			} 
+			
+			bool kw_only(string kw)
+			{
+				if(header.byCell.map!structuredCellToChar.equal(kw))
+				{
+					with(header.rows[0]) {
+						subCells = subCells[kw.length .. $]; 
+						refreshTabIdx; needMeasure; 
+					}
+					this.keyword = kw; return true; 
+				}else return false; 
+			} 
+			
+			bool kw_bracket_expr(string kw)
+			{
+				if(header.byCell.map!structuredCellToChar.equal(kw~'('))
+				{
+					auto blk = (cast(CodeBlock)(header.rows[0].subCells[$-1])).enforce; 
+					//LOG("BRACKET EXPR", kw, blk.sourceText); 
+					header = new CodeColumn(this, blk.content.rows.map!"a.subCells".array); 
+					this.keyword = kw; return true; 
+				}else return false; 
+			} 
+			
+			//Opt: make a table of this, exit faster by checking the first char(s)
+			//Todo: handle .enforce too. 
+			//Todo: detect Row({}) and Column({})
+			
+			return kw_space_expr("mixin") 	|| 
+			kw_space_expr("return") 	|| kw_only("return")	||
+			kw_space_expr("continue") 	|| kw_only("continue") 	||
+			kw_space_expr("break") 	|| kw_only("break")	||	
+			kw_space_expr("goto case") 	|| kw_only("goto case")	||
+			kw_space_expr("goto") 	|| kw_only("goto")	||
+			kw_bracket_expr("static assert")	|| kw_bracket_expr("assert")|| kw_bracket_expr("enforce"); 
 		} 
 		
 		//RECURSIVE!!!
@@ -7535,7 +7576,7 @@ version(/+$DIDE_REGION+/all)
 					Mixin statement promotion is 
 					called AFTER the string mixin() detection.
 				+/
-				if(promoteMixinStatement)
+				if(promoteStatement)
 				{
 					/+
 						Try to process it further:
@@ -7874,7 +7915,7 @@ version(/+$DIDE_REGION+/all)
 					const src = header.sourceText; 
 					enforce(
 						isValidDLang("/+"~src~"+/"), 
-						"Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src
+										"Invalid DIDE marker format. (Must be a valid /+comment+/):\n"~src
 					); 
 					
 					put(
@@ -7930,15 +7971,25 @@ version(/+$DIDE_REGION+/all)
 					}
 					
 					put(keyword); 
-				}
+				}
 				if(canHaveHeader)
 				{
 					/+
 						in statements, 
 						the header is the body
 					+/
-					if(keyword!="") put(' '); 
-					put("", header, ending.text); 
+					if(headerHasBrackets)
+					{ put("(", header, ")"~ending.text); }
+					else
+					{
+						if(!header.empty || !onlyShowHeaderWhenNotEmpty)
+						{
+							if(keyword!="" && !header.empty) put(' '); 
+							put("", header, ending.text); 
+						}
+						else
+						put(ending); 
+					}
 				}
 				else
 				put(ending); 
@@ -8146,7 +8197,7 @@ version(/+$DIDE_REGION+/all)
 	
 	auto removeBack(alias filter="true", R)(ref R[] rows, sizediff_t cnt)
 	{ return removeFront!(filter, false, R)(rows, cnt); } 
-	
+	
 	auto removeFront(alias filter="true", bool fromFront=true, R)(ref R[] rows, sizediff_t cnt)
 	{
 		
@@ -8900,7 +8951,7 @@ version(/+$DIDE_REGION+/all)
 						//dstPrepositionRootDecl = rootDecl; //return this on the side
 						return recursiveSearch(rootDecl); 
 					} 
-					
+					
 					if(auto row = dst.backOrNull)
 					if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
 					if(dstPreposition.isPreposition)
@@ -9135,7 +9186,7 @@ version(/+$DIDE_REGION+/all)
 		}
 		return found; 
 	} 
-	
+	
 	void promoteMacroExpression(CodeRow row, ref int cellIdx, CodeBlock blk/+redundant but faster+/)
 	{
 		foreach(const kw; ["mixin", "__traits", "pragma"]/+Todo: extract this array to macroExpressionKeywords+/)
@@ -9394,8 +9445,11 @@ version(/+$DIDE_REGION+/all) {
 				else if(ptn!="" /+for null_ it's ok+/)
 				raise("Unknown NEP contaner: "~ptn.quoted); 
 			} 
-			
-			@property string _toTableRow() const
+		} 
+		
+		string exportNiceExpressionTemplate(NiceExpressionTemplate net) 
+		{
+			with(net)
 			{
 				auto ts(string s) => "q{"~s~"}"; 
 				auto str(string s) => ts('"'~s~'"'); 
@@ -9413,9 +9467,9 @@ version(/+$DIDE_REGION+/all) {
 					)
 				)
 				.join(',')~"],\n"; 
-			} 
+			}
 		} 
-		
+		
 		auto makeNiceExpressionTemplate(string[] a...)
 		{
 			NiceExpressionTemplate res; 
@@ -9485,7 +9539,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			int btnEvent; //0 = no button, 1=hold
 			string btnCaption; 
-		} 
+		} 
 		
 		string extractTrailingCommentText(string prefix)(CodeColumn col)
 		{
@@ -9519,7 +9573,7 @@ version(/+$DIDE_REGION+/all) {
 			}
 			return res; 
 		} 
-		
+		
 		version(/+$DIDE_REGION ProcessNiceExpr. helpers+/all)
 		{
 			auto asCodeBlock(string expectedType="")(Cell cell)
@@ -9975,8 +10029,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x460037B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x460877B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x467F97B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x4687D7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -9988,8 +10042,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x462D57B6B4BCC)))(互!((bool),(1),(0x462F97B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x4631D7B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x463697B6B4BCC)))
+					(互!((bool),(0),(0x46ACB7B6B4BCC)))(互!((bool),(1),(0x46AEF7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x46B137B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x46B5F7B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -9999,9 +10053,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x465607B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4659F7B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x466117B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x466907B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x46D567B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x46D957B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x46E077B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x46E867B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10043,13 +10097,21 @@ version(/+$DIDE_REGION+/all) {
 								mixin() __traits() pragma()
 								
 							}],
+							[q{"spec. statements"},q{
+								return; 	return x; 
+								break; 	break lb; 
+								continue; 	continue lb; 
+								goto case; 	goto case lb; 
+								goto lb; 	static assert(); 
+								assert(a); 	enforce(a); 
+							}],
 							[q{"math letters"},q{π ℯ ℂ α β γ µ σ Δ δ ϕ ϑ ε ω}],
 							[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 							[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 							[q{"floor, 
-	ceil, 
-	round, 
-	trunc"},q{
+ceil, 
+round, 
+trunc"},q{
 								(floor(x)) (ifloor(x)) (lfloor(x))
 								(ceil(x)) (iceil(x)) (lceil(x))
 								(round(x)) (iround(x)) (lround(x))
@@ -10057,9 +10119,9 @@ version(/+$DIDE_REGION+/all) {
 							}],
 							[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
 							[q{"multiply,
-	dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
+dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
 							[q{"divide, sqrt, root, 
-	power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
+power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
 							[q{"tenary relation"},q{
 								mixin(等(q{a},q{b},q{c}))
 								mixin(界0(q{a},q{b},q{c})) mixin(界1(q{a},q{b},q{c}))
@@ -10078,23 +10140,23 @@ version(/+$DIDE_REGION+/all) {
 								((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
 							}],
 							[q{"lambda, 
-	anonym method"},q{
+anonym method"},q{
 								((a)=>(a+1)) 	((a){ f; })
 								((a) =>(a+1))	((a) { f; })
 							}],
 							[q{"tuple operation"},q{mixin(配(q{x,y},q{=},q{y,x}))}],
 							[q{"named param, 
-	struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
+struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
 							[q{"enum member 
-	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
+blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x474867B6B4BCC).檢(expr)) ((0x474A47B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x474F47B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x47D687B6B4BCC).檢(expr)) ((0x47D867B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x47DD67B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x475987B6B4BCC))) (互!((bool),(1),(0x475BD7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x475E27B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x476217B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x476617B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x476CD7B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x477507B6B4BCC}))
+								(互!((bool),(0),(0x47E7A7B6B4BCC))) (互!((bool),(1),(0x47E9F7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x47EC47B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x47F037B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x47F437B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x47FAF7B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x480327B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -10288,7 +10350,7 @@ version(/+$DIDE_REGION+/all) {
 								else	{ g; }
 								static if(c)	{ f; }
 								else static if(d)	{ g; }
-								else static assert(0, ); 
+								else static assert 0,; 
 							}],
 						]))
 					}
@@ -10440,6 +10502,8 @@ version(/+$DIDE_REGION+/all) {
 					hoveredRow=null; hoveredCell = null; innerCol =  null; 
 					auto hs = hitTestManager.lastHitStack; 
 					
+					//Todo: Can't ssubstitute label in "goto label;"
+					
 					//print(hs.enumerate.map!(a=>(a.index.text~":"~a.value.id)).join("|")); 
 					
 					if(hs.length && hs.back.id.isWild("$ToolPaletteContainer$.*[NiceExpression(*)]"))
@@ -10508,12 +10572,18 @@ version(/+$DIDE_REGION+/all) {
 							{
 								string t; 
 								if(s=="i=0")	t = "="; 
-								else if(s=="0<i<N")	t = "<<"; 
+								else if(s=="0<i<N")	t = "<<"; /+
+									Todo: this is way too 
+									Sigma specific
+								+/
 								
 								t ~= marker; //copied text will go here
 								
-								foreach(q; [["(", ")"], ["q{", "}"], ["{ ", "}"]])
-								src = src.replace(q[0]~s~q[1], q[0].strip~t~q[1].strip); 
+								foreach(q; [["(", ")"], ["q{", "}"], ["{ ", "}"], [" ", ";"]])
+								src = src.replace(
+									q[0]~s~q[1], 
+									((q[0]=="{ ")?("{"):(q[0]))~t~q[1].strip
+								); 
 							}
 						}
 						templateSource = src; 
@@ -12818,6 +12888,19 @@ l2
 		} 
 	}version(none)
 	{
+		void main()
+		{
+			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
+			mixin(求each(q{i=0},q{4},q{
+				((0x5A2457B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5A29D7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5A2F57B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5A34D7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5A3A57B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+			})); 
+		} 
+	}version(none)
+	{
 		
 		/+
 			Note: MixinDeclaration:	mixin ( ArgumentList ) ;
@@ -12841,7 +12924,9 @@ l2
 		{
 			mixin("123").xyz; 
 			(mixin("123").xyz); 
-		} 
+		} 
+		
+		
 		/+
 			Note: TemplateMixinDeclaration:  /+Link: -> DIDE.Declaration+/
 			    mixin template Identifier TemplateParameters Constraintopt { DeclDefsopt }
@@ -12873,6 +12958,27 @@ l2
 			/+Code: mixin instanceName3 = .modul.TemplateName!(arg1); +/
 		+/
 		
+		static if(0)
+		{
+			pragma(msg, 123); 
+			static	int i=5 ~ __traits(
+				compiles, {
+					int i = 123+256; 
+					if(i>2) { beep; }
+				}
+			); 
+		}
+		string a = q{
+			mixin(); 
+			return; 	return a; 
+			continue; 	continue a; 
+			break; 	break a; 
+			goto case; 	goto case a; 
+			goto; 	goto a; 
+			enforce(a, msg); 
+			assert(a, msg); 
+			static assert(a, msg); 
+		}; 
 	}version(none)
 	{
 		auto tables = 

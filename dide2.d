@@ -1,5 +1,5 @@
 //@exe
-//@compile --d-version=stringId,AnimatedCursors
+//@compile --d-version=stringId
 
 //@debug
 //@release
@@ -105,9 +105,9 @@ version(/+$DIDE_REGION main+/all)
 	
 	mixin SmartClassGenerator; 
 	
-	enum LogRequestPermissions	= false; 
+	enum LogRequestPermissions = (常!(bool)(0)); 
 	
-	enum visualizeMarginsAndPaddingUnderMouse = false; //Todo: make this a debug option in a menu
+	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	
 	alias blink = didemodule.blink; 
 	
@@ -4513,7 +4513,7 @@ class Workspace : Container, WorkspaceInterface
 				jumpRequest.nullify; 
 				
 				//animate cursors
-				version(AnimatedCursors)
+				static if(AnimatedCursors)
 				{
 					if(textSelections.length<=MaxAnimatedCursors)
 					{
@@ -6553,7 +6553,7 @@ class Workspace : Container, WorkspaceInterface
 			}version(/+$DIDE_REGION+/all)
 			{
 				//caret trail
-				version(AnimatedCursors)
+				static if(AnimatedCursors)
 				{
 					if(textSelections.length <= MaxAnimatedCursors)
 					{

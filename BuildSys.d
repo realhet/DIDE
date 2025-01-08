@@ -132,7 +132,7 @@ a new compiler instance."}],
 	0	:  Disable.
 	max 	: Process all  lines when the exe finishes."}],
 			]))
-		).調!GEN_fields); /+
+		).調!(GEN_fields)); /+
 			ram: 	12GB 	5/8 cores	128.2s
 				24GB 	8/8 cores	107.6s  19% speedup
 				8GB	12/12 cores 	partial fail!
@@ -561,10 +561,12 @@ Experimental:
 				[q{bool},q{xJson},q{"x"},q{"xJson"},q{"Generate X JSON files."}],
 			]))
 		) .GEN!q{
-			(mixin(求map(q{a},q{rows},q{
-				format!q{@("%s|%-14s= %s") %s %s; }
-				(a[2][1..$-1], a[3][1..$-1], a[4][1..$-1], a[0], a[1])
-			}))).join
+			(
+				mixin(求map(q{a},q{rows},q{
+					format!q{@("%s|%-14s= %s") %s %s; }
+					(a[2][1..$-1], a[3][1..$-1], a[4][1..$-1], a[0], a[1])
+				}))
+			).join
 		}); 
 		
 		//Todo: mi a faszert irja ki allandoan az 1 betus roviditest mindenhez???

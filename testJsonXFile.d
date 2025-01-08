@@ -2,170 +2,125 @@
 //@debug
 ///@release
 
-import het, het.parser; 
-
-version(none)
+version(all)
 {
-	
 	/+
-		Note: MixinDeclaration:	mixin ( ArgumentList ) ;
-		MixinType:    	mixin ( ArgumentList )
-		MixinExpression:    	mixin ( ArgumentList )
-		MixinStatement:    	mixin ( ArgumentList ) ;
-		
-		Detection:
-			Detect "mixin" keyword before ()
-			That CAN substituted into a niceExpression block.
-			Must be processed inside Statements and Expressions. (goInside = Expression)
+		ChatGPT query:
+		In dlang I have an array of strings.
+		The strings contain fully qualified names of an identifier, with the full path, separated by dot '.' character.
+		The individual parts can contain a template parameter list after the identifier eg: "id!(1, 2)" These are part of the identifier, this specifies a single path location.
+		After the last identifier with optional template parameters, there can be a parameter list, it that particular item is a function. Example: "fun(int param1, string param2) : string"
+		Your task is to process the alphabetically ordered input string array with the fully qualified names and produce a hierarchical text output with visual block drawing characters. It should look like the result of the DOS tree command.
 	+/
 	
-	/+0:+/mixin("string mixin as declaration"); 
-	const mixin("string mixin as type") name; 
-	const a =mixin("string mixin expression"); 
-	const a =mixin("string mixin type")(mixin("string mixin expression1")+mixin("string mixin expression1")); 
-	mixin 
-	/+comment+/
-	(); void f(mixin("arg"))
+	
+	import std.regex; 
+	
+	
+	// Structure to represent a node in the hierarchy
+	struct TreeNode(T)
 	{
-		mixin("123").xyz; 
-		(mixin("123").xyz); 
-	} 
-	/+
-		Note: TemplateMixinDeclaration:  /+Link: -> DIDE.Declaration+/
-		    mixin template Identifier TemplateParameters Constraintopt { DeclDefsopt }
+		T data; 
+		TreeNode[] children; 
 		
-		TemplateMixin: 
-					 mixin MixinTemplateName TemplateArgumentsopt Identifieropt ;
-					 mixin Identifier = MixinTemplateName TemplateArgumentsopt ;
+		this(T data) { this.data = data; } 
 		
-		MixinTemplateName:  /+It NEVER starts with ()+/
-					 . MixinQualifiedIdentifier
-					 MixinQualifiedIdentifier
-					 Typeof . MixinQualifiedIdentifier
-		
-		MixinQualifiedIdentifier:
-					 Identifier
-					 Identifier . MixinQualifiedIdentifier
-					 TemplateInstance . MixinQualifiedIdentifier
-	+/
+		void addChild(TreeNode node) { children ~= node; } 
+	} 
 	
-	mixin SimpleTemplate; 
-	mixin .modul.TemplateName!(arg1,mixin("arg2")); 
-	mixin .modul.TemplateName!(arg1) instanceName2; 
-	/+
-		1.40 doesn't support this -> 
-		/+Code: mixin instanceName3 = .modul.TemplateName!(arg1); +/
-	+/
-	
-}
-version(none)
-{
-	
-	/+
-		Note: MixinDeclaration:	mixin ( ArgumentList ) ;
-		MixinType:    	mixin ( ArgumentList )
-		MixinExpression:    	mixin ( ArgumentList )
-		MixinStatement:    	mixin ( ArgumentList ) ;
-		
-		Detection:
-			Detect "mixin" keyword before ()
-			That CAN substituted into a niceExpression block.
-			Must be processed inside Statements and Expressions. (goInside = Expression)
-	+/
-	
-	/+0:+/mixin("string mixin as declaration"); 
-	mixin("string mixin as declaration"); 
-	const a =   mixin("string mixin as type")	name; 
-	const a =  mixin("string mixin expression"); 	struct ; 
-	const a =mixin("string mixin type")(mixin("string mixin expression1")+mixin("string mixin expression1")); 
-	mixin /+comment+/
-	(); void f(mixin("arg"))
+	// Parse a fully qualified name into its components
+	string[] parseQualifiedName(string fullyQualifiedName)
 	{
-		mixin("123").xyz; 
-		(mixin("123").xyz); 
-	} 
-	/+
-		Note: TemplateMixinDeclaration:  /+Link: -> DIDE.Declaration+/
-		    mixin template Identifier TemplateParameters Constraintopt { DeclDefsopt }
-		
-		TemplateMixin: 
-					 mixin MixinTemplateName TemplateArgumentsopt Identifieropt ;
-					 mixin Identifier = MixinTemplateName TemplateArgumentsopt ;
-		
-		MixinTemplateName:  /+It NEVER starts with ()+/
-					 . MixinQualifiedIdentifier
-					 MixinQualifiedIdentifier
-					 Typeof . MixinQualifiedIdentifier
-		
-		MixinQualifiedIdentifier:
-					 Identifier
-					 Identifier . MixinQualifiedIdentifier
-					 TemplateInstance . MixinQualifiedIdentifier
-	+/
+		//auto regex = ctRegex!`(?<!\w)([a-zA-Z_][a-zA-Z0-9_]*!(\([^)]*\))?|[a-zA-Z_][a-zA-Z0-9_]*)(\([^)]*\)\s*:\s*[a-zA-Z_][a-zA-Z0-9_]*\s*)?`; 
+		//auto regex = ctRegex!`([a-zA-Z_][a-zA-Z0-9_]*!(\\([^)]*\\))?|[a-zA-Z_][a-zA-Z0-9_]*)(\\([^)]*\\)\\s*:\\s*[a-zA-Z_][a-zA-Z0-9_]*|\\([^)]*\\))?`; 
+		auto regex = ctRegex!`[a-zA-Z_][a-zA-Z0-9_]*(?:!(\\([^)]*\\)))?(?:\\([^)]*\\))?`; 
+		return fullyQualifiedName.matchAll(regex).map!(m => m.hit).array; 
+	} 
 	
-	public alias aliasStatement = aa; 
-	static enum enumStatement; 
-	mixin(blabla) name/+this is a string mixin, not a mixin template+/; 
-	mixin mixinStatement/+this is a mixin template+/; 
-	static immutable mixin SimpleTemplate /+this one is NOT detected+/; 
-	mixin .modul.TemplateName!(arg1,mixin("arg2")); 
-	mixin .modul.TemplateName!(arg1) instanceName2; 
-	/+
-		1.40 doesn't support this -> 
-		/+Code: mixin instanceName3 = .modul.TemplateName!(arg1); +/
-	+/
-	{ pragma(msg, 123); }
-	pragma(123) static	int i=5 ~ __traits(
-		compiles, {
-			int i = 123+256; 
-			if(i>2) { beep; }
+	// Add a fully qualified name to the tree
+	void addQualifiedName(ref TreeNode!string root, string[] parts)
+	{
+		auto current = &root; 
+		
+		foreach(part; parts) {
+			auto child = current.children.find!(c => c.data == part); 
+			if(child.empty) {
+				current.children ~= TreeNode!string(part); 
+				current = &current.children[$ - 1]; 
+			}else { current = &child.front; }
 		}
-	); 
-	pragma(123) {} 
+	} 
 	
-}
-version(none)
-{
-	import std; 
-	
-	struct TABLE { int[][] rows; } 
-	
-	mixin template INJECT_DECLARATIONS(alias _data, string _script) { mixin(_script); } 
-	
-	alias /+ Chinese traditional <-> hetLib dictionary +/
-		表 = TABLE,
-		入 = INJECT_DECLARATIONS; 
-	
-	enum scopeValue = 1000; 
-	
-	const mixin 入!(
-		(表([[q{
-			[
-				[1,2,3],
-				[4,5,6],
-				[7,8,9]
-			]
-		}],])),q{
-			int injectedValue = 
-				scopeValue 	//use any CT values from the scope
-				+ _data.rows.map!"a.sum".sum	//work with the table struct (fast binary operations)
-				+ ((){ int x = _data.rows[0][0] + 100_000; return x; }())	//do heavy calculations in a nested statement block
-				+ mixin(iq{$( _data.rows[0][0] + scopeValue+10000 )}.text)	//last resort: inject any code as string (slow string operations!!!)
-			; 
-		}
-	); 
-	
-	void main()
+	// Generate the hierarchical tree output
+	static if(0)
+	void printTree(TreeNode!string node, string prefix = "")
 	{
-		writeln(typeof(injectedValue).stringof, " ", injectedValue); 
+		writeln(prefix, node.data); 
+		
+		foreach(i, child; node.children) {
+			string newPrefix = prefix ~ (i == node.children.length - 1 ? "  └─" : "  ├─"); 
+			printTree(child, newPrefix); 
+		}
 		
 		/+
-			Pattern detected by DIDE:
-				(表([[...],...]))			//TABLE
-				mixin 入!((expr),q{expr});   //INJECT_DECLARATIONS
+			- Thank you! There were some errors, but I was able to fix.  It was DLang specific stuff, I know your knowledge is mainly C++.  Dlang is an exotic language..
+			GPT: You're welcome! I'm glad you could resolve the issues—it's always impressive to work with such a niche language like DLang. If you need help fine-tuning or exploring other ideas, just let me know!
+			
+			- But the result is not perfect:
+			root
+				 └─com
+				 └─	 └─example
+				 └─	 └─	 ├─Class!(int, string)
+				 └─	 └─	 ├─  └─method(int x, int y) : void
+				 └─	 └─	 └─OtherClass
+				 └─	 └─	 └─  └─subMethod!(true)
+			GPT: Thank you for pointing that out! The issue lies in the incorrect use of block-drawing characters in the tree output. Specifically, the prefixes (├─, └─, etc.) aren't being constructed properly when traversing multiple levels of the tree.
+			
+			Here's the fixed version of the printTree function that ensures the tree structure renders correctly:
 		+/
 	} 
+	
+	// Generate the hierarchical tree output
+	void printTree(in TreeNode!string node, string prefix = "", bool isLast = true)
+	{
+		// Print the current node
+		if(node.data != "root") { writeln(prefix ~ (isLast ? "└─ " : "├─ ") ~ node.data); }
+		
+		// Update the prefix for children
+		auto newPrefix = prefix ~ (isLast ? "   " : "│  "); 
+		
+		foreach(i, child; node.children) { printTree(child, newPrefix, i == node.children.length - 1); }
+	} 
+	
+	void treeFqn(string[] input)
+	{
+		// Input: Alphabetically sorted array of fully qualified names
+		static if(0)
+		input = [
+			"com.example.Class!(int, string)",
+			"com.example.Class!(int, string).method(int x, int y) : void",
+			"com.example.OtherClass",
+			"com.example.OtherClass.subMethod!(true)"
+		]; 
+		
+		input.each!print; 
+		
+		// Root of the tree
+		auto root = TreeNode!string("root"); 
+		
+		// Build the tree
+		foreach(name; input) {
+			auto parts = parseQualifiedName(name); 
+			addQualifiedName(root, parts); 
+		}
+		
+		// Print the tree
+		printTree(root); 
+	} 
 }
+
+import het, het.parser; 
+
 class ModuleJson
 {
 	static struct Item
@@ -177,27 +132,36 @@ class ModuleJson
 		string protection, base, init_, type, originalType, file, deco, baseDeco, value, defaultValue, default_; 
 		int line, char_, endline, endchar, offset; 
 		
-		void dump(alias pred="true")(const ref Item item, string path="")
+		void dumpStr(alias pred="true")(ref string[] result, const ref Item item, string path="")
 		{
-			if(name=="") return; 
+			//if(name=="") return; 
 			
 			if(unaryFun!pred(item))
 			{
 				auto p = parameters.map!"a.type~` `~a.name".join(", "); 
-				print(kind.padRight(' ', 20), path~name~((p!="")?("("~p~")"):(""))); 
+				//print(kind.padRight(' ', 20), path~name~((p!="")?("("~p~")"):(""))); 
+				result ~= path~name~((p!="")?("("~p~")"):("")); 
 			}
-			foreach(ref a; members) a.dump!pred(a, path~name~"."); 
+			foreach(ref a; members) a.dumpStr!pred(result, a, path~name~"."); 
 		} 
 	} 
 	
-	void dump(alias pred="true")()
-	{ foreach(ref a; items) a.dump!pred(a, path~a.name~"."); } 
+	string[] dumpStr(alias pred="true")()
+	{
+		string[] result; 
+		foreach(ref a; items) { a.dumpStr!pred(result, a, ""); }
+		return result; 
+	} 
 	
-	string path; 
+	File file; 
 	Item[] items; 
 	
-	this(string path, string moduleJson)
-	{} 
+	this(File f)
+	{
+		this.file=f; 
+		items.fromJson(file.readText(true)); 
+		//if(items.length && items[0].name=="") items[0].name="__MAIN_MODULE__"; 
+	} 
 } 
 
 
@@ -216,50 +180,25 @@ void main()
 {
 	console(
 		{
+			//treeFqn; 
 			
-			/+(等!((2),(i),(4-i))).print;+/
-			
-			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
-			mixin(求each(q{i=0},q{4},q{
-				((0x17B98F6F833B).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x18108F6F833B).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x18678F6F833B).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x18BE8F6F833B).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x19158F6F833B).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
-			})); 
-			
-			
-			/+
-				Code: //first version.	Flaw: aliases can't hold expressions.
-				(mixin(求each(q{i=0},q{4},q{
-					((0x4EE8F6F833B).檢((mixin(指(q{x},q{0}))) ~= a(界0!((1),(i),(4))))),
-					((0x53C8F6F833B).檢((mixin(指(q{x},q{1}))) ~= a(界1!((1),(i),(4))))),
-					((0x58A8F6F833B).檢((mixin(指(q{x},q{2}))) ~= a(界2!((1),(i),(4))))),
-					((0x5D88F6F833B).檢((mixin(指(q{x},q{3}))) ~= a(界3!((1),(i),(4)))))
-				}))); 
+			static if(0)
+			{
+				auto m = new ModuleJson(`z:\temp\json.txt`.File); 
+				m.dumpStr.sort.array.treeFqn; 
+			}
+			static if(1)
+			foreach(f; ((0)?(listFiles(Path(`c:\d\ldc2\import`), "*.*", "name", Yes.onlyFiles, Yes.recursive).map!"a.file".array):([`c:\d\libs\het\package.d`.File])))
+			{
+				auto res = execute(["ldc2", "-o-", "-X" ,`--Xf=z:\temp\json.txt`, `-Ic:\d\libs`, f.fullName]); 
 				
-				//2nd version with string mixins.
-				(mixin(求each(q{i=0},q{4},q{
-					((0x5198F6F833B).檢((mixin(指(q{x},q{0}))) ~= a(mixin(界0(q{1},q{i},q{4}))))),
-					((0x5708F6F833B).檢((mixin(指(q{x},q{1}))) ~= a(mixin(界1(q{1},q{i},q{4}))))),
-					((0x5C78F6F833B).檢((mixin(指(q{x},q{2}))) ~= a(mixin(界2(q{1},q{i},q{4}))))),
-					((0x61E8F6F833B).檢((mixin(指(q{x},q{3}))) ~= a(mixin(界3(q{1},q{i},q{4}))))),
-					((0x6758F6F833B).檢((mixin(指(q{x},q{4}))) ~= a(mixin(等(q{2},q{i},q{4})))))
-				}))); 
-			+/
-			
-			
-			auto _間=init間; 
-			/+
-				string txt; 
-				Item[] i2; {
-					if((常!(bool)(1))) txt = `c:\d\projects\karc\het.vulkan.json`.File.readText; 
-					if((常!(bool)(0))) txt = `c:\d\projects\karc\het.vulkan.json`.File.readText; 
-				}	((0x6F58F6F833B).檢((update間(_間)))); 
-				i2.fromJson(txt); 	((0x7378F6F833B).檢((update間(_間)))); 
-				((0x7668F6F833B).檢(i2.calcMem)); 	((0x78A8F6F833B).檢((update間(_間)))); 
-				i2.each!(dump!`true`); 	((0x7D18F6F833B).檢((update間(_間)))); 
-			+/
+				if(res.status==0)
+				{
+					auto m = new ModuleJson(`z:\temp\json.txt`.File); 
+					m.dumpStr.sort.array.treeFqn; 
+				}
+				else print("ERROR:", res.output); 
+			}
 		}
 	); 
 } 
