@@ -180,7 +180,15 @@ string generateDLangXJson(File moduleFile)
 	assert(0); 
 } 
 
-
+import std.demangle; 
+string demangleType(string s)
+{
+	if(s=="") return s; 
+	const s1 = "_D1_"~s; 
+	const s2 = s1.demangle; 
+	if(s==s2) return s; 
+	return s2.withoutEnding(" _"); 
+} 
 
 class DDB
 {
@@ -196,23 +204,48 @@ class DDB
 		{
 			@STORED
 			{
-				string name, kind, type, deco; 
-				
+				Kind kind; enum Kind {param, type, value, tuple, alias_, this_ } 
+				string name, type, deco; 
 				version(/+$DIDE_REGION+/all) {
 					string default_; 
-					void defaultValue(string a) {/+Todo: check if the field is not overrided.+/default_ = a; } 
-					void defaultAlias(string a) { default_ = a; } 
-					void defaultDeco(string a) { default_ = a; } 
+					mixin RedirectJsonField!(default_, "defaultAlias"); 
+					mixin RedirectJsonField!(default_, "defaultDeco"); 
+					mixin RedirectJsonField!(default_, "defaultValue"); 
 				}
-				
 				version(/+$DIDE_REGION+/all) {
 					string spec; 
-					void specValue(string a) { spec = a; } 
-					void specAlias(string a) { spec = a; } 
+					mixin RedirectJsonField!(spec, "specValue"); 
+					mixin RedirectJsonField!(spec, "specAlias"); 
 				}
-				
-				string[] storageClass; 
+				string[] storageClass; //{ auto_, const_, immutable_, in_, inout_, lazy_, out_, ref_, return_, scope_, shared_}
 			} 
+			
+			string type2() const /+...Because sometimes the type is only in mangled form.+/
+			=> ((kind.among(Kind.param, Kind.value))?(((type!="")?(type) :(deco.demangleType))):(type)); 
+			
+			string toString() const
+			=> chain(
+				storageClass, only(
+					(
+						kind.predSwitch
+						(
+							Kind.this_, 	"this", 
+							Kind.alias_, 	"alias", 
+								""
+						)
+					), type2, name~(
+						kind.predSwitch
+						(
+							Kind.tuple, 	"...", 
+								""
+						)
+					), ((default_!="") ?("= "~default_) :("")), ((spec!="") ?(": "~spec) :(""))
+				)
+			)
+			.filter!"a!=``".join(' '); 
+			
+			void afterLoad()
+			{ synchronized { ((0x20028F6F833B).檢 ((kind==Kind.param ? this.text : "").COUNT)); } } 
 			
 			void dumpStr(alias pred="true")(ref string[] result, const ref Item item, string path="")
 			{
@@ -264,7 +297,14 @@ class DDB
 		this(File moduleFile, string jsonText)
 		{
 			this.moduleFile=moduleFile; 
-			items.fromJson(jsonText, moduleFile.fullName); /+Todo: It must verify that all fields was read!!!+/
+			enum verifyImport = (常!(bool)(1)) /+Note: Use this to detect new LDC2 XJson changes.+/; 
+			items.fromJson(
+				jsonText, mixin(體!((JsonDecoderOptions),q{
+					moduleName	: moduleFile.fullName,
+					errorHandling	: ErrorHandling.warn,
+					checkIgnoredFields	: verifyImport
+				}))
+			); 
 			enforce(items.length==1, "Only one module per XJson supported."); 
 			enforce(items[0].kind=="module", "Unknown XJson module.kind: "~items[0].kind); 
 			moduleName = items[0].name; 
@@ -323,7 +363,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x296B8F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x2E478F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -335,8 +375,8 @@ class DDB
 				synchronized importedModules ~= md; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x2A9E8F6F833B).檢((update間(_間)))); 
-		((0x2ACD8F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x2B0E8F6F833B).檢((update間(_間)))); 
+		})); 	((0x2F7A8F6F833B).檢((update間(_間)))); 
+		((0x2FA98F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x2FEA8F6F833B).檢((update間(_間)))); 
 		
 		removeStdModules; mixin(求each(q{m},q{importedModules},q{addStdModule(m)})); 
 	} 
@@ -345,9 +385,9 @@ class DDB
 	{
 		try {
 			auto mods = stdModules.values; 	auto _間=init間; 
-			auto json = mods.toJson(true, false, true); 	((0x2C1F8F6F833B).檢((update間(_間)))); ((0x2C4A8F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x2C918F6F833B).檢((update間(_間)))); ((0x2CBC8F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x2D1F8F6F833B).檢((update間(_間)))); 
+			auto json = mods.toJson(false, false, true); 	((0x30FC8F6F833B).檢((update間(_間)))); ((0x31278F6F833B).檢(json.length)); 
+			auto compr = json/+.compress+/; 	((0x31728F6F833B).檢((update間(_間)))); ((0x319D8F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x32008F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -356,10 +396,10 @@ class DDB
 	{
 		try {
 			ModuleDeclarations[] loadedModules; 	auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x2E198F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x2E788F6F833B).檢((update間(_間)))); 
-			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x2EDE8F6F833B).檢((update間(_間)))); 
-			loadedModules.print; 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x32FA8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x33598F6F833B).檢((update間(_間)))); 
+			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x33BF8F6F833B).檢((update間(_間)))); 
+			
 			/+success+/removeStdModules; mixin(求each(q{m},q{loadedModules},q{addStdModule(m)})); 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -393,9 +433,9 @@ void main()
 				
 				S s; 
 				
-				s.fromJson(`{ "def" : 123 }`); ((0x320E8F6F833B).檢(s)); 
-				s.fromJson(`{ "def1" : 456 }`); ((0x324F8F6F833B).檢(s)); 
-				((0x32708F6F833B).檢(s.toJson)); 
+				s.fromJson(`{ "def" : 123 }`); ((0x36DA8F6F833B).檢(s)); 
+				s.fromJson(`{ "def1" : 456 }`); ((0x371B8F6F833B).檢(s)); 
+				((0x373C8F6F833B).檢(s.toJson)); 
 				
 			}
 			
@@ -418,18 +458,19 @@ void main()
 				
 				void visit(S)(const ref S structure, string parentField="")
 				{
-					auto kind2()
+					string kind2()
 					{
+						const kt = structure.kind.text; auto doit(A...)(A args) => kt.among(args); 
 						if(
-							structure.kind.among(
+							doit(
 								"constructor", "destructor", "function", "generated function", 
 								"shared static constructor", "shared static destructor", 
 								"static constructor", "static destructor"
 							)
 						) return "_callable"; 
-						if(structure.kind.among("class", "interface", "mixin", "struct", "template", "union")) return "_aggregate"; 
-						if(structure.kind.among("import", "static import")) return "_import"; 
-						return structure.kind; 
+						if(doit("class", "interface", "mixin", "struct", "template", "union")) return "_aggregate"; 
+						if(doit("import", "static import")) return "_import"; 
+						return kt; 
 					} 
 					
 					
@@ -454,11 +495,7 @@ void main()
 					}
 				} 
 				
-				foreach(i, m; ddb.modules.values) {
-					print(i, ddb.modules.length, m); 
-					print(m.moduleName); 
-					foreach(const ref item; m.items) visit(item); 
-				}
+				foreach(i, m; ddb.modules.values) { foreach(const ref item; m.items) visit(item); }
 				
 				void printMap(alias m)()
 				{

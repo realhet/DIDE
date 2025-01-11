@@ -2118,7 +2118,7 @@ class Workspace : Container, WorkspaceInterface
 							//find the actual comment in searchResults
 							bool isMatchingComment(CodeComment cmt)
 							{
-								return	cmt && (cmt.customPrefix==msg.type.text.capitalize~':') && 
+								return cmt && (cmt.customPrefix==msg.type.text.capitalize~':') && 
 									equal(
 									cmt.content.rows[0].chars!'`'	.until!((ch)=>(!ch.among('`'))),
 									msg.content	.until!((ch)=>(!ch.among('`', '\r', '\n')))

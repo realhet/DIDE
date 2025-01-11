@@ -12453,8 +12453,7 @@ else debug
 				//disabled region with title
 			}
 			
-			/+$DIDE_IMG c:\dl\smiley_face.bmp+/
-			/+$DIDE_IMG c:\dl\smiley_face2.bmp+/
+			/+$DIDE_IMG icon:\.txt+/
 		}with(TestClass1)
 		{
 			//Todo: parse this correctly:
@@ -12904,11 +12903,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5A3E97B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5A4417B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5A4997B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5A4F17B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5A5497B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5A3B57B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5A40D7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5A4657B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5A4BD7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5A5157B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
