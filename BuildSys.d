@@ -384,7 +384,7 @@ a new compiler instance."}],
 			bool canLaunchNow()
 			{
 				with(settings)
-				return	runningCnt==0 /+the very first compiler will launc immediately+/|| 
+				return runningCnt==0 /+the very first compiler will launc immediately+/|| 
 					(
 					(now-lastLaunchTime).value(milli(second)) >= minLatency_ms
 					&& runningCnt < maxThreads.clamp(0, GetNumberOfCores)
@@ -1971,6 +1971,7 @@ struct BuildSystem
 			}	break; 
 			case CMD.debug_: 	{
 				enum debugArgs = ["-g", "--gline-tables-only"]; 
+				//Todo: WRONG NAMING!!! //@debug only means //@debugINFO!!!!
 				addCompileArgs(debugArgs); 
 				addLdcLinkArgs(debugArgs); 
 			}	break; 
