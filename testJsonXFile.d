@@ -168,7 +168,7 @@ string generateDLangXJson(File moduleFile)
 	const tempPath = Path(`z:\temp`); 
 	const libPath = Path(`c:\d\libs`); 
 	const tempJson = File(tempPath, `DIDE_` ~ [QPS].xxh32.to!string(36) ~ ".json"); 
-	scope(exit) tempJson.remove; 
+	scope(exit) tempJson.forcedRemove; 
 	auto res = execute(
 		[
 			"ldc2", "-o-", 
@@ -191,7 +191,14 @@ string demangleType(string s)
 	const s2 = s1.demangle; 
 	if(s==s2) return s; 
 	return s2.withoutEnding(" _"); 
-} 
+} string nameOnly(string s)
+{
+	if(s=="") return ""; 
+	const idx = s.byChar.retro.countUntil!"a!='.'"; 
+	if(idx<=0) return s; 
+	return s[$-idx..$]; 
+} string joinLines(R)(R r) 
+=> r.filter!"a!=``".join('\n'); 
 
 version(/+$DIDE_REGION Enum declarations+/all)
 {
@@ -400,12 +407,49 @@ class DDB
 			} 
 			
 			void afterLoad()
-			{ synchronized { ((0x33E68F6F833B).檢 ("".COUNT)); } } 
+			{
+				synchronized
+				{
+					if((常!(bool)(0)) && category==Category.aggregate)
+					File(`z:\aggregates.d`).append(only(protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, constraintStr, "{ }").filter!"a!=``".join(' ')~"\n"); 
+					
+					
+					if((常!(bool)(0)) && category==Category.aggregate)
+					{
+						((0x36088F6F833B).檢 (mKind.COUNT)),
+						((0x36368F6F833B).檢 (base.COUNT)),
+						((0x36638F6F833B).檢 (interfaces.text.COUNT)),
+						((0x369B8F6F833B).檢 (protection.COUNT)); 
+					}
+				} 
+			} 
 			
 			Category category() const => kindCategory[mKind]; 
 			string kindStr() const => kindText[mKind]; 
 			string protectionStr() const => protectionText[protection]; 
 			string linkageStr() const => linkageCaption[linkage]; 
+			string constraintStr() const => ((constraint!="")?("if("~constraint~")"):("")); 
+			string baseAndInterfacesStr() const
+			{
+				const s = chain(only(base.nameOnly), interfaces).filter!"a!=``".join(", "); 
+				return ((s!="")?(": "~s):("")); 
+			} 
+			string templateParametersStr() const
+			{
+				const s = parameters.map!text.join(", "); 
+				return ((s!="")?("("~s~")"):("")); 
+			} 
+			string membersStr(bool recursive)() const
+			=> members.map!((m)=>(m.sourceText!recursive)).joinLines; 
+			
+			string sourceText(bool recursive=false)() const
+			{
+				switch(category)
+				{
+					case Category.aggregate: 	return only(protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, constraintStr, "{"~membersStr!recursive~"}").filter!"a!=``".join(' '); 
+					default: return ""; 
+				}
+			} 
 			
 			void dumpStr(alias pred="true")(ref string[] result, const ref Member member, string path="")
 			{
@@ -420,6 +464,10 @@ class DDB
 				foreach(ref m; members) m.dumpStr!pred(result, m, path~name~"."); 
 			} 
 		} 
+		
+		string sourceText(bool recursive)() const
+		=> "module
+ "~name.nameOnly~" {"~members.map!((m)=>(m.sourceText!recursive)).joinLines~"}"; 
 		
 		this()
 		{/+default constructor needed by Json loader.+/} 
@@ -518,7 +566,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x42048F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x48A88F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -530,8 +578,8 @@ class DDB
 				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x43438F6F833B).檢((update間(_間)))); 
-		((0x43728F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x43B38F6F833B).檢((update間(_間)))); 
+		})); 	((0x49E78F6F833B).檢((update間(_間)))); 
+		((0x4A168F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x4A578F6F833B).檢((update間(_間)))); 
 		
 		removeStdModules; mixin(求each(q{m},q{importedModules},q{addStdModule(m)})); 
 	} 
@@ -540,9 +588,9 @@ class DDB
 	{
 		try {
 			auto mods = stdModules.values; 	auto _間=init間; 
-			auto json = mods.toJson(true, false, true); 	((0x44C48F6F833B).檢((update間(_間)))); ((0x44EF8F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x45368F6F833B).檢((update間(_間)))); ((0x45618F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x45C48F6F833B).檢((update間(_間)))); 
+			auto json = mods.toJson(true, false, true); 	((0x4B688F6F833B).檢((update間(_間)))); ((0x4B938F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x4BDA8F6F833B).檢((update間(_間)))); ((0x4C058F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4C688F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -551,9 +599,9 @@ class DDB
 	{
 		try {
 			ModuleDeclarations[] loadedModules; 	auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x46BE8F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x471D8F6F833B).檢((update間(_間)))); 
-			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x47838F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x4D628F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x4DC18F6F833B).檢((update間(_間)))); 
+			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x4E278F6F833B).檢((update間(_間)))); 
 			
 			/+success+/removeStdModules; mixin(求each(q{m},q{loadedModules},q{addStdModule(m)})); 
 		}
@@ -588,9 +636,9 @@ void main()
 				
 				S s; 
 				
-				s.fromJson(`{ "def" : 123 }`); ((0x4A9F8F6F833B).檢(s)); 
-				s.fromJson(`{ "def1" : 456 }`); ((0x4AE08F6F833B).檢(s)); 
-				((0x4B018F6F833B).檢(s.toJson)); 
+				s.fromJson(`{ "def" : 123 }`); ((0x51438F6F833B).檢(s)); 
+				s.fromJson(`{ "def1" : 456 }`); ((0x51848F6F833B).檢(s)); 
+				((0x51A58F6F833B).檢(s.toJson)); 
 				
 			}
 			
@@ -607,6 +655,11 @@ void main()
 				ddb.saveStd; 
 				ddb.loadStd; 
 				ddb.modules.values.each!((m){ m.dumpStr; }); 
+				
+				ddb.modules.keys.sort.map!((k)=>(ddb.modules[k].sourceText!true)).joinLines.saveTo(File(`z:\declarations.d`)); 
+				
+				
+				
 				//ddb.dumpAllMembers; 
 				
 				uint[string] kindCount; 
