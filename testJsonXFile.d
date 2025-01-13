@@ -2,8 +2,6 @@
 //@debug
 //@release
 
-import std.parallelism; 
-
 version(all)
 {
 	/+
@@ -119,7 +117,10 @@ version(all)
 	} 
 }
 
-import het, het.parser; 
+import het, het.parser; 
+
+import std.parallelism; 
+
 
 
 
@@ -190,22 +191,94 @@ string demangleType(string s)
 	const s2 = s1.demangle; 
 	if(s==s2) return s; 
 	return s2.withoutEnding(" _"); 
-} 
+} 
+
+version(/+$DIDE_REGION Enum declarations+/all)
+{
+	mixin((
+		(表([
+			[q{/+Note: MCat : ubyte+/}],
+			[q{aggregate}],
+			[q{callable}],
+			[q{import_}],
+			[q{alias_}],
+			[q{enum_}],
+			[q{enum_member}],
+			[q{variable}],
+		]))
+	).調!(GEN_enumTable)); mixin((
+		(表([
+			[q{/+Note: Protection : ubyte+/},q{/+Note: Text#+/}],
+			[q{none},q{/+Code:+/}],
+			[q{public_},q{/+Code: public+/}],
+			[q{private_},q{/+Code: private+/}],
+			[q{package_},q{/+Code: package+/}],
+			[q{protected_},q{/+Code: protected+/}],
+			[q{export_ },q{/+Code: export+/}],
+		]))
+	).調!(GEN_enumTable)); mixin((
+		(表([
+			[q{/+Note: Linkage : ubyte+/},q{/+Note: Caption+/}],
+			[q{none},q{""}],
+			[q{c},q{"C"}],
+			[q{cpp},q{"C++"}],
+			[q{d},q{"D"}],
+			[q{windows},q{"Windows"}],
+			[q{system},q{"System"}],
+		]))
+	).調!(GEN_enumTable)); 
+	mixin 入 !((
+		(表([
+			[q{/+Note: MKind+/},q{/+Note: MCat+/}],
+			[q{/+Code: class+/},q{aggregate}],
+			[q{/+Code: interface+/},q{aggregate}],
+			[q{/+Code: mixin+/},q{aggregate}],
+			[q{/+Code: struct+/},q{aggregate}],
+			[q{/+Code: template+/},q{aggregate}],
+			[q{/+Code: union+/},q{aggregate}],
+			[q{/+Code: function+/},q{callable}],
+			[q{/+Code: generated function+/},q{callable}],
+			[q{/+Code: constructor+/},q{callable}],
+			[q{/+Code: static constructor+/},q{callable}],
+			[q{/+Code: shared static constructor+/},q{callable}],
+			[q{/+Code: destructor+/},q{callable}],
+			[q{/+Code: static destructor+/},q{callable}],
+			[q{/+Code: shared static destructor+/},q{callable}],
+			[q{/+Code: import+/},q{import_}],
+			[q{/+Code: static import+/},q{import_}],
+			[q{/+Code: alias+/},q{alias_}],
+			[q{/+Code: enum+/},q{enum_}],
+			[q{/+Code: enum member+/},q{enum_member}],
+			[q{/+Code: variable+/},q{variable}],
+		]))
+	),q{
+		enum kindText = _data.rows.map!((r)=>(r[0].unpackDComment!"Code")).array; 
+		enum kindCategory = _data.rows.map!((r)=>(r[1].to!MCat)).array; 
+		mixin(iq{enum MKind : ubyte {$(kindText.map!((a)=>(a.replace(' ', '_').jsonFieldToIdentifier)).join(','))} }.text); 
+	}); 
+	//pragma(msg, kindCategory); pragma(msg, kindText); pragma(msg, EnumMembers!Kind); 
+}
+
+
+
+
 class DDB
 {
 	static class ModuleDeclarations
 	{
 		@STORED {
-			File moduleFile; 
-			string moduleName; 
-			Item[] items; 
+			File file; 
+			string name; 
+			Member[] members; 
 		} 
 		
 		static struct Parameter
 		{
-			@STORED
-			{
-				Kind kind; enum Kind {/+function:+/	param, /+template:+/	type, value, tuple, alias_, this_ } 
+			@STORED {
+				Kind kind; enum Kind : ubyte {
+					/+function:+/	parameter, 
+					/+template:+/	type, value, tuple, alias_, this_ 
+				} 
 				string name; 
 				version(/+$DIDE_REGION+/all) {
 					string type; 
@@ -247,72 +320,157 @@ class DDB
 			} 
 		} 
 		
-		static struct Item
+		static struct Member
 		{
-			string name; 
-			int line, char_, endline, endchar, offset, align_; 
+			alias Category = MCat, Kind = MKind/+That complicated mixin table injector fails this scope... needs `this` to access `.map!()` o.O+/; 
+			@STORED {
+				version(/+$DIDE_REGION+/all) {
+					version(/+$DIDE_REGION All members+/all)
+					{
+						string name; 
+						Kind mKind; 
+						Protection protection; 
+						uint line, char_; 
+					}
+					
+					version(/+$DIDE_REGION aggregate+/all)
+					{
+						string base, constraint; 
+						string[] interfaces; 
+					}
+					version(/+$DIDE_REGION callable+/all)
+					{
+						uint endline, endchar; 
+						Member* in_, out_; 
+						string[] overrides; 
+					}
+					
+					version(/+$DIDE_REGION import+/all)
+					{
+						string alias_; 
+						string[] selective; 
+						string[string] renamed; 
+					}
+					version(/+$DIDE_REGION enum+/all)
+					{/+string baseDeco->base+/}
+					version(/+$DIDE_REGION enum member+/all)
+					{ string value; }
+					
+					version(/+$DIDE_REGION variable+/all)
+					{
+						string init_; 
+						uint offset, align_; 
+					}
+					
+					version(/+$DIDE_REGION mixed: callable, variable+/all)
+					{ Linkage linkage; }
+					version(/+$DIDE_REGION mixed: callable, variable, alias+/all)
+					{
+						string /+deco->type+/type, originalType; 
+						string[] storageClass; 
+					}
+					
+					version(/+$DIDE_REGION mixed: aggregate, callable+/all)
+					{ Parameter[] parameters; }
+					version(/+$DIDE_REGION mixed: aggregate, enum+/all)
+					{ Member[] members; }
+				}
+				
+				version(/+$DIDE_REGION Converted/processed fields+/all)
+				{
+					
+					@property void kind(string s)
+					{
+						//This is an importer/converter property.  Only a setter.
+						static Kind[string] kindByName; 
+						if(kindByName.empty) kindByName = assocArray(kindText, [EnumMembers!Kind]); 
+						mKind = *(s in kindByName).enforce("Unknown ModuleDeclarations.kind: "~s.quoted); 
+					} 
+					
+					@property file(string s) /+Ignore 'file' field,  occured only 2 times in callable and variable+/
+					{ WARN("ModuleDeclaration.file ignored: "~s.quoted('`')~" kind: "~kindStr.quoted); } 
+					
+					@property void baseDeco(string s)/+enum+/
+					{ if(base!="") ERR("`base` is redefined by `baseDeco`."); base = s.demangleType; /+Todo: RedirectJsonField -> alias this function!+/} 
+					
+					@property void deco(string s)/+enum+/
+					{ if(type!="") ERR("`base` is redefined by `baseDeco`."); type = s.demangleType; } 
+					
+				}
+			} 
 			
-			string[] storageClass, overrides; 
+			void afterLoad()
+			{ synchronized { ((0x33E68F6F833B).檢 ("".COUNT)); } } 
 			
-			string kind, protection, linkage, base, init_, type, originalType, file, constraint, deco, baseDeco, value; 
+			Category category() const => kindCategory[mKind]; 
+			string kindStr() const => kindText[mKind]; 
+			string protectionStr() const => protectionText[protection]; 
+			string linkageStr() const => linkageCaption[linkage]; 
 			
-			//import:
-			string alias_; 
-			string[] selective; 
-			string[string] renamed; 
-			
-			//classes, interfaces:
-			string[] interfaces; 
-			
-			//recursive declarations ------------------------
-			Parameter[] parameters; 
-			Item[] members; 
-			
-			Item* in_, out_; //contract preconditions, postconditions
-			
-			void dumpStr(alias pred="true")(ref string[] result, const ref Item item, string path="")
+			void dumpStr(alias pred="true")(ref string[] result, const ref Member member, string path="")
 			{
 				//if(name=="") return; 
 				
-				if(unaryFun!pred(item))
+				if(unaryFun!pred(member))
 				{
 					auto p = parameters.map!"a.type~` `~a.name".join(", "); 
 					//print(kind.padRight(' ', 20), path~name~((p!="")?("("~p~")"):(""))); 
 					result ~= path~name/+~((p!="")?("("~p~")"):(""))+/; 
 				}
-				foreach(ref a; members) a.dumpStr!pred(result, a, path~name~"."); 
+				foreach(ref m; members) m.dumpStr!pred(result, m, path~name~"."); 
 			} 
 		} 
-		
+		
 		this()
 		{/+default constructor needed by Json loader.+/} 
 		
-		this(File moduleFile, string jsonText)
+		static createFromJson(string jsonText)
 		{
-			this.moduleFile=moduleFile; 
 			enum verifyImport = (常!(bool)(1)) /+Note: Use this to detect new LDC2 XJson changes.+/; 
-			items.fromJson(
+			
+			/+The outmost Json object. LDC2 generates an array of this.+/
+			static struct Module
+			{ string kind, name, file; Member[] members; } 
+			Module[] mods; mods.fromJson(
 				jsonText, mixin(體!((JsonDecoderOptions),q{
-					moduleName	: moduleFile.fullName,
+					moduleName	: "LDC2 XJson loader",
 					errorHandling	: ErrorHandling.warn,
 					checkIgnoredFields	: verifyImport
 				}))
 			); 
-			enforce(items.length==1, "Only one module per XJson supported."); 
-			enforce(items[0].kind=="module", "Unknown XJson module.kind: "~items[0].kind); 
-			moduleName = items[0].name; 
+			ModuleDeclarations[] res; 
+			foreach(ref mod; mods)
+			{
+				if(mod.kind=="module" && mod.file!="")
+				{
+					auto m = new ModuleDeclarations; 
+					with(m)
+					file 	= File(mod.file),
+						name 	= mod.name,
+						members 	= mod.members; 
+					
+					res ~= m; 
+				}
+				else
+				WARN("Not a valid XJSon module."); 
+			}
+			return res; 
 		} 
 		
 		this(File moduleFile)
 		{
-			this.moduleFile=moduleFile; 
-			items.fromJson(generateDLangXJson(moduleFile), moduleFile.fullName); 
+			auto a = createFromJson(generateDLangXJson(moduleFile)); 
+			enforce(a.length==1, "Only single module json supported in ModuleDectlaration constructor"); 
+			
+			//copy all fields
+			static foreach(n; FieldAndFunctionNamesWithUDA!(typeof(this), STORED, true))
+			mixin(iq{this.$(n) = a[0].$(n); }.text); 
 		} 
 		
 		string[] dumpStr(alias pred="true")()
 		{
 			string[] result; 
-			foreach(ref a; items) { a.dumpStr!pred(result, a, ""); }
+			foreach(ref a; members) { a.dumpStr!pred(result, a, name~'.'); }
 			return result; 
 		} 
 		
@@ -320,13 +478,10 @@ class DDB
 		{
 			st.moduleCount++; 
 			st.sizeBytes += typeid(this).initializer.length; 
-			foreach(const ref item; items) .accumulateStructureStats(item, st); 
+			foreach(const ref item; members) .accumulateStructureStats(item, st); 
 		} 
 	} 
 	Path workPath, stdPath, libPath; 
-	
-	@property stdCacheFile() const 
-	=> appFile.otherExt("$stdlib_cache.dat"); 
 	
 	
 	ModuleDeclarations[string] 
@@ -334,14 +489,21 @@ class DDB
 		projectModules,
 		modules /+This is both combined. Must be maintained properly!!!+/; 
 	
-	protected void addStdModule(ModuleDeclarations md)
-	{ if(md) { mixin(指(q{stdModules},q{md.moduleName})) = md; mixin(指(q{modules},q{md.moduleName})) = md; }} 
-	protected void addProjectModule(ModuleDeclarations md)
-	{ mixin(指(q{projectModules},q{md.moduleName})) = md; mixin(指(q{modules},q{md.moduleName})) = md; } 
-	protected void removeStdModules()
+	protected
 	{
-		foreach(md; stdModules) modules.remove(md.moduleName); 
-		stdModules.clear; 
+		void addStdModule(ModuleDeclarations md)
+		{ if(md) { mixin(指(q{stdModules},q{md.name})) = md; mixin(指(q{modules},q{md.name})) = md; }} 
+		void addProjectModule(ModuleDeclarations md)
+		{ mixin(指(q{projectModules},q{md.name})) = md; mixin(指(q{modules},q{md.name})) = md; } 
+		void removeStdModules()
+		{
+			foreach(md; stdModules) modules.remove(md.name); 
+			stdModules.clear; 
+		} 
+		
+		@property stdCacheFile() const 
+		=> /+appFile.otherExt("$stdlib_cache.dat")+/
+		`z:\temp2\$stdlib_cache.dat`.File; 
 	} 
 	
 	this()
@@ -356,7 +518,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x2E8E8F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x42048F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -364,12 +526,12 @@ class DDB
 			try
 			{
 				auto 	json 	= f.generateDLangXJson,
-					md 	= new ModuleDeclarations(f, json); 
-				synchronized importedModules ~= md; 
+					mods 	= ModuleDeclarations.createFromJson(json); 
+				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x2FC18F6F833B).檢((update間(_間)))); 
-		((0x2FF08F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x30318F6F833B).檢((update間(_間)))); 
+		})); 	((0x43438F6F833B).檢((update間(_間)))); 
+		((0x43728F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x43B38F6F833B).檢((update間(_間)))); 
 		
 		removeStdModules; mixin(求each(q{m},q{importedModules},q{addStdModule(m)})); 
 	} 
@@ -378,9 +540,9 @@ class DDB
 	{
 		try {
 			auto mods = stdModules.values; 	auto _間=init間; 
-			auto json = mods.toJson(true, false, true); 	((0x31428F6F833B).檢((update間(_間)))); ((0x316D8F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x31B48F6F833B).檢((update間(_間)))); ((0x31DF8F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x32428F6F833B).檢((update間(_間)))); 
+			auto json = mods.toJson(true, false, true); 	((0x44C48F6F833B).檢((update間(_間)))); ((0x44EF8F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x45368F6F833B).檢((update間(_間)))); ((0x45618F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x45C48F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -389,9 +551,9 @@ class DDB
 	{
 		try {
 			ModuleDeclarations[] loadedModules; 	auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x333C8F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x339B8F6F833B).檢((update間(_間)))); 
-			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x34018F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x46BE8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x471D8F6F833B).檢((update間(_間)))); 
+			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x47838F6F833B).檢((update間(_間)))); 
 			
 			/+success+/removeStdModules; mixin(求each(q{m},q{loadedModules},q{addStdModule(m)})); 
 		}
@@ -426,9 +588,9 @@ void main()
 				
 				S s; 
 				
-				s.fromJson(`{ "def" : 123 }`); ((0x371D8F6F833B).檢(s)); 
-				s.fromJson(`{ "def1" : 456 }`); ((0x375E8F6F833B).檢(s)); 
-				((0x377F8F6F833B).檢(s.toJson)); 
+				s.fromJson(`{ "def" : 123 }`); ((0x4A9F8F6F833B).檢(s)); 
+				s.fromJson(`{ "def1" : 456 }`); ((0x4AE08F6F833B).檢(s)); 
+				((0x4B018F6F833B).檢(s.toJson)); 
 				
 			}
 			
@@ -444,6 +606,7 @@ void main()
 				ddb.regenerateStd; 
 				ddb.saveStd; 
 				ddb.loadStd; 
+				ddb.modules.values.each!((m){ m.dumpStr; }); 
 				//ddb.dumpAllMembers; 
 				
 				uint[string] kindCount; 
@@ -453,17 +616,10 @@ void main()
 				{
 					string kind2()
 					{
-						const kt = structure.kind.text; auto doit(A...)(A args) => kt.among(args); 
-						if(
-							doit(
-								"constructor", "destructor", "function", "generated function", 
-								"shared static constructor", "shared static destructor", 
-								"static constructor", "static destructor"
-							)
-						) return "_callable"; 
-						if(doit("class", "interface", "mixin", "struct", "template", "union")) return "_aggregate"; 
-						if(doit("import", "static import")) return "_import"; 
-						return kt; 
+						static if(__traits(compiles, structure.category))
+						return "_"~structure.category.text; 
+						else
+						return structure.kind.text; 
 					} 
 					
 					
@@ -488,7 +644,7 @@ void main()
 					}
 				} 
 				
-				foreach(i, m; ddb.modules.values) { foreach(const ref item; m.items) visit(item); }
+				foreach(i, m; ddb.modules.values) { foreach(const ref item; m.members) visit(item); }
 				
 				void printMap(alias m)()
 				{

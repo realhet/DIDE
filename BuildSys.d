@@ -26,6 +26,11 @@ version(/+$DIDE_REGION+/all) {
 	//Todo: editor: ha typo-t ejtek, es egy nekifutasra irtam be a szot, akkor magatol korrigaljon!
 	//Todo: Ha vmelyik modulnal error van, az osszes olyan modul forditasat allitsa le, amelyik fugg attol!
 	//Todo: In the future it could handle special pragmas: pragma(msg, __FILE__~"("~__LINE__.text~",1): Message: ...");
+	/+
+		Todo: Interctive Incremental build: While COMPILING a project and any modules of it being SAVED,
+		then it should RECOMPILE that particular module again. 
+		So, istead of BLOCKING the file save operation, SOLVE the situation intelligently!
+	+/
 	
 	/*
 		[ ] irja ki, hogy mi van a cache-ban.
