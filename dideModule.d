@@ -7503,16 +7503,32 @@ version(/+$DIDE_REGION+/all)
 			/+Todo: Handle attributes preceding template mixins!+/
 			enforce(!block && keyword=="" && ending==';'); 
 			
-			bool kw_space_expr(string kw)
+			bool kw_space_expr(string kw, bool canHaveVisibilityAttr = false)
 			{
-				if(header.byCell.map!structuredCellToChar.startsWith(kw~' '))
+				auto detectVisibility()
+				=> only("public", "private", "package", "protected", "export").map!q{a~' '}
+				.filter!((kw)=>(header.byCell.map!structuredCellToChar.startsWith(kw))).frontOr("")
+				/+Opt: these searches must be optimized with parsing, not by bumbly checking every keyword...+/
+				/+Todo: mixin can suck up more attributes. For example: /+Code: static immutable mixin a;+/+/; 
+				
+				auto visibility = ((canHaveVisibilityAttr)?(detectVisibility):(""))/+Contains extra space+/; 
+				
+				if(header.byCell.map!structuredCellToChar.drop(visibility.length/+skip the attribute+/).startsWith(kw~' '))
 				{
+					if(visibility.length)
+					{
+						enforce(attributes.empty, "There are existing attributes."); 
+						const lenWithoutSpace = visibility.length-1; 
+						attributes = new CodeColumn(this, [header.rows[0].subCells[0 .. lenWithoutSpace]]); 
+					}
 					with(header.rows[0]) {
-						subCells = subCells[(kw.length+1).min($) .. $]; 
+						subCells = subCells[(visibility.length + kw.length + 1).min($) .. $]; 
 						refreshTabIdx; needMeasure; 
 					}
 					this.keyword = kw; return true; 
-				}else return false; 
+				}
+				else
+				{ return false; }
 			} 
 			
 			bool kw_only(string kw)
@@ -7544,7 +7560,7 @@ version(/+$DIDE_REGION+/all)
 			//Todo: detect const, auto, ... declaration blocks.
 			
 			
-			return kw_space_expr("mixin") 	|| 
+			return kw_space_expr("mixin", true) 	||
 			kw_space_expr("return") 	|| kw_only("return")	||
 			kw_space_expr("continue") 	|| kw_only("continue") 	||
 			kw_space_expr("break") 	|| kw_only("break")	||	
@@ -10043,12 +10059,19 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); 
 					@node: 	style.bold = false; put("⏱.init"); 
 				}],
-				[q{perf_measure},q{(update間(_間)); },q{/+Code: (op(expr))+/},q{"update間"},q{bright},q{BasicType},q{NiceExpression},q{
+				[q{perf_measure},q{
+					(update間(_間)); 
+					/+
+						Todo: ⏱.max, ⏱.avg
+						⏱.sum,
+						⏱.perc(1)
+					+/
+				},q{/+Code: (op(expr))+/},q{"update間"},q{bright},q{BasicType},q{NiceExpression},q{
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x469E17B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x46A657B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x46DBE7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x46E427B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10060,8 +10083,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x46CB37B6B4BCC)))(互!((bool),(1),(0x46CD77B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x46CFB7B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x46D477B6B4BCC)))
+					(互!((bool),(0),(0x470907B6B4BCC)))(互!((bool),(1),(0x470B47B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x470D87B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x471247B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10071,9 +10094,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x46F3E7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x46F7D7B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x46FEF7B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4706E7B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4731B7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4735A7B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x473CC7B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4744B7B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10168,13 +10191,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x47F507B6B4BCC).檢(expr)) ((0x47F6E7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x47FBE7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4832D7B6B4BCC).檢(expr)) ((0x4834B7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4839B7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x480627B6B4BCC))) (互!((bool),(1),(0x480877B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x480AC7B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x480EB7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4812B7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x481977B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4821A7B6B4BCC}))
+								(互!((bool),(0),(0x4843F7B6B4BCC))) (互!((bool),(1),(0x484647B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x484897B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x484C87B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x485087B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x485747B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x485F77B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -12909,11 +12932,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5A3F87B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5A4507B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5A4A87B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5A5007B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5A5587B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5A7D57B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5A82D7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5A8857B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5A8DD7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5A9357B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
@@ -12968,12 +12991,14 @@ l2
 		mixin(blabla) name/+this is a string mixin, not a mixin template+/; 
 		mixin mixinStatement/+this is a mixin template+/; 
 		static immutable mixin SimpleTemplate /+this one is NOT detected+/; 
+		public mixin TemplateMixin_with_visibility; 
 		mixin .modul.TemplateName!(arg1, mixin("arg2")); 
 		mixin .modul.TemplateName!(arg1) instanceName2; 
 		/+
 			1.40 doesn't support this -> 
 			/+Code: mixin instanceName3 = .modul.TemplateName!(arg1); +/
 		+/
+		
 		
 		static if(0)
 		{

@@ -120,6 +120,7 @@ version(all)
 import het, het.parser; 
 
 import std.parallelism; 
+
 
 
 
@@ -157,12 +158,6 @@ void accumulateStructureStats(S)(const ref S structure, ref StructureStats st)
 File[] listDLangFiles(Path path, Flag!"recursive" recursive = Yes.recursive)
 => listFiles(path, "*.d*", "name", Yes.onlyFiles, Yes.recursive).filter!((a)=>(a.file.extIs("d", "di"))).map!((a)=>(a.file)).array; 
 
-void dumpDLangFile(F)(F moduleFile)
-{
-	File f = moduleFile.File; 
-	with(new ModuleDeclarations(f)) dumpStr.sort.array/+.treeFqn+/; 
-} 
-
 string generateDLangXJson(File moduleFile, Path[] importPaths)
 {
 	const tempPath = Path(`z:\temp`); 
@@ -190,14 +185,28 @@ string demangleType(string s)
 	const s2 = s1.demangle; 
 	if(s==s2) return s; 
 	return s2.withoutEnding(" _"); 
-} string nameOnly(string s)
+} string extractLastName(string s)
 {
 	if(s=="") return ""; 
 	const idx = s.byChar.retro.countUntil('.'); 
 	if(idx<=0) return s; 
 	return s[$-idx..$]; 
-} string joinLines(R)(R r) 
-=> r.filter!"a!=``".join('\n'); 
+} version(/+$DIDE_REGION+/all) {
+	string prefixNonEmpty(alias prefix)(string s)
+	=> ((s!="")?(prefix~s):("")); 
+	string postfixNonEmpty(alias postfix)(string s)
+	=> ((s!="")?(s~postfix):("")); 
+	string enfoldNonEmpty(alias prefix, alias postfix)(string s)
+	=> ((s!="")?(prefix~s~postfix):("")); 
+	string joinNonEmpty(alias sep, R)(R r)
+	=> r.filter!"!a.empty".join(sep); 
+	string joinLines(R)(R r) 
+	=> r.joinNonEmpty!'\n'; 
+	string joinSentence(R)(R r)
+	=> r.joinNonEmpty!' '; 
+	string joinWithTab(string a, string b)
+	=> ((b=="")?(a):(a~'\t'~b)); 
+}
 
 version(/+$DIDE_REGION Enum declarations+/all)
 {
@@ -277,6 +286,10 @@ class DDB
 			string name; 
 			Member[] members; 
 			ModuleDeclarations[] modules; 
+		}  struct SourceTextOptions
+		{
+			bool 	recursive 	= true,
+				lastNameOnly 	= true; 
 		} 
 		
 		static struct Parameter
@@ -315,16 +328,10 @@ class DDB
 			
 			string keyword() const => kind.predSwitch(Kind.alias_, "alias", Kind.this_, "this", ""); 
 			string tupleEllipsis() const => kind.predSwitch(Kind.tuple, "...", ""); 
-			string fullDef() const => ((def!="")?("= "~def):("")); 
-			string fullSpec() const => ((spec!="")?(": "~spec):("")); 
+			string fullDef() const => def.prefixNonEmpty!"= "; 
+			string fullSpec() const => spec.prefixNonEmpty!": "; 
 			
-			string toString() const => chain(storageClass, only(keyword, type, name~tupleEllipsis, fullDef, fullSpec)).filter!"a!=``".join(' '); 
-			
-			void dumpStr(alias pred="true")(ref string[] result, const ref Item item, string path="")
-			{
-				if(unaryFun!pred(item))
-				{ result ~= path~"("~name~")"; }
-			} 
+			string toString() const => chain(storageClass, only(keyword, type, name~tupleEllipsis, fullDef, fullSpec)).joinSentence; 
 		} 
 		
 		static struct Member
@@ -410,15 +417,57 @@ class DDB
 			{
 				synchronized
 				{
-					if((常!(bool)(1)) && category==Category.callable)
+					if((常!(bool)(0)) && category==Category.callable)
 					{
-						((0x35548F6F833B).檢 (mKind.COUNT)),
-						((0x35828F6F833B).檢 (linkage.COUNT)),
-						((0x35B28F6F833B).檢 (protection.COUNT)),
-						((0x35E58F6F833B).檢 (storageClass.text.COUNT)),
-						((0x361F8F6F833B).檢 (type.COUNT)),
-						((0x364C8F6F833B).檢 (originalType.COUNT)),
-						((0x36818F6F833B).檢 (overrides.text.COUNT)); 
+						((0x365D8F6F833B).檢 (mKind.COUNT)),
+						((0x368B8F6F833B).檢 (linkage.COUNT)),
+						((0x36BB8F6F833B).檢 (protection.COUNT)),
+						((0x36EE8F6F833B).檢 (storageClass.text.COUNT)),
+						((0x37288F6F833B).檢 (type.COUNT)),
+						((0x37558F6F833B).檢 (originalType.COUNT)),
+						((0x378A8F6F833B).檢 (overrides.text.COUNT)); 
+					}
+					if((常!(bool)(0)) && category==Category.enum_member)
+					{
+						((0x380D8F6F833B).檢 (mKind.COUNT)),
+						((0x383B8F6F833B).檢 (protection.COUNT)),
+						((0x386E8F6F833B).檢 (value.COUNT)); 
+						print(this.sourceText); 
+					}
+					if((常!(bool)(0)) && category==Category.enum_member)
+					{
+						((0x39088F6F833B).檢 (mKind.COUNT)),
+						((0x39368F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
+					}
+					if((常!(bool)(0)) && mKind.among(mKind.template_, mKind.mixin_))
+					{
+						if(name=="AlignedStr")
+						((0x39FA8F6F833B).檢 (mKind.COUNT)),
+						((0x3A288F6F833B).檢 ((sourceText).COUNT)),
+						((0x3A5D8F6F833B).檢 ((this.text).COUNT)); 
+					}
+					if(
+						(常!(bool)(0)) && category==Category.import_ && name=="std.internal.digest.sha_SSSE3"
+						/+/+Code: import std.internal.digest.sha_SSSE3 : sse3_constants=constants, transformSSSE3;+/+/
+					)
+					{
+						((0x3B778F6F833B).檢 (mKind.COUNT)),
+						
+						((0x3BAC8F6F833B).檢 (
+							(
+								(
+									(!alias_.empty?"A":"")~
+									(!selective.empty?"S":"")~
+									(!renamed.empty?"R":"")
+								).isWild("*SR") ? sourceText : ""
+							)
+							.COUNT
+						)); 
+					}
+					if((常!(bool)(0)) && category==Category.alias_)
+					{
+						((0x3CE08F6F833B).檢 (mKind.COUNT)),
+						((0x3D0E8F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
 					}
 				} 
 			} 
@@ -427,29 +476,79 @@ class DDB
 			string kindStr() const => kindText[mKind]; 
 			string protectionStr() const => protectionText[protection]; 
 			string linkageStr() const => linkageCaption[linkage]; 
-			string constraintStr() const => ((constraint!="")?("if("~constraint~")"):("")); 
-			string baseAndInterfacesStr() const
-			{
-				const s = chain(only(base.nameOnly), interfaces).filter!"a!=``".join(", "); 
-				return ((s!="")?(": "~s):("")); 
-			} 
-			string templateParametersStr() const
-			{
-				const s = parameters.map!text.join(", "); 
-				return ((s!="")?("("~s~")"):("")); 
-			} 
-			string membersStr(bool recursive)() const
-			=> members.map!((m)=>(m.sourceText!recursive)).joinLines; 
+			string constraintStr() const => constraint.enfoldNonEmpty!("if(", ")"); 
+			string valueStr() const => value.prefixNonEmpty!"= "; 
 			
-			string sourceText(bool recursive=false)() const
+			string sourceText() const { SourceTextOptions opt; return sourceText(opt); } 
+			
+			string sourceText(Flag!"parentIsEnum" parentIsEnum = No.parentIsEnum)(const ref SourceTextOptions opt) const
 			{
+				string lastName(string s)
+				=> ((opt.lastNameOnly)?(s.extractLastName):(s)); 
+				string baseStr() const
+				=> base.prefixNonEmpty!": "; 
+				string baseAndInterfacesStr() const
+				=> chain(only(base), interfaces).filter!"a!=``".map!lastName.join(", ").prefixNonEmpty!": "; 
+				string templateParametersStr(Flag!"instantiate" instantiate = No.instantiate)() const
+				=> parameters.map!text.join(", ").enfoldNonEmpty!(((instantiate)?("!("):("(")), ')'); 
+				string membersStr() const
+				=> members.map!((m)=>(m.sourceText(opt))).joinLines; 
+				string membersList() const
+				=> members.map!((m)=>(m.sourceText!(Yes.parentIsEnum)(opt))).join(",\n"); 
+				
 				switch(category)
 				{
-					case Category.aggregate: 	return only(
-						protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, 
-						constraintStr, "{"~membersStr!recursive~"}"
-					).filter!"a!=``".join(' '); 
-					default: return ""; 
+					case Category.aggregate: 	{
+						const isMixin = mKind==Kind.mixin_/+Todo: Make template mixin a distinct category!+/; 
+						//Note: In the JSON, no way to tell if a template is a mixin template or not.
+						if(isMixin && members.length)
+						WARN("template mixin instantiation "~name.quoted~"has unhandled members."); 
+						return only(
+							protectionStr, kindStr, 
+							(
+								only(name, baseAndInterfacesStr).joinSentence
+								~((isMixin)?(templateParametersStr!(Yes.instantiate)) :(templateParametersStr))
+							), 
+							constraintStr, 
+							((isMixin)?(";") :("{"~((opt.recursive)?(membersStr):(""))~"}"))
+						).joinSentence; 
+					}
+					version(all)
+					{
+						case Category.enum_: 	return only(
+							protectionStr, "enum", name, baseStr, 
+							"{"~((opt.recursive)?(membersList):(""))~"}"
+						).joinSentence; 
+						case Category.enum_member: 	return ((parentIsEnum)?(joinWithTab(name, valueStr)) :(only(protectionStr, "enum", name, valueStr).joinSentence~';')); 
+					}
+					version(all)
+					{
+						case Category.import_: 	return only(
+							protectionStr, kindStr, alias_.postfixNonEmpty!" =", name, 
+							(
+								chain(selective, renamed.byKeyValue.map!q{a.key~" = "~a.value})
+								.array.sort.join(", ")/+Opt: Slow.  Should be cached...+/
+								.prefixNonEmpty!": "
+							)
+						).joinSentence~';'; 
+					}
+					version(all)
+					{
+						case Category.alias_: 	return only(
+							protectionStr, storageClass.joinSentence, "alias", name, "=",
+							originalType.ifEmpty(type)
+							/+
+								-	type is fullyQualified, has no param names.
+								-	originalType has parameter names too, it's nicer, 
+									it's not always present.
+							+/
+							/+
+								Todo: remove fullyQualifiedPath from type if it's in the 
+								same module. Example: /+Code: LPNMLVODSTATECHANGE+/
+							+/
+						).joinSentence~';'; 
+					}
+					default: 	return ""; 
 				}
 			} 
 		} 
@@ -497,7 +596,7 @@ class DDB
 		{
 			//this module has only a single name refering to this level only.
 			//src module has a full name starting with point.
-			void print(A...)(A a) { static if((常!(bool)(1))/+Note: debug+/) .print(a); } 
+			void print(A...)(A a) { static if((常!(bool)(0))/+Note: debug+/) .print(a); } 
 			
 			
 			print("Current src path:", srcPath); 
@@ -533,10 +632,10 @@ class DDB
 			foreach(mod; modules) mod.accumulateStructureStats(st); 
 		} 
 		
-		string sourceText(bool recursive)() const
+		string sourceText() const
 		=> "module "~name~" {"~chain(
-			members.map!((m)=>(m.sourceText!recursive)),
-			modules.map!((m)=>(m.sourceText!recursive))
+			members.map!((m)=>(m.sourceText)),
+			modules.map!((m)=>(m.sourceText))
 		).joinLines~"}"; 
 		
 	} 
@@ -546,10 +645,7 @@ class DDB
 	protected
 	{
 		void acquireMembers(ModuleDeclarations md)
-		{
-			print("Acquiring: ", md.name); 
-			root.acquireMembers(md, md.name.split('.')); 
-		} 
+		{ root.acquireMembers(md, md.name.split('.')); } 
 		void acquireMembers(R)(R r) { mixin(求each(q{m},q{r},q{acquireMembers(m)})); } 
 		@property stdCacheFile() const 
 		=> /+appFile.otherExt("$stdlib_cache.dat")+/
@@ -569,7 +665,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x48638F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x57648F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -581,8 +677,8 @@ class DDB
 				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x49A68F6F833B).檢((update間(_間)))); 
-		((0x49D58F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x4A168F6F833B).檢((update間(_間)))); 
+		})); 	((0x58A78F6F833B).檢((update間(_間)))); 
+		((0x58D68F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x59178F6F833B).檢((update間(_間)))); 
 		acquireMembers(importedModules); 
 	} 
 	
@@ -590,9 +686,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x4AD68F6F833B).檢((update間(_間)))); ((0x4B018F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x4B488F6F833B).檢((update間(_間)))); ((0x4B738F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x4BD68F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x59D78F6F833B).檢((update間(_間)))); ((0x5A028F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x5A498F6F833B).檢((update間(_間)))); ((0x5A748F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x5AD78F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -601,10 +697,10 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x4CAB8F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x4D0A8F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5BAC8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x5C0B8F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x4D8C8F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5C8D8F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -635,7 +731,7 @@ void main()
 				ddb.saveStd; 
 				ddb.loadStd; 
 				
-				ddb.root.sourceText!true.saveTo(File(`z:\declarations.d`)); 
+				ddb.root.sourceText.saveTo(File(`z:\declarations.d`)); 
 				
 				
 				//ddb.dumpAllMembers; 
@@ -695,27 +791,7 @@ void main()
 				
 			}
 			
-			static if((常!(bool)(0)))
-			{
-				auto f = "c:\\d\\ldc2\\import\\std\\traits.d".File; 
-				auto json = f.generateDLangXJson; 
-				json.saveTo(`z:\temp\a.json`); 
-				auto m = new ModuleDeclarations(f, json); 
-				m.dumpStr.sort.array/+.treeFqn+/; 
-			}
 			
-			static if((常!(bool)(0)))
-			foreach(f; ((0)?(listFiles(Path(`c:\d\ldc2\import`), "*.*", "name", Yes.onlyFiles, Yes.recursive).map!"a.file".array):([`c:\d\libs\het\package.d`.File])))
-			{
-				auto res = execute(["ldc2", "-o-", "-X" ,`--Xf=z:\temp\json.txt`, `-Ic:\d\libs`, f.fullName]); 
-				
-				if(res.status==0)
-				{
-					auto m = new ModuleJson(`z:\temp\json.txt`.File); 
-					m.dumpStr.sort.array.treeFqn; 
-				}
-				else print("ERROR:", res.output); 
-			}
 		}
 	); 
 } 
