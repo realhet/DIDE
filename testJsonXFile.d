@@ -163,7 +163,7 @@ void dumpDLangFile(F)(F moduleFile)
 	with(new ModuleDeclarations(f)) dumpStr.sort.array/+.treeFqn+/; 
 } 
 
-string generateDLangXJson(File moduleFile)
+string generateDLangXJson(File moduleFile, Path[] importPaths)
 {
 	const tempPath = Path(`z:\temp`); 
 	const libPath = Path(`c:\d\libs`); 
@@ -172,11 +172,10 @@ string generateDLangXJson(File moduleFile)
 	auto res = execute(
 		[
 			"ldc2", "-o-", 
-			"-X", `--Xf`, tempJson.fullName, 
-			`-I`, libPath.fullPath, 
-			`-I`, moduleFile.fullPath, 
-			moduleFile.fullName
-		]
+			"-X", `--Xf`, tempJson.fullName
+		] ~
+		chain(only(libPath), importPaths).map!((p)=>(["-I", p.fullPath])).join ~
+		moduleFile.fullName
 	); 
 	if(res.status==0) return tempJson.readText(true); 
 	else raise(i"Error: $(moduleFile.quoted('`')) Msg: $(res.output)"); 
@@ -194,7 +193,7 @@ string demangleType(string s)
 } string nameOnly(string s)
 {
 	if(s=="") return ""; 
-	const idx = s.byChar.retro.countUntil!"a!='.'"; 
+	const idx = s.byChar.retro.countUntil('.'); 
 	if(idx<=0) return s; 
 	return s[$-idx..$]; 
 } string joinLines(R)(R r) 
@@ -277,6 +276,7 @@ class DDB
 			File file; 
 			string name; 
 			Member[] members; 
+			ModuleDeclarations[] modules; 
 		} 
 		
 		static struct Parameter
@@ -410,16 +410,15 @@ class DDB
 			{
 				synchronized
 				{
-					if((常!(bool)(0)) && category==Category.aggregate)
-					File(`z:\aggregates.d`).append(only(protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, constraintStr, "{ }").filter!"a!=``".join(' ')~"\n"); 
-					
-					
-					if((常!(bool)(0)) && category==Category.aggregate)
+					if((常!(bool)(1)) && category==Category.callable)
 					{
-						((0x36088F6F833B).檢 (mKind.COUNT)),
-						((0x36368F6F833B).檢 (base.COUNT)),
-						((0x36638F6F833B).檢 (interfaces.text.COUNT)),
-						((0x369B8F6F833B).檢 (protection.COUNT)); 
+						((0x35548F6F833B).檢 (mKind.COUNT)),
+						((0x35828F6F833B).檢 (linkage.COUNT)),
+						((0x35B28F6F833B).檢 (protection.COUNT)),
+						((0x35E58F6F833B).檢 (storageClass.text.COUNT)),
+						((0x361F8F6F833B).檢 (type.COUNT)),
+						((0x364C8F6F833B).檢 (originalType.COUNT)),
+						((0x36818F6F833B).檢 (overrides.text.COUNT)); 
 					}
 				} 
 			} 
@@ -446,29 +445,14 @@ class DDB
 			{
 				switch(category)
 				{
-					case Category.aggregate: 	return only(protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, constraintStr, "{"~membersStr!recursive~"}").filter!"a!=``".join(' '); 
+					case Category.aggregate: 	return only(
+						protectionStr, kindStr, name, baseAndInterfacesStr, templateParametersStr, 
+						constraintStr, "{"~membersStr!recursive~"}"
+					).filter!"a!=``".join(' '); 
 					default: return ""; 
 				}
 			} 
-			
-			void dumpStr(alias pred="true")(ref string[] result, const ref Member member, string path="")
-			{
-				//if(name=="") return; 
-				
-				if(unaryFun!pred(member))
-				{
-					auto p = parameters.map!"a.type~` `~a.name".join(", "); 
-					//print(kind.padRight(' ', 20), path~name~((p!="")?("("~p~")"):(""))); 
-					result ~= path~name/+~((p!="")?("("~p~")"):(""))+/; 
-				}
-				foreach(ref m; members) m.dumpStr!pred(result, m, path~name~"."); 
-			} 
-		} 
-		
-		string sourceText(bool recursive)() const
-		=> "module
- "~name.nameOnly~" {"~members.map!((m)=>(m.sourceText!recursive)).joinLines~"}"; 
-		
+		} 
 		this()
 		{/+default constructor needed by Json loader.+/} 
 		
@@ -479,7 +463,8 @@ class DDB
 			/+The outmost Json object. LDC2 generates an array of this.+/
 			static struct Module
 			{ string kind, name, file; Member[] members; } 
-			Module[] mods; mods.fromJson(
+			Module[] mods; 
+			mods.fromJson(
 				jsonText, mixin(體!((JsonDecoderOptions),q{
 					moduleName	: "LDC2 XJson loader",
 					errorHandling	: ErrorHandling.warn,
@@ -494,8 +479,8 @@ class DDB
 					auto m = new ModuleDeclarations; 
 					with(m)
 					file 	= File(mod.file),
-						name 	= mod.name,
-						members 	= mod.members; 
+					name 	= mod.name/+absolute full name-path+/,
+					members 	= mod.members; 
 					
 					res ~= m; 
 				}
@@ -505,50 +490,67 @@ class DDB
 			return res; 
 		} 
 		
-		this(File moduleFile)
-		{
-			auto a = createFromJson(generateDLangXJson(moduleFile)); 
-			enforce(a.length==1, "Only single module json supported in ModuleDectlaration constructor"); 
-			
-			//copy all fields
-			static foreach(n; FieldAndFunctionNamesWithUDA!(typeof(this), STORED, true))
-			mixin(iq{this.$(n) = a[0].$(n); }.text); 
-		} 
+		auto findModule(string name)
+		{ return modules.find!((m)=>(m.name==name)).frontOrNull; } 
 		
-		string[] dumpStr(alias pred="true")()
+		private void acquireMembers(ModuleDeclarations src, string[] srcPath)
 		{
-			string[] result; 
-			foreach(ref a; members) { a.dumpStr!pred(result, a, name~'.'); }
-			return result; 
+			//this module has only a single name refering to this level only.
+			//src module has a full name starting with point.
+			void print(A...)(A a) { static if((常!(bool)(1))/+Note: debug+/) .print(a); } 
+			
+			
+			print("Current src path:", srcPath); 
+			print("Src.name:", src.name); 
+			if(srcPath.empty/+Note: This is it+/)
+			{
+				print("SUCCESS Exact name found:", name); 
+				file = src.file; 
+				members = src.members; 
+			}
+			else
+			{
+				const nextName = srcPath.fetchFront; 
+				print("Looking for next name:", nextName); 
+				auto nextModule = findModule(nextName); 
+				if(!nextModule)
+				{
+					print("Creating the next module:", nextName); 
+					nextModule = new ModuleDeclarations; 
+					nextModule.name = nextName; 
+					modules ~= nextModule; 
+				}
+				print("Doing recursion in:", nextName); 
+				nextModule.acquireMembers(src, srcPath); 
+			}
 		} 
 		
 		void accumulateStructureStats(ref StructureStats st) const
 		{
 			st.moduleCount++; 
 			st.sizeBytes += typeid(this).initializer.length; 
-			foreach(const ref item; members) .accumulateStructureStats(item, st); 
+			foreach(const ref member; members) .accumulateStructureStats(member, st); 
+			foreach(mod; modules) mod.accumulateStructureStats(st); 
 		} 
+		
+		string sourceText(bool recursive)() const
+		=> "module "~name~" {"~chain(
+			members.map!((m)=>(m.sourceText!recursive)),
+			modules.map!((m)=>(m.sourceText!recursive))
+		).joinLines~"}"; 
+		
 	} 
 	Path workPath, stdPath, libPath; 
-	
-	
-	ModuleDeclarations[string] 
-		stdModules /+These modules are cached next to the dide.exe file.+/, 
-		projectModules,
-		modules /+This is both combined. Must be maintained properly!!!+/; 
+	ModuleDeclarations root; 
 	
 	protected
 	{
-		void addStdModule(ModuleDeclarations md)
-		{ if(md) { mixin(指(q{stdModules},q{md.name})) = md; mixin(指(q{modules},q{md.name})) = md; }} 
-		void addProjectModule(ModuleDeclarations md)
-		{ mixin(指(q{projectModules},q{md.name})) = md; mixin(指(q{modules},q{md.name})) = md; } 
-		void removeStdModules()
+		void acquireMembers(ModuleDeclarations md)
 		{
-			foreach(md; stdModules) modules.remove(md.name); 
-			stdModules.clear; 
+			print("Acquiring: ", md.name); 
+			root.acquireMembers(md, md.name.split('.')); 
 		} 
-		
+		void acquireMembers(R)(R r) { mixin(求each(q{m},q{r},q{acquireMembers(m)})); } 
 		@property stdCacheFile() const 
 		=> /+appFile.otherExt("$stdlib_cache.dat")+/
 		`z:\temp2\$stdlib_cache.dat`.File; 
@@ -560,37 +562,37 @@ class DDB
 		stdPath	= `c:\d\ldc2\import`,
 		libPath 	= `c:\d\libs`
 		/+Todo: These must come from outside!+/; 
+		root = new ModuleDeclarations; 
 	} 
 	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x48A88F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x48638F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
 		},q{
 			try
 			{
-				auto 	json 	= f.generateDLangXJson,
+				auto 	json 	= f.generateDLangXJson([]),
 					mods 	= ModuleDeclarations.createFromJson(json); 
 				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x49E78F6F833B).檢((update間(_間)))); 
-		((0x4A168F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x4A578F6F833B).檢((update間(_間)))); 
-		
-		removeStdModules; mixin(求each(q{m},q{importedModules},q{addStdModule(m)})); 
+		})); 	((0x49A68F6F833B).檢((update間(_間)))); 
+		((0x49D58F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x4A168F6F833B).檢((update間(_間)))); 
+		acquireMembers(importedModules); 
 	} 
 	
 	void saveStd()
 	{
 		try {
-			auto mods = stdModules.values; 	auto _間=init間; 
-			auto json = mods.toJson(true, false, true); 	((0x4B688F6F833B).檢((update間(_間)))); ((0x4B938F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x4BDA8F6F833B).檢((update間(_間)))); ((0x4C058F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x4C688F6F833B).檢((update間(_間)))); 
+			auto _間=init間; 
+			auto json = root.toJson(true, false, true); 	((0x4AD68F6F833B).檢((update間(_間)))); ((0x4B018F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x4B488F6F833B).檢((update間(_間)))); ((0x4B738F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4BD68F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -598,21 +600,18 @@ class DDB
 	void loadStd()
 	{
 		try {
-			ModuleDeclarations[] loadedModules; 	auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x4D628F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x4DC18F6F833B).檢((update間(_間)))); 
-			loadedModules.fromJson(json, stdCacheFile.fullName); 	((0x4E278F6F833B).檢((update間(_間)))); 
-			
-			/+success+/removeStdModules; mixin(求each(q{m},q{loadedModules},q{addStdModule(m)})); 
+			auto _間=init間; 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x4CAB8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x4D0A8F6F833B).檢((update間(_間)))); 
+			ModuleDeclarations newRoot; 	
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x4D8C8F6F833B).檢((update間(_間)))); 
+			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
 	} 
 	
 	auto makeStatistics(R)(R modules)
-	{ StructureStats st; mixin(求each(q{m},q{modules},q{m.accumulateStructureStats(st)})); return st; } 
-	
-	void dumpAllMembers()
-	{ mixin(求map(q{k},q{modules.keys.sort},q{mixin(指(q{modules},q{k})).dumpStr})).join.sort.array.treeFqn; } 
+	{ StructureStats st; root.accumulateStructureStats(st); return st; } 
 	
 	
 	auto search()
@@ -624,25 +623,6 @@ void main()
 {
 	console(
 		{
-			//treeFqn; 
-			static if((常!(bool)(0)))
-			{
-				static struct S
-				{
-					@STORED int def; 
-					@STORED def1(int a) { def = a; } 
-					//@STORED def1()const => def; 
-				} 
-				
-				S s; 
-				
-				s.fromJson(`{ "def" : 123 }`); ((0x51438F6F833B).檢(s)); 
-				s.fromJson(`{ "def1" : 456 }`); ((0x51848F6F833B).檢(s)); 
-				((0x51A58F6F833B).檢(s.toJson)); 
-				
-			}
-			
-			
 			static if((常!(bool)(1)))
 			{
 				//unittest_stream; 
@@ -654,10 +634,8 @@ void main()
 				ddb.regenerateStd; 
 				ddb.saveStd; 
 				ddb.loadStd; 
-				ddb.modules.values.each!((m){ m.dumpStr; }); 
 				
-				ddb.modules.keys.sort.map!((k)=>(ddb.modules[k].sourceText!true)).joinLines.saveTo(File(`z:\declarations.d`)); 
-				
+				ddb.root.sourceText!true.saveTo(File(`z:\declarations.d`)); 
 				
 				
 				//ddb.dumpAllMembers; 
@@ -697,7 +675,13 @@ void main()
 					}
 				} 
 				
-				foreach(i, m; ddb.modules.values) { foreach(const ref item; m.members) visit(item); }
+				void visitM(DDB.ModuleDeclarations md)
+				{
+					foreach(ref const member; md.members) visit(member); 
+					foreach(module_; md.modules) visitM(module_); 
+				} 
+				
+				visitM(ddb.root); 
 				
 				void printMap(alias m)()
 				{
