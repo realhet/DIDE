@@ -2099,7 +2099,7 @@ class Workspace : Container, WorkspaceInterface
 					return fallbackNode; 
 				} 
 				
-				auto containerModule = findModule(msg.location.file).ifnull(mainModule); 
+				auto containerModule = findModule(msg.location.file).ifNull(mainModule); 
 				if(auto containerNode = getContainerNode(containerModule))
 				{
 					void addMessageToModule(bool isNew)

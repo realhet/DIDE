@@ -240,6 +240,7 @@ version(/+$DIDE_REGION Enum declarations+/all)
 			[q{d},q{"D"}],
 			[q{windows},q{"Windows"}],
 			[q{system},q{"System"}],
+			[q{objectivec},q{"Objective-C"}],
 		]))
 	).調!(GEN_enumTable)); 
 	mixin 入 !((
@@ -419,41 +420,41 @@ class DDB
 				{
 					if((常!(bool)(0)) && category==Category.callable)
 					{
-						((0x365D8F6F833B).檢 (mKind.COUNT)),
-						((0x368B8F6F833B).檢 (linkage.COUNT)),
-						((0x36BB8F6F833B).檢 (protection.COUNT)),
-						((0x36EE8F6F833B).檢 (storageClass.text.COUNT)),
-						((0x37288F6F833B).檢 (type.COUNT)),
-						((0x37558F6F833B).檢 (originalType.COUNT)),
-						((0x378A8F6F833B).檢 (overrides.text.COUNT)); 
+						((0x36838F6F833B).檢 (mKind.COUNT)),
+						((0x36B18F6F833B).檢 (linkage.COUNT)),
+						((0x36E18F6F833B).檢 (protection.COUNT)),
+						((0x37148F6F833B).檢 (storageClass.text.COUNT)),
+						((0x374E8F6F833B).檢 (type.COUNT)),
+						((0x377B8F6F833B).檢 (originalType.COUNT)),
+						((0x37B08F6F833B).檢 (overrides.text.COUNT)); 
 					}
 					if((常!(bool)(0)) && category==Category.enum_member)
 					{
-						((0x380D8F6F833B).檢 (mKind.COUNT)),
-						((0x383B8F6F833B).檢 (protection.COUNT)),
-						((0x386E8F6F833B).檢 (value.COUNT)); 
+						((0x38338F6F833B).檢 (mKind.COUNT)),
+						((0x38618F6F833B).檢 (protection.COUNT)),
+						((0x38948F6F833B).檢 (value.COUNT)); 
 						print(this.sourceText); 
 					}
 					if((常!(bool)(0)) && category==Category.enum_member)
 					{
-						((0x39088F6F833B).檢 (mKind.COUNT)),
-						((0x39368F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
+						((0x392E8F6F833B).檢 (mKind.COUNT)),
+						((0x395C8F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
 					}
 					if((常!(bool)(0)) && mKind.among(mKind.template_, mKind.mixin_))
 					{
 						if(name=="AlignedStr")
-						((0x39FA8F6F833B).檢 (mKind.COUNT)),
-						((0x3A288F6F833B).檢 ((sourceText).COUNT)),
-						((0x3A5D8F6F833B).檢 ((this.text).COUNT)); 
+						((0x3A208F6F833B).檢 (mKind.COUNT)),
+						((0x3A4E8F6F833B).檢 ((sourceText).COUNT)),
+						((0x3A838F6F833B).檢 ((this.text).COUNT)); 
 					}
 					if(
 						(常!(bool)(0)) && category==Category.import_ && name=="std.internal.digest.sha_SSSE3"
 						/+/+Code: import std.internal.digest.sha_SSSE3 : sse3_constants=constants, transformSSSE3;+/+/
 					)
 					{
-						((0x3B778F6F833B).檢 (mKind.COUNT)),
+						((0x3B9D8F6F833B).檢 (mKind.COUNT)),
 						
-						((0x3BAC8F6F833B).檢 (
+						((0x3BD28F6F833B).檢 (
 							(
 								(
 									(!alias_.empty?"A":"")~
@@ -466,8 +467,15 @@ class DDB
 					}
 					if((常!(bool)(0)) && category==Category.alias_)
 					{
-						((0x3CE08F6F833B).檢 (mKind.COUNT)),
-						((0x3D0E8F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
+						((0x3D068F6F833B).檢 (mKind.COUNT)),
+						((0x3D348F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
+					}
+					if((常!(bool)(0)) && category==Category.variable)
+					{
+						((0x3DF58F6F833B).檢 (mKind.COUNT)),
+						((0x3E238F6F833B).檢 (linkage.COUNT)),
+						((0x3E538F6F833B).檢 (protection.COUNT)),
+						((0x3E868F6F833B).檢 (storageClass.text.COUNT)); 
 					}
 				} 
 			} 
@@ -475,7 +483,7 @@ class DDB
 			Category category() const => kindCategory[mKind]; 
 			string kindStr() const => kindText[mKind]; 
 			string protectionStr() const => protectionText[protection]; 
-			string linkageStr() const => linkageCaption[linkage]; 
+			string linkageStr() const => ((linkage)?("extern("~linkageCaption[linkage]~")"):("")); 
 			string constraintStr() const => constraint.enfoldNonEmpty!("if(", ")"); 
 			string valueStr() const => value.prefixNonEmpty!"= "; 
 			
@@ -536,7 +544,7 @@ class DDB
 					{
 						case Category.alias_: 	return only(
 							protectionStr, storageClass.joinSentence, "alias", name, "=",
-							originalType.ifEmpty(type)
+							linkageStr, originalType.ifEmpty(type)
 							/+
 								-	type is fullyQualified, has no param names.
 								-	originalType has parameter names too, it's nicer, 
@@ -546,6 +554,13 @@ class DDB
 								Todo: remove fullyQualifiedPath from type if it's in the 
 								same module. Example: /+Code: LPNMLVODSTATECHANGE+/
 							+/
+						).joinSentence~';'; 
+					}
+					version(all)
+					{
+						case Category.variable: 	return only(
+							protectionStr, linkageStr, storageClass.joinSentence, 
+							originalType.ifEmpty(type), name, prefixNonEmpty!"= "(init_)
 						).joinSentence~';'; 
 					}
 					default: 	return ""; 
@@ -665,7 +680,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x57648F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x59BB8F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -677,8 +692,8 @@ class DDB
 				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x58A78F6F833B).檢((update間(_間)))); 
-		((0x58D68F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x59178F6F833B).檢((update間(_間)))); 
+		})); 	((0x5AFE8F6F833B).檢((update間(_間)))); 
+		((0x5B2D8F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x5B6E8F6F833B).檢((update間(_間)))); 
 		acquireMembers(importedModules); 
 	} 
 	
@@ -686,9 +701,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x59D78F6F833B).檢((update間(_間)))); ((0x5A028F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x5A498F6F833B).檢((update間(_間)))); ((0x5A748F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x5AD78F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x5C2E8F6F833B).檢((update間(_間)))); ((0x5C598F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x5CA08F6F833B).檢((update間(_間)))); ((0x5CCB8F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x5D2E8F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -697,10 +712,10 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5BAC8F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x5C0B8F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5E038F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x5E628F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5C8D8F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5EE48F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
