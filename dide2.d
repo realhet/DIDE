@@ -77,26 +77,18 @@ version(/+$DIDE_REGION main+/all)
 		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
 		
 		//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
+		/+Todo: Nem megy az Alt+. emoji beszuras, mert elveszti a fokiszt es akkor eltunteti a selections.+/
+		/+
+			Todo: ha kijelolok tobb szoveget, akkor a masolas utan beillesztve random sorrendben fogja azokat beszurni. 
+			Kibaszottul idegesítô! 
+		+/
+		/+Todo: Implement predSwitch as a 2 column grid!+/
+		/+
+			Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
+			After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
+		+/
 	}
 	
-	static if(0)
-	void playground()
-	{
-		
-		// display messages cyclically until the shop is closed
-		outer: 
-		while(true)
-		{
-			foreach(msg; messages)
-			{
-				if(shop.isClosed())
-				break outer; // end the while loop
-				
-				display(msg); 
-			}
-		}
-		display("opens at 9am"); 
-	} 
 	
 	//globals ////////////////////////////////////////
 	

@@ -125,51 +125,17 @@ import std.parallelism;
 
 
 
-static struct StructureStats
-{ size_t moduleCount, structCount, sizeBytes; } 
-
-void accumulateStructureStats(S)(const ref S structure, ref StructureStats st)
-{
-	st.structCount ++; 
-	
-	void addSize(size_t siz) { st.sizeBytes += siz; } 
-	addSize(typeof(structure).sizeof); 
-	
-	static foreach(alias field; structure.tupleof)
-	{
-		{
-			alias T = typeof(field); const ref f() => __traits(getMember, structure, field.stringof); 
-			static if(is(T==S*))	{ if(f) accumulateStructureStats(*f, st); }
-			else static if(is(T==string[]))	{ addSize(f.map!"16+a.length".sum); }
-			else static if(is(T==string[string]))	{
-				addSize(
-					f.keys	.map!"16+a.length".sum +
-					f.values	.map!"16+a.length".sum
-				); 
-			}
-			else static if(is(T==string))	{ addSize(f.length); }
-			else static if(isIntegral!T || isFloatingPoint!T)	{/+Already added on the surface of the struct.+/}
-			else static if(isDynamicArray!T)	{ foreach(const ref a; f) accumulateStructureStats(a, st); }
-			else	static assert(0, "Unhandled T "~T.stringof); 
-		}
-	}
-} 
-
 File[] listDLangFiles(Path path, Flag!"recursive" recursive = Yes.recursive)
 => listFiles(path, "*.d*", "name", Yes.onlyFiles, Yes.recursive).filter!((a)=>(a.file.extIs("d", "di"))).map!((a)=>(a.file)).array; 
 
-string generateDLangXJson(File moduleFile, Path[] importPaths)
+string generateDLangXJson(File moduleFile, in string[] extraArgs=[])
 {
-	const tempPath = Path(`z:\temp`); 
-	const libPath = Path(`c:\d\libs`); 
+	const tempPath = Path(`z:\temp`)/+Todo: pull this constant outwards!+/; 
 	const tempJson = File(tempPath, `DIDE_` ~ [QPS].xxh32.to!string(36) ~ ".json"); 
 	scope(exit) tempJson.forcedRemove; 
 	auto res = execute(
-		[
-			"ldc2", "-o-", 
-			"-X", `--Xf`, tempJson.fullName
-		] ~
-		chain(only(libPath), importPaths).map!((p)=>(["-I", p.fullPath])).join ~
+		["ldc2", "-o-", "-X", `--Xf`, tempJson.fullName] ~
+		extraArgs ~
 		moduleFile.fullName
 	); 
 	if(res.status==0) return tempJson.readText(true); 
@@ -177,21 +143,23 @@ string generateDLangXJson(File moduleFile, Path[] importPaths)
 	assert(0); 
 } 
 
-import std.demangle; 
-string demangleType(string s)
-{
-	if(s=="") return s; 
-	const s1 = "_D1_"~s; 
-	const s2 = s1.demangle; 
-	if(s==s2) return s; 
-	return s2.withoutEnding(" _"); 
-} string extractLastName(string s)
-{
-	if(s=="") return ""; 
-	const idx = s.byChar.retro.countUntil('.'); 
-	if(idx<=0) return s; 
-	return s[$-idx..$]; 
-} version(/+$DIDE_REGION+/all) {
+version(/+$DIDE_REGION+/all) {
+	import std.demangle; 
+	string demangleType(string s)
+	{
+		if(s=="") return s; 
+		const s1 = "_D1_"~s; 
+		const s2 = s1.demangle; 
+		if(s==s2) return s; 
+		return s2.withoutEnding(" _"); 
+	} 
+	string extractLastName(string s)
+	{
+		if(s=="") return ""; 
+		const idx = s.byChar.retro.countUntil('.'); 
+		if(idx<=0) return s; 
+		return s[$-idx..$]; 
+	} 
 	string prefixNonEmpty(alias prefix)(string s)
 	=> ((s!="")?(prefix~s):("")); 
 	string postfixNonEmpty(alias postfix)(string s)
@@ -274,26 +242,22 @@ version(/+$DIDE_REGION Enum declarations+/all)
 	}); 
 	//pragma(msg, kindCategory); pragma(msg, kindText); pragma(msg, EnumMembers!Kind); 
 }
-
-__gshared globalCnt=0; 
-
-
-
-
 
 class DDB
 {
 	static class ModuleDeclarations
 	{
 		@STORED {
-			File file; 
-			string name; 
-			Member[] members; 
-			ModuleDeclarations[] modules; 
+			File file; 	/+module file name+/
+			string name; 	/+just the last module name, not FQN+/
+			bool isStd; 	/+regenerateStd() sets this to true+/
+			Member[] members; 	/+members of this module+/
+			ModuleDeclarations[] modules; 	/+subModules of this module.+/
 		}  struct SourceTextOptions
 		{
 			bool 	recursive 	= true,
 				lastNameOnly 	= true; 
+			uint moduleCount, memberCount, paramCount; 
 		} 
 		
 		static struct Parameter
@@ -305,31 +269,37 @@ class DDB
 				} 
 				string name; 
 				version(/+$DIDE_REGION+/all) {
-					string type; 
-					void deco(string s)/+param, value, type+/
-					{ if(type!="") ERR("`type` is redefined by `deco`."); type = s.demangleType; } 
-					void defaultDeco(string s)/+type+/
-					{ if(type!="") ERR("`type` is redefined by `defaultDeco`."); type = s.demangleType; } 
+					string type; 
+					
+					mixin RedirectJsonField!(type, "deco", "a.demangleType"); 
+					mixin RedirectJsonField!(type, "defaultDeco", "a.demangleType"); 
 				}
 				version(/+$DIDE_REGION+/all) {
-					string def; 
-					static foreach(a; ["default_", "defaultAlias", "defaultValue"])
-					mixin RedirectJsonField!(def, a); /+
-						param, value,
-						type, alias
-					+/
+					string def; 
+					
+					mixin RedirectJsonFields!(
+						def, [
+							"default_"/+kind: value+/, 
+							"defaultAlias"/+kind: alias+/, 
+							"defaultValue"/+kind: type+/
+						]
+					); 
 				}
 				version(/+$DIDE_REGION+/all) {
-					string spec; 
-					static foreach(a; ["specValue", "specAlias"])
-					mixin RedirectJsonField!(spec, a); /+
-						value
-						alias
-					+/
+					string spec; 
+					
+					mixin RedirectJsonFields!(
+						spec, [
+							"specValue"/+kind: value+/, 
+							"specAlias"/+kind: alias_+/
+						]
+					); 
 				}
-				string[] storageClass; /+{ auto_, const_, immutable_, in_, inout_, lazy_, out_, ref_, return_, scope_, shared_}+/
-			} 
-			
+				string[] storageClass; /+
+					{ auto_, const_, immutable_, in_, inout_, lazy_, 
+					out_, ref_, return_, scope_, shared_}
+				+/
+			} 
 			string keyword() const => kind.predSwitch(Kind.alias_, "alias", Kind.this_, "this", ""); 
 			string tupleEllipsis() const => kind.predSwitch(Kind.tuple, "...", ""); 
 			string fullDef() const => def.prefixNonEmpty!"= "; 
@@ -346,43 +316,50 @@ class DDB
 					version(/+$DIDE_REGION All members+/all)
 					{
 						string name; 
+						uint line, char_; 
 						Kind mKind; 
 						Protection protection; 
-						uint line, char_; 
+						/+string mixinFile+/
 					}
+					
+					version(/+$DIDE_REGION mixed: callable, variable+/all)
+					{ Linkage linkage; }
 					
 					version(/+$DIDE_REGION aggregate+/all)
 					{
-						string base, constraint; 
-						string[] interfaces; 
-					}
+						/+string aggregateBase;+/
+						/+string aggregateConstraint; +/
+						/+string[] aggregateInterfaces; +/
+					}
+					
 					version(/+$DIDE_REGION callable+/all)
 					{
 						uint endline, endchar; 
 						Member* in_, out_; 
+						/+Opt: in_ and out_ -> are wasteful.+/
 						string[] overrides; 
+					}
+					version(/+$DIDE_REGION import_+/all)
+					{
+						/+string importAlias; +/
+						/+string[] importSelective; +/
+						string[string] renamed; 
 					}
 					
-					version(/+$DIDE_REGION import+/all)
-					{
-						string alias_; 
-						string[] selective; 
-						string[string] renamed; 
-					}
-					version(/+$DIDE_REGION enum+/all)
+					version(/+$DIDE_REGION enum_+/all)
 					{/+string baseDeco->base+/}
-					version(/+$DIDE_REGION enum member+/all)
-					{ string value; }
+					version(/+$DIDE_REGION enum_member+/all)
+					{/+string enumMemberValue; +/}
 					
 					version(/+$DIDE_REGION variable+/all)
 					{
 						string init_; 
-						uint offset, align_; 
-					}
-					
-					version(/+$DIDE_REGION mixed: callable, variable+/all)
-					{ Linkage linkage; }
-					version(/+$DIDE_REGION mixed: callable, variable, alias+/all)
+						/+
+							uint 	variableOffset, 
+								variableAlign; 
+						+/
+					}
+					version(/+$DIDE_REGION mixed: callable, variable, alias_+/all)
 					{
 						string /+deco->type+/type, originalType; 
 						string[] storageClass; 
@@ -390,13 +367,13 @@ class DDB
 					
 					version(/+$DIDE_REGION mixed: aggregate, callable+/all)
 					{ Parameter[] parameters; }
-					version(/+$DIDE_REGION mixed: aggregate, enum+/all)
+					
+					version(/+$DIDE_REGION mixed: aggregate, enum_+/all)
 					{ Member[] members; }
 				}
 				
 				version(/+$DIDE_REGION Converted/processed fields+/all)
 				{
-					
 					@property void kind(string s)
 					{
 						//This is an importer/converter property.  Only a setter.
@@ -405,102 +382,47 @@ class DDB
 						mKind = *(s in kindByName).enforce("Unknown ModuleDeclarations.kind: "~s.quoted); 
 					} 
 					
-					@property file(string s) /+Ignore 'file' field,  occured only 2 times in callable and variable+/
-					{ WARN("ModuleDeclaration.file ignored: "~s.quoted('`')~" kind: "~kindStr.quoted); } 
+					/+combine mutually exclusive fields to lower memory usage+/
+					version(/+$DIDE_REGION+/all) {
+						/+type comes from many sources.+/	mixin RedirectJsonField!(type, "deco", q{a.demangleType}); 
+						alias enumBase = type; 	mixin RedirectJsonField!(enumBase, "baseDeco", q{a.demangleType}); 
+						alias aggregateBase = type; 	mixin RedirectJsonField!(type, "base"); 
+						alias enumMemberValue = type; 	mixin RedirectJsonField!(type, "value"); 
+						alias importAlias = type; 	mixin RedirectJsonField!(type, "alias_"); 
+					}
 					
-					@property void baseDeco(string s)/+enum+/
-					{ if(base!="") ERR("`base` is redefined by `baseDeco`."); base = s.demangleType; /+Todo: RedirectJsonField -> alias this function!+/} 
+					version(/+$DIDE_REGION+/all) { alias importSelective = storageClass; 	mixin RedirectJsonField!(storageClass, "selective"); }
 					
-					@property void deco(string s)/+enum+/
-					{ if(type!="") ERR("`base` is redefined by `baseDeco`."); type = s.demangleType; } 
+					version(/+$DIDE_REGION+/all) { alias aggregateInterfaces = overrides; 	mixin RedirectJsonField!(overrides, "interfaces"); }
 					
+					version(/+$DIDE_REGION+/all) { alias variableOffset = endline; 	mixin RedirectJsonField!(endline, "offset"); }
+					version(/+$DIDE_REGION+/all) { alias variableAlign = endchar; 	mixin RedirectJsonField!(endchar, "align_"); }
+					
+					version(/+$DIDE_REGION+/all) { alias aggregateConstraint = init_; 	mixin RedirectJsonField!(init_, "constraint"); }
+					
+					version(/+$DIDE_REGION+/all) { @property file(string s) { renamed["file"] = s; /+mixinFile, if something was mixed in.+/} }
 				}
-			} 
-			
-			void afterLoad()
-			{
-				version(none)
-				synchronized
-				{
-					if((常!(bool)(0)) && category==Category.enum_member)
-					{
-						((0x36BC8F6F833B).檢 (mKind.COUNT)),
-						((0x36EA8F6F833B).檢 (protection.COUNT)),
-						((0x371D8F6F833B).檢 (value.COUNT)); 
-						print(this.sourceText); 
-					}
-					if((常!(bool)(0)) && category==Category.enum_member)
-					{
-						((0x37B78F6F833B).檢 (mKind.COUNT)),
-						((0x37E58F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
-					}
-					if((常!(bool)(0)) && mKind.among(mKind.template_, mKind.mixin_))
-					{
-						if(name=="AlignedStr")
-						((0x38A98F6F833B).檢 (mKind.COUNT)),
-						((0x38D78F6F833B).檢 ((sourceText).COUNT)),
-						((0x390C8F6F833B).檢 ((this.text).COUNT)); 
-					}
-					if(
-						(常!(bool)(0)) && category==Category.import_ && name=="std.internal.digest.sha_SSSE3"
-						/+/+Code: import std.internal.digest.sha_SSSE3 : sse3_constants=constants, transformSSSE3;+/+/
-					)
-					{
-						((0x3A268F6F833B).檢 (mKind.COUNT)),
-						
-						((0x3A5B8F6F833B).檢 (
-							(
-								(
-									(!alias_.empty?"A":"")~
-									(!selective.empty?"S":"")~
-									(!renamed.empty?"R":"")
-								).isWild("*SR") ? sourceText : ""
-							)
-							.COUNT
-						)); 
-					}
-					if((常!(bool)(0)) && category==Category.alias_)
-					{
-						((0x3B8F8F6F833B).檢 (mKind.COUNT)),
-						((0x3BBD8F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
-					}
-					if((常!(bool)(0)) && category==Category.variable)
-					{
-						((0x3C7E8F6F833B).檢 (mKind.COUNT)),
-						((0x3CAC8F6F833B).檢 (linkage.COUNT)),
-						((0x3CDC8F6F833B).檢 (protection.COUNT)),
-						((0x3D0F8F6F833B).檢 (storageClass.text.COUNT)); 
-					}
-					if((常!(bool)(0)) && category==Category.callable)
-					{
-						((0x3D928F6F833B).檢 (mKind.COUNT)),
-						((0x3DC08F6F833B).檢 (linkageStr.COUNT)),
-						((0x3DF38F6F833B).檢 (protectionStr.COUNT)),
-						((0x3E298F6F833B).檢 (storageClass.joinSentence.COUNT)),
-						((0x3E6B8F6F833B).檢 (type.COUNT)),
-						((0x3E988F6F833B).檢 (originalType.ifEmpty(type).COUNT)),
-						((0x3EDB8F6F833B).檢 (overrides.text.COUNT)); 
-					}
-				} 
 			} 
 			
 			Category category() const => kindCategory[mKind]; 
 			string kindStr() const => kindText[mKind]; 
 			string protectionStr() const => protectionText[protection]; 
 			string linkageStr() const => ((linkage)?("extern("~linkageCaption[linkage]~")"):("")); 
-			string constraintStr() const => constraint.enfoldNonEmpty!("if(", ")"); 
-			string valueStr() const => value.prefixNonEmpty!"= "; 
+			string constraintStr() const => aggregateConstraint.enfoldNonEmpty!("if(", ")"); 
+			string valueStr() const => enumMemberValue.prefixNonEmpty!"= "; 
 			
+			
+			string mixinFile() const => ((mKind==Kind.import_)?(""):(renamed.get("file", ""))); 
+			
 			string sourceText() const { SourceTextOptions opt; return sourceText(opt); } 
-			
-			string sourceText(Flag!"parentIsEnum" parentIsEnum = No.parentIsEnum)(const ref SourceTextOptions opt) const
+			string sourceText(Flag!"parentIsEnum" parentIsEnum = No.parentIsEnum)(ref SourceTextOptions opt) const
 			{
 				string lastName(string s)
 				=> ((opt.lastNameOnly)?(s.extractLastName):(s)); 
-				string baseStr() const
-				=> base.prefixNonEmpty!": "; 
+				string enumBaseStr() const
+				=> enumBase.prefixNonEmpty!": "; 
 				string baseAndInterfacesStr() const
-				=> chain(only(base), interfaces).cache.filter!"a!=``".map!lastName.join(", ").prefixNonEmpty!": "; 
+				=> chain(only(aggregateBase), aggregateInterfaces).cache.filter!"a!=``".map!lastName.join(", ").prefixNonEmpty!": "; 
 				string templateParametersStr(Flag!"instantiate" instantiate = No.instantiate)() const
 				=> parameters.map!text.join(", ").enfoldNonEmpty!(((instantiate)?("!("):("(")), ')'); 
 				string membersStr() const
@@ -508,47 +430,47 @@ class DDB
 				string membersList() const
 				=> members.map!((m)=>(m.sourceText!(Yes.parentIsEnum)(opt))).join(",\n"); 
 				
-				if(category==Category.callable) globalCnt++; 
+				version(/+$DIDE_REGION Update statistics+/all)
+				{ opt.memberCount ++; opt.paramCount += (cast(uint)(parameters.length)); }
 				
-				switch(category)
-				{
-					case Category.aggregate: 	{
-						const isMixin = mKind==Kind.mixin_/+Todo: Make template mixin a distinct category!+/; 
-						//Note: In the JSON, no way to tell if a template is a mixin template or not.
-						if(isMixin && members.length)
-						WARN("template mixin instantiation "~name.quoted~"has unhandled members."); 
-						return only(
-							protectionStr, kindStr, 
-							(
-								only(name, baseAndInterfacesStr).joinSentence
-								~((isMixin)?(templateParametersStr!(Yes.instantiate)) :(templateParametersStr))
-							), 
-							constraintStr, 
-							((isMixin)?(";") :("{"~((opt.recursive)?(membersStr):(""))~"}"))
-						).joinSentence; 
-					}
-					version(all)
-					{
-						case Category.enum_: 	return only(
-							protectionStr, "enum", name, baseStr, 
+				return category.predSwitch
+				(
+					mixin(舉!((Category),q{aggregate}))	, (
+						(){
+							const isMixin = mKind==Kind.mixin_/+Todo: Make template mixin a distinct category!+/; 
+							//Note: In the JSON, no way to tell if a template is a mixin template or not.
+							if(isMixin && members.length)
+							WARN("template mixin instantiation "~name.quoted~"has unhandled members."); 
+							return only(
+								protectionStr, kindStr, 
+								(
+									only(name, baseAndInterfacesStr).joinSentence
+									~((isMixin)?(templateParametersStr!(Yes.instantiate)) :(templateParametersStr))
+								), 
+								constraintStr, 
+								((isMixin)?(";") :("{"~((opt.recursive)?(membersStr):(""))~"}"))
+							).joinSentence; 
+						}()
+					),
+					mixin(舉!((Category),q{enum_}))	, (
+						only(
+							protectionStr, "enum", name, enumBaseStr, 
 							"{"~((opt.recursive)?(membersList):(""))~"}"
-						).joinSentence; 
-						case Category.enum_member: 	return ((parentIsEnum)?(joinWithTab(name, valueStr)) :(only(protectionStr, "enum", name, valueStr).joinSentence~';')); 
-					}
-					version(all)
-					{
-						case Category.import_: 	return only(
-							protectionStr, kindStr, alias_.postfixNonEmpty!" =", name, 
+						).joinSentence
+					),
+					mixin(舉!((Category),q{enum_member}))	, ((parentIsEnum)?(joinWithTab(name, valueStr)) :(only(protectionStr, "enum", name, valueStr).joinSentence~';')),
+					mixin(舉!((Category),q{import_}))	, (
+						only(
+							protectionStr, kindStr, importAlias.postfixNonEmpty!" =", name, 
 							(
-								chain(selective, renamed.byKeyValue.map!q{a.key~" = "~a.value})
+								chain(importSelective, renamed.byKeyValue.map!q{a.key~" = "~a.value})
 								.array.sort.join(", ")/+Opt: Slow.  Should be cached...+/
 								.prefixNonEmpty!": "
 							)
-						).joinSentence~';'; 
-					}
-					version(all)
-					{
-						case Category.alias_: 	return only(
+						).joinSentence~';'
+					),
+					mixin(舉!((Category),q{alias_}))	, (
+						only(
 							protectionStr, storageClass.joinSentence, "alias", name, "=",
 							linkageStr, originalType.ifEmpty(type)
 							/+
@@ -560,27 +482,25 @@ class DDB
 								Todo: remove fullyQualifiedPath from type if it's in the 
 								same module. Example: /+Code: LPNMLVODSTATECHANGE+/
 							+/
-						).joinSentence~';'; 
-					}
-					version(all)
-					{
-						case Category.variable: 	return only(
+						).joinSentence~';'
+					),
+					mixin(舉!((Category),q{variable}))	, (
+						only(
 							protectionStr, linkageStr, storageClass.joinSentence, 
 							originalType.ifEmpty(type), name, prefixNonEmpty!"= "(init_)
-						).joinSentence~';'; 
-					}
-					version(all)
-					{
-						case Category.callable: 	{
-							return only(
-								protectionStr, name, //'('~parameters.map!text.join(", ")~')',
-								"=", storageClass.joinSentence, /+linkageStr <- redundant+/ 
-								originalType.ifEmpty(type)
-							).joinSentence~';'; 
-						}
-					}
-					default: 	return ""; 
-				}
+							/+more fields: variableOffset, variableAlign+/
+						).joinSentence~';'
+					),
+					mixin(舉!((Category),q{callable}))	, (
+						only(
+							protectionStr, name, //'('~parameters.map!text.join(", ")~')',
+							"=", storageClass.joinSentence, /+linkageStr <- redundant+/ 
+							originalType.ifEmpty(type)
+							/+more fields: endline, endchar, in_, out_+/
+						).joinSentence~';'
+					),
+					""
+				); 
 			} 
 		} 
 		this()
@@ -611,6 +531,9 @@ class DDB
 					file 	= File(mod.file),
 					name 	= mod.name/+absolute full name-path+/,
 					members 	= mod.members; 
+					
+					static if(true)
+					if(m.name=="") m.name = m.file.nameWithoutExt.lc; 
 					
 					res ~= m; 
 				}
@@ -655,23 +578,20 @@ class DDB
 			}
 		} 
 		
-		void accumulateStructureStats(ref StructureStats st) const
+		string sourceText() const { SourceTextOptions opt; return sourceText(opt); } 
+		string sourceText(ref SourceTextOptions opt) const
 		{
-			st.moduleCount++; 
-			st.sizeBytes += typeid(this).initializer.length; 
-			foreach(const ref member; members) .accumulateStructureStats(member, st); 
-			foreach(mod; modules) mod.accumulateStructureStats(st); 
+			opt.moduleCount++; 
+			return"module "~name~" {"~chain(
+				members.map!((m)=>(m.sourceText(opt))),
+				modules.map!((m)=>(m.sourceText(opt)))
+			).joinLines~"}"; 
 		} 
-		
-		string sourceText() const
-		=> "module "~name~" {"~chain(
-			members.map!((m)=>(m.sourceText)),
-			modules.map!((m)=>(m.sourceText))
-		).joinLines~"}"; 
-		
 	} 
 	Path workPath, stdPath, libPath; 
 	ModuleDeclarations root; 
+	
+	alias SourceTextOptions = ModuleDeclarations.SourceTextOptions; 
 	
 	protected
 	{
@@ -692,53 +612,138 @@ class DDB
 		root = new ModuleDeclarations; 
 	} 
 	
+	protected void regenerate_internal(bool isParallel)(bool isStd, in File[] files, in string[] args)
+	{
+		ModuleDeclarations[] doit(File f)
+		{
+			try
+			{
+				const json = f.generateDLangXJson(args); 
+				return ModuleDeclarations.createFromJson(json); 
+			}
+			catch(Exception e)	ERR(f, e.simpleMsg); return []; 
+		} 
+		ModuleDeclarations[] importedModules; 	auto _間=init間; 
+		static if(isParallel)	{
+			mixin(求each(q{f},q{
+				files
+				.parallel
+			},q{
+				{
+					auto mods = doit(f); 
+					synchronized importedModules ~= mods; 
+				}
+			})); 
+		}
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x557A8F6F833B).檢((update間(_間)))); 
+		mixin(求each(q{m},q{importedModules},q{m.isStd = isStd})); acquireMembers(importedModules); 	((0x56078F6F833B).檢((update間(_間)))); 
+		((0x56368F6F833B).檢(importedModules.length)); 
+	} 
+	
+	void regenerate(in File[] files, in string[] args)
+	{ regenerate_internal!true(false, files, args); } 
+	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
-		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x5B7E8F6F833B).檢((update間(_間)))); 
-		mixin(求each(q{f},q{
-			stdFiles
-			.parallel
-		},q{
-			try
-			{
-				auto 	json 	= f.generateDLangXJson([]),
-					mods 	= ModuleDeclarations.createFromJson(json); 
-				synchronized importedModules ~= mods; 
-			}
-			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x5CC18F6F833B).檢((update間(_間)))); 
-		((0x5CF08F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x5D318F6F833B).檢((update間(_間)))); 
-		acquireMembers(importedModules); 
+		auto _間=init間; 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x57898F6F833B).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x57E78F6F833B).檢((update間(_間)))); 
 	} 
 	
-	void saveStd()
+	void save()
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x5DF18F6F833B).檢((update間(_間)))); ((0x5E1C8F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x5E638F6F833B).檢((update間(_間)))); ((0x5E8E8F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x5EF18F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x587F8F6F833B).檢((update間(_間)))); ((0x58AA8F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x58F18F6F833B).檢((update間(_間)))); ((0x591C8F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x597F8F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
 	
-	void loadStd()
+	void load()
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5FC68F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x60258F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5A518F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x5AB08F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x60A78F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5B328F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
 	} 
-	
-	auto makeStatistics(R)(R modules)
-	{ StructureStats st; root.accumulateStructureStats(st); return st; } 
+	
+	string generateMemberStats()
+	{
+		string res; void re(string s) { res ~= s~"\r\n"; } 
+		
+		uint[string] kindCount, kindSize; 
+		uint[string] nonzeroFieldCount; 
+		
+		void visit(S)(const ref S structure, string parentField="")
+		{
+			string kind2()
+			{
+				static if(__traits(compiles, structure.category))	return "_"~structure.category.text; 
+				else	return structure.kind.text; 
+			} 
+			
+			size_t dynSize; 
+			static foreach(alias field; structure.tupleof)
+			{
+				{
+					alias T = typeof(field); const ref f() => __traits(getMember, structure, field.stringof); 
+					
+					const faddr = ((kind2!="")?(kind2):(parentField))~'.'~field.stringof; 
+					void incr(size_t ds=0) { dynSize += ds; if(parentField!="_parameters") nonzeroFieldCount[faddr]++; } 
+					static if(is(T==S*))	{ if(f) { incr; visit(*f, "_"~field.stringof); }}
+					else static if(is(T==string[]))	{ if(!f.empty) incr(f.length*16 + f.map!sizeBytes.sum); }
+					else static if(is(T==string[string]))	{
+						if(!f.empty)
+						incr(
+							f.length*16*2 	+ f.keys.map!sizeBytes.sum 
+								+ f.values.map!sizeBytes.sum
+						); 
+						
+					}
+					else static if(is(T==string))	{ if(!f.empty) incr(16+f.sizeBytes); }
+					else static if(isIntegral!T || isFloatingPoint!T)	{ if(f!=0) incr; }
+					else static if(isDynamicArray!T)	{
+						if(!f.empty) incr(f.sizeBytes); 
+						foreach(const ref a; f) visit(a, "_"~field.stringof); 
+					}
+					else	static assert(0, "Unhandled T "~T.stringof); 
+				}
+			}
+			
+			//accumulate stats
+			kindCount[kind2]++; 
+			kindSize[kind2] += S.sizeof + dynSize; 
+		} 
+		
+		void visitM(DDB.ModuleDeclarations md)
+		{
+			foreach(ref const member; md.members) visit(member); 
+			foreach(module_; md.modules) visitM(module_); 
+		} 
+		
+		visitM(root); 
+		
+		void printMap(alias m)()
+		{
+			re(m.stringof ~ "-----------------------------"); 
+			m.keys.sort.each!((k){ re(format!"%-9s  %s"(m[k], k.splitter(".").map!"a.format!`%-32s`".join)); }); 
+			re(""); re("Total: "~ m.byValue.sum.text); re(""); 
+		} 
+		
+		printMap!kindCount; 
+		printMap!kindSize; 
+		printMap!nonzeroFieldCount; 
+		
+		return res; 
+	} 
 	
 	
 	auto search()
@@ -752,81 +757,116 @@ void main()
 		{
 			static if((常!(bool)(1)))
 			{
-				//unittest_stream; 
-				//unittest_JsonClassInheritance; 
+				//Only the inherited classes -> registerStoredClass!(DDB.ModuleDeclarations); 
 				
-				registerStoredClass!(DDB.ModuleDeclarations); 
-				
-				auto ddb = new DDB; 
-				ddb.regenerateStd; 
-				ddb.saveStd; 
-				ddb.loadStd; 
-				
-				
-				((0x62EE8F6F833B).檢 (globalCnt)); 
-				globalCnt=0; 
-				ddb.root.sourceText.saveTo(File(`z:\declarations.d`)); 
-				((0x63688F6F833B).檢 (globalCnt)); 
-				
-				//ddb.dumpAllMembers; 
-				
-				
-				uint[string] kindCount; 
-				uint[string] nonzeroFieldCount; 
-				
-				void visit(S)(const ref S structure, string parentField="")
+				with(new DDB)
 				{
-					string kind2()
-					{
-						static if(__traits(compiles, structure.category))
-						return "_"~structure.category.text; 
-						else
-						return structure.kind.text; 
-					} 
-					
-					
-					
-					kindCount[kind2]++; 
-					
-					static foreach(alias field; structure.tupleof)
-					{
-						{
-							alias T = typeof(field); const ref f() => __traits(getMember, structure, field.stringof); 
-							
-							const faddr = ((kind2!="")?(kind2):(parentField))~'.'~field.stringof; 
-							void incr() { if(parentField!="_parameters") nonzeroFieldCount[faddr]++; } 
-							static if(is(T==S*))	{ if(f) incr; if(f) visit(*f, "_"~field.stringof); }
-							else static if(is(T==string[]))	{ if(!f.empty) incr; }
-							else static if(is(T==string[string]))	{ if(!f.empty) incr; }
-							else static if(is(T==string))	{ if(!f.empty) incr; }
-							else static if(isIntegral!T || isFloatingPoint!T)	{ if(f!=0) incr; }
-							else static if(isDynamicArray!T)	{ if(!f.empty) incr; foreach(const ref a; f) visit(a, "_"~field.stringof); }
-							else	static assert(0, "Unhandled T "~T.stringof); 
-						}
+					version(/+$DIDE_REGION+/all) {
+						const hetlibFiles = 
+						[
+							`c:\d\libs\het\package.d`,
+							`c:\d\libs\het\quantities.d`,
+							`c:\d\libs\het\math.d`,
+							`c:\d\libs\het\inputs.d`,
+							`c:\d\libs\het\parser.d`,
+							`c:\d\libs\het\ui.d`,
+							`c:\d\libs\het\opengl.d`,
+							`c:\d\libs\het\win.d`,
+							`c:\d\libs\het\algorithm.d`,
+							`c:\d\libs\het\draw2d.d`,
+							`c:\d\libs\het\bitmap.d`,
+							`c:\d\libs\het\http.d`,
+							`c:\d\libs\het\db.d`,
+							`c:\d\libs\het\mcu.d`,
+							`c:\d\libs\het\com.d`,
+							`c:\d\libs\het\vulkan.d`,
+							`c:\d\libs\common\libueye.d`,
+						]
+						.map!File.array; 
+						const dideFiles = 
+						[
+							`c:\d\projects\dide\dide2.d`,
+							`c:\d\projects\dide\buildsys.d`,
+							`c:\d\projects\dide\didemodule.d`,
+						]
+						.map!File.array; 
+						const dideArgs = [
+							"--d-version=stringId",
+							"-I", `c:\d\projects\dide`
+						]; 
+						
+						const karcFiles = 
+						[
+							`c:\d\projects\karc\karc.d`,
+							`c:\d\projects\karc\karcbox.d`,
+							`c:\d\projects\karc\karcpneumatic.d`,
+							`c:\d\projects\karc\karctrigger.d`,
+							`c:\d\projects\karc\karclogger.d`,
+							`c:\d\projects\karc\karcdetect.d`,
+							`c:\d\projects\karc\karcthreshold.d`,
+							`c:\d\projects\karc\karcocr.d`,
+						]
+						.map!File.array; 
+						const karcArgs = [
+							"--d-version=VulkanHeadless",
+							"-I", `c:\d\projects\karc`
+						]; 
 					}
-				} 
-				
-				void visitM(DDB.ModuleDeclarations md)
-				{
-					foreach(ref const member; md.members) visit(member); 
-					foreach(module_; md.modules) visitM(module_); 
-				} 
-				
-				visitM(ddb.root); 
-				
-				void printMap(alias m)()
-				{
-					print(m.stringof, "-----------------------------"); 
-					m.keys.sort.each!((k){ print(format!"%-9s  %s"(m[k], k.splitter(".").map!"a.format!`%-32s`".join)); }); 
-					print; 
-				} 
-				
-				printMap!kindCount; 
-				printMap!nonzeroFieldCount; 
-				
+					
+					enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
+					
+					static if((常!(bool)(1))) regenerateStd/+75.8MB+/; 
+					static if((常!(bool)(1))) regenerate(hetlibFiles, ["-I", `c:\d\libs`])/+14.2MB+/; 
+					static if((常!(bool)(1))) regenerate(dideFiles, ["-I", `c:\d\libs`]~dideArgs)/+2.1MB+/; 
+					static if((常!(bool)(1))) regenerate(karcFiles, ["-I", `c:\d\libs`]~karcArgs)/+0.75MB+/; 
+					/+all: 92.2MB+/
+					save; 
+					load; 
+					
+					SourceTextOptions so; 
+					root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
+					so.toJson.print; 
+					
+					generateMemberStats.print; 
+					/+
+						Code: 2025.01.16. Full std library stats:
+						
+						kindCount-----------------------------
+						7289		 _aggregate
+						7696		 _alias_
+						26615	  _callable
+						354		  _enum_
+						17033		 _enum_member
+						2135			 _import_
+						32665		 _variable
+						421		  alias_
+						41600	  parameter
+						81		  this_
+						462			tuple
+						3728			type
+						1085			value
+						
+						Total: 141164
+						
+						kindSize-----------------------------
+						11647576	  _aggregate
+						4084824	  _alias_
+						20886756	  _callable
+						919008	  _enum_
+						6967664	  _enum_member
+						874400	  _import_
+						22985108	  _variable
+						55736	  alias_
+						6722440	  parameter
+						9160	  this_
+						54592	  tuple
+						438880		 type
+						234652		 value
+						
+						Total: 75880796
+					+/
+				}
 			}
-			
-			
 		}
 	); 
 } 
