@@ -75,6 +75,8 @@ version(/+$DIDE_REGION main+/all)
 		//Bug: multiselect.copy -> items are in RANDOM order
 		
 		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
+		
+		//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
 	}
 	
 	static if(0)

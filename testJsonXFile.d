@@ -199,7 +199,7 @@ string demangleType(string s)
 	string enfoldNonEmpty(alias prefix, alias postfix)(string s)
 	=> ((s!="")?(prefix~s~postfix):("")); 
 	string joinNonEmpty(alias sep, R)(R r)
-	=> r.filter!"!a.empty".join(sep); 
+	=> r.cache.filter!"!a.empty".join(sep); 
 	string joinLines(R)(R r) 
 	=> r.joinNonEmpty!'\n'; 
 	string joinSentence(R)(R r)
@@ -274,6 +274,9 @@ version(/+$DIDE_REGION Enum declarations+/all)
 	}); 
 	//pragma(msg, kindCategory); pragma(msg, kindText); pragma(msg, EnumMembers!Kind); 
 }
+
+__gshared globalCnt=0; 
+
 
 
 
@@ -416,45 +419,36 @@ class DDB
 			
 			void afterLoad()
 			{
+				version(none)
 				synchronized
 				{
-					if((常!(bool)(0)) && category==Category.callable)
-					{
-						((0x36838F6F833B).檢 (mKind.COUNT)),
-						((0x36B18F6F833B).檢 (linkage.COUNT)),
-						((0x36E18F6F833B).檢 (protection.COUNT)),
-						((0x37148F6F833B).檢 (storageClass.text.COUNT)),
-						((0x374E8F6F833B).檢 (type.COUNT)),
-						((0x377B8F6F833B).檢 (originalType.COUNT)),
-						((0x37B08F6F833B).檢 (overrides.text.COUNT)); 
-					}
 					if((常!(bool)(0)) && category==Category.enum_member)
 					{
-						((0x38338F6F833B).檢 (mKind.COUNT)),
-						((0x38618F6F833B).檢 (protection.COUNT)),
-						((0x38948F6F833B).檢 (value.COUNT)); 
+						((0x36BC8F6F833B).檢 (mKind.COUNT)),
+						((0x36EA8F6F833B).檢 (protection.COUNT)),
+						((0x371D8F6F833B).檢 (value.COUNT)); 
 						print(this.sourceText); 
 					}
 					if((常!(bool)(0)) && category==Category.enum_member)
 					{
-						((0x392E8F6F833B).檢 (mKind.COUNT)),
-						((0x395C8F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
+						((0x37B78F6F833B).檢 (mKind.COUNT)),
+						((0x37E58F6F833B).檢 ((name=="WM_CPL_LAUNCH"?sourceText:"").COUNT)); 
 					}
 					if((常!(bool)(0)) && mKind.among(mKind.template_, mKind.mixin_))
 					{
 						if(name=="AlignedStr")
-						((0x3A208F6F833B).檢 (mKind.COUNT)),
-						((0x3A4E8F6F833B).檢 ((sourceText).COUNT)),
-						((0x3A838F6F833B).檢 ((this.text).COUNT)); 
+						((0x38A98F6F833B).檢 (mKind.COUNT)),
+						((0x38D78F6F833B).檢 ((sourceText).COUNT)),
+						((0x390C8F6F833B).檢 ((this.text).COUNT)); 
 					}
 					if(
 						(常!(bool)(0)) && category==Category.import_ && name=="std.internal.digest.sha_SSSE3"
 						/+/+Code: import std.internal.digest.sha_SSSE3 : sse3_constants=constants, transformSSSE3;+/+/
 					)
 					{
-						((0x3B9D8F6F833B).檢 (mKind.COUNT)),
+						((0x3A268F6F833B).檢 (mKind.COUNT)),
 						
-						((0x3BD28F6F833B).檢 (
+						((0x3A5B8F6F833B).檢 (
 							(
 								(
 									(!alias_.empty?"A":"")~
@@ -467,15 +461,25 @@ class DDB
 					}
 					if((常!(bool)(0)) && category==Category.alias_)
 					{
-						((0x3D068F6F833B).檢 (mKind.COUNT)),
-						((0x3D348F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
+						((0x3B8F8F6F833B).檢 (mKind.COUNT)),
+						((0x3BBD8F6F833B).檢 ((((type!=""?"T":"")~(originalType!=""?"O":"")=="O")?type~"|"~originalType : "").COUNT)); 
 					}
 					if((常!(bool)(0)) && category==Category.variable)
 					{
-						((0x3DF58F6F833B).檢 (mKind.COUNT)),
-						((0x3E238F6F833B).檢 (linkage.COUNT)),
-						((0x3E538F6F833B).檢 (protection.COUNT)),
-						((0x3E868F6F833B).檢 (storageClass.text.COUNT)); 
+						((0x3C7E8F6F833B).檢 (mKind.COUNT)),
+						((0x3CAC8F6F833B).檢 (linkage.COUNT)),
+						((0x3CDC8F6F833B).檢 (protection.COUNT)),
+						((0x3D0F8F6F833B).檢 (storageClass.text.COUNT)); 
+					}
+					if((常!(bool)(0)) && category==Category.callable)
+					{
+						((0x3D928F6F833B).檢 (mKind.COUNT)),
+						((0x3DC08F6F833B).檢 (linkageStr.COUNT)),
+						((0x3DF38F6F833B).檢 (protectionStr.COUNT)),
+						((0x3E298F6F833B).檢 (storageClass.joinSentence.COUNT)),
+						((0x3E6B8F6F833B).檢 (type.COUNT)),
+						((0x3E988F6F833B).檢 (originalType.ifEmpty(type).COUNT)),
+						((0x3EDB8F6F833B).檢 (overrides.text.COUNT)); 
 					}
 				} 
 			} 
@@ -496,13 +500,15 @@ class DDB
 				string baseStr() const
 				=> base.prefixNonEmpty!": "; 
 				string baseAndInterfacesStr() const
-				=> chain(only(base), interfaces).filter!"a!=``".map!lastName.join(", ").prefixNonEmpty!": "; 
+				=> chain(only(base), interfaces).cache.filter!"a!=``".map!lastName.join(", ").prefixNonEmpty!": "; 
 				string templateParametersStr(Flag!"instantiate" instantiate = No.instantiate)() const
 				=> parameters.map!text.join(", ").enfoldNonEmpty!(((instantiate)?("!("):("(")), ')'); 
 				string membersStr() const
 				=> members.map!((m)=>(m.sourceText(opt))).joinLines; 
 				string membersList() const
 				=> members.map!((m)=>(m.sourceText!(Yes.parentIsEnum)(opt))).join(",\n"); 
+				
+				if(category==Category.callable) globalCnt++; 
 				
 				switch(category)
 				{
@@ -562,6 +568,16 @@ class DDB
 							protectionStr, linkageStr, storageClass.joinSentence, 
 							originalType.ifEmpty(type), name, prefixNonEmpty!"= "(init_)
 						).joinSentence~';'; 
+					}
+					version(all)
+					{
+						case Category.callable: 	{
+							return only(
+								protectionStr, name, //'('~parameters.map!text.join(", ")~')',
+								"=", storageClass.joinSentence, /+linkageStr <- redundant+/ 
+								originalType.ifEmpty(type)
+							).joinSentence~';'; 
+						}
 					}
 					default: 	return ""; 
 				}
@@ -680,7 +696,7 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		ModuleDeclarations[] importedModules; 	auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x59BB8F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath)[0..$]; 	((0x5B7E8F6F833B).檢((update間(_間)))); 
 		mixin(求each(q{f},q{
 			stdFiles
 			.parallel
@@ -692,8 +708,8 @@ class DDB
 				synchronized importedModules ~= mods; 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); 
-		})); 	((0x5AFE8F6F833B).檢((update間(_間)))); 
-		((0x5B2D8F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x5B6E8F6F833B).檢((update間(_間)))); 
+		})); 	((0x5CC18F6F833B).檢((update間(_間)))); 
+		((0x5CF08F6F833B).檢(makeStatistics(importedModules).toJson)); 	((0x5D318F6F833B).檢((update間(_間)))); 
 		acquireMembers(importedModules); 
 	} 
 	
@@ -701,9 +717,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x5C2E8F6F833B).檢((update間(_間)))); ((0x5C598F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x5CA08F6F833B).檢((update間(_間)))); ((0x5CCB8F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x5D2E8F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x5DF18F6F833B).檢((update間(_間)))); ((0x5E1C8F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x5E638F6F833B).檢((update間(_間)))); ((0x5E8E8F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x5EF18F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -712,10 +728,10 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5E038F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x5E628F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5FC68F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x60258F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5EE48F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x60A78F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -746,10 +762,14 @@ void main()
 				ddb.saveStd; 
 				ddb.loadStd; 
 				
-				ddb.root.sourceText.saveTo(File(`z:\declarations.d`)); 
 				
+				((0x62EE8F6F833B).檢 (globalCnt)); 
+				globalCnt=0; 
+				ddb.root.sourceText.saveTo(File(`z:\declarations.d`)); 
+				((0x63688F6F833B).檢 (globalCnt)); 
 				
 				//ddb.dumpAllMembers; 
+				
 				
 				uint[string] kindCount; 
 				uint[string] nonzeroFieldCount; 
