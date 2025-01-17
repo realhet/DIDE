@@ -815,9 +815,9 @@ void main()
 					
 					enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
 					
-					static if((常!(bool)(1))) regenerateStd/+75.8MB+/; 
-					static if((常!(bool)(1))) regenerate(hetlibFiles, ["-I", `c:\d\libs`])/+14.2MB+/; 
-					static if((常!(bool)(1))) regenerate(dideFiles, ["-I", `c:\d\libs`]~dideArgs)/+2.1MB+/; 
+					static if((常!(bool)(0))) regenerateStd/+75.8MB+/; 
+					static if((常!(bool)(0))) regenerate(hetlibFiles, ["-I", `c:\d\libs`])/+14.2MB+/; 
+					static if((常!(bool)(0))) regenerate(dideFiles, ["-I", `c:\d\libs`]~dideArgs)/+2.1MB+/; 
 					static if((常!(bool)(1))) regenerate(karcFiles, ["-I", `c:\d\libs`]~karcArgs)/+0.75MB+/; 
 					/+all: 92.2MB+/
 					save; 
