@@ -2,7 +2,72 @@
 //@debug
 //@release
 
+import het.ui; 
+
 version(all)
+{
+	RGB brighter(RGB a, float f)
+	{ return (a.from_unorm*(1+f)).to_unorm; } 
+	
+	enum clPiko : RGB
+	{
+		G940 	= (RGB(139,  59,  43)).brighter(.25f),
+		G239 	= (RGB(245, 156,   0)),
+		G231 	= (RGB(238, 114,   3)),
+		G119 	= (RGB(221,  11,  47)).brighter(.35f),
+		G115 	= (RGB(222,   0, 126)),
+		G107 	= (RGB(158,  25, 129)).brighter(.125f),
+		G62 	= (RGB( 92,  36, 131)).brighter(.25f),
+		R1 	= (RGB( 22, 186, 231)),
+		R2 	= (RGB(  0, 134, 192)),
+		R3 	= (RGB(  0, 105, 180)),
+		R4 	= (RGB(  0,  79, 159)),
+		R9 	= (RGB(  0,  48,  93)),
+		W 	= (RGB(134, 188,  37)),
+		BW 	= (RGB(101, 179,  46)),
+		W3 	= (RGB(  0, 120,  88)),
+		WY 	= (RGB(  0, 169, 132)),
+		K15 	= (RGB(255, 227, 126)),
+		K30 	= (RGB(255, 237,   0)),
+		DKW 	= (RGB(255, 204,   0)),
+		GE31 	= (RGB(157, 157, 156)),
+	} RGB structuredColor(string name, RGB def = clGray)
+	{
+		switch(name)
+		{
+			case "template": 	return clPiko.G940; 
+			case "enum": 	return clPiko.G239; 
+			case "alias": 	return clPiko.G231; 
+			case "if", "switch", "final switch", "else": 	return clPiko.G119.brighter(.25f); 
+			case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66f).brighter(.25f); 
+			case "version", "debug", "static if", "static foreach", "static foreach_reverse", "static assert": 	return mix(clPiko.G115, clPiko.G119, .5f).brighter(.25f); 
+			case "module", "import": 	return clPiko.G107; 
+			case "unittest": 	return clPiko.G62; 
+				
+			case "section": 	return clPiko.R1; 
+			case "with": 	return clPiko.R2; 
+			case "__unused1": 	return clPiko.R4; 
+				
+			case "class": 	return clPiko.W; 
+			case "interface": 	return clPiko.BW; 
+			case "struct": 	return clPiko.W3; 
+			case "union": 	return clPiko.WY; 
+			case "mixin template": 	return clPiko.K15; 
+			case "mixin": 	return mix(clPiko.DKW, clPiko.G119, .75f); 
+			case "statement": 	return clGray; 
+			case "function", "invariant": 	return clSilver; 
+			case "__region": 	return clGray; 
+				
+			case "try": 	return RGB(200, 250, 189); 
+			case "scope": 	return RGB(50, 250, 189); 
+			case "assert", "break", "continue", "goto", "goto case", "return"	, "enforce": 	return mix(RGB(0x5C00F6/+skKeyword+/), clWhite, .5); 
+			
+			case "auto": 	return clAqua; 
+			
+			default: 	return def; 
+		}
+	} 
+}version(all)
 {
 	/+
 		ChatGPT query:
@@ -128,9 +193,8 @@ import std.parallelism;
 File[] listDLangFiles(Path path, Flag!"recursive" recursive = Yes.recursive)
 => listFiles(path, "*.d*", "name", Yes.onlyFiles, Yes.recursive).filter!((a)=>(a.file.extIs("d", "di"))).map!((a)=>(a.file)).array; 
 
-string generateDLangXJson(File moduleFile, in string[] extraArgs=[])
+string generateDLangXJson(File moduleFile, Path tempPath, in string[] extraArgs=[])
 {
-	const tempPath = Path(`z:\temp`)/+Todo: pull this constant outwards!+/; 
 	const tempJson = File(tempPath, `DIDE_` ~ [QPS].xxh32.to!string(36) ~ ".json"); 
 	scope(exit) tempJson.forcedRemove; 
 	auto res = execute(
@@ -258,7 +322,11 @@ class DDB
 			bool 	recursive 	= true,
 				lastNameOnly 	= true; 
 			uint moduleCount, memberCount, paramCount; 
-		} 
+		} 	@property int	moduleCount() const
+		=> 1 + mixin(求sum(q{mo},q{modules},q{mo.moduleCount})); 	@property int memberCount() const
+		=> mixin(求sum(q{const ref me},q{members},q{me.memberCount})) + mixin(求sum(q{mo},q{modules},q{mo.memberCount})); 
+		
+		DateTime updated/+last time when the contents of this module was updated.+/; 
 		
 		static struct Parameter
 		{
@@ -413,6 +481,9 @@ class DDB
 			
 			
 			string mixinFile() const => ((mKind==Kind.import_)?(""):(renamed.get("file", ""))); 
+			
+			@property int memberCount() const
+			=> 1 + mixin(求sum(q{const ref me},q{members},q{me.memberCount})); 
 			
 			string sourceText() const { SourceTextOptions opt; return sourceText(opt); } 
 			string sourceText(Flag!"parentIsEnum" parentIsEnum = No.parentIsEnum)(ref SourceTextOptions opt) const
@@ -532,8 +603,8 @@ class DDB
 					name 	= mod.name/+absolute full name-path+/,
 					members 	= mod.members; 
 					
-					static if(true)
-					if(m.name=="") m.name = m.file.nameWithoutExt.lc; 
+					if(m.name==""/+main module file+/)
+					m.name = m.file.nameWithoutExt.lc; 
 					
 					res ~= m; 
 				}
@@ -546,7 +617,7 @@ class DDB
 		auto findModule(string name)
 		{ return modules.find!((m)=>(m.name==name)).frontOrNull; } 
 		
-		private void acquireMembers(ModuleDeclarations src, string[] srcPath)
+		private void acquireMembers(bool isStd, ModuleDeclarations src, string[] srcPath)
 		{
 			//this module has only a single name refering to this level only.
 			//src module has a full name starting with point.
@@ -559,7 +630,9 @@ class DDB
 			{
 				print("SUCCESS Exact name found:", name); 
 				file = src.file; 
-				members = src.members; 
+				members = src.members; /+replace with new members+/
+				if(isStd && !this.isStd)
+				{ WARN("STD inconsistency. "~src.file.quoted); }
 			}
 			else
 			{
@@ -570,12 +643,15 @@ class DDB
 				{
 					print("Creating the next module:", nextName); 
 					nextModule = new ModuleDeclarations; 
-					nextModule.name = nextName; 
+					nextModule.name 	= nextName,
+					nextModule.isStd 	= isStd; 
 					modules ~= nextModule; 
 				}
 				print("Doing recursion in:", nextName); 
-				nextModule.acquireMembers(src, srcPath); 
+				nextModule.acquireMembers(isStd, src, srcPath); 
 			}
+			
+			updated = now; 
 		} 
 		
 		string sourceText() const { SourceTextOptions opt; return sourceText(opt); } 
@@ -589,27 +665,25 @@ class DDB
 		} 
 	} 
 	Path workPath, stdPath, libPath; 
+	File stdCacheFile; 
 	ModuleDeclarations root; 
 	
 	alias SourceTextOptions = ModuleDeclarations.SourceTextOptions; 
 	
 	protected
 	{
-		void acquireMembers(ModuleDeclarations md)
-		{ root.acquireMembers(md, md.name.split('.')); } 
-		void acquireMembers(R)(R r) { mixin(求each(q{m},q{r},q{acquireMembers(m)})); } 
-		@property stdCacheFile() const 
-		=> /+appFile.otherExt("$stdlib_cache.dat")+/
-		`z:\temp2\$stdlib_cache.dat`.File; 
+		void acquireMembers(bool isStd, ModuleDeclarations md)
+		{ root.acquireMembers(isStd, md, md.name.split('.')); } 
+		void acquireMembers(R)(bool isStd, R r) { mixin(求each(q{m},q{r},q{acquireMembers(isStd, m)})); } 
 	} 
 	
-	this()
+	this(Path workPath, Path stdPath, Path libPath, File stdCacheFile)
 	{
-		workPath 	= `z:\temp2`,
-		stdPath	= `c:\d\ldc2\import`,
-		libPath 	= `c:\d\libs`
-		/+Todo: These must come from outside!+/; 
-		root = new ModuleDeclarations; 
+		this.workPath 	= workPath,
+		this.stdPath	= stdPath,
+		this.libPath 	= libPath,
+		this.stdCacheFile 	= stdCacheFile; 
+		wipeAll/+creates a new root.+/; 
 	} 
 	
 	protected void regenerate_internal(bool isParallel)(bool isStd, in File[] files, in string[] args)
@@ -618,7 +692,7 @@ class DDB
 		{
 			try
 			{
-				const json = f.generateDLangXJson(args); 
+				const json = f.generateDLangXJson(workPath, args); 
 				return ModuleDeclarations.createFromJson(json); 
 			}
 			catch(Exception e)	ERR(f, e.simpleMsg); return []; 
@@ -635,46 +709,76 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x557A8F6F833B).檢((update間(_間)))); 
-		mixin(求each(q{m},q{importedModules},q{m.isStd = isStd})); acquireMembers(importedModules); 	((0x56078F6F833B).檢((update間(_間)))); 
-		((0x56368F6F833B).檢(importedModules.length)); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x60F38F6F833B).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x614B8F6F833B).檢((update間(_間)))); 
 	} 
-	
-	void regenerate(in File[] files, in string[] args)
-	{ regenerate_internal!true(false, files, args); } 
 	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x57898F6F833B).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x57E78F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x622C8F6F833B).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x628A8F6F833B).檢((update間(_間)))); 
 	} 
 	
-	void save()
+	void regenerateLib(in File[] files, in string[] args=[])
+	{
+		if(files.empty) return; 
+		regenerate_internal!true(false, files, ["-I", libPath.fullPath]~args); 
+	} 
+	
+	void regenerateProject(in File[] files, in string[] args=[])
+	{
+		if(files.empty) return; 
+		const projectPath = files.front.path; 
+		regenerate_internal!true(
+			false, files, [
+				"-I", projectPath	.fullPath,
+				"-I", libPath	.fullPath
+			]~args
+		); 
+	} 
+	
+	void saveCache()
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x587F8F6F833B).檢((update間(_間)))); ((0x58AA8F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x58F18F6F833B).檢((update間(_間)))); ((0x591C8F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x597F8F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x64E88F6F833B).檢((update間(_間)))); ((0x65138F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x655A8F6F833B).檢((update間(_間)))); ((0x65858F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x65E88F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
 	
-	void load()
+	void loadCache()
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x5A518F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x5AB08F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x66BF8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x671E8F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x5B328F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x67A08F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
 	} 
-	
+	
+	void wipeAll()
+	{ root = new ModuleDeclarations(); ; } 
+	
+	void wipeProject()
+	{
+		/+
+			Note: Notes: 	• root is NOT std! It is always there. 
+				• Main project file should have a name. -> fileNameWithoutExt.lc
+				/+Todo: Decide if main module should be at root or not.+/
+		+/
+		root.modules = root.modules.remove!((m)=>(!m.isStd)); 
+		root.members = []; //It wipes the unnamed module, just to be safe
+	} 
+	@property moduleCount()const => root.moduleCount; 
+	@property memberCount()const => root.memberCount; 
+	
 	string generateMemberStats()
 	{
 		string res; void re(string s) { res ~= s~"\r\n"; } 
@@ -744,129 +848,299 @@ class DDB
 		
 		return res; 
 	} 
+	
+	
+	struct PathNode
+	{
+		import std.sumtype; alias Member = ModuleDeclarations.Member, Parameter = ModuleDeclarations.Parameter; 
+		
+		SumType!(ModuleDeclarations, Member*, Parameter*) _node; 
+		
+		bool opened; 
+		PathNode[] subNodes; 
+		
+		this(ModuleDeclarations m)
+		{ _node = m; } 	 this(Member* m)
+		{ _node = m; } 	 this(Parameter* p)
+		{ _node = p; } 
+		
+		@property string name() 
+		=> _node.match!(
+			((ModuleDeclarations m)=>(m.name)),
+			((Member* m)=>(m.name)),
+			((Parameter* p)=>(p.name))
+		); 
+		
+		ModuleDeclarations asModule()
+		=> _node.match!(((ModuleDeclarations m)=>(m)), ((void*)=>(null))); 
+		Member* asMember()
+		=> _node.match!(((Member* m)=>(m)), ((void*)=>(null)), ((ModuleDeclarations)=>(null))); 
+		Parameter* asParameter()
+		=> _node.match!(((Parameter* p)=>(p)), ((void*)=>(null)), ((ModuleDeclarations)=>(null))); 
+		
+		PathNode[] collectSubNodes()
+		{
+			auto sortedNodes(E)(E[] arr)
+			{
+				static if(is(E==class))	auto a = arr.map!PathNode.array; 
+				else	auto a = arr.map!((ref a)=>(PathNode(&a))); 
+				return a.array.sort!"a.name<b.name".array; 
+			} 
+			return _node.match!
+			(
+				((ModuleDeclarations m)=>(
+					sortedNodes(m.modules) ~
+					sortedNodes(m.members)
+				)),
+				((Member* m)=>(
+					sortedNodes(m.members) ~
+					sortedNodes(m.parameters)
+				)),
+				((Parameter* p)=>(null))
+			); 
+		} 
+		
+		@property canOpen()
+		=> _node.match!(
+			((ModuleDeclarations m)=>(!m.modules.empty || !m.members.empty)),
+			((Member* m)=>(!m.members.empty)),
+			((Parameter* p)=>(false))
+		); 
+		
+		void open()
+		{
+			if(opened.chkSet)
+			subNodes = collectSubNodes; 
+		} 	 void close()
+		{
+			opened = false; 
+			
+			
+			
+		} 	 void toggle()
+		{
+			if(opened)	close; 
+			else	open; 
+		} 
+		
+		void UI(string prefix="", bool isLast=true)
+		{
+			with(im)
+			{
+				Row(
+					((identityStr(&this)).genericArg!q{id}),
+					{
+						theme = "tool"; flags.wordWrap = false; 
+						Row(
+							{
+								flags.wordWrap = false; 
+								outerSize = vec2(prefix.length+1, 1)*fh; 
+								{
+									auto dr = new Drawing; 
+									dr.color = clGray; dr.lineWidth = 1; 
+									float x = fh*.5f; 
+									foreach(ch; (prefix ~ (isLast ? 'L' : '+')).byChar)
+									{
+										if(ch.among('+', 'I')) dr.vLine(x, 0, fh); 
+										if(ch.among('+', 'L')) dr.circle(x+.5*fh, 0, fh*.5f, -π/2, 0); 
+										x += fh; 
+									}
+									addOverlayDrawing(dr); 
+								}
+							}
+						); 
+						
+						if(canOpen)
+						{
+							if(
+								Btn(
+									{
+										margin = Margin.init; 
+										outerWidth = fh; 
+										flags.wordWrap = false; 
+										Text(((opened)?("▼"):("▷"))); 
+									}
+								)
+							) toggle; 
+						}
+						else
+						{
+							Row(
+								{
+									outerSize = vec2(fh); 
+									flags.hAlign = HAlign.center; 
+									Text("•"); 
+								}
+							); 
+						}
+						
+						auto module_ = asModule, member = asMember, param = asParameter; 
+						if(
+							Btn(
+								{
+									style.bold = !!module_; 
+									const stru = 	module_ 	? "module" : 
+										member 	? kindText[member.mKind] : 
+										param 	? "param" : ""; 
+									bkColor = style.bkColor = structuredColor(stru, clWhite); 
+									style.fontColor = blackOrWhiteFor(bkColor); 
+									Text(name); 
+								}
+							)
+						)
+						{ beep; }
+					}
+				); 
+				if(opened /+recustion+/)
+				{
+					const newPrefix = (prefix ~ (isLast ? ' ' : 'I')).text; 
+					foreach(i, ref a; subNodes) a.UI(newPrefix, (i+1==subNodes.length)); 
+				}
+			}
+		} 
+	} 
 	
 	
 	auto search()
 	{} 
 } 
 
-
-void main()
+class MainForm : GLWindow
 {
-	console(
+	mixin autoCreate; 
+	
+	version(/+$DIDE_REGION+/all) {
+		const hetlibFiles = 
+		[
+			`c:\d\libs\het\package.d`,
+			`c:\d\libs\het\quantities.d`,
+			`c:\d\libs\het\math.d`,
+			`c:\d\libs\het\inputs.d`,
+			`c:\d\libs\het\parser.d`,
+			`c:\d\libs\het\ui.d`,
+			`c:\d\libs\het\opengl.d`,
+			`c:\d\libs\het\win.d`,
+			`c:\d\libs\het\algorithm.d`,
+			`c:\d\libs\het\draw2d.d`,
+			`c:\d\libs\het\bitmap.d`,
+			`c:\d\libs\het\http.d`,
+			`c:\d\libs\het\db.d`,
+			`c:\d\libs\het\mcu.d`,
+			`c:\d\libs\het\com.d`,
+			`c:\d\libs\het\vulkan.d`,
+			`c:\d\libs\common\libueye.d`,
+		]
+		.map!File.array; 
+		const dideFiles = 
+		[
+			`c:\d\projects\dide\dide2.d`,
+			`c:\d\projects\dide\buildsys.d`,
+			`c:\d\projects\dide\didemodule.d`,
+		]
+		.map!File.array; 
+		const dideArgs = ["--d-version=stringId"]; 
+		
+		const karcFiles = 
+		[
+			`c:\d\projects\karc\karc.d`,
+			`c:\d\projects\karc\karcbox.d`,
+			`c:\d\projects\karc\karcpneumatic.d`,
+			`c:\d\projects\karc\karctrigger.d`,
+			`c:\d\projects\karc\karclogger.d`,
+			`c:\d\projects\karc\karcdetect.d`,
+			`c:\d\projects\karc\karcthreshold.d`,
+			`c:\d\projects\karc\karcocr.d`,
+		]
+		.map!File.array; 
+		const karcArgs = ["--d-version=VulkanHeadless"]; 
+	}
+	
+	DDB ddb; 
+	DDB.PathNode treeRoot; 
+	
+	override void onCreate()
+	{
+		ddb = new DDB(
+			Path(`z:\temp2`),
+			Path(`c:\d\ldc2\import`),
+			Path(`c:\d\libs`),
+			File(`z:\temp2\$stdlib_cache.dat`)
+		); 
+		enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
+	} 
+	
+	override void onUpdate()
+	{
+		view.navigate(!im.wantKeys, !im.wantMouse); 
+		invalidate; 
+		
+		with(im)
 		{
-			static if((常!(bool)(1)))
-			{
-				//Only the inherited classes -> registerStoredClass!(DDB.ModuleDeclarations); 
-				
-				with(new DDB)
+			Panel(
+				PanelPosition.topClient, 
 				{
-					version(/+$DIDE_REGION+/all) {
-						const hetlibFiles = 
-						[
-							`c:\d\libs\het\package.d`,
-							`c:\d\libs\het\quantities.d`,
-							`c:\d\libs\het\math.d`,
-							`c:\d\libs\het\inputs.d`,
-							`c:\d\libs\het\parser.d`,
-							`c:\d\libs\het\ui.d`,
-							`c:\d\libs\het\opengl.d`,
-							`c:\d\libs\het\win.d`,
-							`c:\d\libs\het\algorithm.d`,
-							`c:\d\libs\het\draw2d.d`,
-							`c:\d\libs\het\bitmap.d`,
-							`c:\d\libs\het\http.d`,
-							`c:\d\libs\het\db.d`,
-							`c:\d\libs\het\mcu.d`,
-							`c:\d\libs\het\com.d`,
-							`c:\d\libs\het\vulkan.d`,
-							`c:\d\libs\common\libueye.d`,
-						]
-						.map!File.array; 
-						const dideFiles = 
-						[
-							`c:\d\projects\dide\dide2.d`,
-							`c:\d\projects\dide\buildsys.d`,
-							`c:\d\projects\dide\didemodule.d`,
-						]
-						.map!File.array; 
-						const dideArgs = [
-							"--d-version=stringId",
-							"-I", `c:\d\projects\dide`
-						]; 
-						
-						const karcFiles = 
-						[
-							`c:\d\projects\karc\karc.d`,
-							`c:\d\projects\karc\karcbox.d`,
-							`c:\d\projects\karc\karcpneumatic.d`,
-							`c:\d\projects\karc\karctrigger.d`,
-							`c:\d\projects\karc\karclogger.d`,
-							`c:\d\projects\karc\karcdetect.d`,
-							`c:\d\projects\karc\karcthreshold.d`,
-							`c:\d\projects\karc\karcocr.d`,
-						]
-						.map!File.array; 
-						const karcArgs = [
-							"--d-version=VulkanHeadless",
-							"-I", `c:\d\projects\karc`
-						]; 
+					with(ddb)
+					{
+						Row(
+							{
+								Grp!Row(
+									"Wipe", {
+										if(Btn("all")) wipeAll; 
+										if(Btn("project")) wipeProject; 
+									}
+								); 
+								Grp!Row(
+									"Regenerate", {
+										if(Btn("phobos")) regenerateStd/+75.8MB+/; 
+										if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
+										if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
+										if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
+									} 
+								); 
+								Grp!Row(
+									"Operations", {
+										if(Btn("Save cache")) saveCache; 
+										if(Btn("Load cache")) loadCache; 
+										if(Btn("Stats")) generateMemberStats.print; 
+										if(Btn("Export source"))
+										{
+											SourceTextOptions so; 
+											root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
+											so.toJson.print; 
+										}
+									}
+								); 
+								Grp!Row(
+									"State",
+									{
+										Text("modules: "); Static(moduleCount, { width = 3*fh; }); Spacer; 
+										Text("members: "); Static(memberCount, { width = 3*fh; }); 
+									}
+								); 
+							}
+						); 
 					}
-					
-					enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
-					
-					static if((常!(bool)(0))) regenerateStd/+75.8MB+/; 
-					static if((常!(bool)(0))) regenerate(hetlibFiles, ["-I", `c:\d\libs`])/+14.2MB+/; 
-					static if((常!(bool)(0))) regenerate(dideFiles, ["-I", `c:\d\libs`]~dideArgs)/+2.1MB+/; 
-					static if((常!(bool)(1))) regenerate(karcFiles, ["-I", `c:\d\libs`]~karcArgs)/+0.75MB+/; 
-					/+all: 92.2MB+/
-					save; 
-					load; 
-					
-					SourceTextOptions so; 
-					root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
-					so.toJson.print; 
-					
-					generateMemberStats.print; 
-					/+
-						Code: 2025.01.16. Full std library stats:
-						
-						kindCount-----------------------------
-						7289		 _aggregate
-						7696		 _alias_
-						26615	  _callable
-						354		  _enum_
-						17033		 _enum_member
-						2135			 _import_
-						32665		 _variable
-						421		  alias_
-						41600	  parameter
-						81		  this_
-						462			tuple
-						3728			type
-						1085			value
-						
-						Total: 141164
-						
-						kindSize-----------------------------
-						11647576	  _aggregate
-						4084824	  _alias_
-						20886756	  _callable
-						919008	  _enum_
-						6967664	  _enum_member
-						874400	  _import_
-						22985108	  _variable
-						55736	  alias_
-						6722440	  parameter
-						9160	  this_
-						54592	  tuple
-						438880		 type
-						234652		 value
-						
-						Total: 75880796
-					+/
 				}
-			}
+			); 
+			
+			Panel(
+				PanelPosition.leftClient, 
+				{
+					with(ddb)
+					{
+						if(treeRoot.asModule!=root)
+						{
+							//After create or after a wipe, a new root is created.
+							treeRoot = PathNode(root); 
+						}
+						
+						flags.vScrollState = ScrollState.auto_; 
+						flags.clipSubCells = true; 
+						treeRoot.UI("", true); 
+					}
+				}
+			); 
 		}
-	); 
+		
+	} 
 } 
