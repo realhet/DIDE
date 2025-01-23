@@ -1,6 +1,6 @@
 //@exe
 //@debug
-//@release
+///@release
 
 import het.ui; 
 
@@ -709,16 +709,16 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x60F38F6F833B).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x614B8F6F833B).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x60F48F6F833B).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x614C8F6F833B).檢((update間(_間)))); 
 	} 
 	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x622C8F6F833B).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x628A8F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x622D8F6F833B).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x628B8F6F833B).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -743,9 +743,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x64E88F6F833B).檢((update間(_間)))); ((0x65138F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x655A8F6F833B).檢((update間(_間)))); ((0x65858F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x65E88F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x64E98F6F833B).檢((update間(_間)))); ((0x65148F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x655B8F6F833B).檢((update間(_間)))); ((0x65868F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x65E98F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -754,10 +754,10 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x66BF8F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x671E8F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x66C08F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x671F8F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x67A08F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x67A18F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -864,11 +864,18 @@ class DDB
 		{ _node = m; } 	 this(Parameter* p)
 		{ _node = p; } 
 		
-		@property string name() 
+		@property string name() const
 		=> _node.match!(
-			((ModuleDeclarations m)=>(m.name)),
-			((Member* m)=>(m.name)),
-			((Parameter* p)=>(p.name))
+			((in ModuleDeclarations m)=>(m.name)), 
+			((in Member* m)=>(m.name)), 
+			((in Parameter* p)=>(p.name))
+		); 
+		
+		bool opEquals(A)(A other) const
+		=> _node.match!(
+			((in ModuleDeclarations m)=>(m is other.asModule)), 
+			((in Member* m)=>(m is other.asMember)), 
+			((in Parameter* p)=>(p is other.asParameter))
 		); 
 		
 		ModuleDeclarations asModule()
@@ -909,100 +916,286 @@ class DDB
 		
 		void open()
 		{
-			if(opened.chkSet)
+			if(canOpen && opened.chkSet)
 			subNodes = collectSubNodes; 
 		} 	 void close()
 		{
 			opened = false; 
-			
-			
-			
+			/+
+				remember
+				opened items
+			+/
 		} 	 void toggle()
 		{
 			if(opened)	close; 
 			else	open; 
 		} 
 		
-		void UI(string prefix="", bool isLast=true)
+		void UI()
 		{
 			with(im)
 			{
-				Row(
-					((identityStr(&this)).genericArg!q{id}),
-					{
-						theme = "tool"; flags.wordWrap = false; 
-						Row(
-							{
-								flags.wordWrap = false; 
-								outerSize = vec2(prefix.length+1, 1)*fh; 
-								{
-									auto dr = new Drawing; 
-									dr.color = clGray; dr.lineWidth = 1; 
-									float x = fh*.5f; 
-									foreach(ch; (prefix ~ (isLast ? 'L' : '+')).byChar)
-									{
-										if(ch.among('+', 'I')) dr.vLine(x, 0, fh); 
-										if(ch.among('+', 'L')) dr.circle(x+.5*fh, 0, fh*.5f, -π/2, 0); 
-										x += fh; 
-									}
-									addOverlayDrawing(dr); 
-								}
-							}
-						); 
-						
-						if(canOpen)
+				auto module_ = asModule, member = asMember, param = asParameter; 
+				if(
+					Btn(
 						{
-							if(
-								Btn(
-									{
-										margin = Margin.init; 
-										outerWidth = fh; 
-										flags.wordWrap = false; 
-										Text(((opened)?("▼"):("▷"))); 
-									}
-								)
-							) toggle; 
+							style.bold = !!module_; 
+							const stru = 	module_ 	? "module" : 
+								member 	? kindText[member.mKind] : 
+								param 	? "param" : ""; 
+							bkColor = style.bkColor = structuredColor(stru, clWhite); 
+							style.fontColor = blackOrWhiteFor(bkColor); 
+							Text(name); 
 						}
-						else
-						{
-							Row(
-								{
-									outerSize = vec2(fh); 
-									flags.hAlign = HAlign.center; 
-									Text("•"); 
-								}
-							); 
-						}
-						
-						auto module_ = asModule, member = asMember, param = asParameter; 
-						if(
-							Btn(
-								{
-									style.bold = !!module_; 
-									const stru = 	module_ 	? "module" : 
-										member 	? kindText[member.mKind] : 
-										param 	? "param" : ""; 
-									bkColor = style.bkColor = structuredColor(stru, clWhite); 
-									style.fontColor = blackOrWhiteFor(bkColor); 
-									Text(name); 
-								}
-							)
-						)
-						{ beep; }
-					}
-				); 
-				if(opened /+recustion+/)
-				{
-					const newPrefix = (prefix ~ (isLast ? ' ' : 'I')).text; 
-					foreach(i, ref a; subNodes) a.UI(newPrefix, (i+1==subNodes.length)); 
-				}
+					)
+				)
+				{ beep; }
 			}
 		} 
 	} 
 	
 	
-	auto search()
+	auto search(string searchText)
+	{
+		void visit(PathNode[] nodes, string[] filters)
+		{
+			if(filters.empty || nodes.empty) return; 
+			if(nodes.back.name.isWild(filters.front))
+			{
+				if(filters.length==1) { LOG(nodes.map!"a.name".join(".")); }
+				else
+				{
+					foreach(sn; nodes.back.collectSubNodes/+Opt: make a functional visitSubnodes()+/)
+					{ visit(nodes ~ sn, filters[1..$])/+recursion for this match!+/; }
+				}
+			}
+			foreach(sn; nodes.back.collectSubNodes/+Opt: make a functional visitSubnodes()+/)
+			{ visit(nodes ~ sn, filters)/+recursion for internal maches too!+/; }
+		} 
+		auto _間=init間; visit([PathNode(root)], searchText.split('.')); ((0x7F868F6F833B).檢((update間(_間)))); 
+	} 
+} 
+
+class VirtualTreeView(Item) if(is(Item==struct))
+{
+	Item root_; 
+	@property root(Item a) { if(root_.chkSet(a)) changed = now; } 
+	@property ref root() => root_; 
+	
+	struct TreeRow
+	{
+		Item* item; 
+		string prefix; 
+	} 
+	TreeRow[] rows; 
+	float maxRowWidth = 0; 
+	DateTime rowsUpdated, changed; 
+	bool showBullet=true; /+if there is no icon, a bullet mark looks nice in front of the item name+/
+	
+	void makeRows()
+	{
+		void doit(ref Item act, string prefix, bool isLast)
+		{
+			rows ~= TreeRow(&act, prefix ~ ((isLast)?('L'):('+'))); 
+			if(act.opened /+recustion+/)
+			{
+				const newPrefix = (prefix ~ ((isLast)?(' '):('I'))).text; 
+				foreach(i, ref a; act.subNodes) doit(a, newPrefix, (i+1==act.subNodes.length)); 
+			}
+		} 
+		auto _間=init間; {
+			rows = []; maxRowWidth = 0; 
+			doit(root_, "", true); 
+			rowsUpdated = now; 
+		}((0x83248F6F833B).檢((update間(_間)))); ((0x834F8F6F833B).檢(rows.length)); 
+	} 
+	
+	this()
 	{} 
+	
+	void UI(void delegate() setup/+must set outerSize in setup! Optionally can set fontHeight+/)
+	{
+		auto _間=init間; 
+		with(im)
+		{
+			Container(
+				((identityStr(this)).genericArg!q{id}),
+				{
+					theme = "tool"; 
+					with(flags)
+					vScrollState 	= ScrollState.auto_,
+					hScrollState 	= ScrollState.auto_,
+					clipSubCells 	= true; 
+					
+					if(rowsUpdated<changed) makeRows; 
+					
+					if(setup) setup(); 
+					
+					//total size placeholder
+					const float 	fh 	= style.fontHeight/+For faster access. Many things depend on 'fh'.+/, 
+						rowHeight 	= fh, 
+						invRowHeight 	= 1/rowHeight; 
+					Container({ outerPos = vec2(maxRowWidth, rows.length*rowHeight); outerSize = vec2(0); }); 
+					
+					flags.saveVisibleBounds = true; 
+					if(const visibleBounds = imstVisibleBounds(actId))
+					{
+						{
+							foreach(
+								i; 	(ifloor(visibleBounds.top    * invRowHeight    )).max(0) ..
+									(iceil(visibleBounds.bottom * invRowHeight + 1)).min(rows.length.to!int)
+							)
+							{
+								auto r = &rows[i]; 
+								Row(
+									((identityStr(r.item)).genericArg!q{id}),
+									{
+										flags.wordWrap = false; outerPos = vec2(0, i*rowHeight); outerHeight = fh; 
+										
+										version(/+$DIDE_REGION Tree graphics+/all)
+										{
+											Row(
+												{
+													outerSize = vec2(r.prefix.length, 1)*fh; 
+													{
+														auto dr = new Drawing; 
+														dr.color = clGray; dr.lineWidth = 1; 
+														float x = fh*.5f; 
+														foreach(ch; r.prefix.byChar)
+														{
+															if(ch.among('+', 'I')) dr.vLine(x, 0, fh); 
+															if(ch.among('+', 'L')) dr.circle(x+.5*fh, 0, fh*.5f, -π/2, 0); 
+															x += fh; 
+														}
+														addOverlayDrawing(dr); 
+													}
+												}
+											); 
+										}
+										
+										version(/+$DIDE_REGION Tree Open/Close Button+/all)
+										{
+											if(r.item.canOpen)
+											{
+												if(
+													Btn(
+														{
+															margin = Margin.init; outerSize = vec2(fh); 
+															Text(((r.item.opened)?("▼"):("▷"))); 
+														}
+													)
+												) {
+													r.item.toggle; 
+													this.changed = now; 
+												}
+											}
+											else
+											{ if(showBullet) Row({ outerSize = vec2(fh); flags.hAlign = HAlign.center; Text("•"); }); }
+										}
+										
+										r.item.UI; //the actual and responsive UI of the item
+									}
+								); 
+							}
+						}
+					}
+					
+					//Arrange the visible rows
+					auto rowCtrls() => actContainer.subCells.drop(1).map!((a)=>((cast(het.ui.Row)(a)))); 
+					maxRowWidth = 0; 
+					foreach(r; rowCtrls) { r.needMeasure; r.measure; maxRowWidth.maximize(r.outerWidth); }
+					
+					//foreach(r; rowCtrls) { r.outerWidth = maxRowWidth; }
+				}
+			); 
+		}
+		((0x8F0F8F6F833B).檢((update間(_間)))); 
+	} 
+} 
+
+struct DirNode
+{
+	import std.sumtype; 
+	SumType!(File, Path) _node; 
+	
+	bool opened; 
+	DirNode[] subNodes; 
+	
+	this(File f)
+	{ _node = f; } 	 File asFile()
+	=> _node.match!(
+		((File f)=>(f)), 
+		((Path)=>(File.init))
+	); 	 	bool isFile()
+	=> _node.match!(
+		((File f)=>(true)), 
+		((Path)=>(false))
+	); 
+	this(Path p)
+	{ _node = p; } 	 Path asPath()
+	=> _node.match!(
+		((Path p)=>(p)), 
+		((File)=>(Path.init))
+	); 	 bool isPath()
+	=> _node.match!(
+		((Path p)=>(true)), 
+		((File)=>(false))
+	); 
+	
+	@property string name() const
+	=> _node.match!(
+		((in File f)=>(f.name)), 
+		((in Path p)=>(p.name))
+	); 	 bool opEquals(A)(A other) const
+	=> _node.match!(
+		((in File f)=>(other.isFile && f==other.asFile)), 
+		((in Path p)=>(other.isPath && p==other.asPath))
+	); 
+	
+	DirNode[] collectSubNodes()
+	{
+		return _node.match!(
+			((Path p)=>(
+				subNodes = chain(
+					p.paths	.map!DirNode, 
+					p.files	.map!DirNode
+				).array
+			)), ((File f)=>(null))
+		); 
+	} 
+	
+	@property canOpen()
+	=> isPath; 
+	
+	void open()
+	{
+		if(canOpen && opened.chkSet)
+		subNodes = collectSubNodes; 
+	} 	 void close()
+	{
+		opened = false; 
+		/+
+			remember
+			opened items
+		+/
+	} 	 void toggle()
+	{
+		if(opened)	close; 
+		else	open; 
+	} 
+	
+	void UI()
+	{
+		with(im)
+		{
+			void Img(string s) { Spacer(4); im.Img(`icon:\`~s~`&small`); Spacer(4); } 
+			_node.match!
+			(
+				((in File  f){ Img('.'~f.ext); Text(f.name); }), 
+				((in Path p){ Img(((p.fullPath.isWild("?:")) ?(p.fullPath):(`folder`))~'\\'); Text(bold(p.name)); })
+			); 
+		}
+	} 
 } 
 
 class MainForm : GLWindow
@@ -1056,7 +1249,12 @@ class MainForm : GLWindow
 	}
 	
 	DDB ddb; 
-	DDB.PathNode treeRoot; 
+	string searchText; 
+	
+	
+	VirtualTreeView!(DDB.PathNode) treeView; 
+	
+	VirtualTreeView!DirNode dirTreeView; 
 	
 	override void onCreate()
 	{
@@ -1066,6 +1264,7 @@ class MainForm : GLWindow
 			Path(`c:\d\libs`),
 			File(`z:\temp2\$stdlib_cache.dat`)
 		); 
+		treeView = new typeof(treeView); 
 		enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
 	} 
 	
@@ -1117,6 +1316,13 @@ class MainForm : GLWindow
 										Text("members: "); Static(memberCount, { width = 3*fh; }); 
 									}
 								); 
+								Grp!Row(
+									"Search",
+									{
+										Edit(searchText, { width = fh*22; }); 
+										if(Btn("Go")) { search(searchText); }
+									}
+								); 
 							}
 						); 
 					}
@@ -1128,16 +1334,30 @@ class MainForm : GLWindow
 				{
 					with(ddb)
 					{
-						if(treeRoot.asModule!=root)
-						{
-							//After create or after a wipe, a new root is created.
-							treeRoot = PathNode(root); 
-						}
-						
-						flags.vScrollState = ScrollState.auto_; 
-						flags.clipSubCells = true; 
-						treeRoot.UI("", true); 
+						treeView.root = PathNode(root); 
+						treeView.UI(
+							{
+								outerWidth = 400; 
+								outerHeight = clientHeight - 100/+this is lame...+/; 
+							}
+						); 
 					}
+				}
+			); 
+			
+			Panel(
+				PanelPosition.rightClient, 
+				{
+					if(!dirTreeView)
+					{
+						dirTreeView = new typeof(dirTreeView); 
+						with(dirTreeView)
+						{
+							root = DirNode(Path(`c:\windows`)); 
+							showBullet = false; 
+						}
+					}
+					dirTreeView.UI({ outerSize = vec2(300, clientHeight - 100/+this is lame...+/); }); 
 				}
 			); 
 		}
