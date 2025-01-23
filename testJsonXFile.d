@@ -1,6 +1,6 @@
 //@exe
 //@debug
-///@release
+//@release
 
 import het.ui; 
 
@@ -709,16 +709,16 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x60F48F6F833B).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x614C8F6F833B).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x60F38F6F833B).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x614B8F6F833B).檢((update間(_間)))); 
 	} 
 	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x622D8F6F833B).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x628B8F6F833B).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x622C8F6F833B).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x628A8F6F833B).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -743,9 +743,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x64E98F6F833B).檢((update間(_間)))); ((0x65148F6F833B).檢(json.length)); 
-			auto compr = json.compress; 	((0x655B8F6F833B).檢((update間(_間)))); ((0x65868F6F833B).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x65E98F6F833B).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x64E88F6F833B).檢((update間(_間)))); ((0x65138F6F833B).檢(json.length)); 
+			auto compr = json.compress; 	((0x655A8F6F833B).檢((update間(_間)))); ((0x65858F6F833B).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x65E88F6F833B).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -754,10 +754,10 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x66C08F6F833B).檢((update間(_間)))); 
-			auto json = (cast(string)(compr.uncompress)); 	((0x671F8F6F833B).檢((update間(_間)))); 
+			auto compr = stdCacheFile.read; if(compr.empty) return; 	((0x66BF8F6F833B).檢((update間(_間)))); 
+			auto json = (cast(string)(compr.uncompress)); 	((0x671E8F6F833B).檢((update間(_間)))); 
 			ModuleDeclarations newRoot; 	
-			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x67A18F6F833B).檢((update間(_間)))); 
+			newRoot.fromJson(json, stdCacheFile.fullName); 	((0x67A08F6F833B).檢((update間(_間)))); 
 			if(newRoot) root = newRoot; 
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -864,6 +864,9 @@ class DDB
 		{ _node = m; } 	 this(Parameter* p)
 		{ _node = p; } 
 		
+		auto copySearchResult()
+		{ PathNode res; res._node = _node; res.opened = true; return res; } 
+		
 		@property string name() const
 		=> _node.match!(
 			((in ModuleDeclarations m)=>(m.name)), 
@@ -957,22 +960,47 @@ class DDB
 	
 	auto search(string searchText)
 	{
+		auto res = PathNode(root); 
+		void appendRes(PathNode[] nodes)
+		{
+			//LOG(nodes.map!"a.name".join(".")); 
+			
+			auto actDst = &res; 
+			foreach(src; nodes[1..$]/+nodes[0] is root+/)
+			{
+				auto idx = actDst.subNodes.countUntil!((a)=>(a.name==src.name)); 
+				if(idx<0) {
+					idx = actDst.subNodes.length; 
+					actDst.subNodes ~= src.copySearchResult; 
+				}
+				actDst.opened = true; 
+				
+				/+advance+/actDst = &actDst.subNodes[idx]; 
+			}
+		} 
+		
 		void visit(PathNode[] nodes, string[] filters)
 		{
 			if(filters.empty || nodes.empty) return; 
 			if(nodes.back.name.isWild(filters.front))
 			{
-				if(filters.length==1) { LOG(nodes.map!"a.name".join(".")); }
-				else
-				{
-					foreach(sn; nodes.back.collectSubNodes/+Opt: make a functional visitSubnodes()+/)
+				if(filters.length==1)	{ appendRes(nodes); }
+				else	{
+					foreach(
+						sn; nodes.back.collectSubNodes
+						/+Opt: make a functional visitSubnodes()+/
+					)
 					{ visit(nodes ~ sn, filters[1..$])/+recursion for this match!+/; }
 				}
 			}
-			foreach(sn; nodes.back.collectSubNodes/+Opt: make a functional visitSubnodes()+/)
+			foreach(
+				sn; nodes.back.collectSubNodes
+				/+Opt: make a functional visitSubnodes()+/
+			)
 			{ visit(nodes ~ sn, filters)/+recursion for internal maches too!+/; }
 		} 
-		auto _間=init間; visit([PathNode(root)], searchText.split('.')); ((0x7F868F6F833B).檢((update間(_間)))); 
+		auto _間=init間; visit([PathNode(root)], searchText.split('.')); ((0x81DD8F6F833B).檢((update間(_間)))); 
+		return res; 
 	} 
 } 
 
@@ -1007,7 +1035,7 @@ class VirtualTreeView(Item) if(is(Item==struct))
 			rows = []; maxRowWidth = 0; 
 			doit(root_, "", true); 
 			rowsUpdated = now; 
-		}((0x83248F6F833B).檢((update間(_間)))); ((0x834F8F6F833B).檢(rows.length)); 
+		}((0x858B8F6F833B).檢((update間(_間)))); ((0x85B68F6F833B).檢(rows.length)); 
 	} 
 	
 	this()
@@ -1109,7 +1137,7 @@ class VirtualTreeView(Item) if(is(Item==struct))
 				}
 			); 
 		}
-		((0x8F0F8F6F833B).檢((update間(_間)))); 
+		((0x91768F6F833B).檢((update間(_間)))); 
 	} 
 } 
 
@@ -1252,7 +1280,7 @@ class MainForm : GLWindow
 	string searchText; 
 	
 	
-	VirtualTreeView!(DDB.PathNode) treeView; 
+	VirtualTreeView!(DDB.PathNode) treeView, resultTreeView; 
 	
 	VirtualTreeView!DirNode dirTreeView; 
 	
@@ -1266,6 +1294,8 @@ class MainForm : GLWindow
 		); 
 		treeView = new typeof(treeView); 
 		enforce(chain(hetlibFiles, dideFiles, karcFiles).all!"a.exists"); 
+		
+		resultTreeView = new typeof(resultTreeView); 
 	} 
 	
 	override void onUpdate()
@@ -1320,7 +1350,11 @@ class MainForm : GLWindow
 									"Search",
 									{
 										Edit(searchText, { width = fh*22; }); 
-										if(Btn("Go")) { search(searchText); }
+										if(Btn("Go")) {
+											resultTreeView.root_ = search(searchText); 
+											resultTreeView.changed = now; 
+											/+Todo: This change mechanic is not so clear.+/
+										}
 									}
 								); 
 							}
@@ -1342,6 +1376,17 @@ class MainForm : GLWindow
 							}
 						); 
 					}
+				}
+			); 
+			Panel(
+				PanelPosition.leftClient, 
+				{
+					resultTreeView.UI(
+						{
+							outerWidth = 400; 
+							outerHeight = clientHeight - 100/+this is lame...+/; 
+						}
+					); 
 				}
 			); 
 			
