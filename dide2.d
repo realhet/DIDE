@@ -951,7 +951,7 @@ version(/+$DIDE_REGION main+/all)
 				PanelPosition.topRight,
 				{
 					margin = "0"; padding = "0"; 
-					workspace.UI_SearchBox(view); 
+					workspace.search.UI(workspace, view); 
 				}
 			); 
 			
@@ -1414,16 +1414,6 @@ class Workspace : Container, WorkspaceInterface
 		size_t textSelectionsHash; 
 		
 		string[] extendSelectionStack; 
-		
-		bool searchBoxActivate_request; 
-		@STORED
-		{
-			bool 	searchBoxVisible, 
-				advancedSearchOptionsVisible; 
-			string searchText; 
-			.Container.SearchOptions searchOptions; 
-		} 
-		
 		
 		struct MarkerLayerSettings {
 			const DMDMessage.Type type; //this is the identity
@@ -2855,10 +2845,6 @@ class Workspace : Container, WorkspaceInterface
 		
 		
 		
-		@VERB("Ctrl+Alt+Up") void insertCursorAbove()
-		{ insertCursor(-1); } @VERB("Ctrl+Alt+Down") void insertCursorBelow()
-		{ insertCursor(1); } 
-		
 		string exportTextSelections(TextSelection[] ts)
 		{ return ts.map!(a=>a.toReference.text).join(';'); } 
 		
@@ -4203,41 +4189,53 @@ class Workspace : Container, WorkspaceInterface
 		
 		void handleKeyboard()
 		{
-			if(!im.wantKeys && frmMain.canProcessUserInput)
+			if(frmMain.canProcessUserInput)
 			{
-				callVerbs(this); 
-				
-				if(textSelections.empty)
-				{ mainWindow.inputChars = []; }
-				else
+				if(!im.wantKeys)
 				{
-					//Todo: single window only
-					string unprocessed; 
-					foreach(ch; mainWindow.inputChars.unTag.byDchar)
+					this.callVerbs; 
+					
+					if(textSelections.empty)
+					{ mainWindow.inputChars = []; }
+					else
 					{
-						if(ch==9 && ch==10)
+						//Todo: single window only
+						string unprocessed; 
+						foreach(ch; mainWindow.inputChars.unTag.byDchar)
 						{
-							//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-						}
-						else if(ch>=32)
-						{
-							//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-							try
+							if(ch==9 && ch==10)
 							{
-								/+
-									if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
-									from keyboard or clipboard! Maybe it's a bug.
-								+/
-								auto s = ch.to!string; 
-								textSelections = paste_impl(textSelections, s); 
+								//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
 							}
-							catch(Exception)
+							else if(ch>=32)
+							{
+								//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+								try
+								{
+									/+
+										if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
+										from keyboard or clipboard! Maybe it's a bug.
+									+/
+									auto s = ch.to!string; 
+									textSelections = paste_impl(textSelections, s); 
+								}
+								catch(Exception)
+								{ unprocessed ~= ch; }
+							}
+							else
 							{ unprocessed ~= ch; }
 						}
-						else
-						{ unprocessed ~= ch; }
+						mainWindow.inputChars = unprocessed; 
 					}
-					mainWindow.inputChars = unprocessed; 
+				}
+				else
+				{
+					/+The im wants keyboard input.  Here handle only a few global verbs.+/
+					alias globalVerbs = AliasSeq!(
+						kill, rebuild, run, gotoLine, 
+						searchBoxActivate, searchBoxActivateGlobal
+					); 
+					static foreach(v; globalVerbs) this.callVerb!v; 
 				}
 			}
 		} 
@@ -4388,7 +4386,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		void updateMessageConnectionArrows()
 		{
-			if(_messageConnectionArrows_hash.chkSet((mixin(求sum(q{m},q{modules},q{m._updateSearchResults_state})))))
+			if(_messageConnectionArrows_hash.chkSet(mixin(求sum(q{m},q{modules},q{m._updateSearchResults_state}))))
 			{
 				messageConnectionArrows.clear; 
 				foreach(t; [EnumMembers!(DMDMessage.Type)])
@@ -4559,10 +4557,10 @@ class Workspace : Container, WorkspaceInterface
 				
 				updateLastKnownModulePositions; 
 				
+				search.updateSearchFiber; 
 				foreach(m; modules) m.updateSearchResults; 
 				updateMessageConnectionArrows; 
 				
-				static if(UseSearchFiber) updateSearchFiber; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -4641,6 +4639,299 @@ class Workspace : Container, WorkspaceInterface
 			textSelections = paste_impl(textSelections, storedMemSlots[n]); 
 		} 
 		
+	}version(/+$DIDE_REGION+/all)
+	{
+		@STORED SearchBox search; 
+		static struct SearchBox
+		{
+			bool searchBoxActivate_request; 
+			@STORED
+			{
+				bool 	searchBoxVisible, 
+					advancedSearchOptionsVisible, 
+					lookInAllModules; 
+				string searchText; 
+				.Container.SearchOptions searchOptions; 
+			} 
+			
+			void activate(string s, bool global=false)
+			{
+				searchBoxActivate_request = true; searchText = s; 
+				lookInAllModules = global; 
+			} 
+			
+			import core.thread.fiber; 
+			static class SearchFiber : Fiber
+			{
+				mixin SmartClass!
+				(
+					q{
+						Module[] modules, 
+						string searchText,
+						Container.SearchOptions searchOptions,
+						Workspace.SearchBox.SearchStats* stats
+					}, 
+					q{super(&run, 256<<10/+measured stack: level 84, 24K+/); }
+				); 
+				
+				DateTime timeLimit; 
+				
+				private void run()
+				{
+					foreach(m; modules)
+					{
+						m.search(
+							searchText, searchOptions, vec2(0), 
+							((sr){
+								m.findSearchResults ~= sr; 
+								if(stats)
+								{ stats.process(sr); }
+							}), &timeLimit
+						); 
+						static if((常!(bool)(0))) if(stats) print((*stats).toJson); 
+					}
+				} 
+			} 
+			SearchFiber searchFiber; 
+			
+			void updateSearchFiber()
+			{
+				if(searchFiber && !searchBoxVisible) { searchFiber.free; }
+				
+				if(searchFiber)
+				{
+					if(searchFiber.state==Fiber.State.TERM) searchFiber.free; 
+					else {
+						searchFiber.timeLimit = now + 5*milli(second); 
+						searchFiber.call; 
+					}
+				}
+			} 
+			
+			static struct SearchStats
+			{
+				uint count; 
+				uint[string] matches, wholeWords; 
+				uint[SyntaxKind] syntaxes; 
+				
+				void process(in .Container.SearchResult sr)
+				{
+					static searchResultInfo(in .Container.SearchResult sr)
+					{
+						struct Res { string match, wholeWord; SyntaxKind syntax; } Res res; 
+						if(auto cntr = (cast(.Container)(sr.container)))
+						if(const len = (cast(int)(sr.cells.length)))
+						{
+							const idx = cntr.subCells.countUntil(mixin(指(q{sr.cells},q{0}))); 
+							if(idx>=0)
+							{
+								auto 	glyphs 	= cntr.subCells.map!((a)=>((cast(Glyph)(a)))),
+									chars 	= glyphs.map!((g)=>(((g)?(g.ch):(compoundObjectChar)))); 
+								
+								auto match = chars[idx .. idx+len].text; 
+								res.match = match; 
+								
+								static isW(dchar ch) => isDLangIdentifierCont(ch); 
+								if(isW(mixin(指(q{chars},q{idx})))/+Note: extend start+/)
+								mixin("chars[0..idx]").retro.until!(not!isW)
+								.each!((a){ match = a.text ~ match; }); if(isW(mixin(指(q{chars},q{idx+len-1})))/+Note: extend end+/)
+								chars[idx+len..$].until!(not!isW)
+								.each!((a){ match ~= a.text; }); 
+								res.wholeWord = match; 
+								/+Todo: Fix niceExpression mixin() subscript range indexing. After the mixin Declaration works.+/
+								
+								if(auto g = (mixin(指(q{glyphs},q{idx})))) res.syntax = (cast(SyntaxKind)(g.syntax)); 
+							}
+						}
+						
+						if(res.wholeWord=="") {
+							print(res.toJson); 
+							print(sr); 
+							print((cast(CodeRow)(sr.container))); 
+						}
+						return res; 
+					} 
+					
+					with(searchResultInfo(sr))
+					{
+						this.count++; 
+						mixin(指(q{this.matches},q{match}))++; 
+						mixin(指(q{this.wholeWords},q{wholeWord}))++; 
+						mixin(指(q{this.syntaxes},q{syntax}))++; 
+						/+Todo: Fix niceExpression mixin() subscript range indexing.+/
+					}
+				} 
+			} 
+			SearchStats searchStats; 
+			
+			
+			void UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					Column(
+						{
+							//Keyboard shortcuts
+							auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
+								kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
+								kcFindClose	= KeyCombo("Esc"); //always
+							
+							//activate searchbox
+							bool justActivated; 
+							if(searchBoxActivate_request.chkClear)
+							{ searchBoxVisible = justActivated = true; }
+							
+							void sw() { outerWidth = fh*22; } 
+							
+							if(searchBoxVisible)
+							{
+								Row(
+									{
+										sw; 
+										Text("Find "); 
+										.Container editContainer; 
+										
+										const searcHash = searchText.hashOf(searchOptions.hashOf([lookInAllModules].hashOf)); 
+										static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+										const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+										
+										
+										if(
+											Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+											|| justActivated || searchHashChanged
+										)
+										{
+											//refresh search results
+											workspace.clearMarkerLayer_find; 
+											searchStats = SearchStats.init; 
+											
+											if(searchText.startsWith(':'))
+											{
+												//goto line
+												//Todo: Ctrl+G not works inside Edit
+												//Todo: Ctrl+F not works inside Edit
+												/+
+													Todo: hint text: Enter line number. 
+													Negative line number starts from the end of the module.
+												+/
+												//Todo: ez ugorhatna regionra is.
+												
+												workspace.textSelections = []; 
+												if(auto mod = workspace.expectOneSelectedModule)
+												if(auto line = searchText[1..$].to!int.ifThrown(0))
+												{
+													workspace.jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
+													//Todo: show a highlight on that row...
+												}
+												
+											}
+											else
+											{
+												auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
+												if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
+												searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
+											}
+										}
+										//display the number of matches. Also save the location of that number on the screen.
+										const matchCnt = workspace.getMarkerLayerCount(DMDMessage.Type.find); 
+										Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
+										
+										BtnRow(
+											{
+												if(
+													Btn(
+														symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
+														enable(matchCnt>0), hint("Zoom screen on search results.")
+													)
+												)
+												{ workspace.zoomAt(view, workspace.getMarkerLayer_find); }
+												if(
+													Btn(
+														"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
+														enable(matchCnt>0), hint("Select search results.")
+													)
+												)
+												{ workspace.selectSearchResults(workspace.getMarkerLayer_find); }
+											}
+										); 
+										
+										BtnRow(
+											{
+												if(
+													Btn(
+														"aA", hint("Case Sensitive"),
+														selected(searchOptions.caseSensitive)
+													)
+												) searchOptions.caseSensitive.toggle; 
+												if(
+													Btn(
+														"ww", hint("Whole Words"),
+														selected(searchOptions.wholeWords)
+													)
+												) searchOptions.wholeWords_toggle; 
+												if(
+													Btn(
+														"all", hint("All modules"),
+														selected(lookInAllModules)
+													)
+												) lookInAllModules.toggle; 
+												if(
+													Btn(
+														"…", hint("Advanced search options"),
+														selected(advancedSearchOptionsVisible)
+													)
+												) advancedSearchOptionsVisible.toggle; 
+											}
+										); 
+										
+										if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
+										{ searchBoxVisible = false; searchText = ""; workspace.clearMarkerLayer_find; }
+									}
+								); 
+								
+								if(advancedSearchOptionsVisible)
+								{
+									Column(
+										{
+											sw; 
+											Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").genericArg!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").genericArg!q{id})); }); 
+											Grp!Row(
+												"Syntaxes: ", {
+													sw; foreach(const a; searchStats.syntaxes.byKeyValue.array.sort!"a.value>b.value")
+													{
+														Btn(
+															i"$(a.value)× ".text, {
+																style.fontColor = syntaxFontColor(a.key); 
+																style.bkColor = syntaxBkColor(a.key); 
+																Text(a.key.text); 
+															}, ((a.key).genericArg!q{id})
+														); 
+													}
+												}
+											); 
+											Grp!Row(
+												"Words: ", {
+													sw; foreach(const a; searchStats.wholeWords.byKeyValue.array.sort!"a.value>b.value".take(30))
+													{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).genericArg!q{id})); }
+												}
+											); 
+										}
+									); 
+								}
+							}
+							else
+							{
+								if(Btn("🔍", hint("Start searching.")))
+								workspace.searchBoxActivate; 
+								/+other emojis: 📁outline  💡code completion+/
+								//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
+							}
+						}
+					); 
+				}
+				
+			} 
+		} 
 	}version(/+$DIDE_REGION Help+/all)
 	{
 		string actHelpQuery, actSearchKeyword; 
@@ -5236,6 +5527,9 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Shift+PgDn"},q{cursorPageDownSelect},q{cursorPageDown(true); }],
 						[q{"Shift+Ctrl+Home"},q{cursorTopSelect},q{cursorTop(true); }],
 						[q{"Shift+Ctrl+End"},q{cursorBottomSelect},q{cursorBottom(true); }],
+						[],
+						[q{"Ctrl+Alt+Up"},q{insertCursorAbove},q{insertCursor(-1); }],
+						[q{"Ctrl+Alt+Down"},q{insertCursorBelow},q{insertCursor(1); }],
 					]))
 				) .GEN!q{GEN_verbs}); 
 			}
@@ -5388,11 +5682,11 @@ class Workspace : Container, WorkspaceInterface
 						}],
 						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
 						[],
-						[q{"Ctrl+F"},q{searchBoxActivate},q{
-							searchBoxActivate_request = true; 
-							searchText = ((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword)); 
+						[q{"Ctrl+F"},q{searchBoxActivate(bool global=false)},q{
+							search.activate(((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword)), global); 
 							/+Todo: Does nothing, then the search Edit is in focus.+/
 						}],
+						[q{"Ctrl+Shift+F"},q{searchBoxActivateGlobal},q{searchBoxActivate(true); }],
 						[q{"Ctrl+D"},q{selectNextWord},q{selectAdjacentWord_impl!false; }],
 						[q{"Ctrl+Shift+D"},q{selectPrevWord},q{selectAdjacentWord_impl!true; }],
 						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(getMarkerLayer(DMDMessage.Type.find)); }],
@@ -5400,7 +5694,7 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
 						[q{"Ctrl+G"},q{gotoLine},q{
 							if(auto m = expectOneSelectedModule)
-							{ searchBoxActivate_request = true; searchText = ":"; }
+							{ search.activate(":"); }
 						}],
 						[q{"F8"},q{gotoNextError},q{NOTIMPL; }],
 						[q{"Shift+F8"},q{gotoPrevError},q{NOTIMPL; }],
@@ -5688,283 +5982,6 @@ class Workspace : Container, WorkspaceInterface
 			view.scale = min(view.scale, maxScale); 
 		} 
 		
-		version(/+$DIDE_REGION+/all) {
-			enum UseSearchFiber = true; 
-			
-			
-			static if(UseSearchFiber)
-			{
-				import core.thread.fiber; 
-				static class SearchFiber : Fiber
-				{
-					mixin SmartClass!
-					(
-						q{
-							Module[] modules, 
-							string searchText,
-							Container.SearchOptions searchOptions,
-							Workspace.SearchStats* stats
-						}, 
-						q{super(&run, 256<<10/+measured stack: level 84, 24K+/); }
-					); 
-					
-					DateTime timeLimit; 
-					
-					private void run()
-					{
-						foreach(m; modules)
-						{
-							m.search(
-								searchText, searchOptions, vec2(0), 
-								((sr){
-									m.findSearchResults ~= sr; 
-									if(stats)
-									{ stats.process(sr); }
-								}), &timeLimit
-							); 
-							static if((常!(bool)(0))) if(stats) print((*stats).toJson); 
-						}
-					} 
-				} 
-				SearchFiber searchFiber; 
-				
-				void updateSearchFiber()
-				{
-					if(searchFiber && !searchBoxVisible) { searchFiber.free; }
-					
-					if(searchFiber)
-					{
-						if(searchFiber.state==Fiber.State.TERM) searchFiber.free; 
-						else {
-							searchFiber.timeLimit = now + 5*milli(second); 
-							searchFiber.call; 
-						}
-					}
-				} 
-			}
-			static struct SearchStats
-			{
-				uint count; 
-				uint[string] matches, wholeWords; 
-				uint[SyntaxKind] syntaxes; 
-				
-				void process(in .Container.SearchResult sr)
-				{
-					static searchResultInfo(in .Container.SearchResult sr)
-					{
-						struct Res { string match, wholeWord; SyntaxKind syntax; } Res res; 
-						if(auto cntr = (cast(.Container)(sr.container)))
-						if(const len = (cast(int)(sr.cells.length)))
-						{
-							const idx = cntr.subCells.countUntil(mixin(指(q{sr.cells},q{0}))); 
-							if(idx>=0)
-							{
-								auto 	glyphs 	= cntr.subCells.map!((a)=>((cast(Glyph)(a)))),
-									chars 	= glyphs.map!((g)=>(((g)?(g.ch):(compoundObjectChar)))); 
-								
-								auto match = chars[idx .. idx+len].text; 
-								res.match = match; 
-								
-								static isW(dchar ch) => isDLangIdentifierCont(ch); 
-								if(isW(mixin(指(q{chars},q{idx})))/+Note: extend start+/)
-								mixin("chars[0..idx]").retro.until!(not!isW)
-								.each!((a){ match = a.text ~ match; }); if(isW(mixin(指(q{chars},q{idx+len-1})))/+Note: extend end+/)
-								chars[idx+len..$].until!(not!isW)
-								.each!((a){ match ~= a.text; }); 
-								res.wholeWord = match; 
-								/+Todo: Fix niceExpression mixin() subscript range indexing. After the mixin Declaration works.+/
-								
-								if(auto g = (mixin(指(q{glyphs},q{idx})))) res.syntax = (cast(SyntaxKind)(g.syntax)); 
-							}
-						}
-						
-						if(res.wholeWord=="") {
-							print(res.toJson); 
-							print(sr); 
-							print((cast(CodeRow)(sr.container))); 
-						}
-						return res; 
-					} 
-					
-					with(searchResultInfo(sr))
-					{
-						this.count++; 
-						mixin(指(q{this.matches},q{match}))++; 
-						mixin(指(q{this.wholeWords},q{wholeWord}))++; 
-						mixin(指(q{this.syntaxes},q{syntax}))++; 
-						/+Todo: Fix niceExpression mixin() subscript range indexing.+/
-					}
-				} 
-			} 
-			SearchStats searchStats; 
-			
-		}
-		
-		void UI_SearchBox(View2D view)
-		{
-			with(im)
-			{
-				Column(
-					{
-						//Keyboard shortcuts
-						auto 	kcFindZoom	= KeyCombo("Enter"), //only when edit is focused
-							kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
-							kcFindClose	= KeyCombo("Esc"); //always
-						
-						//activate searchbox
-						bool justActivated; 
-						if(searchBoxActivate_request.chkClear)
-						{ searchBoxVisible = justActivated = true; }
-						
-						void sw() { outerWidth = fh*22; } 
-						
-						if(searchBoxVisible)
-						{
-							Row(
-								{
-									sw; 
-									Text("Find "); 
-									.Container editContainer; 
-									
-									const searcHash = searchText.hashOf(searchOptions.hashOf); 
-									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
-									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
-									
-									
-									if(
-										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
-										|| justActivated || searchHashChanged
-									)
-									{
-										//refresh search results
-										clearMarkerLayer_find; 
-										searchStats = SearchStats.init; 
-										
-										if(searchText.startsWith(':'))
-										{
-											//goto line
-											//Todo: Ctrl+G not works inside Edit
-											//Todo: Ctrl+F not works inside Edit
-											/+
-												Todo: hint text: Enter line number. 
-												Negative line number starts from the end of the module.
-											+/
-											//Todo: ez ugorhatna regionra is.
-											
-											textSelections = []; 
-											if(auto mod = expectOneSelectedModule)
-											if(auto line = searchText[1..$].to!int.ifThrown(0))
-											{
-												jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
-												//Todo: show a highlight on that row...
-											}
-											
-										}
-										else
-										{
-											static if(UseSearchFiber)
-											{ searchFiber = new SearchFiber(selectedModulesOrAll, searchText, searchOptions, &searchStats); }
-											else
-											{
-												foreach(m; selectedModulesOrAll)
-												{ m.findSearchResults = m.search(searchText, searchOptions); }
-											}
-										}
-									}
-									
-									//display the number of matches. Also save the location of that number on the screen.
-									const matchCnt = getMarkerLayerCount(DMDMessage.Type.find); 
-									Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
-									
-									BtnRow(
-										{
-											if(
-												Btn(
-													symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-													enable(matchCnt>0), hint("Zoom screen on search results.")
-												)
-											)
-											{ zoomAt(view, getMarkerLayer_find); }
-											if(
-												Btn(
-													"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-													enable(matchCnt>0), hint("Select search results.")
-												)
-											)
-											{ selectSearchResults(getMarkerLayer_find); }
-										}
-									); 
-									
-									BtnRow(
-										{
-											if(
-												Btn(
-													"aA", hint("Case Sensitive"),
-													selected(searchOptions.caseSensitive)
-												)
-											) searchOptions.caseSensitive.toggle; 
-											if(
-												Btn(
-													"ww", hint("Whole Words"),
-													selected(searchOptions.wholeWords)
-												)
-											) searchOptions.wholeWords_toggle; 
-											if(
-												Btn(
-													"…", hint("Advanced search options"),
-													selected(advancedSearchOptionsVisible)
-												)
-											) advancedSearchOptionsVisible.toggle; 
-										}
-									); 
-									
-									if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
-									{ searchBoxVisible = false; searchText = ""; clearMarkerLayer_find; }
-								}
-							); 
-							
-							if(advancedSearchOptionsVisible)
-							{
-								Column(
-									{
-										sw; 
-										Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").genericArg!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").genericArg!q{id})); }); 
-										Grp!Row(
-											"Syntaxes: ", {
-												sw; foreach(const a; searchStats.syntaxes.byKeyValue.array.sort!"a.value>b.value")
-												{
-													Btn(
-														i"$(a.value)× ".text, {
-															style.fontColor = syntaxFontColor(a.key); 
-															style.bkColor = syntaxBkColor(a.key); 
-															Text(a.key.text); 
-														}, ((a.key).genericArg!q{id})
-													); 
-												}
-											}
-										); 
-										Grp!Row(
-											"Words: ", {
-												sw; foreach(const a; searchStats.wholeWords.byKeyValue.array.sort!"a.value>b.value".take(30))
-												{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).genericArg!q{id})); }
-											}
-										); 
-									}
-								); 
-							}
-						}
-						else
-						{
-							if(Btn(symbol("Zoom"), hint("Start searching.")))
-							searchBoxActivate; 
-							//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
-						}
-					}
-				); 
-			}
-			
-		} 
-		
 		void UI_selectedModulesHint()
 		{
 			with(im) {
