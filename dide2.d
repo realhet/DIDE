@@ -193,6 +193,8 @@ version(/+$DIDE_REGION main+/all)
 			} 
 			
 			bool showModuleButtons, showTextSelectionDebugInfo, showHitTest, showUndoStack, showResyntaxQueue; 
+			
+			bool rightMenuOpened; 
 		} 
 		
 		Workspace workspace; 
@@ -843,54 +845,66 @@ version(/+$DIDE_REGION main+/all)
 			//Menu //////////////////////////////////////////////
 			if(1)
 			with(im)
-			Panel(
-				PanelPosition.topLeft, 
-				{
-					if(!mainMenuOpened) {
-						margin = "0"; padding = "0"; /+border = "1 normal gray";+/
-						if(Btn("\u2630")) mainMenuOpened = true; 
-					}
-					else {
-						Row(
-							{
-								if(Btn("\u2630")) mainMenuOpened = false; 
-								BtnRow(menuPage); 
-							}
-						); 
-						
-						with(workspace)
-						{
-							final switch(menuPage)
-							{
-								case MenuPage.Tools: 	{
-									UI_refactor; 
-									
-									Grp!Column
-									(
-										"Show Debug Info",
+			{
+				Panel(
+					PanelPosition.topLeft, 
+					{
+						if(!mainMenuOpened) {
+							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
+							if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) mainMenuOpened = true; 
+						}
+						else {
+							margin = "0"; padding = "0"; 
+							Row(
+								{
+									if(Btn(bold(symbol("ChevronLeft")), { innerWidth = fh; })) mainMenuOpened = false; 
+									BtnRow(menuPage); 
+								}
+							); 
+							Column(
+								{
+									padding = "2"; 
+									with(workspace)
+									{
+										final switch(menuPage)
 										{
-											ChkBox(showModuleButtons, "Module buttons"); 
-											ChkBox(showHitTest, "HitTest"); 
-											ChkBox(showUndoStack, "Undo stack"); 
-											ChkBox(showResyntaxQueue, "Resyntax Queue"); 
+											case MenuPage.Tools: 	{
+												UI_refactor; 
+												
+												Grp!Column
+												(
+													"Show Debug Info",
+													{
+														ChkBox(showModuleButtons, "Module buttons"); 
+														ChkBox(showHitTest, "HitTest"); 
+														ChkBox(showUndoStack, "Undo stack"); 
+														ChkBox(showResyntaxQueue, "Resyntax Queue"); 
+													}
+												); 
+											}	break; 
+													
+											case MenuPage.Palette: 	with(toolPalette) {
+												UI(toolPalettePage); 
+												if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
+												workspace.insertNode(templateSource, subColumnIdx); 
+											}	break; 
+													
+											case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
+													
+											case MenuPage.ResMon: 	resourceMonitor.UI(400); 	break; 
 										}
-									); 
-								}	break; 
-										
-								case MenuPage.Palette: 	with(toolPalette) {
-									UI(toolPalettePage); 
-									if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
-									workspace.insertNode(templateSource, subColumnIdx); 
-								}	break; 
-										
-								case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
-										
-								case MenuPage.ResMon: 	resourceMonitor.UI(400); 	break; 
-							}
+									}
+								}
+							); 
 						}
 					}
+				); 
+				if(!mainMenuOpened)
+				{
+					const vec2 shiftOut = (magnitude(max((viewGUI.mousePos - lastContainer.outerBounds.bottomLeft) * vec2(1, 1), 0) * .02f))^^2 * vec2(-1, -1); 
+					lastContainer.outerPos += shiftOut; 
 				}
-			); 
+			}
 			
 			with(workspace)
 			if(!selectedStickers.empty)
@@ -947,13 +961,47 @@ version(/+$DIDE_REGION main+/all)
 			); 
 			
 			with(im)
-			Panel(
-				PanelPosition.topRight,
+			{
+				bool anyVisible; 
+				Panel(
+					PanelPosition.topRight,
+					{
+						margin = "0"; padding = "0"; 
+						bool[] vis = [
+							workspace.search.UI(workspace, view),
+							workspace.insight.UI(workspace, view),
+							workspace.outline.UI(workspace, view)
+						]; /+Todo: refactor this terrible menu+/
+						anyVisible = vis.any; 
+						
+						if(!anyVisible)
+						{
+							if(rightMenuOpened)
+							{
+								Row(
+									{
+										BtnRow(
+											{
+												if(Btn("📁", hint("Outline"))) { workspace.outlineActivate; }
+												if(Btn("💡", hint("Insight"))) { workspace.insightActivate; }
+												if(Btn("🔍", hint("Search"))) workspace.searchBoxActivate; 
+											}
+										); 
+										if(Btn(bold(symbol("ChevronRight")), { innerWidth = fh; })) rightMenuOpened = false; 
+									}
+								); 
+							}
+							else
+							{ if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) rightMenuOpened = true; }
+						}
+					}
+				); 
+				if(!rightMenuOpened && !anyVisible)
 				{
-					margin = "0"; padding = "0"; 
-					workspace.search.UI(workspace, view); 
+					const vec2 shiftOut = (magnitude(max((viewGUI.mousePos - lastContainer.outerBounds.bottomLeft) * vec2(-1, 1), 0) * .02f))^^2 * vec2(1, -1); 
+					lastContainer.outerPos += shiftOut; 
 				}
-			); 
+			}
 			
 			if(showTextSelectionDebugInfo)
 			with(im)
@@ -4233,7 +4281,8 @@ class Workspace : Container, WorkspaceInterface
 					/+The im wants keyboard input.  Here handle only a few global verbs.+/
 					alias globalVerbs = AliasSeq!(
 						kill, rebuild, run, gotoLine, 
-						searchBoxActivate, searchBoxActivateGlobal
+						searchBoxActivate, searchBoxActivateGlobal,
+						outlineActivate, insightActivate
 					); 
 					static foreach(v; globalVerbs) this.callVerb!v; 
 				}
@@ -4660,6 +4709,9 @@ class Workspace : Container, WorkspaceInterface
 				lookInAllModules = global; 
 			} 
 			
+			void deactivate(Workspace workspace)
+			{ if(searchBoxVisible.chkClear) { searchText = ""; workspace.clearMarkerLayer_find; }} 
+			
 			import core.thread.fiber; 
 			static class SearchFiber : Fiber
 			{
@@ -4765,7 +4817,7 @@ class Workspace : Container, WorkspaceInterface
 			SearchStats searchStats; 
 			
 			
-			void UI(Workspace workspace, View2D view)
+			void UI_searchBox(Workspace workspace, View2D view, bool justActivated)
 			{
 				with(im)
 				{
@@ -4776,160 +4828,322 @@ class Workspace : Container, WorkspaceInterface
 								kcFindToSelection 	= KeyCombo("Ctrl+Shift+L Alt+Enter"),
 								kcFindClose	= KeyCombo("Esc"); //always
 							
-							//activate searchbox
-							bool justActivated; 
-							if(searchBoxActivate_request.chkClear)
-							{ searchBoxVisible = justActivated = true; }
-							
 							void sw() { outerWidth = fh*22; } 
 							
-							if(searchBoxVisible)
-							{
-								Row(
-									{
-										sw; 
-										Text("Find "); 
-										.Container editContainer; 
-										
-										const searcHash = searchText.hashOf(searchOptions.hashOf([lookInAllModules].hashOf)); 
-										static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
-										const searchHashChanged = lastSearchHash.chkSet(searcHash); 
-										
-										
-										if(
-											Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
-											|| justActivated || searchHashChanged
-										)
-										{
-											//refresh search results
-											workspace.clearMarkerLayer_find; 
-											searchStats = SearchStats.init; 
-											
-											if(searchText.startsWith(':'))
-											{
-												//goto line
-												//Todo: Ctrl+G not works inside Edit
-												//Todo: Ctrl+F not works inside Edit
-												/+
-													Todo: hint text: Enter line number. 
-													Negative line number starts from the end of the module.
-												+/
-												//Todo: ez ugorhatna regionra is.
-												
-												workspace.textSelections = []; 
-												if(auto mod = workspace.expectOneSelectedModule)
-												if(auto line = searchText[1..$].to!int.ifThrown(0))
-												{
-													workspace.jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
-													//Todo: show a highlight on that row...
-												}
-												
-											}
-											else
-											{
-												auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
-												if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
-												searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
-											}
-										}
-										//display the number of matches. Also save the location of that number on the screen.
-										const matchCnt = workspace.getMarkerLayerCount(DMDMessage.Type.find); 
-										Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
-										
-										BtnRow(
-											{
-												if(
-													Btn(
-														symbol("Zoom"), isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-														enable(matchCnt>0), hint("Zoom screen on search results.")
-													)
-												)
-												{ workspace.zoomAt(view, workspace.getMarkerLayer_find); }
-												if(
-													Btn(
-														"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-														enable(matchCnt>0), hint("Select search results.")
-													)
-												)
-												{ workspace.selectSearchResults(workspace.getMarkerLayer_find); }
-											}
-										); 
-										
-										BtnRow(
-											{
-												if(
-													Btn(
-														"aA", hint("Case Sensitive"),
-														selected(searchOptions.caseSensitive)
-													)
-												) searchOptions.caseSensitive.toggle; 
-												if(
-													Btn(
-														"ww", hint("Whole Words"),
-														selected(searchOptions.wholeWords)
-													)
-												) searchOptions.wholeWords_toggle; 
-												if(
-													Btn(
-														"all", hint("All modules"),
-														selected(lookInAllModules)
-													)
-												) lookInAllModules.toggle; 
-												if(
-													Btn(
-														"…", hint("Advanced search options"),
-														selected(advancedSearchOptionsVisible)
-													)
-												) advancedSearchOptionsVisible.toggle; 
-											}
-										); 
-										
-										if(Btn(symbol("ChromeClose"), kcFindClose, hint("Close search box.")))
-										{ searchBoxVisible = false; searchText = ""; workspace.clearMarkerLayer_find; }
-									}
-								); 
-								
-								if(advancedSearchOptionsVisible)
+							Row(
 								{
-									Column(
+									sw; 
+									Text("Find "); 
+									.Container editContainer; 
+									
+									const searcHash = searchText.hashOf(searchOptions.hashOf([lookInAllModules].hashOf)); 
+									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+									
+									
+									if(
+										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+										|| justActivated || searchHashChanged
+									)
+									{
+										//refresh search results
+										workspace.clearMarkerLayer_find; 
+										searchStats = SearchStats.init; 
+										
+										if(searchText.startsWith(':'))
 										{
-											sw; 
-											Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").genericArg!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").genericArg!q{id})); }); 
-											Grp!Row(
-												"Syntaxes: ", {
-													sw; foreach(const a; searchStats.syntaxes.byKeyValue.array.sort!"a.value>b.value")
-													{
-														Btn(
-															i"$(a.value)× ".text, {
-																style.fontColor = syntaxFontColor(a.key); 
-																style.bkColor = syntaxBkColor(a.key); 
-																Text(a.key.text); 
-															}, ((a.key).genericArg!q{id})
-														); 
-													}
-												}
-											); 
-											Grp!Row(
-												"Words: ", {
-													sw; foreach(const a; searchStats.wholeWords.byKeyValue.array.sort!"a.value>b.value".take(30))
-													{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).genericArg!q{id})); }
-												}
-											); 
+											//goto line
+											//Todo: Ctrl+G not works inside Edit
+											//Todo: Ctrl+F not works inside Edit
+											/+
+												Todo: hint text: Enter line number. 
+												Negative line number starts from the end of the module.
+											+/
+											//Todo: ez ugorhatna regionra is.
+											
+											workspace.textSelections = []; 
+											if(auto mod = workspace.expectOneSelectedModule)
+											if(auto line = searchText[1..$].to!int.ifThrown(0))
+											{
+												workspace.jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
+												//Todo: show a highlight on that row...
+											}
+											
+										}
+										else
+										{
+											auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
+											if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
+											searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
+										}
+									}
+									//display the number of matches. Also save the location of that number on the screen.
+									const matchCnt = workspace.getMarkerLayerCount(DMDMessage.Type.find); 
+									Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
+									
+									BtnRow(
+										{
+											if(
+												Btn(
+													"🔍", isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
+													enable(matchCnt>0), hint("Zoom screen on search results.")
+												)
+											)
+											{ workspace.zoomAt(view, workspace.getMarkerLayer_find); }
+											if(
+												Btn(
+													"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
+													enable(matchCnt>0), hint("Select search results.")
+												)
+											)
+											{ workspace.selectSearchResults(workspace.getMarkerLayer_find); }
 										}
 									); 
+									
+									BtnRow(
+										{
+											if(
+												Btn(
+													"aA", hint("Case Sensitive"),
+													selected(searchOptions.caseSensitive)
+												)
+											) searchOptions.caseSensitive.toggle; 
+											if(
+												Btn(
+													"ww", hint("Whole Words"),
+													selected(searchOptions.wholeWords)
+												)
+											) searchOptions.wholeWords_toggle; 
+											if(
+												Btn(
+													"all", hint("All modules"),
+													selected(lookInAllModules)
+												)
+											) lookInAllModules.toggle; 
+											if(
+												Btn(
+													"…", hint("Advanced search options"),
+													selected(advancedSearchOptionsVisible)
+												)
+											) advancedSearchOptionsVisible.toggle; 
+										}
+									); 
+									
+									if(
+										Btn(
+											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+											kcFindClose, hint("Close panel.")
+										)
+									)
+									{ deactivate(workspace); }
 								}
-							}
-							else
+							); 
+							
+							if(advancedSearchOptionsVisible)
 							{
-								if(Btn("🔍", hint("Start searching.")))
-								workspace.searchBoxActivate; 
-								/+other emojis: 📁outline  💡code completion+/
-								//Todo: this is a @VERB. Button should get the extra info from that VERB somehow.
+								Column(
+									{
+										sw; 
+										Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").genericArg!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").genericArg!q{id})); }); 
+										Grp!Row(
+											"Syntaxes: ", {
+												sw; foreach(const a; searchStats.syntaxes.byKeyValue.array.sort!"a.value>b.value")
+												{
+													Btn(
+														i"$(a.value)× ".text, {
+															style.fontColor = syntaxFontColor(a.key); 
+															style.bkColor = syntaxBkColor(a.key); 
+															Text(a.key.text); 
+														}, ((a.key).genericArg!q{id})
+													); 
+												}
+											}
+										); 
+										Grp!Row(
+											"Words: ", {
+												sw; foreach(const a; searchStats.wholeWords.byKeyValue.array.sort!"a.value>b.value".take(30))
+												{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).genericArg!q{id})); }
+											}
+										); 
+									}
+								); 
 							}
 						}
 					); 
 				}
 				
+			} 
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(searchBoxActivate_request.chkClear)
+						{ searchBoxVisible = justActivated = true; }
+						
+						if(searchBoxVisible)
+						{ UI_searchBox(workspace, view, justActivated); }
+						
+						return searchBoxVisible; 
+					}
+				}
+			} 
+		} 
+	}version(/+$DIDE_REGION+/all)
+	{
+		@STORED Insight insight; 
+		static struct Insight
+		{
+			bool activateRequest; 
+			@STORED
+			{
+				bool visible; 
+				string searchText; 
+			} 
+			
+			void activate(string s)
+			{ activateRequest = true; searchText=s; } 
+			
+			void deactivate()
+			{ if(visible.chkClear) { searchText = ""; }} 
+			
+			
+			void UI_insightPanel(Workspace workspace, View2D view, bool justActivated)
+			{
+				with(im)
+				{
+					Column(
+						{
+							//Keyboard shortcuts
+							auto 	kcInsightType	= KeyCombo("Enter"), //only when edit is focused
+								kcInsightClose	= KeyCombo("Esc"); //always
+							
+							void sw() { outerWidth = fh*22; } 
+							
+							Row(
+								{
+									sw; Text("Insight"); .Container editContainer; 
+									
+									const searcHash = searchText.hashOf; 
+									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+									
+									
+									if(
+										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+										|| justActivated || searchHashChanged
+									)
+									{ NOTIMPL; }
+									
+									if(
+										Btn(
+											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+											kcInsightClose, hint("Close panel.")
+										)
+									)
+									{ deactivate; }
+								}
+							); 
+						}
+					); 
+				}
+				
+			} 
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_insightPanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
+			} 
+		} 
+	}version(/+$DIDE_REGION+/all)
+	{
+		@STORED Outline outline; 
+		static struct Outline
+		{
+			bool activateRequest; 
+			@STORED
+			{
+				bool visible; 
+				string searchText; 
+			} 
+			
+			void activate()
+			{ activateRequest = true; } 
+			
+			void deactivate()
+			{ if(visible.chkClear) { searchText = ""; }} 
+			
+			void UI_outlinePanel(Workspace workspace, View2D view, bool justActivated)
+			{
+				with(im)
+				{
+					Column(
+						{
+							//Keyboard shortcuts
+							auto 	kcOutlineZoom	= KeyCombo("Enter"), //only when edit is focused
+								kcOutlineClose	= KeyCombo("Esc"); //always
+							
+							void sw() { outerWidth = fh*22; } 
+							
+							Row(
+								{
+									sw; Text("Outline"); .Container editContainer; 
+									
+									const searcHash = searchText.hashOf; 
+									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+									
+									
+									if(
+										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+										|| justActivated || searchHashChanged
+									)
+									{ NOTIMPL; }
+									
+									if(
+										Btn(
+											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+											kcOutlineClose, hint("Close panel.")
+										)
+									)
+									{ deactivate; }
+								}
+							); 
+						}
+					); 
+				}
+				
+			} 
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_outlinePanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
 			} 
 		} 
 	}version(/+$DIDE_REGION Help+/all)
@@ -5659,8 +5873,8 @@ class Workspace : Container, WorkspaceInterface
 				mixin((
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Ctrl+O"},q{openModule},q{fileDialog.openMulti.each!(f => queueModule(f)); }],
-						[q{"Ctrl+Shift+O"},q{openModuleRecursive},q{fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }],
+						[q{"Alt+O"},q{openModule},q{fileDialog.openMulti.each!(f => queueModule(f)); }],
+						[q{"Alt+Shift+O"},q{openModuleRecursive},q{fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }],
 						[q{"Ctrl+R"},q{revertSelectedModules},q{
 							preserveTextSelections
 							(
@@ -5683,6 +5897,7 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
 						[],
 						[q{"Ctrl+F"},q{searchBoxActivate(bool global=false)},q{
+							insight.deactivate; outline.deactivate; /+Todo: motherfucking lame+/
 							search.activate(((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword)), global); 
 							/+Todo: Does nothing, then the search Edit is in focus.+/
 						}],
@@ -5698,6 +5913,18 @@ class Workspace : Container, WorkspaceInterface
 						}],
 						[q{"F8"},q{gotoNextError},q{NOTIMPL; }],
 						[q{"Shift+F8"},q{gotoPrevError},q{NOTIMPL; }],
+						[],
+						[q{"Ctrl+O"},q{outlineActivate},q{
+							search.deactivate(this); insight.deactivate; /+Todo: motherfucking lame+/
+							outline.activate; 
+						}],
+						[q{"Ctrl+Space"},q{insightActivate},q{
+							search.deactivate(this); outline.deactivate; /+Todo: motherfucking lame+/
+							insight.activate(
+								/+Todo: a szonak csak az elejet kene kimasolni!+/
+								((actSearchKeyword=="$DIDE_PRIMARY_SELECTION$") ?(primaryTextSelection.sourceText) :(actSearchKeyword))
+							); 
+						}],
 						[],
 						[q{""},q{feed},q{
 							enforce(frmMain.ready, "BuildSystem is working."); 

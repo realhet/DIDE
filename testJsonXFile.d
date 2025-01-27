@@ -1004,142 +1004,7 @@ class DDB
 	} 
 } 
 
-class VirtualTreeView(Item) if(is(Item==struct))
-{
-	Item root_; 
-	@property root(Item a) { if(root_.chkSet(a)) changed = now; } 
-	@property ref root() => root_; 
-	
-	struct TreeRow
-	{
-		Item* item; 
-		string prefix; 
-	} 
-	TreeRow[] rows; 
-	float maxRowWidth = 0; 
-	DateTime rowsUpdated, changed; 
-	bool showBullet=true; /+if there is no icon, a bullet mark looks nice in front of the item name+/
-	
-	void makeRows()
-	{
-		void doit(ref Item act, string prefix, bool isLast)
-		{
-			rows ~= TreeRow(&act, prefix ~ ((isLast)?('L'):('+'))); 
-			if(act.opened /+recustion+/)
-			{
-				const newPrefix = (prefix ~ ((isLast)?(' '):('I'))).text; 
-				foreach(i, ref a; act.subNodes) doit(a, newPrefix, (i+1==act.subNodes.length)); 
-			}
-		} 
-		auto _間=init間; {
-			rows = []; maxRowWidth = 0; 
-			doit(root_, "", true); 
-			rowsUpdated = now; 
-		}((0x858C8F6F833B).檢((update間(_間)))); ((0x85B78F6F833B).檢(rows.length)); 
-	} 
-	
-	this()
-	{} 
-	
-	void UI(void delegate() setup/+must set outerSize in setup! Optionally can set fontHeight+/)
-	{
-		auto _間=init間; 
-		with(im)
-		{
-			Container(
-				((identityStr(this)).genericArg!q{id}),
-				{
-					theme = "tool"; 
-					with(flags)
-					vScrollState 	= ScrollState.auto_,
-					hScrollState 	= ScrollState.auto_,
-					clipSubCells 	= true; 
-					
-					if(rowsUpdated<changed) makeRows; 
-					
-					if(setup) setup(); 
-					
-					//total size placeholder
-					const float 	fh 	= style.fontHeight/+For faster access. Many things depend on 'fh'.+/, 
-						rowHeight 	= fh, 
-						invRowHeight 	= 1/rowHeight; 
-					Container({ outerPos = vec2(maxRowWidth, rows.length*rowHeight); outerSize = vec2(0); }); 
-					
-					flags.saveVisibleBounds = true; 
-					if(const visibleBounds = imstVisibleBounds(actId))
-					{
-						{
-							foreach(
-								i; 	(ifloor(visibleBounds.top    * invRowHeight    )).max(0) ..
-									(iceil(visibleBounds.bottom * invRowHeight + 1)).min(rows.length.to!int)
-							)
-							{
-								auto r = &rows[i]; 
-								Row(
-									((identityStr(r.item)).genericArg!q{id}),
-									{
-										flags.wordWrap = false; outerPos = vec2(0, i*rowHeight); outerHeight = fh; 
-										
-										version(/+$DIDE_REGION Tree graphics+/all)
-										{
-											Row(
-												{
-													outerSize = vec2(r.prefix.length, 1)*fh; 
-													{
-														auto dr = new Drawing; 
-														dr.color = clGray; dr.lineWidth = 1; 
-														float x = fh*.5f; 
-														foreach(ch; r.prefix.byChar)
-														{
-															if(ch.among('+', 'I')) dr.vLine(x, 0, fh); 
-															if(ch.among('+', 'L')) dr.circle(x+.5*fh, 0, fh*.5f, -π/2, 0); 
-															x += fh; 
-														}
-														addOverlayDrawing(dr); 
-													}
-												}
-											); 
-										}
-										
-										version(/+$DIDE_REGION Tree Open/Close Button+/all)
-										{
-											if(r.item.canOpen)
-											{
-												if(
-													Btn(
-														{
-															margin = Margin.init; outerSize = vec2(fh); 
-															Text(((r.item.opened)?("▼"):("▷"))); 
-														}
-													)
-												) {
-													r.item.toggle; 
-													this.changed = now; 
-												}
-											}
-											else
-											{ if(showBullet) Row({ outerSize = vec2(fh); flags.hAlign = HAlign.center; Text("•"); }); }
-										}
-										
-										r.item.UI; //the actual and responsive UI of the item
-									}
-								); 
-							}
-						}
-					}
-					
-					//Arrange the visible rows
-					auto rowCtrls() => actContainer.subCells.drop(1).map!((a)=>((cast(het.ui.Row)(a)))); 
-					maxRowWidth = 0; 
-					foreach(r; rowCtrls) { r.needMeasure; r.measure; maxRowWidth.maximize(r.outerWidth); }
-					
-					//foreach(r; rowCtrls) { r.outerWidth = maxRowWidth; }
-				}
-			); 
-		}
-		((0x91778F6F833B).檢((update間(_間)))); 
-	} 
-} 
+
 
 struct DirNode
 {
@@ -1148,6 +1013,8 @@ struct DirNode
 	
 	bool opened; 
 	DirNode[] subNodes; 
+	
+	__gshared string rootPaths, pattern="*"; 
 	
 	this(File f)
 	{ _node = f; } 	 File asFile()
@@ -1183,12 +1050,18 @@ struct DirNode
 	DirNode[] collectSubNodes()
 	{
 		return _node.match!(
-			((Path p)=>(
-				subNodes = chain(
-					p.paths	.map!DirNode, 
-					p.files	.map!DirNode
-				).array
-			)), ((File f)=>(null))
+			((Path p){
+				if(p)
+				{
+					subNodes = chain(
+						p.paths	.map!DirNode, 
+						p.files(pattern)	.map!DirNode
+					).array; 
+				}
+				else
+				{ subNodes = rootPaths.split(';').map!strip.array.sort.map!Path.map!DirNode.array; }
+				return subNodes; 
+			}), ((File f)=>(null))
 		); 
 	} 
 	
@@ -1398,8 +1271,11 @@ class MainForm : GLWindow
 						dirTreeView = new typeof(dirTreeView); 
 						with(dirTreeView)
 						{
-							root = DirNode(Path(`c:\windows`)); 
-							showBullet = false; 
+							showBullet = false; showRoot = false; 
+							DirNode.rootPaths = `c:\d;c:\d\libs;c:\d\projects;c:\d\ldc2\import`; 
+							DirNode.pattern = `*.d;*.di;*.glsl;*.comp`; 
+							root = DirNode(Path.init); 
+							root.open; 
 						}
 					}
 					dirTreeView.UI({ outerSize = vec2(300, clientHeight - 100/+this is lame...+/); }); 
