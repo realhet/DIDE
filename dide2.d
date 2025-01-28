@@ -238,6 +238,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		override void onDestroy()
 		{
+			((0x22D235B2D627).檢(this.workspace.outline.rootPaths)); 
+			((0x231135B2D627).檢(this.workspace.outline.toJson)); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			workspace.destroy; 
@@ -4993,6 +4995,290 @@ class Workspace : Container, WorkspaceInterface
 		} 
 	}version(/+$DIDE_REGION+/all)
 	{
+		@STORED Outline outline; 
+		static struct Outline
+		{
+			bool activateRequest; 
+			@STORED
+			{
+				bool visible, setupVisible; 
+				string searchText; 
+				string extensions = "d di glsl comp"; 
+				
+				@property string rootPaths() const => (cast()(this)).treeView.root.subNodes.filter!((a)=>(a.isPath)).map!((a)=>(a.asPath.fullPath)).join(';'); 
+				@property rootPaths(string s) { foreach(p; s.splitter(';').map!Path) addRootPath(p); } 
+			} 
+			
+			version(/+$DIDE_REGION Manage treeView instance+/all)
+			{
+				alias TreeView = VirtualTreeView!DirNode; 
+				private TreeView _treeView; 
+				auto treeView()
+				{
+					if(!_treeView)
+					{
+						_treeView = new TreeView; 
+						with(_treeView)
+						{
+							showBullet = false; showRoot = false; 
+							root = DirNode(Path.init); root.open; 
+						}
+					}
+					return _treeView; 
+				} 
+				
+				auto indexOfRootPath(Path p)
+				=> treeView.root.subNodes.map!((a)=>(a.asPath)).countUntil(p); 
+				
+				void addRootPath(Path p)
+				{
+					if(p && p.exists)
+					if(indexOfRootPath(p)<0)
+					with(treeView.root)
+					{
+						subNodes ~= DirNode(p); 
+						subNodes = subNodes.sort!((a, b)=>(a.asPath < b.asPath)).array; 
+						treeView.changed = now; 
+					}
+				} 
+				
+				void removeRootPath(Path p)
+				{
+					const idx = indexOfRootPath(p); 
+					if(idx>=0)
+					with(treeView.root)
+					{
+						subNodes = subNodes.remove(idx); 
+						treeView.changed = now; 
+					}
+				} 
+				
+				string lastExtensions; 
+				void updateTreeView()
+				{ if(lastExtensions.chkSet(extensions)) DirNode.pattern = extensions.splitter(' ').map!"`*.`~a".join(';'); } 
+			}
+			
+			void activate()
+			{ activateRequest = true; } 
+			
+			void deactivate()
+			{ if(visible.chkClear) { searchText = ""; }} 
+			
+			DirNode* focusedNode; 
+			
+			void UI_outlinePanel(Workspace workspace, View2D view, bool justActivated)
+			{
+				with(im)
+				{
+					Column(
+						{
+							//Keyboard shortcuts
+							auto 	kcOutlineZoom	= KeyCombo("Enter"), //only when edit is focused
+								kcOutlineClose	= KeyCombo("Esc"); //always
+							
+							void sw() { outerWidth = fh*22; } 
+							
+							Row(
+								{
+									sw; Text("Outline"); .Container editContainer; 
+									
+									const searcHash = searchText.hashOf; 
+									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+									
+									
+									if(
+										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+										|| justActivated || searchHashChanged
+									)
+									{ NOTIMPL; }
+									
+									BtnRow({ if(Btn("⚙", hint("Setup"), selected(setupVisible))) setupVisible.toggle; }); 
+									
+									if(
+										Btn(
+											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+											kcOutlineClose, hint("Close panel.")
+										)
+									)
+									{ deactivate; }
+								}
+							); 
+							
+							updateTreeView; 
+							
+							const treeIsEmpty = treeView.root.subNodes.empty; 
+							
+							if(treeIsEmpty) setupVisible = true; 
+							
+							if(setupVisible)
+							{
+								Row(
+									{
+										sw; Text("Exts: "); 
+										Edit(extensions, { flex = 1; }); 
+									}
+								); 
+								Row(
+									{
+										sw; Text("Paths: "); 
+										if(Btn("Add", selected(treeIsEmpty ? blink>.5f : false)))
+										{
+											static Path lastPath; 
+											auto p = browseForFolder(frmMain.hwnd, "Add path to Outline.", lastPath); 
+											if(p) { lastPath = p; addRootPath(p); }
+										}
+										
+										const canRemove = focusedNode && focusedNode.isPath && indexOfRootPath(focusedNode.asPath)>=0; 
+										if(Btn("Remove", enable(canRemove)))
+										{
+											removeRootPath(focusedNode.asPath); 
+											focusedNode = null; 
+										}
+									}
+								); 
+							}
+							
+							treeView.UI(
+								{
+									sw; outerHeight = frmMain.viewGUI.screenBounds_anim.height-128; 
+									/+Todo: fucking lame. Fix aligning engine.+/
+									/+Bug: When lots of items in the tree, moving the window by mouse become fucking slow. <1FPS 🤬+/
+								},
+								((DirNode* n){
+									if(
+										WhiteBtn(
+											{
+												n.UI; border.width = 0; 
+												padding = "0 4 0 0"; margin = "0"; 
+												if(auto img = (cast(.Img)(actContainer.subCells.frontOrNull)))
+												{ img.flags.clickable = false; }
+											}, 
+											((n.identityStr).genericArg!q{id}), selected(focusedNode==n)
+										)
+									)
+									{ focusedNode=n; }
+								})
+							); 
+						}
+					); 
+				}
+				
+			} 
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_outlinePanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
+			} 
+			static struct DirNode
+			{
+				import std.sumtype; 
+				SumType!(File, Path) _node; 
+				
+				bool opened; 
+				DirNode[] subNodes; 
+				
+				__gshared string rootPaths, pattern="*"; /+Todo: It's lame, but there is only a single workspace.+/
+				
+				this(File f)
+				{ _node = f; } 	 File asFile()
+				=> _node.match!(
+					((File f)=>(f)), 
+					((Path)=>(File.init))
+				); 	 	bool isFile()
+				=> _node.match!(
+					((File f)=>(true)), 
+					((Path)=>(false))
+				); 
+				this(Path p)
+				{ _node = p; } 	 Path asPath()
+				=> _node.match!(
+					((Path p)=>(p)), 
+					((File)=>(Path.init))
+				); 	 bool isPath()
+				=> _node.match!(
+					((Path p)=>(true)), 
+					((File)=>(false))
+				); 
+				
+				@property string name() const
+				=> _node.match!(
+					((in File f)=>(f.name)), 
+					((in Path p)=>(p.name))
+				); 	 bool opEquals(A)(A other) const
+				=> _node.match!(
+					((in File f)=>(other.isFile && f==other.asFile)), 
+					((in Path p)=>(other.isPath && p==other.asPath))
+				); 
+				
+				DirNode[] collectSubNodes()
+				{
+					return _node.match!
+					(
+						((Path p){
+							if(p)
+							{
+								subNodes = chain(
+									p.paths.filter!((a)=>(
+										!a.name.startsWith('.')
+										/+exclude ".git" and alike+/
+									))	.map!DirNode, 
+									p.files(pattern)	.map!DirNode
+								).array; 
+							}
+							else
+							{/+Do nothing. root paths are managed from the outside.+/}
+							return subNodes; 
+						}), 
+						((File f)=>(null))
+					); 
+				} 
+				
+				@property canOpen()
+				=> isPath; 
+				
+				void open()
+				{
+					if(canOpen && opened.chkSet)
+					subNodes = collectSubNodes; 
+				} 	 void close()
+				{
+					opened = false; 
+					subNodes = []; 
+				} 	 void toggle()
+				{
+					if(opened)	close; 
+					else	open; 
+				} 
+				
+				void UI()
+				{
+					with(im)
+					{
+						void Img(string s) { Spacer(4); im.Img(`icon:\`~s~`&small`); Spacer(4); } 
+						_node.match!
+						(
+							((in File  f){ Img('.'~f.ext); Text(f.name); }), 
+							((in Path p){ Img(((p.fullPath.isWild("?:")) ?(p.fullPath):(`folder`))~'\\'); Text(bold(p.name)); })
+						); 
+					}
+				} 
+			} 
+		} 
+	}version(/+$DIDE_REGION+/all)
+	{
 		@STORED Insight insight; 
 		static struct Insight
 		{
@@ -5063,83 +5349,6 @@ class Workspace : Container, WorkspaceInterface
 						
 						if(visible)
 						{ UI_insightPanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
-				}
-			} 
-		} 
-	}version(/+$DIDE_REGION+/all)
-	{
-		@STORED Outline outline; 
-		static struct Outline
-		{
-			bool activateRequest; 
-			@STORED
-			{
-				bool visible; 
-				string searchText; 
-			} 
-			
-			void activate()
-			{ activateRequest = true; } 
-			
-			void deactivate()
-			{ if(visible.chkClear) { searchText = ""; }} 
-			
-			void UI_outlinePanel(Workspace workspace, View2D view, bool justActivated)
-			{
-				with(im)
-				{
-					Column(
-						{
-							//Keyboard shortcuts
-							auto 	kcOutlineZoom	= KeyCombo("Enter"), //only when edit is focused
-								kcOutlineClose	= KeyCombo("Esc"); //always
-							
-							void sw() { outerWidth = fh*22; } 
-							
-							Row(
-								{
-									sw; Text("Outline"); .Container editContainer; 
-									
-									const searcHash = searchText.hashOf; 
-									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
-									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
-									
-									
-									if(
-										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
-										|| justActivated || searchHashChanged
-									)
-									{ NOTIMPL; }
-									
-									if(
-										Btn(
-											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
-											kcOutlineClose, hint("Close panel.")
-										)
-									)
-									{ deactivate; }
-								}
-							); 
-						}
-					); 
-				}
-				
-			} 
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_outlinePanel(workspace, view, justActivated); }
 						
 						return visible; 
 					}
