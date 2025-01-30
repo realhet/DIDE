@@ -4,94 +4,88 @@
 //@debug
 //@release
 
-version(/+$DIDE_REGION main+/all)
+version(/+$DIDE_REGION+/all)
 {
-	version(/+$DIDE_REGION Todo+/all)
-	{
-		//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
-		//Todo: Ability to change the whitespace after a	preposition: space, tab, newline
-		//Todo: toggle space/tab/newline after prepositions.
-		//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.  ldc2 -ftime-trace,  timetrace2txt, -> web perfetto.ui
-		//Todo: automatic spaces around operators and ligatures.
-		
-		//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
-		
-		//Todo: wholeWords search (eleje/vege kulon)
-		//Todo: filter search results per file and per syntax (comment, string, code, etc)
-		
-		//Todo: het.math.cmp integration with std
-		
-		//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
-		
-		/+
-			Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen 
-			lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
-		+/
-		//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
-		
-		//Todo: save/restore buildsystem cache on start/exit
-		
-		//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
-		//Todo: kinetic scroll
-		
-		//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
-		
-		//Todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
-		
-		//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
-		//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
-		
-		//Todo: markdown a commentekben.
-		
-		//Todo: handle newline before and after else.
-		//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
-		//Todo: tab removal from the left side of multiline comments
-		
-		//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
-		
-		/+
-			Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
-			Verify it still works in between adjacent preposition.
-		+/
-		
-		//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
-		/+
-			Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
-				const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
-		+/
-		
-		//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
-		
-		//Todo: Vízszintes elválasztó vonal (0x000C szabad): FormFeed. (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
-		/+
-			Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. 
-			Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
-		+/
-		
-		//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
-		
-		//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
-		//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
-		//Bug: multiselect.copy -> items are in RANDOM order
-		
-		//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
-		
-		//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
-		/+Todo: Nem megy az Alt+. emoji beszuras, mert elveszti a fokiszt es akkor eltunteti a selections.+/
-		/+
-			Todo: ha kijelolok tobb szoveget, akkor a masolas utan beillesztve random sorrendben fogja azokat beszurni. 
-			Kibaszottul idegesítô! 
-		+/
-		/+Todo: Implement predSwitch as a 2 column grid!+/
-		/+
-			Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
-			After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
-		+/
-	}
+	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
+	//Todo: Ability to change the whitespace after a	preposition: space, tab, newline
+	//Todo: toggle space/tab/newline after prepositions.
+	//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.  ldc2 -ftime-trace,  timetrace2txt, -> web perfetto.ui
+	//Todo: automatic spaces around operators and ligatures.
 	
+	//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
+	
+	//Todo: wholeWords search (eleje/vege kulon)
+	//Todo: filter search results per file and per syntax (comment, string, code, etc)
+	
+	//Todo: het.math.cmp integration with std
+	
+	//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
+	
+	/+
+		Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen 
+		lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
+	+/
+	//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
+	
+	//Todo: save/restore buildsystem cache on start/exit
+	
+	//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
+	//Todo: kinetic scroll
+	
+	//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
+	
+	//Todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
+	
+	//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
+	//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
+	
+	//Todo: markdown a commentekben.
+	
+	//Todo: handle newline before and after else.
+	//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
+	//Todo: tab removal from the left side of multiline comments
+	
+	//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
+	
+	/+
+		Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
+		Verify it still works in between adjacent preposition.
+	+/
+	
+	//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
+	/+
+		Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
+			const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
+	+/
+	
+	//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
+	
+	//Todo: Vízszintes elválasztó vonal (0x000C szabad): FormFeed. (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
+	/+
+		Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. 
+		Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
+	+/
+	
+	//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
+	
+	//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+	//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+	//Bug: multiselect.copy -> items are in RANDOM order
+	
+	//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
+	
+	//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
+	/+Todo: Nem megy az Alt+. emoji beszuras, mert elveszti a fokiszt es akkor eltunteti a selections.+/
+	/+
+		Todo: ha kijelolok tobb szoveget, akkor a masolas utan beillesztve random sorrendben fogja azokat beszurni. 
+		Kibaszottul idegesítô! 
+	+/
+	/+Todo: Implement predSwitch as a 2 column grid!+/
+	/+
+		Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
+		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
+	+/
 	
-	//globals ////////////////////////////////////////
-	
 	import het, het.parser, het.ui; 
 	import buildsys, core.thread, std.concurrency; 
 	
@@ -238,8 +232,8 @@ version(/+$DIDE_REGION main+/all)
 		
 		override void onDestroy()
 		{
-			((0x22D235B2D627).檢(this.workspace.outline.rootPaths)); 
-			((0x231135B2D627).檢(this.workspace.outline.toJson)); 
+			((0x221735B2D627).檢(this.workspace.outline.rootPaths)); 
+			((0x225635B2D627).檢(this.workspace.outline.toJson)); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			workspace.destroy; 
@@ -963,49 +957,6 @@ version(/+$DIDE_REGION main+/all)
 				}
 			); 
 			
-			with(im)
-			{
-				bool anyVisible; 
-				Panel(
-					PanelPosition.topRight,
-					{
-						margin = "0"; padding = "0"; 
-						bool[] vis = [
-							workspace.search.UI(workspace, view),
-							workspace.insight.UI(workspace, view),
-							workspace.outline.UI(workspace, view)
-						]; /+Todo: refactor this terrible menu+/
-						anyVisible = vis.any; 
-						
-						if(!anyVisible)
-						{
-							if(rightMenuOpened)
-							{
-								Row(
-									{
-										BtnRow(
-											{
-												if(Btn("📁", hint("Outline"))) { workspace.outlineActivate; }
-												if(Btn("💡", hint("Insight"))) { workspace.insightActivate; }
-												if(Btn("🔍", hint("Search"))) workspace.searchBoxActivate; 
-											}
-										); 
-										if(Btn(bold(symbol("ChevronRight")), { innerWidth = fh; })) rightMenuOpened = false; 
-									}
-								); 
-							}
-							else
-							{ if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) rightMenuOpened = true; }
-						}
-					}
-				); 
-				if(!rightMenuOpened && !anyVisible)
-				{
-					const vec2 shiftOut = (magnitude(max((viewGUI.mousePos - lastContainer.outerBounds.bottomLeft) * vec2(-1, 1), 0) * .02f))^^2 * vec2(1, -1); 
-					lastContainer.outerPos += shiftOut; 
-				}
-			}
-			
 			if(showTextSelectionDebugInfo)
 			with(im)
 			with(workspace)
@@ -1323,6 +1274,48 @@ version(/+$DIDE_REGION main+/all)
 				}
 			); 
 			
+			with(im)
+			{
+				bool anyVisible; 
+				Panel(
+					workspace.outline.visible ? PanelPosition.rightClient : PanelPosition.topRight,
+					{
+						margin = "0"; padding = "0"; 
+						bool[] vis = [
+							workspace.search.UI(workspace, view),
+							workspace.insight.UI(workspace, view),
+							workspace.outline.UI(workspace, view)
+						]; /+Todo: refactor this terrible menu+/
+						anyVisible = vis.any; 
+						
+						if(!anyVisible)
+						{
+							if(rightMenuOpened)
+							{
+								Row(
+									{
+										BtnRow(
+											{
+												if(Btn("📁", hint("Outline"))) { workspace.outlineActivate; }
+												if(Btn("💡", hint("Insight"))) { workspace.insightActivate; }
+												if(Btn("🔍", hint("Search"))) workspace.searchBoxActivate; 
+											}
+										); 
+										if(Btn(bold(symbol("ChevronRight")), { innerWidth = fh; })) rightMenuOpened = false; 
+									}
+								); 
+							}
+							else
+							{ if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) rightMenuOpened = true; }
+						}
+					}
+				); 
+				if(!rightMenuOpened && !anyVisible)
+				{
+					const vec2 shiftOut = (magnitude(max((viewGUI.mousePos - lastContainer.outerBounds.bottomLeft) * vec2(-1, 1), 0) * .02f))^^2 * vec2(1, -1); 
+					lastContainer.outerPos += shiftOut; 
+				}
+			}
 			
 			im.UI_FlashMessages; 
 			
@@ -1640,7 +1633,7 @@ class Workspace : Container, WorkspaceInterface
 				
 				foreach(m; modules)
 				if(sameText(m.file.fullName, file.fullName))
-				{ WARN("slow find", file); return m; }
+				{ WARN("slow find", "\n"~file.fullName, "\n"~m.file.fullName); return m; }
 				//Opt: hash table with fileName.lc...
 				
 				return null; 
@@ -5007,14 +5000,20 @@ class Workspace : Container, WorkspaceInterface
 				string searchText; 
 				string extensions = "d di glsl comp"; 
 				
-				@property string rootPaths() const => (cast()(this)).treeView.root.subNodes.filter!((a)=>(a.isPath)).map!((a)=>(a.asPath.fullPath)).join(';'); 
-				@property rootPaths(string s) { foreach(p; s.splitter(';').map!Path) addRootPath(p); } 
+				
+				@property string rootPaths() const
+				=> (cast()(this)).treeView.root.subNodes.filter!((a)=>(a.isPath)).map!((a)=>(a.asPath.fullPath)).join(';'); 
+				@property rootPaths(string s)
+				{ foreach(p; s.splitter(';').map!Path) addRootPath(p); } 
 			} 
 			
 			version(/+$DIDE_REGION Manage treeView instance+/all)
 			{
 				alias TreeView = VirtualTreeView!DirNode; 
 				private TreeView _treeView; 
+				
+				
+				
 				auto treeView()
 				{
 					if(!_treeView)
@@ -5035,12 +5034,15 @@ class Workspace : Container, WorkspaceInterface
 				void addRootPath(Path p)
 				{
 					if(p && p.exists)
-					if(indexOfRootPath(p)<0)
-					with(treeView.root)
 					{
-						subNodes ~= DirNode(p); 
-						subNodes = subNodes.sort!((a, b)=>(a.asPath < b.asPath)).array; 
-						treeView.changed = now; 
+						p = p.actualPath; 
+						if(indexOfRootPath(p)<0)
+						with(treeView.root)
+						{
+							subNodes ~= DirNode(p); 
+							subNodes = subNodes.sort!((a, b)=>(a.asPath < b.asPath)).array; 
+							treeView.changed = now; 
+						}
 					}
 				} 
 				
@@ -5057,7 +5059,10 @@ class Workspace : Container, WorkspaceInterface
 				
 				string lastExtensions; 
 				void updateTreeView()
-				{ if(lastExtensions.chkSet(extensions)) DirNode.pattern = extensions.splitter(' ').map!"`*.`~a".join(';'); } 
+				{
+					if(lastExtensions.chkSet(extensions))
+					DirNode.pattern = extensions.splitter(' ').map!"`*.`~a".join(';'); 
+				} 
 			}
 			
 			void activate()
@@ -5067,6 +5072,24 @@ class Workspace : Container, WorkspaceInterface
 			{ if(visible.chkClear) { searchText = ""; }} 
 			
 			DirNode* focusedNode; 
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_outlinePanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
+			} 
+			
 			
 			static struct DirNode
 			{
@@ -5166,13 +5189,14 @@ class Workspace : Container, WorkspaceInterface
 			{
 				with(im)
 				{
-					Column(
+					Column
+					(
 						{
 							//Keyboard shortcuts
 							auto 	kcOutlineZoom	= KeyCombo("Enter"), //only when edit is focused
 								kcOutlineClose	= KeyCombo("Esc"); //always
 							
-							void sw() { outerWidth = fh*22; } 
+							void sw() { outerWidth = fh*16; } 
 							
 							Row(
 								{
@@ -5189,7 +5213,12 @@ class Workspace : Container, WorkspaceInterface
 									)
 									{ NOTIMPL; }
 									
-									BtnRow({ if(Btn("⚙", hint("Setup"), selected(setupVisible))) setupVisible.toggle; }); 
+									BtnRow(
+										{
+											if(Btn("⚙", hint("Setup"), selected(setupVisible)))
+											setupVisible.toggle; 
+										}
+									); 
 									
 									if(
 										Btn(
@@ -5225,7 +5254,8 @@ class Workspace : Container, WorkspaceInterface
 											if(p) { lastPath = p; addRootPath(p); }
 										}
 										
-										const canRemove = focusedNode && focusedNode.isPath && indexOfRootPath(focusedNode.asPath)>=0; 
+										const canRemove = 	focusedNode && focusedNode.isPath && 
+											indexOfRootPath(focusedNode.asPath)>=0; 
 										if(Btn("Remove", enable(canRemove)))
 										{
 											removeRootPath(focusedNode.asPath); 
@@ -5235,76 +5265,104 @@ class Workspace : Container, WorkspaceInterface
 								); 
 							}
 							
-							treeView.UI(
+							
+							actContainer.measure; 
+							const treeHeight = frmMain.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
+							
+							treeView.UI
+							(
 								{
-									sw; outerHeight = frmMain.viewGUI.screenBounds_anim.height-128; 
-									/+Todo: fucking lame. Fix aligning engine.+/
-									/+Bug: When lots of items in the tree, moving the window by mouse become fucking slow. <1FPS 🤬+/
+									sw; outerHeight = treeHeight; 
+									/+Bug: When lots of items in the tree, moving the window by mouse become fucking slow. <1FPS 🤬 -> bitmaps()+/
 								},
-								((DirNode* n){
+								((DirNode* n) {
 									const 	isFile = n.isFile, 
 										isPath = n.isPath,
 									fullName = 	isFile 	? n.asFile.fullName : 
 										isPath 	? n.asPath.fullPath : ""; 
+									auto ws = frmMain.workspace; /+Todo: bad dependency: frmMain+/
 									Module mod; if(isFile && fullName!="")
-									mod = frmMain.workspace.findModule(fullName.File/+Opt: this is a slow query+/); 
+									mod = ws.findModule(fullName.File/+Opt: this is a slow query+/); 
+									const canSelectModules = ws.textSelections.empty /+Only synch module selection when no text selected.+/; 
 									
 									if(
-										WhiteBtn(
+										WhiteBtn
+										(
 											{
 												border.width = 0; padding = "0 4 0 0"; margin = "0"; 
-												
+												if(mod && mod.flags.selected) style.bkColor = bkColor = mix(bkColor, clAccent, .25f); 
 												n.UI(
 													{
 														if(isFile)
 														{
 															float spc = 1; 
 															if(mod)	{ Led(true, ((mod.changed)?(clYellow):(clLime))); spc -= .7; }
-															Text(' '); 
-															actContainer.subCells.back.outerWidth = fh*spc; 
+															
+															/+Todo: not works -> Spacer(spc); +/
+															Text(' '); actContainer.subCells.back.outerWidth = fh*spc; 
 														}
 													}
 												); 
-												
 												if(auto img = (cast(.Img)(actContainer.subCells.frontOrNull)))
-												{ img.flags.clickable = false; }
+												{
+													img.flags.clickable = false; 
+													img.bkColor = bkColor; 
+												}
 											}, 
 											((n.identityStr).genericArg!q{id}), selected(focusedNode==n)
 										)
 									)
 									{
-										focusedNode=n; 
-										auto ws = frmMain.workspace; /+Todo: bad dependency: frmMain+/
-										
-										void jumpTo(string prefix, bool doZoom=false)
+										version(/+$DIDE_REGION onClick+/all)
 										{
-											const p = prefix.lc; 
-											if(
-												const bnd = 	ws.modules
-													.filter!((m)=>(m.file.fullName.map!toLower.startsWith(p))).cache
-													.map!((m)=>(m.outerBounds)).fold!"a|b"(bounds2.init)
-											)
+											focusedNode=n; 
+											
+											auto matchingModules(string prefix)
 											{
-												addInspectorParticle(bnd, clWhite, bounds2(bnd.center, ((1).genericArg!q{radius})), .125f); 
-												
-												with(frmMain.view)
+												auto p = prefix.lc; 
+												return ws.modules.filter!((m)=>(m.file.fullName.map!toLower.startsWith(p))).cache; 
+											} 
+											
+											auto calcBounds(A)(A a)
+											=> a.map!((m)=>(m.outerBounds)).fold!"a|b"(bounds2.init); 
+											
+											void jumpTo(string prefix, bool doZoom=false)
+											{
+												if(const bnd = calcBounds(matchingModules(prefix)))
 												{
-													if(doZoom)	{ scrollZoomIn(bnd); }
-													else	{ scrollZoom(bnd); }
+													addInspectorParticle(bnd, clWhite, bounds2(bnd.center, ((1).genericArg!q{radius})), .125f); 
+													
+													with(frmMain.view)
+													{
+														if(doZoom)	{ scrollZoomIn(bnd); }
+														else	{ scrollZoom(bnd); }
+													}
+												}
+											} 
+											
+											version(/+$DIDE_REGION Detect doubleClick+/all)
+											{ static string lastFullName; static DateTime lastClickTime; /+Todo: nasty static+/}
+											
+											
+											if(fullName!="")
+											{
+												const isDoubleClick = lastFullName==fullName && now-lastClickTime < 0.4*second; 
+												lastClickTime = now; 	lastFullName = fullName; 
+												
+												if(isFile && isDoubleClick && !mod)
+												{
+													const f = fullName.File; 
+													ws.loadModule(f); 
+													if(inputs.Alt.down)
+													ws.queueModuleRecursive(f); 
+												}else { jumpTo(fullName, isDoubleClick); }
+												
+												if(canSelectModules)
+												{
+													foreach(m; ws.modules) m.flags.selected = false; 
+													foreach(m; matchingModules(fullName)) m.flags.selected = true; 
 												}
 											}
-										} 
-										
-										version(/+$DIDE_REGION Detect doubleClick+/all)
-										{ static string lastFullName; static DateTime lastClickTime; /+Todo: nasty static+/}
-										
-										
-										if(fullName!="")
-										{
-											const isDoubleClick = lastFullName==fullName && now-lastClickTime < 0.4*second; 
-											lastClickTime = now; 	lastFullName = fullName; 
-											
-											jumpTo(fullName, isDoubleClick); 
 										}
 									}
 								})
@@ -5313,23 +5371,6 @@ class Workspace : Container, WorkspaceInterface
 					); 
 				}
 				
-			} 
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_outlinePanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
-				}
 			} 
 		} 
 	}version(/+$DIDE_REGION+/all)
@@ -5852,7 +5893,8 @@ class Workspace : Container, WorkspaceInterface
 			}
 			else im.flashWarning("Nothing to select."); 
 		} 
-	}version(/+$DIDE_REGION Keyboard    +/all)
+	}
+	version(/+$DIDE_REGION Keyboard    +/all)
 	{
 		@property SEL() => !textSelections.empty; @property NOSEL() => !SEL; 
 		version(/+$DIDE_REGION Scroll and zoom view+/all)
@@ -6326,8 +6368,7 @@ class Workspace : Container, WorkspaceInterface
 				) .GEN!q{GEN_verbs}); 
 			}
 		}
-	}
-	version(/+$DIDE_REGION UI      +/all)
+	}version(/+$DIDE_REGION UI      +/all)
 	{
 		void UI_ModuleBtns()
 		{
@@ -7164,7 +7205,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x356B135B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x35B5535B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
