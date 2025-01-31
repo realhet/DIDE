@@ -89,7 +89,7 @@ version(/+$DIDE_REGION+/all)
 	import het, het.parser, het.ui; 
 	import buildsys, core.thread, std.concurrency; 
 	
-	import didemodule; 
+	import didemodule, dideinsight; 
 	
 	mixin SmartClassGenerator; 
 	
@@ -232,8 +232,8 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onDestroy()
 		{
-			((0x221735B2D627).檢(this.workspace.outline.rootPaths)); 
-			((0x225635B2D627).檢(this.workspace.outline.toJson)); 
+			((0x222435B2D627).檢(this.workspace.outline.rootPaths)); 
+			((0x226335B2D627).檢(this.workspace.outline.toJson)); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			workspace.destroy; 
@@ -4602,6 +4602,7 @@ class Workspace : Container, WorkspaceInterface
 				
 				updateLastKnownModulePositions; 
 				
+				insight.updateInsightFiber; 
 				search.updateSearchFiber; 
 				foreach(m; modules) m.updateSearchResults; 
 				updateMessageConnectionArrows; 
@@ -4750,11 +4751,11 @@ class Workspace : Container, WorkspaceInterface
 				{
 					if(searchFiber.state==Fiber.State.TERM) searchFiber.free; 
 					else {
-						searchFiber.timeLimit = now + 5*milli(second); 
+						searchFiber.timeLimit = now + 10*milli(second); 
 						searchFiber.call; 
 					}
 				}
-			} 
+			} 
 			
 			static struct SearchStats
 			{
@@ -4870,6 +4871,7 @@ class Workspace : Container, WorkspaceInterface
 										{
 											auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
 											if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
+											//Todo: stop the old fiber
 											searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
 										}
 									}
@@ -5381,19 +5383,162 @@ class Workspace : Container, WorkspaceInterface
 			bool activateRequest; 
 			@STORED
 			{
-				bool visible; 
+				bool visible, setupVisible; 
 				string searchText; 
 			} 
 			
 			void activate(string s)
-			{ activateRequest = true; searchText=s; } 
+			{
+				initialize; 
+				activateRequest = true; searchText=s; 
+			} 
 			
 			void deactivate()
 			{ if(visible.chkClear) { searchText = ""; }} 
 			
 			
+			DDB ddb; 
+			VirtualTreeView!(DDB.PathNode) treeView, resultTreeView; 
+			
+			void initialize()
+			{
+				if(!ddb) {
+					ddb = new DDB(
+						Path(`z:\temp2`),
+						Path(`c:\d\ldc2\import`),
+						Path(`c:\d\libs`),
+						File(appPath, `$stdlib_cache.dat`)
+					); 
+					treeView = new typeof(treeView); 
+					resultTreeView = new typeof(resultTreeView); 
+				}
+			} 
+			
+			import core.thread.fiber; 
+			static class InsightFiber : Fiber
+			{
+				/+Todo: this fiber searcher looks common -> SearcFiber too.  Refactor it.+/
+				mixin SmartClass!
+				(
+					q{
+						DDB ddb, 
+						string searchText,
+						Object resultTreeView
+					}, 
+					q{
+						super(
+							&run, 16<<10/+measured stack: only 3840 Bytes+/
+							/+
+								Todo: Display a warning or error when the stack is not enough
+								Manage the fiber stack safely! 
+								It can't run out with access violation, that's totally unreliable.
+							+/
+						); 
+					}
+				); 
+				
+				DateTime timeLimit; 
+				
+				private void run()
+				{
+					auto res = (cast(
+						VirtualTreeView!(DDB.PathNode)
+						/+Todo: SmartClass can't handle this crap.+/
+					)(resultTreeView)).enforce; 
+					if(searchText!="")
+					{ ddb.search_yield(res, searchText, timeLimit); }
+					else
+					{
+						res._root = DDB.PathNode(ddb.root); 
+						res.changed = now; 
+					}
+				} 
+			} 
+			InsightFiber insightFiber; 
+			
+			void updateInsightFiber()
+			{
+				if(insightFiber && !visible) { insightFiber.free; }
+				
+				if(insightFiber)
+				{
+					if(insightFiber.state==Fiber.State.TERM) insightFiber.free; 
+					else {
+						insightFiber.timeLimit = now + 10*milli(second); 
+						insightFiber.call; 
+					}
+				}
+			} 
+			
+			
+			bool UI(Workspace workspace, View2D view)
+			{
+				initialize; 
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_insightPanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
+			} 
+			
+			
+			version(/+$DIDE_REGION+/all) {
+				static immutable hetlibFiles = 
+				[
+					`c:\d\libs\het\package.d`,
+					`c:\d\libs\het\quantities.d`,
+					`c:\d\libs\het\math.d`,
+					`c:\d\libs\het\inputs.d`,
+					`c:\d\libs\het\parser.d`,
+					`c:\d\libs\het\ui.d`,
+					`c:\d\libs\het\opengl.d`,
+					`c:\d\libs\het\win.d`,
+					`c:\d\libs\het\algorithm.d`,
+					`c:\d\libs\het\draw2d.d`,
+					`c:\d\libs\het\bitmap.d`,
+					`c:\d\libs\het\http.d`,
+					`c:\d\libs\het\db.d`,
+					`c:\d\libs\het\mcu.d`,
+					`c:\d\libs\het\com.d`,
+					`c:\d\libs\het\vulkan.d`,
+					`c:\d\libs\common\libueye.d`,
+				]
+				.map!File.array; 
+				static immutable dideFiles = 
+				[
+					`c:\d\projects\dide\dide2.d`,
+					`c:\d\projects\dide\buildsys.d`,
+					`c:\d\projects\dide\didemodule.d`,
+				]
+				.map!File.array; 
+				static immutable dideArgs = ["--d-version=stringId"]; 
+				
+				static immutable karcFiles = 
+				[
+					`c:\d\projects\karc\karc.d`,
+					`c:\d\projects\karc\karcbox.d`,
+					`c:\d\projects\karc\karcpneumatic.d`,
+					`c:\d\projects\karc\karctrigger.d`,
+					`c:\d\projects\karc\karclogger.d`,
+					`c:\d\projects\karc\karcdetect.d`,
+					`c:\d\projects\karc\karcthreshold.d`,
+					`c:\d\projects\karc\karcocr.d`,
+				]
+				.map!File.array; 
+				static immutable karcArgs = ["--d-version=VulkanHeadless"]; 
+			}
+			
 			void UI_insightPanel(Workspace workspace, View2D view, bool justActivated)
 			{
+				enforce(ddb); 
 				with(im)
 				{
 					Column(
@@ -5402,7 +5547,7 @@ class Workspace : Container, WorkspaceInterface
 							auto 	kcInsightType	= KeyCombo("Enter"), //only when edit is focused
 								kcInsightClose	= KeyCombo("Esc"); //always
 							
-							void sw() { outerWidth = fh*22; } 
+							void sw() { outerWidth = fh*18; } 
 							
 							Row(
 								{
@@ -5417,8 +5562,24 @@ class Workspace : Container, WorkspaceInterface
 										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
 										|| justActivated || searchHashChanged
 									)
-									{ NOTIMPL; }
+									{
+										/+
+											with(ddb)
+											{
+												resultTreeView._root = ((searchText!="")?(search(searchText)):(PathNode(root))); 
+												resultTreeView.changed = now; 
+											}
+										+/
+										//Todo: stop the old fiber
+										insightFiber = new InsightFiber(ddb, searchText, resultTreeView); 
+									}
 									
+									BtnRow(
+										{
+											if(Btn("⚙", hint("Setup"), selected(setupVisible)))
+											setupVisible.toggle; 
+										}
+									); 
 									if(
 										Btn(
 											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
@@ -5428,26 +5589,61 @@ class Workspace : Container, WorkspaceInterface
 									{ deactivate; }
 								}
 							); 
+							if(setupVisible)
+							with(ddb)
+							{
+								Row(
+									{
+										Grp!Row(
+											"Wipe", {
+												if(Btn("all")) wipeAll; 
+												if(Btn("project")) wipeProject; 
+											}
+										); 
+										Grp!Row(
+											"Regenerate", {
+												if(Btn("phobos")) regenerateStd/+75.8MB+/; 
+												if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
+												if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
+												if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
+											} 
+										); 
+									}
+								); 
+								Grp!Row(
+									"Operations", {
+										if(Btn("Save cache")) saveCache; 
+										if(Btn("Load cache")) loadCache; 
+										if(Btn("Stats")) generateMemberStats.print; 
+										if(Btn("Export source"))
+										{
+											SourceTextOptions so; 
+											root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
+											so.toJson.print; 
+										}
+									}
+								); 
+								Grp!Row(
+									"State",
+									{
+										Text("modules: "); Static(moduleCount, { width = 3*fh; }); Spacer; 
+										Text("members: "); Static(memberCount, { width = 3*fh; }); 
+									}
+								); 
+							}
+							
+							actContainer.measure; 
+							const treeHeight = frmMain.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
+							
+							if(searchText=="")
+							{
+								with(ddb) treeView.root = PathNode(root); 
+								treeView.UI({ sw; outerHeight = treeHeight; }); 
+							}
+							else
+							{ resultTreeView.UI({ sw; outerHeight = treeHeight; }); }
 						}
 					); 
-				}
-				
-			} 
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_insightPanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
 				}
 			} 
 		} 
@@ -7205,7 +7401,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x35B5535B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x370A635B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
