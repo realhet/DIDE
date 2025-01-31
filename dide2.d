@@ -267,11 +267,19 @@ version(/+$DIDE_REGION+/all)
 				xJsons 	= buildResult.incomingXJsons.fetchAll; 
 			
 			workspace.processBuildMessages(msgs); 
-			static if((常!(bool)(0)))
-			foreach(x; xJsons) {
-				print("######################### XJSON START ######################"); 
-				x.print; 
-				print("----------------------------- XJSON END ---------------------------"); 
+			
+			static if((常!(bool)(1)))
+			{
+				if(xJsons.length) workspace.insight.processIncomingProjectJsons(xJsons); 
+				/+Opt: Cache these jsons, only generate if changed.+/
+				
+				/+
+					foreach(x; xJsons) {
+						print("######################### XJSON START ######################"); 
+						x.print; 
+						print("----------------------------- XJSON END ---------------------------"); 
+					}
+				+/
 			}
 			
 			//Note: These operations are fast: only 0.015 ms
@@ -4611,81 +4619,130 @@ class Workspace : Container, WorkspaceInterface
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
 		} 
-	}
-	version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+	}version(/+$DIDE_REGION Help+/all)
 	{
-		struct Location
+		string actHelpQuery, actSearchKeyword; 
+		bounds2 actSearchKeywordBounds; 
+		TextSelection actSearchKeywordSelection; 
+		
+		void prepareHelpQuery(ref string s)
 		{
-			vec2 origin = vec2(0); 
-			float zoomFactor = 1; 
+			//Todo: this is kinda lame: It avoids getting the actual textSelection until the last moment.
+			if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
+			{ s = s.replace("$DIDE_PRIMARY_SELECTION$", primaryTextSelection.sourceText.replace("\n", " ")); }
 		} 
 		
-		@STORED Location[10] storedLocations; 
-		
-		void enforceLocationIndex(int n)
+		string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
 		{
-			enforce(
-				n.inRange(storedLocations),
-				n.format!"Location index out of range: %s"
-			); 
-		} 
-		
-		void storeLocation(int n)
-		{
-			enforceLocationIndex(n); 
-			with(storedLocations[n])
+			//filter out breadcrumbs
+			static bool validBreadcrumb(Breadcrumb bc)
 			{
-				origin	= frmMain.view.origin.vec2,
-				zoomFactor 	= frmMain.view.scale; 
-			}
-			im.flashInfo(n.format!"Location %s stored."); 
+				if(auto decl = (cast(Declaration)(bc.node)))
+				return 	decl.identifier!="" && 
+					decl.keyword.among("struct", "union", "enum", "class", "interface"); 
+				if(auto mod = (cast(Module)(bc.node)))
+				return bc.text!=""; 
+				return false; 
+			} 
+			breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
+			
+			string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
+			if(word!="" && word!=s.get(0)) s ~= word; 
+			if(s.length==2) s.back = '+'~s.back; 
+			auto query = s.join(' '); 
+			
+			return query; 
 		} 
 		
-		void jumpToLocation(int n)
+		string[] scrapeLinks_bing(string query)
 		{
-			enforceLocationIndex(n); 
-			if(storedLocations[n] == Location.init)
-			{
-				im.flashWarning(n.format!"Location %s is uninitialized."); 
-				return; 
+			prepareHelpQuery(query); 
+			import het.http; 
+			if(query=="") return []; 
+			auto 	bloatml = curlGet(`https://bing.com/search?q=`~urlEncode(query)),
+				links = bloatml	.splitter(`href="`).drop(1)
+					.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``".array; 
+			links = links.filter!((a)=>(a.startsWith("https://") && !a.canFind(".bing.com"))).array; 
+			
+			immutable helpProviders = [
+				`https://learn.microsoft.com/`,
+				`https://registry.khronos.org/vulkan/specs/`,
+				`https://registry.khronos.org/OpenGL-Refpages/`
+			]; 
+			
+			string[] preferred; 
+			foreach(link; links) foreach(a; helpProviders) if(link.startsWith(a)) preferred ~= link; 
+			
+			if(preferred.empty) {
+				print("----------- Can't choose helpful link from: -----------------"); 
+				links.each!print; beep; 
 			}
-			with(storedLocations[n])
-			{
-				frmMain.view.origin	= origin.dvec2,
-				frmMain.view.scale 	= zoomFactor; 
+			
+			return preferred; 
+		} 
+		
+		string[] scrapeLinks_dpldocs(string query)
+		{
+			prepareHelpQuery(query); 
+			
+			import het.http; 
+			if(query=="") return []; 
+			auto queryUrl = `https://search.dpldocs.info/?q=`~urlEncode(query); 
+			auto 	bloatml = curlGet(queryUrl); 
+			
+			auto extractLinks(string addr)
+			=> bloatml	.splitter(`<a href="//`~addr~`/`).drop(1)
+				.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``"
+				.map!((a)=>(`https://`~addr~`/`~a)).array; 
+			
+			auto links = 	extractLinks("phobos.dpldocs.info") ~
+				extractLinks("druntime.dpldocs.info"); 
+			
+			if(links.empty) {
+				print("----------- Can't choose helpful link from: -----------------"); 
+				bloatml.print; beep; 
 			}
+			
+			if(links.length<=1) return links.take(1).array; 
+			return [queryUrl]; 
 		} 
 		
-		@STORED string[10] storedMemSlots; 
-		
-		void enforceMemSlotIndex(int n)
+		void startChrome(string url, string keyword="")
 		{
-			enforce(
-				n.inRange(storedMemSlots),
-				n.format!"MemSlot index out of range: %s"
-			); 
-		} 
-		
-		void copyMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			auto s = textSelections.sourceText; 
-			storedMemSlots[n] = s; 
-			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
-		} 
-		
-		void pasteMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			if(storedMemSlots[n].empty)
-			{
-				im.flashWarning(n.format!"MemSlot %s is empty."); 
-				return; 
+			if(url==``) return; 
+			try {
+				prepareHelpQuery(keyword); 
+				
+				frmMain.setForegroundWindow; //just to make sure
+				executeShell(joinCommandLine(["start", "chrome", url])); 
+				auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
+				
+				if(keyword!="")
+				{
+					const 	clipboardHadText = clipboard.hasText,
+						savedClipboardText = clipboardHadText ? clipboard.text : ""; 
+					scope(exit) if(clipboardHadText) clipboard.text = savedClipboardText; 
+					
+					clipboard.text = keyword; 	
+					
+					int bail = 10; 
+					foreach(i; 0..100) {
+						const title = getWindowInfo(wi.handle).title; 
+						if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
+						sleep(100); 
+					}
+					inputs.pressCombo("Ctrl+F"); 	sleep(50); 
+					inputs.pressCombo("Ctrl+V"); 	sleep(50); 
+					
+					const needEnter = [`https://registry.khronos.org/vulkan/specs/`].any!((a)=>(url.startsWith(a))); 
+					if(needEnter /+Note: This skips to the second match.+/)
+					{ inputs.pressCombo("Enter"); 	sleep(50); }
+				}
 			}
-			textSelections = paste_impl(textSelections, storedMemSlots[n]); 
+			catch(Exception e) {}
 		} 
-		
-	}version(/+$DIDE_REGION+/all)
+	}
+	version(/+$DIDE_REGION+/all)
 	{
 		@STORED SearchBox search; 
 		static struct SearchBox
@@ -4871,8 +4928,8 @@ class Workspace : Container, WorkspaceInterface
 										{
 											auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
 											if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
-											//Todo: stop the old fiber
 											searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
+											/+Note: the old searchFiber stops because it loses all references and will not be called again.+/
 										}
 									}
 									//display the number of matches. Also save the location of that number on the screen.
@@ -5411,6 +5468,8 @@ class Workspace : Container, WorkspaceInterface
 					); 
 					treeView = new typeof(treeView); 
 					resultTreeView = new typeof(resultTreeView); 
+					
+					ddb.startDelayedCacheLoader; 
 				}
 			} 
 			
@@ -5456,8 +5515,11 @@ class Workspace : Container, WorkspaceInterface
 			} 
 			InsightFiber insightFiber; 
 			
-			void updateInsightFiber()
+			void updateInsightFiber()/+Todo: rename to update()+/
 			{
+				initialize; 
+				ddb.updateDelayedCacheLoader; 
+				
 				if(insightFiber && !visible) { insightFiber.free; }
 				
 				if(insightFiber)
@@ -5468,73 +5530,32 @@ class Workspace : Container, WorkspaceInterface
 						insightFiber.call; 
 					}
 				}
-			} 
-			
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				initialize; 
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_insightPanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
-				}
 			} 
 			
-			
-			version(/+$DIDE_REGION+/all) {
-				static immutable hetlibFiles = 
-				[
-					`c:\d\libs\het\package.d`,
-					`c:\d\libs\het\quantities.d`,
-					`c:\d\libs\het\math.d`,
-					`c:\d\libs\het\inputs.d`,
-					`c:\d\libs\het\parser.d`,
-					`c:\d\libs\het\ui.d`,
-					`c:\d\libs\het\opengl.d`,
-					`c:\d\libs\het\win.d`,
-					`c:\d\libs\het\algorithm.d`,
-					`c:\d\libs\het\draw2d.d`,
-					`c:\d\libs\het\bitmap.d`,
-					`c:\d\libs\het\http.d`,
-					`c:\d\libs\het\db.d`,
-					`c:\d\libs\het\mcu.d`,
-					`c:\d\libs\het\com.d`,
-					`c:\d\libs\het\vulkan.d`,
-					`c:\d\libs\common\libueye.d`,
-				]
-				.map!File.array; 
-				static immutable dideFiles = 
-				[
-					`c:\d\projects\dide\dide2.d`,
-					`c:\d\projects\dide\buildsys.d`,
-					`c:\d\projects\dide\didemodule.d`,
-				]
-				.map!File.array; 
-				static immutable dideArgs = ["--d-version=stringId"]; 
+			void processIncomingProjectJsons(string[] xJsons)
+			{
+				initialize; 
+				ddb.processIncomingProjectJsons(xJsons); 
+			} 
+			
+			static string decodeEasyWildcard(string s)
+			{
+				{
+					//many spaces to one
+					re: auto len = s.length; s = s.replace("  ", " "); 
+					if(s.length<len) goto re; 
+				}
 				
-				static immutable karcFiles = 
-				[
-					`c:\d\projects\karc\karc.d`,
-					`c:\d\projects\karc\karcbox.d`,
-					`c:\d\projects\karc\karcpneumatic.d`,
-					`c:\d\projects\karc\karctrigger.d`,
-					`c:\d\projects\karc\karclogger.d`,
-					`c:\d\projects\karc\karcdetect.d`,
-					`c:\d\projects\karc\karcthreshold.d`,
-					`c:\d\projects\karc\karcocr.d`,
-				]
-				.map!File.array; 
-				static immutable karcArgs = ["--d-version=VulkanHeadless"]; 
-			}
+				if(s=="" || s==" ") return ""; 
+				
+				if(s.canFind('*') || s.canFind('?') || s.canFind('.')) return s; 
+				
+				if(s.startsWith(" ")) s = s[1..$]; s = '*'~s; 
+				if(s.endsWith(" ")) s = s[0..$-1]; s = s~'*'; 
+				s = s.replace(" ", "*.*"); 
+				return s; 
+			} 
+			
 			
 			void UI_insightPanel(Workspace workspace, View2D view, bool justActivated)
 			{
@@ -5562,17 +5583,7 @@ class Workspace : Container, WorkspaceInterface
 										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
 										|| justActivated || searchHashChanged
 									)
-									{
-										/+
-											with(ddb)
-											{
-												resultTreeView._root = ((searchText!="")?(search(searchText)):(PathNode(root))); 
-												resultTreeView.changed = now; 
-											}
-										+/
-										//Todo: stop the old fiber
-										insightFiber = new InsightFiber(ddb, searchText, resultTreeView); 
-									}
+									{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
 									
 									BtnRow(
 										{
@@ -5588,7 +5599,7 @@ class Workspace : Container, WorkspaceInterface
 									)
 									{ deactivate; }
 								}
-							); 
+							); 
 							if(setupVisible)
 							with(ddb)
 							{
@@ -5603,9 +5614,11 @@ class Workspace : Container, WorkspaceInterface
 										Grp!Row(
 											"Regenerate", {
 												if(Btn("phobos")) regenerateStd/+75.8MB+/; 
-												if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
-												if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
-												if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
+												/+
+													if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
+													if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
+													if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
+												+/
 											} 
 										); 
 									}
@@ -5623,13 +5636,15 @@ class Workspace : Container, WorkspaceInterface
 										}
 									}
 								); 
-								Grp!Row(
-									"State",
+								Row(
 									{
-										Text("modules: "); Static(moduleCount, { width = 3*fh; }); Spacer; 
-										Text("members: "); Static(memberCount, { width = 3*fh; }); 
+										Grp!Row("Mods", { Static(moduleCount, { width = 1.5f*fh; }); }); 
+										Grp!Row("Members", { Static(moduleCount, { width = 2.5f*fh; }); }); 
+										Grp!Row("Rows", { Static(treeView.rows.length, { width = 2.5f*fh; }); }); 
+										Grp!Row("Res", { Static(resultTreeView.rows.length, { width = 2.5f*fh; }); }); 
 									}
 								); 
+								Grp!Row("Decoded EasyWildcard™", { Static(decodeEasyWildcard(searchText), { width = 12*fh; }); }); 
 							}
 							
 							actContainer.measure; 
@@ -5646,129 +5661,98 @@ class Workspace : Container, WorkspaceInterface
 					); 
 				}
 			} 
-		} 
-	}version(/+$DIDE_REGION Help+/all)
-	{
-		string actHelpQuery, actSearchKeyword; 
-		bounds2 actSearchKeywordBounds; 
-		TextSelection actSearchKeywordSelection; 
-		
-		void prepareHelpQuery(ref string s)
-		{
-			//Todo: this is kinda lame: It avoids getting the actual textSelection until the last moment.
-			if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
-			{ s = s.replace("$DIDE_PRIMARY_SELECTION$", primaryTextSelection.sourceText.replace("\n", " ")); }
-		} 
-		
-		string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
-		{
-			//filter out breadcrumbs
-			static bool validBreadcrumb(Breadcrumb bc)
+			
+			bool UI(Workspace workspace, View2D view)
 			{
-				if(auto decl = (cast(Declaration)(bc.node)))
-				return 	decl.identifier!="" && 
-					decl.keyword.among("struct", "union", "enum", "class", "interface"); 
-				if(auto mod = (cast(Module)(bc.node)))
-				return bc.text!=""; 
-				return false; 
-			} 
-			breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
-			
-			string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
-			if(word!="" && word!=s.get(0)) s ~= word; 
-			if(s.length==2) s.back = '+'~s.back; 
-			auto query = s.join(' '); 
-			
-			return query; 
-		} 
-		
-		string[] scrapeLinks_bing(string query)
-		{
-			prepareHelpQuery(query); 
-			import het.http; 
-			if(query=="") return []; 
-			auto 	bloatml = curlGet(`https://bing.com/search?q=`~urlEncode(query)),
-				links = bloatml	.splitter(`href="`).drop(1)
-					.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``".array; 
-			links = links.filter!((a)=>(a.startsWith("https://") && !a.canFind(".bing.com"))).array; 
-			
-			immutable helpProviders = [
-				`https://learn.microsoft.com/`,
-				`https://registry.khronos.org/vulkan/specs/`,
-				`https://registry.khronos.org/OpenGL-Refpages/`
-			]; 
-			
-			string[] preferred; 
-			foreach(link; links) foreach(a; helpProviders) if(link.startsWith(a)) preferred ~= link; 
-			
-			if(preferred.empty) {
-				print("----------- Can't choose helpful link from: -----------------"); 
-				links.each!print; beep; 
-			}
-			
-			return preferred; 
-		} 
-		
-		string[] scrapeLinks_dpldocs(string query)
-		{
-			prepareHelpQuery(query); 
-			
-			import het.http; 
-			if(query=="") return []; 
-			auto queryUrl = `https://search.dpldocs.info/?q=`~urlEncode(query); 
-			auto 	bloatml = curlGet(queryUrl); 
-			
-			auto extractLinks(string addr)
-			=> bloatml	.splitter(`<a href="//`~addr~`/`).drop(1)
-				.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``"
-				.map!((a)=>(`https://`~addr~`/`~a)).array; 
-			
-			auto links = 	extractLinks("phobos.dpldocs.info") ~
-				extractLinks("druntime.dpldocs.info"); 
-			
-			if(links.empty) {
-				print("----------- Can't choose helpful link from: -----------------"); 
-				bloatml.print; beep; 
-			}
-			
-			if(links.length<=1) return links.take(1).array; 
-			return [queryUrl]; 
-		} 
-		
-		void startChrome(string url, string keyword="")
-		{
-			if(url==``) return; 
-			try {
-				prepareHelpQuery(keyword); 
-				
-				frmMain.setForegroundWindow; //just to make sure
-				executeShell(joinCommandLine(["start", "chrome", url])); 
-				auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
-				
-				if(keyword!="")
+				initialize; 
+				with(im)
 				{
-					const 	clipboardHadText = clipboard.hasText,
-						savedClipboardText = clipboardHadText ? clipboard.text : ""; 
-					scope(exit) if(clipboardHadText) clipboard.text = savedClipboardText; 
-					
-					clipboard.text = keyword; 	
-					
-					int bail = 10; 
-					foreach(i; 0..100) {
-						const title = getWindowInfo(wi.handle).title; 
-						if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
-						sleep(100); 
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_insightPanel(workspace, view, justActivated); }
+						
+						return visible; 
 					}
-					inputs.pressCombo("Ctrl+F"); 	sleep(50); 
-					inputs.pressCombo("Ctrl+V"); 	sleep(50); 
-					
-					const needEnter = [`https://registry.khronos.org/vulkan/specs/`].any!((a)=>(url.startsWith(a))); 
-					if(needEnter /+Note: This skips to the second match.+/)
-					{ inputs.pressCombo("Enter"); 	sleep(50); }
 				}
-			}
-			catch(Exception e) {}
+			} 
 		} 
+	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
+	{
+		struct Location
+		{
+			vec2 origin = vec2(0); 
+			float zoomFactor = 1; 
+		} 
+		
+		@STORED Location[10] storedLocations; 
+		
+		void enforceLocationIndex(int n)
+		{
+			enforce(
+				n.inRange(storedLocations),
+				n.format!"Location index out of range: %s"
+			); 
+		} 
+		
+		void storeLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			with(storedLocations[n])
+			{
+				origin	= frmMain.view.origin.vec2,
+				zoomFactor 	= frmMain.view.scale; 
+			}
+			im.flashInfo(n.format!"Location %s stored."); 
+		} 
+		
+		void jumpToLocation(int n)
+		{
+			enforceLocationIndex(n); 
+			if(storedLocations[n] == Location.init)
+			{
+				im.flashWarning(n.format!"Location %s is uninitialized."); 
+				return; 
+			}
+			with(storedLocations[n])
+			{
+				frmMain.view.origin	= origin.dvec2,
+				frmMain.view.scale 	= zoomFactor; 
+			}
+		} 
+		
+		@STORED string[10] storedMemSlots; 
+		
+		void enforceMemSlotIndex(int n)
+		{
+			enforce(
+				n.inRange(storedMemSlots),
+				n.format!"MemSlot index out of range: %s"
+			); 
+		} 
+		
+		void copyMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			auto s = textSelections.sourceText; 
+			storedMemSlots[n] = s; 
+			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
+		} 
+		
+		void pasteMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			if(storedMemSlots[n].empty)
+			{
+				im.flashWarning(n.format!"MemSlot %s is empty."); 
+				return; 
+			}
+			textSelections = paste_impl(textSelections, storedMemSlots[n]); 
+		} 
+		
 	}version(/+$DIDE_REGION Refactor+/all)
 	{
 		void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
@@ -7401,7 +7385,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x370A635B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x36F6335B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
