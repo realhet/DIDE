@@ -1286,7 +1286,7 @@ version(/+$DIDE_REGION+/all)
 			{
 				bool anyVisible; 
 				Panel(
-					workspace.outline.visible ? PanelPosition.rightClient : PanelPosition.topRight,
+					workspace.outline.visible || workspace.insight.visible ? PanelPosition.rightClient : PanelPosition.topRight,
 					{
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
@@ -3494,7 +3494,8 @@ class Workspace : Container, WorkspaceInterface
 			/+Bug: must not fail when text selected inside error messages!+/
 		} 
 		
-		void insertNode(string source, int subColumnIdx=-1)
+		void pasteText(string s)
+		{ if(s!="") textSelections = paste_impl(textSelections, s); }  void insertNode(string source, int subColumnIdx=-1)
 		{
 			textSelections = paste_impl(
 				textSelections, source, No.duplicateTabs, 
@@ -4268,8 +4269,7 @@ class Workspace : Container, WorkspaceInterface
 										if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
 										from keyboard or clipboard! Maybe it's a bug.
 									+/
-									auto s = ch.to!string; 
-									textSelections = paste_impl(textSelections, s); 
+									pasteText(ch.to!string); 
 								}
 								catch(Exception)
 								{ unprocessed ~= ch; }
@@ -5556,6 +5556,23 @@ class Workspace : Container, WorkspaceInterface
 				return s; 
 			} 
 			
+			bool UI(Workspace workspace, View2D view)
+			{
+				initialize; 
+				with(im)
+				{
+					{
+						bool justActivated; 
+						if(activateRequest.chkClear)
+						{ visible = justActivated = true; }
+						
+						if(visible)
+						{ UI_insightPanel(workspace, view, justActivated); }
+						
+						return visible; 
+					}
+				}
+			} 
 			
 			void UI_insightPanel(Workspace workspace, View2D view, bool justActivated)
 			{
@@ -5599,7 +5616,7 @@ class Workspace : Container, WorkspaceInterface
 									)
 									{ deactivate; }
 								}
-							); 
+							); 
 							if(setupVisible)
 							with(ddb)
 							{
@@ -5639,44 +5656,124 @@ class Workspace : Container, WorkspaceInterface
 								Row(
 									{
 										Grp!Row("Mods", { Static(moduleCount, { width = 1.5f*fh; }); }); 
-										Grp!Row("Members", { Static(moduleCount, { width = 2.5f*fh; }); }); 
-										Grp!Row("Rows", { Static(treeView.rows.length, { width = 2.5f*fh; }); }); 
-										Grp!Row("Res", { Static(resultTreeView.rows.length, { width = 2.5f*fh; }); }); 
+										Grp!Row("Members", { Static(memberCount, { width = 2.5f*fh; }); }); 
+										Grp!Row("Rows", { Static(((searchText=="") ?(treeView):(resultTreeView)).rows.length, { width = 2.5f*fh; }); }); 
 									}
 								); 
-								Grp!Row("Decoded EasyWildcard™", { Static(decodeEasyWildcard(searchText), { width = 12*fh; }); }); 
-							}
+								Grp!Row("Decoded EasyWildcard™", { Text(decodeEasyWildcard(searchText)); width = 16*fh; }); 
+								Grp!Row(
+									"Help", {
+										Text(
+											bold("LMB")	, " type | "	,
+											bold("Alt+LMB")	, " adv.type | "	,
+											bold("Ctrl+LMB")	, " navig."	
+										); width = 16*fh; 
+									}
+								); 
+							}
 							
 							actContainer.measure; 
 							const treeHeight = frmMain.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
 							
+							void UI_node(DDB.PathNode* node)
+							{
+								with(im)
+								{
+									if(Btn({ node.UI; }, ((node.identityStr).genericArg!q{id})))
+									{
+										auto ws = frmMain.workspace; /+Todo: too wide dependency+/
+										
+										auto actTreeView() => searchText=="" ? treeView : resultTreeView; 
+										auto getParent() => actTreeView.getParentItem(node); 
+										
+										void type(bool advanced=false)
+										{
+											if(!ws.textSelections.empty)
+											{
+												auto s = node.name, pasted = false; 
+												void pasteText(string s) { ws.pasteText(s); pasted = true; } 
+												void pasteNode(string s) { ws.insertNode(s); pasted = true; } 
+												
+												if(advanced)
+												{
+													if(auto member = node.asMember)
+													if(member.category==DDB.ModuleDeclarations.Member.Category.enum_member)
+													{
+														if(auto p = getParent)
+														{
+															auto t = p.name; 
+															if(t!="")
+															{ pasteNode(`mixin(舉!((`~t~`),q{`~member.name~`}))`); }
+														}
+													}
+												}
+												
+												if(!pasted) pasteText(s); 
+											}
+											else im.flashWarning("Can't insert text. Place a cursor first!"); 
+										} 
+										
+										void navigate()
+										{
+											void doit(File f, int line=0, int col=0)
+											{
+												if(f)
+												{
+													f = f.actualFile; 
+													if(f.exists)
+													{
+														auto m = ws.findModule(f); 
+														if(!m) { ws.loadModule(f);  m = ws.findModule(f); }
+														if(m) {
+															if(!line) ws.jumpTo(m); 
+															else ws.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); 
+														}
+														else { im.flashWarning("Can't load module: "~f.quoted('`')); }
+													}
+													else { im.flashWarning("File not found: "~f.quoted('`')); }
+												}
+											} 
+											
+											int line, char_; 
+											foreach_reverse(n; actTreeView.getAllParentItems(node) ~ node)
+											if(n)
+											{
+												if(auto member = n.asMember)
+												{
+													if(!line && member.line)
+													{
+														line = member.line; 
+														if(!char_ && member.char_) char_ = member.char_; 
+														/+Todo: endline endchar for callable!+/
+													}
+												}
+												else if(auto mod = n.asModule)
+												{
+													if(mod.file)
+													{ doit(mod.file, line, char_); }
+													break; /+Only the last module+/
+												}
+											}
+										} 
+										
+										if(inputs.Ctrl.down)	navigate; 
+										else	type(inputs.Alt.down); 
+									}
+								}
+							} 
+							
 							if(searchText=="")
 							{
-								with(ddb) treeView.root = PathNode(root); 
-								treeView.UI({ sw; outerHeight = treeHeight; }); 
+								with(ddb) treeView.root = PathNode(root); /+Todo: this is misleading! It has internal change detection+/
+								treeView.UI(
+									{ sw; outerHeight = treeHeight; }, &UI_node
+									
+								); 
 							}
 							else
-							{ resultTreeView.UI({ sw; outerHeight = treeHeight; }); }
+							{ resultTreeView.UI({ sw; outerHeight = treeHeight; }, &UI_node); }
 						}
 					); 
-				}
-			} 
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				initialize; 
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_insightPanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
 				}
 			} 
 		} 
@@ -7385,7 +7482,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x36F6335B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x37BC935B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			

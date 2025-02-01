@@ -771,7 +771,7 @@ class DDB
 		SumType!(ModuleDeclarations, Member*, Parameter*) _node; 
 		
 		bool opened; 
-		PathNode[] subNodes; 
+		PathNode[] subNodes; /+Todo: Find a way to detect the addition of new subNodes and reftesh this array+/
 		
 		this(ModuleDeclarations m)
 		{ _node = m; } 	 this(Member* m)
@@ -848,25 +848,23 @@ class DDB
 			else	open; 
 		} 
 		
+		@property structuredColor() 
+		=> .structuredColor(
+			_node.match!(
+				((ModuleDeclarations m)=>("module")),
+				((Member* m)=>(kindText[m.mKind])),
+				((Parameter* p)=>("param"))
+			)
+		); 
+		
 		void UI()
 		{
 			with(im)
 			{
-				auto module_ = asModule, member = asMember, param = asParameter; 
-				if(
-					Btn(
-						{
-							style.bold = !!module_; 
-							const stru = 	module_ 	? "module" : 
-								member 	? kindText[member.mKind] : 
-								param 	? "param" : ""; 
-							bkColor = style.bkColor = structuredColor(stru, clWhite); 
-							style.fontColor = blackOrWhiteFor(bkColor); 
-							Text(name); 
-						}
-					)
-				)
-				{ beep; }
+				style.bold = !!asModule; 
+				bkColor = style.bkColor = structuredColor; 
+				style.fontColor = blackOrWhiteFor(bkColor); 
+				Text(name); 
 			}
 		} 
 	} 
