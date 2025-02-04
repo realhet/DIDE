@@ -410,6 +410,13 @@ version(/+$DIDE_REGION+/all)
 				import core.sys.windows.windows; 
 				if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
 				{
+					/+
+						Bug: ACCESS DENIED:
+						After a process has terminated, call to TerminateProcess with open handles to the process fails with ERROR_ACCESS_DENIED (5) error code.
+						https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess
+						If you need to be sure the process has terminated, call the WaitForSingleObject function with a handle to the process.
+						The handle must have the SYNCHRONIZE access right. For more information, see Standard Access Rights.
+					+/
 					TerminateProcess(hProcess, 0); 
 					CloseHandle(hProcess); 
 				}
@@ -4368,7 +4375,11 @@ class Workspace : Container, WorkspaceInterface
 			
 			if(auto mod = findModule(loc.file))
 			{
-				//Todo: load the module automatically
+				/+
+					Todo: load the module automatically, 
+					focus on module if no line number.  -> Insight
+				+/
+				
 				
 				auto searchResults = codeLocationToSearchResults(loc); 
 				if(searchResults.length)
@@ -7482,7 +7493,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x37BC935B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x37E2F35B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
