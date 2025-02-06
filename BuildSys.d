@@ -156,6 +156,8 @@ a new compiler instance."}],
 	{
 		class Executor
 		{
+			/+Todo: Measure start and end times for module compilation stats+/
+			
 			import std.process, std.file : chdir; 
 			
 			string id; //to identify this executor
@@ -337,7 +339,16 @@ a new compiler instance."}],
 				{
 					if(pid)
 					try
-					{ std.process.kill(pid); }
+					{
+						std.process.kill(pid); 
+						/+
+							Bug: ACCESS DENIED bug when stopping compilers:
+							After a process has terminated, call to TerminateProcess with open handles to the process fails with ERROR_ACCESS_DENIED (5) error code.
+							https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess
+							If you need to be sure the process has terminated, call the WaitForSingleObject function with a handle to the process.
+							The handle must have the SYNCHRONIZE access right. For more information, see Standard Access Rights.
+						+/
+					}
 					catch(Exception e)
 					{
 						WARN(e.extendedMsg); 
