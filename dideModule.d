@@ -8532,10 +8532,11 @@ version(/+$DIDE_REGION+/all)
 			return '\0'; 
 		} 
 		
-		void skipOneOptionalSpace()
+		bool skipOptionalChar(dchar ch)
 		{
-			if(peekChar==' ')
-			processSrc!(Operation.skip, true)(srcIdx+1); 
+			if(peekChar==ch)
+			{ processSrc!(Operation.skip, true)(srcIdx+1); return true; }
+			return false; 
 		} 
 		
 		int remainingCellsOnLine()
@@ -9129,6 +9130,10 @@ version(/+$DIDE_REGION+/all)
 						joinPrepositions; 
 						
 						if(autoSpaceAfterDeclarations) skipOneOptionalSpace; 
+						
+						static if(JoinSemicolonToBlocks)
+						if(declarationChain.length==1 && declarationChain.front.ending=='}' && peekChar==';')
+						{ LOG("####### C style block statement detected.\n"~declarationChain.front.sourceText); }
 					}
 					else
 					{
@@ -9250,7 +9255,7 @@ version(/+$DIDE_REGION+/all)
 				/+
 					Todo: 'extraSpaceAtStart' is disabled because when writing, 
 					it only puts a space if it is required.
-					/+Code: a =mixin(x);+/ <- here, te extra space is NOT required for example.
+					/+Code: a =mixin(x);+/ <- here, the extra space is NOT required for example.
 				+/
 				
 				/+remove 'mixin' keyword+/
@@ -10079,8 +10084,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x46F3C7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x46FC07B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x470517B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x470D57B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10092,8 +10097,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x4720E7B6B4BCC)))(互!((bool),(1),(0x472327B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x472567B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x472A27B6B4BCC)))
+					(互!((bool),(0),(0x473237B6B4BCC)))(互!((bool),(1),(0x473477B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x4736B7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x473B77B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10103,9 +10108,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x474997B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x474D87B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4754A7B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x475C97B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x475AE7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x475ED7B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4765F7B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x476DE7B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10200,13 +10205,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x484AB7B6B4BCC).檢(expr)) ((0x484C97B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x485197B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x485C07B6B4BCC).檢(expr)) ((0x485DE7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4862E7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x485BD7B6B4BCC))) (互!((bool),(1),(0x485E27B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x486077B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x486467B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x486867B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x486F27B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x487757B6B4BCC}))
+								(互!((bool),(0),(0x486D27B6B4BCC))) (互!((bool),(1),(0x486F77B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4871C7B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4875B7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4879B7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x488077B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4888A7B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -12941,11 +12946,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5A9537B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5A9AB7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5AA037B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5AA5B7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5AAB37B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5AA687B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5AAC07B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5AB187B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5AB707B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5ABC87B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
