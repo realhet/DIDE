@@ -5460,7 +5460,7 @@ version(/+$DIDE_REGION+/all)
 		"!", 	//Link: shebang https://dlang.org/spec/lex.html#source_text
 		"version", "extension", "line", 	//Link: GLSL directives
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
-		"include", "define", /*"if",*/ "ifdef", "ifndef", "endif", "elif", "else" 	//Link: Arduino directives
+		"include", "define", "ifdef", "ifndef", "if", "endif", "undef", "elif", "else" 	//Link: Arduino directives
 	],
 		customCommentSyntaxes	= [skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skException, skWarning,   skDeprecation, skConsole, skComment],
 		customCommentPrefixes 	= ["Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:"]
@@ -5482,11 +5482,17 @@ version(/+$DIDE_REGION+/all)
 	} 
 	
 	static private int detectCustomCommentIdx(R)(R r)
-	{ return skipNewLineAndTabs(r).startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; } 
+	{
+		auto a = skipNewLineAndTabs(r); //Opt: This whole function is slow
+		return a.startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; 
+	} 
+	
 	
 	static private int detectCustomDirectiveIdx(R)(R r)
 	{
-		const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1; 
+		//Opt: This whole function is slow
+		const idx = (cast(int)(customDirectivePrefixes.countUntil!((prefix)=>(r.startsWith(prefix))))); 
+		//const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1; 
 		
 		//whole words only
 		if(idx>=0) {
@@ -6537,6 +6543,30 @@ version(/+$DIDE_REGION+/all)
 			auto prevSourceText = sourceText; 
 			string sourceText = !externalContents.isNull 	? externalContents.get
 				: this.file.readText; 
+			
+			if(desiredStructureLevel>=StructureLevel.structured)
+			{
+				const t0 = now; 
+				
+				const hasMultilineMacro = sourceText.length>1 && iota(sourceText.length-1).any!
+					((i)=>(
+					sourceText[i]=='\\' && 
+					sourceText[i+1].among('\n', '\r') &&
+					iota(i)	.map!((j)=>(sourceText[i-j]))
+						.until!((ch)=>(ch.among('\n', '\r')))
+						.canFind('#')
+				))
+					/+Checks if sourceText has any rows that ends with \ and contains a #+/; 
+				
+				static if((常!(bool)(1)))
+				{
+					const t1 = now; 
+					__gshared t = 0*second; synchronized t += t1-t0; 
+					LOG("total check macros", t); 
+					if(hasMultilineMacro) LOG("hasMultilineMacro:", file); 
+				}
+			}
+			
 			undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText)); 
 			
 			CodeColumnBuilder!true.staticLineCounter = 1; 
@@ -10106,8 +10136,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x472FA7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x4737E7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x476897B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x4770D7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10119,8 +10149,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x475CC7B6B4BCC)))(互!((bool),(1),(0x475F07B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x476147B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x476607B6B4BCC)))
+					(互!((bool),(0),(0x4795B7B6B4BCC)))(互!((bool),(1),(0x4797F7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x479A37B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x479EF7B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10130,9 +10160,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x478577B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x478967B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x479087B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x479877B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x47BE67B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x47C257B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x47C977B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x47D167B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10227,13 +10257,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x488697B6B4BCC).檢(expr)) ((0x488877B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x488D77B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x48BF87B6B4BCC).檢(expr)) ((0x48C167B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x48C667B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4897B7B6B4BCC))) (互!((bool),(1),(0x489A07B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x489C57B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48A047B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48A447B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48AB07B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48B337B6B4BCC}))
+								(互!((bool),(0),(0x48D0A7B6B4BCC))) (互!((bool),(1),(0x48D2F7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x48D547B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48D937B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48DD37B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48E3F7B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48EC27B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -12968,11 +12998,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5AD117B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5AD697B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5ADC17B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5AE197B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5AE717B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5B0A07B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5B0F87B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5B1507B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5B1A87B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5B2007B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
