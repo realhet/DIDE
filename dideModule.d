@@ -44,7 +44,8 @@ version(/+$DIDE_REGION+/all)
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
-	joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/; 
+	joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/,
+	handleMultilineCMacros	= (常!(bool)(1)); 
 	
 	//version identifiers: AnimatedCursors
 	enum AnimatedCursors = (常!(bool)(1)); 
@@ -1862,10 +1863,12 @@ version(/+$DIDE_REGION+/all)
 			const enableIndent_prev = enableIndent; 
 			if(
 				!prefix.empty && (
-					prefix.back.among('\'', '"', '`', '#') 
+					prefix.back.among('\'', '"', '`', '#')
 					|| prefix.get(1)=='"'
 				)
 			) enableIndent = false; 
+			/+prefix="#" is for preprocessor directives, 	and customPrefix will contain the id.+/
+			
 			scope(exit) enableIndent = enableIndent_prev; 
 			
 			put(prefix); 
@@ -2152,6 +2155,140 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		}
+	} 
+	private static string preprocessMultilineMacros(string sourceText, File file=File.init/+just for info+/)
+	{
+		static if((常!(bool)(0)))
+		{
+			const t0 = now; 
+			scope(exit)
+			{
+				const t1 = now; __gshared t = 0*second; synchronized t += t1-t0; 
+				LOG("Total time checking C Macros:", t); 
+			}
+		}
+		
+		
+		bool atMultilineMacro(size_t i)
+		=> sourceText[i]=='\\' && 
+		sourceText[i+1].among('\n', '\r') &&
+		iota(i)	.map!((j)=>(sourceText[i-j]))
+			.until!((ch)=>(ch.among('\n', '\r')))
+			.canFind('#'); 
+		
+		auto multilineMacroPositions = 	iota((cast(sizediff_t)(sourceText.length))-1)
+			.filter!atMultilineMacro.cache
+		/+
+			This range returns all the positions of sourceText rows 
+			that ends with \ and contains a #.
+			The returned position is at the \ character, the last char in the row.
+		+/; 
+		
+		if(multilineMacroPositions.empty) return sourceText/+nothing to change+/; 
+		
+		char[] res = sourceText.dup; 
+		
+		foreach(pos; multilineMacroPositions)
+		{
+			try
+			{
+				enforce(sourceText.get(pos)=='\\', "Backslash expected."); 
+				
+				sizediff_t findMarkPos()
+				{
+					sizediff_t markPos = -1; 
+					foreach_reverse(j; 0..pos)
+					{
+						const ch = sourceText[j]; 
+						if(ch=='#') markPos = j; 
+						else if(ch.among('\r', '\n')) break; 
+					}
+					return markPos; 
+				} 
+				
+				const startPos = findMarkPos; 
+				enforce(startPos>=0, "Can't find start of macro."); 
+				
+				sizediff_t seekNextLine(sizediff_t start)
+				{
+					foreach(j; start..sourceText.length)
+					{
+						const ch = sourceText[j]; 
+						if(ch=='\n') return j+1; 
+						if(ch=='\r') return j+1+(sourceText.get(j+1)=='\n'); 
+					}
+					return sourceText.length; /+eof+/
+				} 
+				
+				string stripNL(string s)
+				=> s.withoutEnding('\n').withoutEnding('\r'); 
+				
+				bool hasBackslashAtEnd(size_t pos)
+				=> stripNL(sourceText[0..pos]).endsWith('\\'); 
+				
+				size_t[] linePositions = [startPos]; 
+				do {
+					const nextPos = seekNextLine(linePositions.back); 
+					if(nextPos<=linePositions.back/+eof+/) break; 
+					linePositions ~= nextPos; 
+				}
+				while(hasBackslashAtEnd(linePositions.back)); 
+				
+				static if((常!(bool)(0)))
+				LOG(
+					file, "\n--------------------\n"~
+					linePositions.slide!(No.withPartial)(2)
+					.map!((a)=>(stripNL(sourceText[a[0]..a[1]]))).join('\n')
+					~"\n--------------------"
+				); 
+				
+				enforce(linePositions.length>=3, "Can't find at least 2 macro lines."); 
+				
+				{
+					size_t openingPos; 
+					foreach(i; linePositions[0]..linePositions[1])
+					if(res[i].among(' ', '\t', '\\')) { openingPos = i; break; }
+					enforce(openingPos, "Can't locate opening pos."); 
+					res[openingPos] = '{'; 
+				}
+				
+				void stepBackNL(ref size_t p)
+				{
+					const p0 = p; 
+					if(p>0 && res[p]=='\n') p--; 
+					if(p>0 && res[p]=='\r') p--; 
+					enforce(p!=p0, "Unable to step back on NewLine."); 
+				} 
+				
+				size_t backslashPos; 
+				foreach(a; linePositions[1..$-1])
+				{
+					backslashPos = a-1; 
+					stepBackNL(backslashPos); 
+					if(res[backslashPos]!='\\') backslashPos = 0; 
+					
+					if(backslashPos) res[backslashPos] = ' '; 
+				}
+				
+				enforce(backslashPos, "Can't locate ending pos"); 
+				
+				size_t endPos = linePositions.back-1; 
+				stepBackNL(endPos); 
+				res[backslashPos..endPos+1] = res[backslashPos+1..endPos+1]~'}'; 
+				
+				static if((常!(bool)(0)))
+				LOG(
+					file, "\n--------------------\n"~
+					res[linePositions.front..linePositions.back].idup~
+					"\n--------------------"
+				); 
+				
+			}
+			catch(Exception e) { WARN("Error processing macro: ", file, pos, e.simpleMsg); }
+		}
+		
+		
+		return (cast(string)(res)); 
 	} 
 }
 class CodeRow: Row
@@ -5456,7 +5593,6 @@ version(/+$DIDE_REGION+/all)
 	
 	static immutable
 		customDirectivePrefixes = [
-		//Todo: "if", and "ifdef" is problematic: startsWith only finds the shortest of the two.
 		"!", 	//Link: shebang https://dlang.org/spec/lex.html#source_text
 		"version", "extension", "line", 	//Link: GLSL directives
 		"pragma", "warning", "error", "assert", 	//Link: Opencl directives
@@ -5528,12 +5664,28 @@ version(/+$DIDE_REGION+/all)
 			//remove prefix
 			row.subCells = row.subCells[customPrefix.walkLength..$]; 
 			
-			//remove space
-			if(row.chars.startsWith(' '))
-			row.subCells = row.subCells[1..$]; 
+			CodeBlock multilineMacroBlock/+this can contain multiline macros+/; 
+			if(handleMultilineCMacros && row.subCells.length==1)
+			if(auto blk = (cast(CodeBlock)(row.subCells.front)))
+			if(blk.type==CodeBlock.Type.block)
+			{ multilineMacroBlock = blk; }
 			
-			row.refreshTabIdx; 
-			row.needMeasure; 
+			if(multilineMacroBlock)
+			{
+				//acquire the contents of the enclosed multilineMacro
+				content = multilineMacroBlock.content; 
+				content.setParent(this); 
+				needMeasure; 
+			}
+			else
+			{
+				//remove space
+				if(row.chars.startsWith(' '))
+				row.subCells = row.subCells[1..$]; 
+				
+				row.refreshTabIdx; 
+				row.needMeasure; 
+			}
 		}
 	} 
 	
@@ -5564,7 +5716,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		auto s = commentPrefix; 
 		if(customPrefix != "")
-		s ~= customPrefix ~ ' '/+Stylistic space after a custom prefix+/; 
+		s ~= customPrefix ~ ' '/+Mandatory space after a custom prefix+/; 
 		
 		return s; 
 	} 
@@ -5725,7 +5877,8 @@ version(/+$DIDE_REGION+/all)
 				+/
 				content.needMeasure; /+
 					Note: 	This is just a workaround.
-					<- 	Calling measure() won't work, because it only works at that level and beyond.
+					<- 	Calling measure() won't work, because it only 
+						works at that level and beyond.
 						needMeasure() is recursive through all parents
 				+/
 			}
@@ -5738,7 +5891,10 @@ version(/+$DIDE_REGION+/all)
 		{
 			if(markErrors)
 			if(g) {
-				//Todo: There should be a fontFlag: Error, and the GPU should calculate the actual color from a themed palette
+				/+
+					Todo: There should be a fontFlag: Error, and the GPU should 
+					calculate the actual color from a themed palette
+				+/
 				if(errorColorsValid.chkSet)
 				{
 					errorBkColor = syntaxBkColor(skError); 
@@ -5820,7 +5976,10 @@ version(/+$DIDE_REGION+/all)
 			case slashComment: 	checkOneLine; 	break; 
 			case cComment: 	checkInvalid2('*', '/'); 	break; 
 			case dComment: 	checkInvalid2('+', '/'); checkInvalid2('/', '+'); 	break; 
-			case directive: 	checkNesting('(', ')'); checkOneLine; /+Todo: Multiline directives are not supported.+/	break; 
+			case directive: 	checkNesting('(', ')')/+
+				it's just a little check, 
+				not a complete one...
+			+/; 	break; 
 		}
 		
 		
@@ -5986,11 +6145,31 @@ version(/+$DIDE_REGION+/all)
 		
 		rearrange_appendBuildMessages; 
 	} 
-	
+	
 	override void buildSourceText(ref SourceTextBuilder builder)
 	{
 		enforce(verify, "Invalid comment format"); 
-		builder.put(commentPrefix, customPrefix, content, postfix); 
+		
+		if(isDirective && (handleMultilineCMacros || true/+always do it+/))
+		{
+			const lines = content.sourceText.splitLines; 
+			lines.text.LOG; 
+			
+			const enableIndent_prev = builder.enableIndent; 
+			scope(exit) builder.enableIndent = enableIndent_prev; 
+			builder.enableIndent = false; 
+			
+			foreach(i, line; lines)
+			{
+				const 	isFirst = i==0, 
+					isLast = i==lines.length-1; 
+				builder.put(((isFirst)?(prefix):(""))~line~((isLast)?(""):("\\"))); 
+				if(!isLast) { builder.putNL; }
+			}
+			builder.needsNewLine = true; 
+		}
+		else
+		{ builder.put(commentPrefix, customPrefix, content, postfix); }
 	} 
 	
 	version(/+$DIDE_REGION BuildMessage handling+/all)
@@ -6526,14 +6705,13 @@ version(/+$DIDE_REGION+/all)
 				
 				moduleBuildMessageColumns = moduleBuildMessageColumns.remove!((c)=>(c.flags.removed)); 
 			}
-		} 
-		
+		} 
 		void resetInspectors()
 		{ NOTIMPL; } 
 		
 		void reload(StructureLevel desiredStructureLevel, Nullable!string externalContents = Nullable!string.init)
 		{
-			resetBuildMessages; resetSearchResults; 
+			resetBuildMessages; resetSearchResults; clearInspectors; 
 			
 			fileModified = file.modified; 
 			sizeBytes = file.size; 
@@ -6544,34 +6722,15 @@ version(/+$DIDE_REGION+/all)
 			string sourceText = !externalContents.isNull 	? externalContents.get
 				: this.file.readText; 
 			
-			if(desiredStructureLevel>=StructureLevel.structured)
-			{
-				const t0 = now; 
-				
-				const hasMultilineMacro = sourceText.length>1 && iota(sourceText.length-1).any!
-					((i)=>(
-					sourceText[i]=='\\' && 
-					sourceText[i+1].among('\n', '\r') &&
-					iota(i)	.map!((j)=>(sourceText[i-j]))
-						.until!((ch)=>(ch.among('\n', '\r')))
-						.canFind('#')
-				))
-					/+Checks if sourceText has any rows that ends with \ and contains a #+/; 
-				
-				static if((常!(bool)(1)))
-				{
-					const t1 = now; 
-					__gshared t = 0*second; synchronized t += t1-t0; 
-					LOG("total check macros", t); 
-					if(hasMultilineMacro) LOG("hasMultilineMacro:", file); 
-				}
-			}
-			
 			undoManager.justLoaded(this.file, encodePrevAndNextSourceText(prevSourceText, sourceText)); 
 			
-			CodeColumnBuilder!true.staticLineCounter = 1; 
+			//undo is storing original text before resolving C macros
 			
-			clearInspectors; 
+			static if(handleMultilineCMacros)
+			if(desiredStructureLevel>=StructureLevel.structured)
+			sourceText = preprocessMultilineMacros(sourceText, file); 
+			
+			CodeColumnBuilder!true.staticLineCounter = 1; 
 			
 			void doPlain()
 			{
@@ -8630,6 +8789,11 @@ version(/+$DIDE_REGION+/all)
 						
 						if(isExtendedLine)
 						{
+							/+
+								Todo: Deprecate this! This fails with structured code.
+								This multiline thing is deprecated.
+								The handleMultilineMacros will do this earlier.
+							+/
 							directiveCells ~= resultCells[0][0..$-1]; 
 							
 							if(srcIdx<srcDStr.length)
@@ -10136,8 +10300,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x476897B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x4770D7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x488997B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x4891D7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10149,8 +10313,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x4795B7B6B4BCC)))(互!((bool),(1),(0x4797F7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x479A37B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x479EF7B6B4BCC)))
+					(互!((bool),(0),(0x48B6B7B6B4BCC)))(互!((bool),(1),(0x48B8F7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x48BB37B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x48BFF7B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10160,9 +10324,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x47BE67B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x47C257B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x47C977B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x47D167B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48DF67B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48E357B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48EA77B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48F267B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10257,13 +10421,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x48BF87B6B4BCC).檢(expr)) ((0x48C167B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x48C667B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x49E087B6B4BCC).檢(expr)) ((0x49E267B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x49E767B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x48D0A7B6B4BCC))) (互!((bool),(1),(0x48D2F7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x48D547B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48D937B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48DD37B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48E3F7B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48EC27B6B4BCC}))
+								(互!((bool),(0),(0x49F1A7B6B4BCC))) (互!((bool),(1),(0x49F3F7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x49F647B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x49FA37B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x49FE37B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A04F7B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A0D27B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -12998,11 +13162,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5B0A07B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5B0F87B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5B1507B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5B1A87B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5B2007B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5C2B07B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5C3087B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5C3607B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5C3B87B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5C4107B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
