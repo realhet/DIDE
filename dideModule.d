@@ -45,7 +45,7 @@ version(/+$DIDE_REGION+/all)
 	
 	enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
 	joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/,
-	handleMultilineCMacros	= (常!(bool)(1)); 
+	handleMultilineCMacros	= (常!(bool)(1)) /+Multiline C Macro support.+/; 
 	
 	//version identifiers: AnimatedCursors
 	enum AnimatedCursors = (常!(bool)(1)); 
@@ -1675,7 +1675,7 @@ version(/+$DIDE_REGION+/all)
 		int indentCount; 
 		
 		bool enableIndent = true; 
-		bool needsNewLine; //to support //comments and #directives
+		bool needsNewLine, backslashNewLine; //to support //comments and #directives
 		bool updateLineIdx; 
 		
 		bool actLineIsClear()
@@ -1688,6 +1688,13 @@ version(/+$DIDE_REGION+/all)
 		
 		void putNL(int indentAdjust = 0)()
 		{
+			if(backslashNewLine)
+			{
+				//The loader replaces \ with spaces, so this will try to replace whitespace with \.
+				if(result.length && result.back.among(' ', '\t'))	*(cast(char*)(&result[$-1])) = '\\'; 
+				else	result ~= '\\'; 
+			}
+			
 			result ~= DefaultNewLine; 
 			
 			if(enableIndent)
@@ -1860,7 +1867,8 @@ version(/+$DIDE_REGION+/all)
 		
 		void put(string prefix, string customPrefix, CodeColumn block, string postfix)
 		{
-			const enableIndent_prev = enableIndent; 
+			const 	enableIndent_prev 	= enableIndent,
+				backslashNewLine_prev 	= backslashNewLine; 
 			if(
 				!prefix.empty && (
 					prefix.back.among('\'', '"', '`', '#')
@@ -1869,7 +1877,14 @@ version(/+$DIDE_REGION+/all)
 			) enableIndent = false; 
 			/+prefix="#" is for preprocessor directives, 	and customPrefix will contain the id.+/
 			
-			scope(exit) enableIndent = enableIndent_prev; 
+			if(prefix=="#") backslashNewLine = true; 
+			
+			scope(exit)
+			{
+				enableIndent 	= enableIndent_prev, 
+				backslashNewLine 	= backslashNewLine_prev; 
+			}
+			
 			
 			put(prefix); 
 			
@@ -2155,9 +2170,13 @@ version(/+$DIDE_REGION+/all)
 				}
 			}
 		}
-	} 
-	private static string preprocessMultilineMacros(string sourceText, File file=File.init/+just for info+/)
+	} 
+}version(/+$DIDE_REGION CMacros+/all)
+{
+	private string preprocessMultilineMacros(StructureLevel structureLevel, string sourceText, File file=File.init/+just for info+/)
 	{
+		if(structureLevel < StructureLevel.structured) return sourceText; 
+		
 		static if((常!(bool)(0)))
 		{
 			const t0 = now; 
@@ -2289,6 +2308,17 @@ version(/+$DIDE_REGION+/all)
 		
 		
 		return (cast(string)(res)); 
+	} 
+	
+	///This is called from CodeComment/directive. It finds the content in #define{content}.
+	CodeBlock findMultilineMacroBlock(CodeRow row)
+	{
+		static if(handleMultilineCMacros)
+		if(row.subCells.length==1)
+		if(auto blk = (cast(CodeBlock)(row.subCells.front)))
+		if(blk.type==CodeBlock.Type.block)
+		{ return blk; }
+		return null; 
 	} 
 }
 class CodeRow: Row
@@ -3449,10 +3479,14 @@ class CodeRow: Row
 	this(CodeNode parent_, string source, TextFormat textFormat, int lineIdx_=0)
 	{
 		this(parent_); 
+		
 		switch(textFormat)
 		{
 			case TextFormat.managed_first: ..case TextFormat.managed_last: 
 			{
+				static if(handleMultilineCMacros)
+				source = preprocessMultilineMacros(StructureLevel.structured, source); 
+				
 				with(rebuilder)
 				{
 					if(parent_) staticLineCounter = parent_.lineIdx; 
@@ -5664,13 +5698,7 @@ version(/+$DIDE_REGION+/all)
 			//remove prefix
 			row.subCells = row.subCells[customPrefix.walkLength..$]; 
 			
-			CodeBlock multilineMacroBlock/+this can contain multiline macros+/; 
-			if(handleMultilineCMacros && row.subCells.length==1)
-			if(auto blk = (cast(CodeBlock)(row.subCells.front)))
-			if(blk.type==CodeBlock.Type.block)
-			{ multilineMacroBlock = blk; }
-			
-			if(multilineMacroBlock)
+			if(auto multilineMacroBlock = findMultilineMacroBlock(row))
 			{
 				//acquire the contents of the enclosed multilineMacro
 				content = multilineMacroBlock.content; 
@@ -5726,6 +5754,30 @@ version(/+$DIDE_REGION+/all)
 	
 	this(CodeRow parent)
 	{ super(parent); } 
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	override void buildSourceText(ref SourceTextBuilder builder)
+	{
+		enforce(verify, "Invalid comment format"); 
+		builder.put(commentPrefix, customPrefix, content, postfix); 
+	} 
+	
+	version(/+$DIDE_REGION BuildMessage handling+/all)
+	{
+		CodeColumn buildMessageColumn; 
+		
+		override CodeColumn* accessBuildMessageColumn()
+		{ return &buildMessageColumn; } 
+	}
 	
 	
 	void rebuild(R)(R scanner) if(isScannerRange!R)
@@ -6145,40 +6197,6 @@ version(/+$DIDE_REGION+/all)
 		
 		rearrange_appendBuildMessages; 
 	} 
-	
-	override void buildSourceText(ref SourceTextBuilder builder)
-	{
-		enforce(verify, "Invalid comment format"); 
-		
-		if(isDirective && (handleMultilineCMacros || true/+always do it+/))
-		{
-			const lines = content.sourceText.splitLines; 
-			lines.text.LOG; 
-			
-			const enableIndent_prev = builder.enableIndent; 
-			scope(exit) builder.enableIndent = enableIndent_prev; 
-			builder.enableIndent = false; 
-			
-			foreach(i, line; lines)
-			{
-				const 	isFirst = i==0, 
-					isLast = i==lines.length-1; 
-				builder.put(((isFirst)?(prefix):(""))~line~((isLast)?(""):("\\"))); 
-				if(!isLast) { builder.putNL; }
-			}
-			builder.needsNewLine = true; 
-		}
-		else
-		{ builder.put(commentPrefix, customPrefix, content, postfix); }
-	} 
-	
-	version(/+$DIDE_REGION BuildMessage handling+/all)
-	{
-		CodeColumn buildMessageColumn; 
-		
-		override CodeColumn* accessBuildMessageColumn()
-		{ return &buildMessageColumn; } 
-	}
 } class CodeString : CodeContainer
 {
 	mixin((
@@ -6727,8 +6745,7 @@ version(/+$DIDE_REGION+/all)
 			//undo is storing original text before resolving C macros
 			
 			static if(handleMultilineCMacros)
-			if(desiredStructureLevel>=StructureLevel.structured)
-			sourceText = preprocessMultilineMacros(sourceText, file); 
+			sourceText = preprocessMultilineMacros(desiredStructureLevel, sourceText, file); 
 			
 			CodeColumnBuilder!true.staticLineCounter = 1; 
 			
@@ -8771,45 +8788,59 @@ version(/+$DIDE_REGION+/all)
 				skipUntil(srcIdx + 1); //skip the '#'
 				
 				Cell[][] directiveCells; 
-				version(/+$DIDE_REGION Collect all lines of the directive+/all)
+				
+				version(/+$DIDE_REGION+/all)
 				{
-					while(1) {
-						//Note: '\\' backslash is not supported by DLang
-						
-						fetchUntil(srcIdx+remainingCellsOnLine); 
-						if(resultCells.empty) break; 
-						
-						bool isExtendedLine()
-						{
-							if(resultCells[0].length)
-							if(auto g = cast(Glyph) resultCells[0].back)
-							if(g.ch == '\\') return true; 
-							return false; 
-						} 
-						
-						if(isExtendedLine)
-						{
-							/+
-								Todo: Deprecate this! This fails with structured code.
-								This multiline thing is deprecated.
-								The handleMultilineMacros will do this earlier.
-							+/
-							directiveCells ~= resultCells[0][0..$-1]; 
+					/+
+						Note: multiline directives are transformed into a single line,
+						so this only reads one structured line.
+					+/
+					fetchUntil(srcIdx+remainingCellsOnLine); 
+					if(!resultCells.empty) directiveCells ~= resultCells[0]; 
+				}
+				
+				version(/+$DIDE_REGION+/none) {
+					/+Note: 250218 This is deprecated because handleMultilineCMacros does this.+/
+					version(/+$DIDE_REGION Collect all lines of the directive+/all)
+					{
+						while(1) {
+							//Note: '\\' backslash is not supported by DLang
 							
-							if(srcIdx<srcDStr.length)
+							fetchUntil(srcIdx+remainingCellsOnLine); 
+							if(resultCells.empty) break; 
+							
+							bool isExtendedLine()
 							{
-								skipUntil(srcIdx+1); //skip newLine
-								continue; 
+								if(resultCells[0].length)
+								if(auto g = cast(Glyph) resultCells[0].back)
+								if(g.ch == '\\') return true; 
+								return false; 
+							} 
+							
+							if(isExtendedLine)
+							{
+								/+
+									Todo: Deprecate this! This fails with structured code.
+									This multiline thing is deprecated.
+									The handleMultilineMacros will do this earlier.
+								+/
+								directiveCells ~= resultCells[0][0..$-1]; 
+								
+								if(srcIdx<srcDStr.length)
+								{
+									skipUntil(srcIdx+1); //skip newLine
+									continue; 
+								}
+								else
+								{
+									break; //it's EOF
+								}
 							}
 							else
 							{
-								break; //it's EOF
+								directiveCells ~= resultCells[0]; 
+								break; 
 							}
-						}
-						else
-						{
-							directiveCells ~= resultCells[0]; 
-							break; 
 						}
 					}
 				}
@@ -10300,8 +10331,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x488997B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x4891D7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x48B8D7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x48C117B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10313,8 +10344,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x48B6B7B6B4BCC)))(互!((bool),(1),(0x48B8F7B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x48BB37B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x48BFF7B6B4BCC)))
+					(互!((bool),(0),(0x48E5F7B6B4BCC)))(互!((bool),(1),(0x48E837B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x48EA77B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x48EF37B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10324,9 +10355,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48DF67B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48E357B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48EA77B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48F267B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x490EA7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x491297B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4919B7B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4921A7B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10421,13 +10452,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x49E087B6B4BCC).檢(expr)) ((0x49E267B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x49E767B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4A0FC7B6B4BCC).檢(expr)) ((0x4A11A7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4A16A7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x49F1A7B6B4BCC))) (互!((bool),(1),(0x49F3F7B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x49F647B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x49FA37B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x49FE37B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A04F7B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A0D27B6B4BCC}))
+								(互!((bool),(0),(0x4A20E7B6B4BCC))) (互!((bool),(1),(0x4A2337B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A2587B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A2977B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A2D77B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A3437B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A3C67B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -13162,11 +13193,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5C2B07B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5C3087B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5C3607B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5C3B87B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5C4107B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5C5A47B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5C5FC7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5C6547B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5C6AC7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5C7047B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
