@@ -2,7 +2,7 @@
 //@compile --d-version=stringId
 
 //@debug
-//@release
+///@release
 
 version(/+$DIDE_REGION+/all)
 {
@@ -232,8 +232,8 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onDestroy()
 		{
-			((0x222435B2D627).檢(this.workspace.outline.rootPaths)); 
-			((0x226335B2D627).檢(this.workspace.outline.toJson)); 
+			((0x222535B2D627).檢(this.workspace.outline.rootPaths)); 
+			((0x226435B2D627).檢(this.workspace.outline.toJson)); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			workspace.destroy; 
@@ -3897,7 +3897,7 @@ class Workspace : Container, WorkspaceInterface
 				{
 					if(!inputs[mouseMappings.scroll])
 					mouseScrolling = false; 
-					else if(const delta = ((inputs.mouseDelta).PR!()))
+					else if(const delta = inputs.mouseDelta)
 					view.scroll(delta); 
 				}
 			} 
@@ -7493,7 +7493,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x37E2F35B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x37E2635B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			

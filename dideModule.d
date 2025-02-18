@@ -41,6 +41,8 @@ version(/+$DIDE_REGION+/all)
 	
 	//Todo: preprocess: with(a, b) -> with(a)with(b)
 	
+	//Todo: deprecate 'PROBE'
+	
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
@@ -2188,12 +2190,37 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		
-		bool atMultilineMacro(size_t i)
-		=> sourceText[i]=='\\' && 
-		sourceText[i+1].among('\n', '\r') &&
-		iota(i)	.map!((j)=>(sourceText[i-j]))
-			.until!((ch)=>(ch.among('\n', '\r')))
-			.canFind('#'); 
+		/+Todo:  [ ] A #-t ne kezeljem az azonositonak a reszekent a syntax highlighterben!  A ## is egy operator, sarga szinunek kell lennie.+/
+		/+Todo:       [ ] A sorvégi \ elott a #-t pontosabban kell megtalalni!  ## kizárva.  #, ami elott nem whitespace van, szinten kizarva!+/
+		
+		static if((常!(bool)(0)))
+		{
+			bool atMultilineMacro(size_t i)
+			=> sourceText[i]=='\\' && 
+			sourceText[i+1].among('\n', '\r') &&
+			iota(i)	.map!((j)=>(sourceText[i-j]))
+				.until!((ch)=>(ch.among('\n', '\r')))
+				.canFind('#'); 
+		}
+		else
+		{
+			bool atMultilineMacro(size_t i)
+			{
+				assert(i+1 < sourceText.length, "Must ensure this from outside!"); 
+				if(sourceText[i]=='\\' && sourceText[i+1].among('\n', '\r'))
+				{
+					foreach_reverse(j; i..0)
+					{
+						/+Supports: \n \r\n \r+/
+						if(sourceText[j]=='\n')	return sourceText.get(j-1-(sourceText.get(j-1)=='\r'))!='\\'; 
+						else if(sourceText[j]=='\r')	return sourceText.get(j-1)!='\\'; 
+					}
+					return true/+This is the very first line, so it can be a start.+/; 
+				}
+				return false; 
+			} 
+		}
+		
 		
 		auto multilineMacroPositions = 	iota((cast(sizediff_t)(sourceText.length))-1)
 			.filter!atMultilineMacro.cache
@@ -3242,9 +3269,11 @@ class CodeRow: Row
 		private void appendHighlighted_internal(string src)
 		{
 			
+			/+250218: # is not a part of identifier syntax highlighting. It is processed by handleMultilineCMacros.+/
+			
 			static char categorize(dchar ch)
 			{
-				if(isDLangIdentifierCont(ch) || ch.among('_', '#', '@')) return 'a'; 
+				if(isDLangIdentifierCont(ch) || ch.among('_', '@'/+, '#'+/)) return 'a'; 
 				if(ch.among(' ', '\t', '\x0b', '\x0c', '\r', '\n')) return ' '; 
 				return '+'; 
 			} 
@@ -3255,7 +3284,7 @@ class CodeRow: Row
 				{
 					case ' ', '\t', '\x0b', '\x0c', '\r', '\n': 	syntax = skWhitespace; 	break; 
 					case '0': ..case '9': 	syntax = skNumber; 	break; 
-					case '#': 	syntax = skDirective; 	break; 
+					/+case '#': 	syntax = skDirective; 	break; +/
 					//Todo: Support "#line n" directive for line numbering. Or ignore it... Just make karcshader.glsl work.
 					case '@': 	syntax = skLabel; 	break; 
 					
@@ -8782,7 +8811,7 @@ version(/+$DIDE_REGION+/all)
 			transferWhitespaceAndComments; 
 			
 			again: 
-			if(peekChar=='#')
+			if(peekChar=='#' /+Todo: This must be the FIRST # on a line!!!+/)
 			{
 				const directiveLineIdx = peek!Glyph.lineIdx; 
 				skipUntil(srcIdx + 1); //skip the '#'
@@ -10331,8 +10360,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x48B8D7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x48C117B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x48FE37B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x490677B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10344,8 +10373,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x48E5F7B6B4BCC)))(互!((bool),(1),(0x48E837B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x48EA77B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x48EF37B6B4BCC)))
+					(互!((bool),(0),(0x492B57B6B4BCC)))(互!((bool),(1),(0x492D97B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x492FD7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x493497B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10355,9 +10384,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x490EA7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x491297B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4919B7B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4921A7B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x495407B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4957F7B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x495F17B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x496707B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10452,13 +10481,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x4A0FC7B6B4BCC).檢(expr)) ((0x4A11A7B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4A16A7B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4A5527B6B4BCC).檢(expr)) ((0x4A5707B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4A5C07B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4A20E7B6B4BCC))) (互!((bool),(1),(0x4A2337B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A2587B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A2977B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A2D77B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A3437B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A3C67B6B4BCC}))
+								(互!((bool),(0),(0x4A6647B6B4BCC))) (互!((bool),(1),(0x4A6897B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A6AE7B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A6ED7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A72D7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A7997B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A81C7B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -13193,11 +13222,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5C5A47B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5C5FC7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5C6547B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5C6AC7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5C7047B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5C9FA7B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5CA527B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5CAAA7B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5CB027B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5CB5A7B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
