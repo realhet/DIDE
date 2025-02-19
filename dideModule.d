@@ -848,14 +848,16 @@ version(/+$DIDE_REGION+/all)
 				Maybe it should be cached somehow...
 			+/
 			auto order(in TextCursor c)
-			{
-				return c.codeColumn	.thisAndAllParents!Container
-					.array.retro
-					.slide!(No.withPartial)(2)
-					.map!(a => a[0].subCellIndex(a[1])); 
-			} 
-			
-			return cmpChain(cmp(order(this), order(b)), cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)); 
+			=> c.codeColumn	.thisAndAllParents!Container
+				.array.retro
+				.slide!(No.withPartial)(2)
+				.map!((a)=>(a[0].subCellIndex(a[1]))); 
+			return cmpChain(
+				cmp(order(this), order(b)), 
+				
+				/+only for safety:+/
+				cmp(pos.y, b.pos.y), cmp(pos.x, b.pos.x)
+			); 
 		} 
 		
 		bool opEquals(in TextCursor b) const
@@ -1197,10 +1199,13 @@ version(/+$DIDE_REGION+/all)
 		{
 			//Todo: *** structured codeColumns: it assumes cursors[0].codeColumn is the same as cursors[1].codeColumn
 			return cmpChain(
-				cmp(
-					cast(size_t)(cast(void*)cursors[0].codeColumn),
-										cast(size_t)(cast(void*)b.cursors[0].codeColumn)/+***+/
-				),
+				/+
+					250219: This was evil!!! Sorting by raw pointer.... OMG....
+					cmp(
+						(cast(size_t)(cast(void*)cursors[0].codeColumn)),
+						(cast(size_t)(cast(void*)b.cursors[0].codeColumn))/+***+/
+					),
+				+/
 				cmp(start, b.start),
 				cmp(end, b.end),
 				cmp(caret, b.caret)
@@ -2190,36 +2195,22 @@ version(/+$DIDE_REGION+/all)
 		}
 		
 		
-		/+Todo:  [ ] A #-t ne kezeljem az azonositonak a reszekent a syntax highlighterben!  A ## is egy operator, sarga szinunek kell lennie.+/
-		/+Todo:       [ ] A sorvégi \ elott a #-t pontosabban kell megtalalni!  ## kizárva.  #, ami elott nem whitespace van, szinten kizarva!+/
-		
-		static if((常!(bool)(0)))
+		///It checks if it's on a line ending `\` and the previous line is NOT ending with `\`.
+		bool atMultilineMacro(size_t i)
 		{
-			bool atMultilineMacro(size_t i)
-			=> sourceText[i]=='\\' && 
-			sourceText[i+1].among('\n', '\r') &&
-			iota(i)	.map!((j)=>(sourceText[i-j]))
-				.until!((ch)=>(ch.among('\n', '\r')))
-				.canFind('#'); 
-		}
-		else
-		{
-			bool atMultilineMacro(size_t i)
+			assert(i+1 < sourceText.length, "Must ensure this from outside!"); 
+			if(sourceText[i]=='\\' && sourceText[i+1].among('\n', '\r'))
 			{
-				assert(i+1 < sourceText.length, "Must ensure this from outside!"); 
-				if(sourceText[i]=='\\' && sourceText[i+1].among('\n', '\r'))
+				foreach_reverse(j; 0..i)
 				{
-					foreach_reverse(j; i..0)
-					{
-						/+Supports: \n \r\n \r+/
-						if(sourceText[j]=='\n')	return sourceText.get(j-1-(sourceText.get(j-1)=='\r'))!='\\'; 
-						else if(sourceText[j]=='\r')	return sourceText.get(j-1)!='\\'; 
-					}
-					return true/+This is the very first line, so it can be a start.+/; 
+					/+Supports: \n \r\n \r+/
+					if(sourceText[j]=='\n')	return sourceText.get(j-1-(sourceText.get(j-1)=='\r'))!='\\'; 
+					else if(sourceText[j]=='\r')	return sourceText.get(j-1)!='\\'; 
 				}
-				return false; 
-			} 
-		}
+				return true/+This is the very first line, so it can be a start.+/; 
+			}
+			return false; 
+		} 
 		
 		
 		auto multilineMacroPositions = 	iota((cast(sizediff_t)(sourceText.length))-1)
@@ -2254,6 +2245,10 @@ version(/+$DIDE_REGION+/all)
 				
 				const startPos = findMarkPos; 
 				enforce(startPos>=0, "Can't find start of macro."); 
+				
+				//Only process valid directives.  Other #things can be parameters.
+				if(!startsWithKeyword!(CodeComment.customDirectivePrefixes)(sourceText[startPos+1..$]))
+				continue; 
 				
 				sizediff_t seekNextLine(sizediff_t start)
 				{
@@ -2389,7 +2384,7 @@ class CodeRow: Row
 	{ return subCells.map!"a"; } 
 	
 	auto byNode(T : CodeNode = CodeNode)()
-	{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
+	{ return byCell.map!(a=>cast(T)a).filter!"a".cache; } 
 	
 	auto lastCell(T : Cell = Cell)()
 	{ return (cast(T)(subCells.backOrNull)); } 
@@ -3270,6 +3265,11 @@ class CodeRow: Row
 		{
 			
 			/+250218: # is not a part of identifier syntax highlighting. It is processed by handleMultilineCMacros.+/
+			/+
+				Todo: apply skDirective to valid CodeComment.customDirectivePrefixes
+				It is a # followed by 'define', etc.
+				It needs a more complicated parser.
+			+/
 			
 			static char categorize(dchar ch)
 			{
@@ -5680,31 +5680,34 @@ version(/+$DIDE_REGION+/all)
 		return r; 
 	} 
 	
+	
 	static private int detectCustomCommentIdx(R)(R r)
 	{
-		auto a = skipNewLineAndTabs(r); //Opt: This whole function is slow
-		return a.startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; 
+		//this is in human readable comments, so it is case insensitive.
+		auto src = skipNewLineAndTabs(r).map!toLower; 
+		enum keywords = customCommentPrefixes.map!toLower.array; 
+		return src.startsWithKeyword!keywords-1; 
+		//return src.startsWith!q{a.toLower == b.toLower}(aliasSeqOf!(customCommentPrefixes)).to!int - 1; 
 	} 
 	
 	
 	static private int detectCustomDirectiveIdx(R)(R r)
 	{
 		//Opt: This whole function is slow
-		const idx = (cast(int)(customDirectivePrefixes.countUntil!((prefix)=>(r.startsWith(prefix))))); 
-		//const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1; 
 		
-		//whole words only
-		if(idx>=0) {
-			const p = customDirectivePrefixes[idx]; 
-			if(!p.back.isDLangIdentifierCont) return idx; 
-			
-			if(r.empty) return idx; 
-			
-			auto nextChar = r.drop(p.walkLength).take(1); 
-			if(nextChar.empty || !nextChar.front.isDLangIdentifierCont) return idx; 
-		}
+		//const t0 = now; 
 		
-		return -1; 
+		//const idx = (cast(int)(customDirectivePrefixes.countUntil!((prefix)=>(r.startsWith(prefix))))); /+6.85e-5+/
+		//const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1; /+0.000646+/
+		const idx = r.startsWithKeyword!customDirectivePrefixes-1; /+
+			char: 2.98e-05  
+			dchar: 5.77e-05
+			+wholeWords: 0.0001232
+		+/
+		
+		//static tSum = 0*second; tSum += now-t0; static tCnt = 0; print(tCnt, tSum); 
+		
+		return idx; 
 	} 
 	
 	private void promoteCustomDirective()
@@ -7328,16 +7331,16 @@ version(/+$DIDE_REGION+/all)
 			static immutable namedSymbols =
 			[
 				 //["none", ""] is mandatory
-				["none"	, ""	],		 	["semicolon"	, ";"	],		 	["colon"	, ":"	],		 	["comma"	, ","	],
-				["equal"	, "="	],		 	["question"	, "?"	],		 	["block"	, "{"	],		 	["params"	, "("	],
+				["none", ""],	["semicolon", ";"],	["colon", ":"],	["comma", ","],
+				["equal", "="],	["question", "?"],	["block", "{"],	["params", "("],
 			]; 
 			
 			static immutable sentenceDetectionRules =
 			[
-				["; = ? alias import"	, ";"	],
-				["{ unittest invariant"	, "{"	],
-				["enum struct union class module interface template"	, "; {"	],
-				[":"	, ":"	], /+Todo: Ignore this rule when "::". To support  C++ std::namespace.+/
+				["; = ? alias import", ";"],
+				["{ unittest invariant", "{"],
+				["enum struct union class module interface template", "; {"],
+				[":", ":"], /+Todo: Ignore this rule when "::". To support  C++ std::namespace.+/
 				/+Note: template CAN have the ending: ';' -> std.typecons.isTuple +/
 			]; 
 			
@@ -7377,9 +7380,9 @@ version(/+$DIDE_REGION+/all)
 			
 			static immutable prepositionLinkingRules =
 			[
-				[["do"	], ["while"	]],
-				[["if", "static if", "version", "debug", "else if", "else static if", "else version", "else debug"	], ["else", "else if", "else static if", "else version", "else debug"	]],
-				[["try", "catch"	], ["catch", "finally"	]]
+				[["do"], ["while"]],
+				[["if", "static if", "version", "debug", "else if", "else static if", "else version", "else debug"], ["else", "else if", "else static if", "else version", "else debug"	]],
+				[["try", "catch"], ["catch", "finally"]]
 			]; 
 			
 			static immutable attributeKeywords =
@@ -7428,17 +7431,18 @@ version(/+$DIDE_REGION+/all)
 		auto genExtractIdentifiers(string ending)()
 		{
 			return ending.format!q{
-				sentenceDetectionRules.filter!"a[1].canFind(`%s`)".map!"a[0].split".join.filter!(a => a.length && a[0].isDLangIdentifierStart).array //Todo: isDLangIdentifier
+				sentenceDetectionRules	.filter!"a[1].canFind(`%s`)".map!"a[0].split"
+					.join.filter!isDLangIdentifier.array
 			}; 
 		} 
 		
-		static immutable 	prepositionKeywords 	= prepositionPatterns.map!(a => a.stripRight(" (=")).array.sort.uniq.array, 
+		static immutable 	prepositionKeywords 	= prepositionPatterns.map!((a)=>(a.stripRight(" (="))).array.sort.uniq.array, 
 		 	blockKeywords 	= mixin(genExtractIdentifiers!"{"),
 			statementKeywords 	= mixin(genExtractIdentifiers!";"); 
 		
 		static foreach(name; "preposition attribute statement block".split)
-		{ mixin(format!q{bool is%sKeyword	(string s) { return %sKeywords	.canFind(s); } }(name.capitalize, name)); }
-		
+		{ mixin(format!q{bool is%sKeyword(string s) { return %sKeywords.canFind(s); } }(name.capitalize, name)); }
+		//Opt: Use hash tables for these is*Keyword functions!
 		
 		auto withoutStartingSpace(Cell[][] a)
 		{
@@ -8775,7 +8779,10 @@ version(/+$DIDE_REGION+/all)
 		bool skipOptionalSpace()
 		{
 			if(peekChar==' ')
-			processSrc!(Operation.skip, true)(srcIdx+1); return true; 
+			{
+				processSrc!(Operation.skip, true)(srcIdx+1); 
+				return true; 
+			}
 			return false; 
 		} 
 		
@@ -10360,8 +10367,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x48FE37B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x490677B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x4903C7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x490C07B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10373,8 +10380,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x492B57B6B4BCC)))(互!((bool),(1),(0x492D97B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x492FD7B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x493497B6B4BCC)))
+					(互!((bool),(0),(0x4930E7B6B4BCC)))(互!((bool),(1),(0x493327B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x493567B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x493A27B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10384,9 +10391,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x495407B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4957F7B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x495F17B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x496707B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x495997B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x495D87B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4964A7B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x496C97B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10481,13 +10488,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x4A5527B6B4BCC).檢(expr)) ((0x4A5707B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4A5C07B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4A5AB7B6B4BCC).檢(expr)) ((0x4A5C97B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4A6197B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4A6647B6B4BCC))) (互!((bool),(1),(0x4A6897B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A6AE7B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A6ED7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A72D7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A7997B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A81C7B6B4BCC}))
+								(互!((bool),(0),(0x4A6BD7B6B4BCC))) (互!((bool),(1),(0x4A6E27B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A7077B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A7467B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A7867B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A7F27B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4A8757B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -13222,11 +13229,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5C9FA7B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5CA527B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5CAAA7B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5CB027B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5CB5A7B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5CA537B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5CAAB7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5CB037B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5CB5B7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5CBB37B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
