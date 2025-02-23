@@ -3989,7 +3989,7 @@ class Workspace : Container, WorkspaceInterface
 					if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
 					{
 						/+
-							Todo: Ctrl+Alt+LMB multicursor bug
+							Todo: Shift+Alt+LMB multicursor bug
 							01,
 							
 							02,
@@ -4561,8 +4561,13 @@ class Workspace : Container, WorkspaceInterface
 					if(!inputs[mouseMappings.main].down)
 					{
 						//don't focus to changed selection when the main mouse button is held down
-						frmMain.view.scrollZoom(worldBounds(textSelections)); 
+						
+						//frmMain.view.scrollZoom(worldBounds(textSelections)); <- this is bad when editing. It zooms out.
 						//Todo: maybe it is problematic when the selection can't fit on the current screen
+						
+						//this is better.
+						if(primaryTextSelection) frmMain.view.scrollZoom(worldBounds(primaryTextSelection)); 
+						//Todo: what about latestSelection: the selection that was added recently...
 					}
 				}
 				scrollInBoundsRequest.nullify; 
@@ -7493,7 +7498,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x37E2535B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x37F2C35B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			

@@ -1240,7 +1240,7 @@ Experimental:
 			)?((cast(int)(s.length))):(0)); 
 		} 
 		static bool isColumnMarker(string s)
-		{ return decodeColumnMarker(s)>0; } ; 
+		{ return decodeColumnMarker(s)>0; }; 
 		
 		
 		static bool isDMDMessage(string s)
@@ -1983,7 +1983,7 @@ struct BuildSystem
 					
 			case CMD.release: 	{
 				enum releaseArgs = ["-release", "-O", "-inline", "-boundscheck=off"]; 
-				addCompileArgs(releaseArgs); 
+				addCompileArgs(releaseArgs); /+Todo: 250220 this seems deprecated.  -inline parameter is wrong for LDC2.+/
 			}	break; 
 			case CMD.debug_: 	{
 				enum debugArgs = ["-g", "--gline-tables-only"]; 
