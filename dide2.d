@@ -4696,7 +4696,7 @@ class Workspace : Container, WorkspaceInterface
 			
 			return preferred; 
 		} 
-		
+		
 		string[] scrapeLinks_dpldocs(string query)
 		{
 			prepareHelpQuery(query); 
@@ -4722,7 +4722,7 @@ class Workspace : Container, WorkspaceInterface
 			if(links.length<=1) return links.take(1).array; 
 			return [queryUrl]; 
 		} 
-		
+		
 		void startChrome(string url, string keyword="")
 		{
 			if(url==``) return; 
@@ -4756,6 +4756,86 @@ class Workspace : Container, WorkspaceInterface
 				}
 			}
 			catch(Exception e) {}
+		} 
+		
+		CodeComment activeAiNode; 
+		string[] aiSnippets; 
+		CodeComment getSurroundingAiNode()
+		{
+			auto s = primaryTextSelection; 
+			return ((s)?(s.codeColumn.allParents!CodeComment.filter!((a)=>(a.isAI)).frontOrNull):(null)); 
+		} 
+		
+		void initiateAi_impl()
+		{
+			void copySnippets()
+			{
+				aiSnippets = textSelections.map!((a)=>(a.sourceText)).filter!"a!=``".array; 
+				textSelections = []; 
+			} 
+			
+			void insertSnippets()
+			{
+				auto col = activeAiNode.content; 
+				foreach(src; aiSnippets)
+				{
+					textSelections = [col.endSelection(true)]; 
+					if(!col.rows.back.empty) pasteText("\n"); 
+					insertNode("/+code:\0+/", 0); 
+					pasteText(src); 
+					textSelections = [col.endSelection(true)]; 
+				}
+				im.flashInfo(i"Added $(aiSnippets.length) snippets to AI prompt.".text); 
+				aiSnippets.clear; //one time use only
+			} 
+			
+			void createAiNode()
+			{
+				insertNode("/+AI:\0+/", 0); 
+				activeAiNode = getSurroundingAiNode; 
+				im.flashInfo("Type AI prompt, press [Ctrl+Enter] to send."); 
+				
+				if(aiSnippets.length) insertSnippets; 
+			} 
+			
+			auto ts = textSelections; 
+			
+			if(ts.empty) { im.flashWarning("Call AI: must have a a cursor or text selection first!"); return; }
+			
+			if(ts.length==1 && ts[0].valid && ts[0].isZeroLength)
+			{
+				//create/select active ai node
+				auto aiNode = getSurroundingAiNode; 
+				if(aiNode)
+				{
+					activeAiNode = aiNode; 
+					im.flashWarning("This is the active AI prompt.  [Alt+A] will copy selection to here."); 
+				}
+				else
+				{ createAiNode; }
+			}
+			else
+			{
+				//attach copy code snippets to ai prompt
+				copySnippets; 
+				if(activeAiNode)
+				{ insertSnippets; }
+				else
+				{ im.flashInfo(i"$(aiSnippets.length) snippets collected for new AI prompt.".text); }
+			}
+			
+		} 
+		
+		void launchAi_impl()
+		{
+			{
+				auto n = getSurroundingAiNode; 
+				if(!n) return; 
+				activeAiNode = n; 
+			}
+			
+			auto col = activeAiNode.content; 
+			im.flashInfo(__FUNCTION__); 
 		} 
 	}
 	version(/+$DIDE_REGION+/all)
@@ -6572,6 +6652,8 @@ class Workspace : Container, WorkspaceInterface
 						[],
 						[q{"F1"},q{help_bing},q{startChrome(scrapeLinks_bing(actHelpQuery).get(0), actSearchKeyword); }],
 						[q{"Ctrl+F1"},q{help_dlang},q{startChrome(scrapeLinks_dpldocs(actSearchKeyword).get(0), actSearchKeyword); }],
+						[q{"Alt+A"},q{initiateAi},q{initiateAi_impl; }],
+						[q{"Ctrl+Enter"},q{launchAi},q{launchAi_impl; }],
 						[],
 						[q{//Experimental
 						}],
@@ -7498,7 +7580,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x37F2C35B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x387A835B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
