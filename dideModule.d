@@ -42,7 +42,10 @@ version(/+$DIDE_REGION+/all)
 	//Todo: preprocess: with(a, b) -> with(a)with(b)
 	
 	//Todo: deprecate 'PROBE'
-	
+	//Todo: Animated cursor bug when Ctrl+Left -ing out form a node.  if(from_here_to_the_left).  The cursor animates from topleft of the outer block.
+	//Todo: Deleting/editing when multiselect and at leas one readonly selection -> fucks up all selection.  It should just ignore the readonly one, keeping all selection.
+	//Todo: Experimental color scheme: all function headers could be inverse. That would make a nice contrast.
+	/+Todo: /+Code: /+//comment+/+/ if there is no comment, just a // it throws on save...+/
 	import het, het.ui, het.parser ,buildsys; 
 	
 	enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
@@ -820,6 +823,7 @@ version(/+$DIDE_REGION+/all)
 		
 		@property bool valid() const
 		{ return (codeColumn !is null) && pos.x>=0 && pos.y>=0; } 
+		bool opCast(B:bool)() const => valid; 
 		
 		@property int rowCharCount() const
 		{
@@ -1172,8 +1176,7 @@ version(/+$DIDE_REGION+/all)
 		
 		@property bool valid() const
 		{ return cursors[].map!"a.valid".all && cursors[0].codeColumn is cursors[1].codeColumn; } 
-		bool opCast(B:bool)() const
-		{ return valid; } 
+		bool opCast(B:bool)() const => valid; 
 		
 		@property auto start() const
 		{ return min(cursors[0], cursors[1]); } 
@@ -3866,6 +3869,15 @@ class CodeRow: Row
 			if(outdent)
 			{
 				
+				/+
+					Todo: This is a mess.
+					
+					Try a simpler logic: 
+					"the whitespace before the closing ident is stripped from each line in the string itself"
+					/+Link: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/tokens/raw-string+/
+					/+Link: https://dpldocs.info/this-week-in-arsd/Blog.Posted_2025_02_20.html+/
+				+/
+				
 				static isCodeWhitespaceGlyph(Glyph g)
 				{
 					return g.ch.isDLangWhitespace && g.syntax.among(
@@ -4129,6 +4141,30 @@ class CodeRow: Row
 		}
 		return ts; 
 	} 
+	
+	TextCursor cursorOf(Cell cell)
+	{
+		/+Opt: It's slow.+/
+		if(cell)
+		foreach(y; 0..rowCount)
+		{
+			const x = rows[y].subCellIndex(cell); 
+			if(x>=0) return TextCursor(this, ivec2(x, y)); 
+		}
+		return TextCursor.init; 
+	} 
+	
+	TextSelection selectionOf(Cell cell1, Cell cell2, bool primary)
+	{
+		if(auto c1 = cursorOf(cell1))
+		if(auto c2 = cursorOf(cell2))
+		{
+			sort(c1, c2); c2.pos.x++; 
+			return TextSelection(c1, c2, primary); 
+		}
+		return TextSelection.init; 
+	} 
+	
 	
 	string shallowText(dchar objectChar=compoundObjectChar)()
 	{ return rows.map!(r => r.shallowText!objectChar).join('\n'); } 
@@ -5761,41 +5797,54 @@ version(/+$DIDE_REGION+/all)
 		}
 	} 
 	
-	override SyntaxKind syntax() const
+	const
 	{
-		return customPrefix=="" 	? (type==Type.directive ? skDirective : skComment)
-			: customSyntax; ; 
-	} 
-	
-	bool isDirective() const
-	{ return type == Type.directive; } 
-	
-	bool isCustom() const
-	{ return customPrefix != ""; } 
-	bool isLink() const
-	{ return customPrefix == "Link:"; } 
-	bool isCode() const
-	{ return customPrefix == "Code:"; } 
-	bool isNote() const
-	{ return customPrefix == "Note:"; } 
-	bool isHidden() const
-	{ return customPrefix == "Hidden:"; } 
-	bool isAI() const 
-	=> customPrefix=="AI:"; 
-	
-	string commentPrefix() const
-	{ return typePrefix[type]; } 
-	
-	override string prefix() const
-	{
-		auto s = commentPrefix; 
-		if(customPrefix != "")
-		s ~= customPrefix ~ ' '/+Mandatory space after a custom prefix+/; 
+		override SyntaxKind syntax()
+		{
+			return customPrefix=="" 	? (type==Type.directive ? skDirective : skComment)
+				: customSyntax; ; 
+		} 
 		
-		return s; 
+		bool isDirective()
+		{ return type == Type.directive; } 
+		
+		bool isCustom()
+		{ return customPrefix != ""; } 
+		bool isLink()
+		{ return customPrefix == "Link:"; } 
+		bool isCode()
+		{ return customPrefix == "Code:"; } 
+		bool isNote()
+		{ return customPrefix == "Note:"; } 
+		bool isHidden()
+		{ return customPrefix == "Hidden:"; } 
+		
+		bool isAi()
+		=> customPrefix=="AI:"; bool isSystem()
+		=> customPrefix=="System:"; 
+		bool isUser()
+		=> customPrefix=="User:"; bool isAssistant()
+		=> customPrefix=="Assistant:"; 
+		bool isAiRelated()
+		=> isAi || isSystem || isUser || isAssistant; 
+		
+		
+		/+Todo: refactor this with an enum+/
+		
+		string commentPrefix()
+		{ return typePrefix[type]; } 
+		
+		override string prefix()
+		{
+			auto s = commentPrefix; 
+			if(customPrefix != "")
+			s ~= customPrefix ~ ' '/+Mandatory space after a custom prefix+/; 
+			
+			return s; 
+		} 
+		override string postfix()
+		{ return typePostfix[type]; } 
 	} 
-	override string postfix() const
-	{ return typePostfix[type]; } 
 	
 	
 	this(CodeRow parent)
@@ -10382,8 +10431,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x491DB7B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x4925F7B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x498627B6B4BCC).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x498E67B6B4BCC).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -10395,8 +10444,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x494AD7B6B4BCC)))(互!((bool),(1),(0x494D17B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x494F57B6B4BCC)))
-					(互!((float/+w=6+/),(1.000),(0x495417B6B4BCC)))
+					(互!((bool),(0),(0x49B347B6B4BCC)))(互!((bool),(1),(0x49B587B6B4BCC)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x49B7C7B6B4BCC)))
+					(互!((float/+w=6+/),(1.000),(0x49BC87B6B4BCC)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -10406,9 +10455,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x497387B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x497777B6B4BCC}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x497E97B6B4BCC}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x498687B6B4BCC}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x49DBF7B6B4BCC}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x49DFE7B6B4BCC}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x49E707B6B4BCC}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x49EEF7B6B4BCC}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -10503,13 +10552,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x4A74A7B6B4BCC).檢(expr)) ((0x4A7687B6B4BCC).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x4A7B87B6B4BCC).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x4ADD17B6B4BCC).檢(expr)) ((0x4ADEF7B6B4BCC).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x4AE3F7B6B4BCC).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x4A85C7B6B4BCC))) (互!((bool),(1),(0x4A8817B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4A8A67B6B4BCC)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4A8E57B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4A9257B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4A9917B6B4BCC}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4AA147B6B4BCC}))
+								(互!((bool),(0),(0x4AEE37B6B4BCC))) (互!((bool),(1),(0x4AF087B6B4BCC))) (互!((float/+w=6+/),(1.000),(0x4AF2D7B6B4BCC)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x4AF6C7B6B4BCC})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x4AFAC7B6B4BCC})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x4B0187B6B4BCC}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x4B09B7B6B4BCC}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -13248,11 +13297,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x5CC527B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x5CCAA7B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x5CD027B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x5CD5A7B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x5CDB27B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x5D2D97B6B4BCC).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x5D3317B6B4BCC).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x5D3897B6B4BCC).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x5D3E17B6B4BCC).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x5D4397B6B4BCC).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
