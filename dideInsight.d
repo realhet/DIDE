@@ -1,6 +1,6 @@
 module dideinsight; 
 
-import het.ui, std.parallelism; 
+import het.ui, dideui, std.parallelism; 
 
 private
 {
@@ -120,74 +120,6 @@ private
 		}); 
 		//pragma(msg, kindCategory); pragma(msg, kindText); pragma(msg, EnumMembers!Kind); 
 	}
-	
-	version(/+$DIDE_REGION+/all) {
-		/+Todo: this is redundant. It's also in didemodule+/
-		RGB brighter(RGB a, float f)
-		{ return (a.from_unorm*(1+f)).to_unorm; } 
-		
-		enum clPiko : RGB
-		{
-			G940 	= (RGB(139,  59,  43)).brighter(.25f),
-			G239 	= (RGB(245, 156,   0)),
-			G231 	= (RGB(238, 114,   3)),
-			G119 	= (RGB(221,  11,  47)).brighter(.35f),
-			G115 	= (RGB(222,   0, 126)),
-			G107 	= (RGB(158,  25, 129)).brighter(.125f),
-			G62 	= (RGB( 92,  36, 131)).brighter(.25f),
-			R1 	= (RGB( 22, 186, 231)),
-			R2 	= (RGB(  0, 134, 192)),
-			R3 	= (RGB(  0, 105, 180)),
-			R4 	= (RGB(  0,  79, 159)),
-			R9 	= (RGB(  0,  48,  93)),
-			W 	= (RGB(134, 188,  37)),
-			BW 	= (RGB(101, 179,  46)),
-			W3 	= (RGB(  0, 120,  88)),
-			WY 	= (RGB(  0, 169, 132)),
-			K15 	= (RGB(255, 227, 126)),
-			K30 	= (RGB(255, 237,   0)),
-			DKW 	= (RGB(255, 204,   0)),
-			GE31 	= (RGB(157, 157, 156)),
-		} 
-		RGB structuredColor(string name, RGB def = clGray)
-		{
-			switch(name)
-			{
-				case "template": 	return clPiko.G940; 
-				case "enum": 	return clPiko.G239; 
-				case "alias": 	return clPiko.G231; 
-				case "if", "switch", "final switch", "else": 	return clPiko.G119.brighter(.25f); 
-				case "for", "do", "while", "foreach", "foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66f).brighter(.25f); 
-				case "version", "debug", "static if", "static foreach", "static foreach_reverse", "static assert": 	return mix(clPiko.G115, clPiko.G119, .5f).brighter(.25f); 
-				case "module", "import": 	return clPiko.G107; 
-				case "unittest": 	return clPiko.G62; 
-					
-				case "section": 	return clPiko.R1; 
-				case "with": 	return clPiko.R2; 
-				case "__unused1": 	return clPiko.R4; 
-					
-				case "class": 	return clPiko.W; 
-				case "interface": 	return clPiko.BW; 
-				case "struct": 	return clPiko.W3; 
-				case "union": 	return clPiko.WY; 
-				case "mixin template": 	return clPiko.K15; 
-				case "mixin": 	return mix(clPiko.DKW, clPiko.G119, .75f); 
-				case "statement": 	return clGray; 
-				case "function", "invariant": 	return clSilver; 
-				case "__region": 	return clGray; 
-					
-				case "try": 	return RGB(200, 250, 189); 
-				case "scope": 	return RGB(50, 250, 189); 
-				case "assert", "break", "continue", "goto", "goto case", "return"	, "enforce": 	return mix(RGB(0x5C00F6/+skKeyword+/), clWhite, .5); 
-				
-				case "auto": 	return clAqua; 
-				
-				default: 	return def; 
-			}
-		} 
-	}
-	
-	
 } 
 class DDB
 {
@@ -592,8 +524,8 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x507783B10505).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x50CF83B10505).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x46CE83B10505).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x472683B10505).檢((update間(_間)))); 
 	} 
 	
 	void processIncomingProjectJsons(string[] xJsons)
@@ -603,7 +535,7 @@ class DDB
 		version(/+$DIDE_REGION Measure time+/all)
 		{
 			__gshared Time tSum=0*second; const t0 = now; 
-			scope(exit) { tSum += now-t0; ((0x51E483B10505).檢(tSum)); }
+			scope(exit) { tSum += now-t0; ((0x483B83B10505).檢(tSum)); }
 			/+Opt: Cache jsons, Only call createFromJson() when really needed!+/
 		}
 		mixin(求each(q{json},q{xJsons},q{
@@ -616,8 +548,8 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x53B683B10505).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x541483B10505).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x4A0D83B10505).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x4A6B83B10505).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -642,9 +574,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x567283B10505).檢((update間(_間)))); ((0x569D83B10505).檢(json.length)); 
-			auto compr = json.compress; 	((0x56E483B10505).檢((update間(_間)))); ((0x570F83B10505).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x577283B10505).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x4CC983B10505).檢((update間(_間)))); ((0x4CF483B10505).檢(json.length)); 
+			auto compr = json.compress; 	((0x4D3B83B10505).檢((update間(_間)))); ((0x4D6683B10505).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4DC983B10505).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -654,11 +586,11 @@ class DDB
 		ModuleDeclarations newRoot; 
 		try {
 			auto _間=init間; 
-			auto compr = file.read; 	((0x586E83B10505).檢((update間(_間)))); 
+			auto compr = file.read; 	((0x4EC583B10505).檢((update間(_間)))); 
 			if(!compr.empty)
 			{
-				auto json = (cast(string)(compr.uncompress)); 	((0x58E983B10505).檢((update間(_間)))); 
-				newRoot.fromJson(json, file.fullName); 	((0x594283B10505).檢((update間(_間)))); 
+				auto json = (cast(string)(compr.uncompress)); 	((0x4F4083B10505).檢((update間(_間)))); 
+				newRoot.fromJson(json, file.fullName); 	((0x4F9983B10505).檢((update間(_間)))); 
 			}
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }

@@ -4,6 +4,19 @@
 //@debug
 //@release
 
+import core.thread, std.concurrency; 
+import het.ui, het.parser, buildsys, dideui, didebase, syntaxExamples; 
+
+import diderow : CodeRow, sourceText, hitTest; 
+import didecolumn : CodeColumn; 
+import didenode : CodeNode, CodeComment, CodeContainer, CodeString, CodeBlock, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
+import didemodule : Module, moduleOf, WorkspaceInterface, TextFormat, StructureLevel, TextModificationRecord, TextModification, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, DefaultNewLine, compoundObjectChar, addInspectorParticle, cachedFolderLabel, globalChangeindicatorsAppender, drawChangeIndicators, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
+import didedecl : Declaration, dDeclarationRecords, processHighLevelPatterns_block; 
+import dideexpr : NiceExpression, ToolPalette; 
+import dideinsight : DDB; 
+
+alias blink = dideui.blink; mixin SmartClassGenerator; 
+
 version(/+$DIDE_REGION+/all)
 {
 	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
@@ -86,18 +99,10 @@ version(/+$DIDE_REGION+/all)
 		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
 	+/
 	
-	import het, het.parser, het.ui; 
-	import buildsys, core.thread, std.concurrency; 
-	
-	import didemodule, dideinsight; 
-	
-	mixin SmartClassGenerator; 
-	
 	enum LogRequestPermissions = (常!(bool)(0)); 
 	
 	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	
-	alias blink = didemodule.blink; 
 	
 	auto frmMain()
 	{ return (cast(FrmMain)mainWindow); } 
@@ -232,8 +237,8 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onDestroy()
 		{
-			((0x222435B2D627).檢(this.workspace.outline.rootPaths)); 
-			((0x226335B2D627).檢(this.workspace.outline.toJson)); 
+			((0x254C35B2D627).檢(this.workspace.outline.rootPaths)); 
+			((0x258B35B2D627).檢(this.workspace.outline.toJson)); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			workspace.destroy; 
@@ -1426,10 +1431,6 @@ version(/+$DIDE_REGION+/all)
 }
 
 private {
-	//static import testaikeys; 
-	//mixin SmartClassGenerator; 
-	
-	
 	class AiChat
 	{
 		mixin SmartClass!(q{@PARENT AiModel model}); 
@@ -1557,18 +1558,25 @@ private {
 				=> prompt_tokens + completion_tokens; 
 				
 				string toString() const
-				=> i"Usage(prompt_hit: $(cached_prompt_tokens), ".text~
-				i"prompt: $(prompt_tokens), ".text~
-				i"completion: $(completion_tokens), ".text~
-				format!"HUF: %.2f)"
-				(
+				{
+					const 	st 	= now.localSystemTime, 
+						hour	= st.wHour + st.wMinute/60.0,
+						scale 	= ((mixin(界3(q{1.5},q{hour},q{17.5})))?(1.0/+Note: normal+/):(0.5/+Note: discount+/)); 
+					//Todo: model dependent prices.  this is chat only
+					return i"Usage(prompt_hit: $(cached_prompt_tokens), ".text~
+					i"prompt_miss: $(prompt_tokens), ".text~
+					i"completion: $(completion_tokens), ".text~
+					format!"HUF: %.2f, "
 					(
-						cached_prompt_tokens	*0.07+
-						(prompt_tokens-cached_prompt_tokens)	*0.27+
-						completion_tokens	*1.10
-					)
-					/ 1e6 * 380 /+usd to huf+/
-				); 
+						(
+							cached_prompt_tokens	*0.07*scale+
+							(prompt_tokens-cached_prompt_tokens)	*0.27*scale+
+							completion_tokens	*1.10*scale
+						)
+						/ 1e6 * 380 /+Todo: more accurate usd to huf+/
+					)~
+					format!"price: %3d%%)"((scale*100).iround); 
+				} 
 			} 
 			Usage usage; 
 		} 
@@ -1719,8 +1727,7 @@ private {
 			return res /+true: messages updated.+/; 
 		} 
 		
-	} 
-	
+	} 
 	class AiModel
 	{
 		mixin SmartClassParent!(
@@ -5309,7 +5316,8 @@ class Workspace : Container, WorkspaceInterface
 			if(!aiModel)
 			{
 				aiModel = new AiModel("https://api.deepseek.com/v1/chat/completions", "deepseek-chat", "You are a helpful assistant."); 
-				aiModel.apiKey = testaikeys_get["ICU7QdqmMPOop81pf7ONrg=="]; 
+				aiModel.apiKey = File(appPath, "a.a").readStr; 
+				NOTIMPL("Ini file for settings!"); 
 			}
 			
 			
@@ -8072,7 +8080,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x3BC3435B2D627).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x3C0A135B2D627).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			
@@ -8177,7 +8185,7 @@ class Workspace : Container, WorkspaceInterface
 			if(nearestSearchResult.bounds)
 			{ drawSearchResults(dr, [nearestSearchResult], nearestSearchResult_color.mix(clWhite, .5f)); }
 			
-			.draw(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
+			drawChangeIndicators(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
 			
 			drawMessageConnectionArrows(dr); 
 			
