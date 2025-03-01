@@ -101,6 +101,9 @@ void RoundBorder(float borderWidth)
 	}
 } 
 
+auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
+{ with(im) return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); } 
+
 static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 {
 	with(im)
@@ -226,4 +229,33 @@ void drawHighlight(Drawing dr, Cell c, RGB color, float alpha)
 {
 	if(!c) return; 
 	drawHighlight(dr, c.outerBounds, color, alpha); 
+} 
+
+
+
+struct bloodScreenEffect
+{
+	private __gshared float intensity = 0; 
+	
+	static {
+		void activate()
+		{ intensity = 1; } 
+		
+		void update()
+		{ intensity.follow(0, calcAnimationT(application.deltaTime.value(second), .9, .2), .05f); } 
+		
+		void glDraw()
+		{
+			if(intensity)
+			{
+				with((cast(GLWindow)(mainWindow)))
+				with(scoped!Drawing)
+				{
+					color = clRed; alpha = 1-(1-intensity)^^2; 
+					fillRect(clientBounds); 
+					glDraw(viewGUI); 
+				}
+			}
+		} 
+	} 
 } 
