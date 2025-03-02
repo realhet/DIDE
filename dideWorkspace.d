@@ -1,4 +1,4 @@
-module dideworkpsace; 
+module dideworkspace; 
 
 import het.ui, dideui, didebase; 
 
@@ -10,7 +10,7 @@ import didecolumn : CodeColumn;
 import didenode : CodeNode, CodeComment, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
 import didedecl : Declaration, 	/+these are for statistics only ->+/dDeclarationRecords, processHighLevelPatterns_block; 
 import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFormat, TextModification, addInspectorParticle, TextModificationRecord, cachedFolderLabel, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, DefaultNewLine, compoundObjectChar, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, drawChangeIndicators, globalChangeindicatorsAppender, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
-import dideinsight : DDB; 
+import dideinsight : DDB, Insight; 
 import dideai : AiModel, AiChat; 
 alias blink = dideui.blink; mixin SmartClassGenerator; 
 
@@ -53,7 +53,6 @@ class Workspace : Container, WorkspaceInterface
 		bool mainIsForeground; //frmMain must update this!!
 		IBuildServices buildServices; //this lets access the main form's project builder.
 		//there are mainWindow dependencies
-		
 		
 		File[] openQueue; 
 		Module[] modules; 
@@ -1437,6 +1436,11 @@ class Workspace : Container, WorkspaceInterface
 				if(auto pts = primaryTextSelection)
 				{ textSelections = [pts]; return; }
 			}
+			
+			void deselectAllModules() {
+				modules.each!(m => m.flags.selected = false); 
+				/+Todo: It is declared in workspace+/
+			} 
 			
 			if(ts.length>0)
 			{ textSelections = []; deselectAllModules; return; }
@@ -3620,7 +3624,7 @@ class Workspace : Container, WorkspaceInterface
 	}
 	version(/+$DIDE_REGION+/all)
 	{
-		@STORED SearchBox search; 
+		@STORED SearchBox search;  
 		static struct SearchBox
 		{
 			bool searchBoxActivate_request; 
@@ -4311,347 +4315,92 @@ class Workspace : Container, WorkspaceInterface
 	}version(/+$DIDE_REGION+/all)
 	{
 		@STORED Insight insight; 
-		static struct Insight
+		
+		void onInsightClick(DDB.PathNode* node)
 		{
-			bool activateRequest; 
-			@STORED
+			with(insight)
 			{
-				bool visible, setupVisible; 
-				string searchText; 
-			} 
-			
-			void activate(string s)
-			{
-				initialize; 
-				activateRequest = true; searchText=s; 
-			} 
-			
-			void deactivate()
-			{ if(visible.chkClear) { searchText = ""; }} 
-			
-			
-			DDB ddb; 
-			VirtualTreeView!(DDB.PathNode) treeView, resultTreeView; 
-			
-			void initialize()
-			{
-				if(!ddb) {
-					ddb = new DDB(
-						Path(`z:\temp2`),
-						Path(`c:\d\ldc2\import`),
-						Path(`c:\d\libs`),
-						File(appPath, `$stdlib_cache.dat`)
-					); 
-					treeView = new typeof(treeView); 
-					resultTreeView = new typeof(resultTreeView); 
-					
-					ddb.startDelayedCacheLoader; 
-				}
-			} 
-			
-			import core.thread.fiber; 
-			static class InsightFiber : Fiber
-			{
-				/+Todo: this fiber searcher looks common -> SearcFiber too.  Refactor it.+/
-				mixin SmartClass!
-				(
-					q{
-						DDB ddb, 
-						string searchText,
-						Object resultTreeView
-					}, 
-					q{
-						super(
-							&run, 16<<10/+measured stack: only 3840 Bytes+/
-							/+
-								Todo: Display a warning or error when the stack is not enough
-								Manage the fiber stack safely! 
-								It can't run out with access violation, that's totally unreliable.
-							+/
-						); 
-					}
-				); 
+				auto ws = this; 
 				
-				DateTime timeLimit; 
+				auto actTreeView() => searchText=="" ? treeView : resultTreeView; 
+				auto getParent() => actTreeView.getParentItem(node); 
 				
-				private void run()
+				void type(bool advanced=false)
 				{
-					auto res = (cast(
-						VirtualTreeView!(DDB.PathNode)
-						/+Todo: SmartClass can't handle this crap.+/
-					)(resultTreeView)).enforce; 
-					if(searchText!="")
-					{ ddb.search_yield(res, searchText, timeLimit); }
-					else
+					if(!ws.textSelections.empty)
 					{
-						res._root = DDB.PathNode(ddb.root); 
-						res.changed = now; 
+						auto s = node.name, pasted = false; 
+						void pasteText(string s) { ws.pasteText(s); pasted = true; } 
+						void pasteNode(string s) { ws.insertNode(s); pasted = true; } 
+						
+						if(advanced)
+						{
+							if(auto member = node.asMember)
+							if(member.category==DDB.ModuleDeclarations.Member.Category.enum_member)
+							{
+								if(auto p = getParent)
+								{
+									auto t = p.name; 
+									if(t!="")
+									{ pasteNode(`mixin(舉!((`~t~`),q{`~member.name~`}))`); }
+								}
+							}
+						}
+						
+						if(!pasted) pasteText(s); 
+					}
+					else im.flashWarning("Can't insert text. Place a cursor first!"); 
+				} 
+				
+				void navigate()
+				{
+					void doit(File f, int line=0, int col=0)
+					{
+						if(f)
+						{
+							f = f.actualFile; 
+							if(f.exists)
+							{
+								auto m = ws.findModule(f); 
+								if(!m) { ws.loadModule(f);  m = ws.findModule(f); }
+								if(m) {
+									if(!line) ws.jumpTo(m); 
+									else {
+										import het.parser : CodeLocation; 
+										ws.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); 
+									}
+								}
+								else { im.flashWarning("Can't load module: "~f.quoted('`')); }
+							}
+							else { im.flashWarning("File not found: "~f.quoted('`')); }
+						}
+					} 
+					
+					int line, char_; 
+					foreach_reverse(n; actTreeView.getAllParentItems(node) ~ node)
+					if(n)
+					{
+						if(auto member = n.asMember)
+						{
+							if(!line && member.line)
+							{
+								line = member.line; 
+								if(!char_ && member.char_) char_ = member.char_; 
+								/+Todo: endline endchar for callable!+/
+							}
+						}
+						else if(auto mod = n.asModule)
+						{
+							if(mod.file)
+							{ doit(mod.file, line, char_); }
+							break; /+Only the last module+/
+						}
 					}
 				} 
-			} 
-			InsightFiber insightFiber; 
-			
-			void updateInsightFiber()/+Todo: rename to update()+/
-			{
-				initialize; 
-				ddb.updateDelayedCacheLoader; 
 				
-				if(insightFiber && !visible) { insightFiber.free; }
-				
-				if(insightFiber)
-				{
-					if(insightFiber.state==Fiber.State.TERM) insightFiber.free; 
-					else {
-						insightFiber.timeLimit = now + 10*milli(second); 
-						insightFiber.call; 
-					}
-				}
-			} 
-			
-			void processIncomingProjectJsons(string[] xJsons)
-			{
-				initialize; 
-				ddb.processIncomingProjectJsons(xJsons); 
-			} 
-			
-			static string decodeEasyWildcard(string s)
-			{
-				{
-					//many spaces to one
-					re: auto len = s.length; s = s.replace("  ", " "); 
-					if(s.length<len) goto re; 
-				}
-				
-				if(s=="" || s==" ") return ""; 
-				
-				if(s.canFind('*') || s.canFind('?') || s.canFind('.')) return s; 
-				
-				if(s.startsWith(" ")) s = s[1..$]; s = '*'~s; 
-				if(s.endsWith(" ")) s = s[0..$-1]; s = s~'*'; 
-				s = s.replace(" ", "*.*"); 
-				return s; 
-			} 
-			
-			bool UI(Workspace workspace, View2D view)
-			{
-				initialize; 
-				with(im)
-				{
-					{
-						bool justActivated; 
-						if(activateRequest.chkClear)
-						{ visible = justActivated = true; }
-						
-						if(visible)
-						{ UI_insightPanel(workspace, view, justActivated); }
-						
-						return visible; 
-					}
-				}
-			} 
-			
-			void UI_insightPanel(Workspace workspace, View2D view, bool justActivated)
-			{
-				enforce(ddb); 
-				with(im)
-				{
-					Column(
-						{
-							//Keyboard shortcuts
-							auto 	kcInsightType	= KeyCombo("Enter"), //only when edit is focused
-								kcInsightClose	= KeyCombo("Esc"); //always
-							
-							void sw() { outerWidth = fh*18; } 
-							
-							Row(
-								{
-									sw; Text("Insight"); .Container editContainer; 
-									
-									const searcHash = searchText.hashOf; 
-									static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
-									const searchHashChanged = lastSearchHash.chkSet(searcHash); 
-									
-									
-									if(
-										Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
-										|| justActivated || searchHashChanged
-									)
-									{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
-									
-									BtnRow(
-										{
-											if(Btn("⚙", hint("Setup"), selected(setupVisible)))
-											setupVisible.toggle; 
-										}
-									); 
-									if(
-										Btn(
-											bold(symbol("ChevronRight")), { innerWidth = fh; }, 
-											kcInsightClose, hint("Close panel.")
-										)
-									)
-									{ deactivate; }
-								}
-							); 
-							if(setupVisible)
-							with(ddb)
-							{
-								Row(
-									{
-										Grp!Row(
-											"Wipe", {
-												if(Btn("all")) wipeAll; 
-												if(Btn("project")) wipeProject; 
-											}
-										); 
-										Grp!Row(
-											"Regenerate", {
-												if(Btn("phobos")) regenerateStd/+75.8MB+/; 
-												/+
-													if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
-													if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
-													if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
-												+/
-											} 
-										); 
-									}
-								); 
-								Grp!Row(
-									"Operations", {
-										if(Btn("Save cache")) saveCache; 
-										if(Btn("Load cache")) loadCache; 
-										if(Btn("Stats")) generateMemberStats.print; 
-										if(Btn("Export source"))
-										{
-											SourceTextOptions so; 
-											root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
-											so.toJson.print; 
-										}
-									}
-								); 
-								Row(
-									{
-										Grp!Row("Mods", { Static(moduleCount, { width = 1.5f*fh; }); }); 
-										Grp!Row("Members", { Static(memberCount, { width = 2.5f*fh; }); }); 
-										Grp!Row("Rows", { Static(((searchText=="") ?(treeView):(resultTreeView)).rows.length, { width = 2.5f*fh; }); }); 
-									}
-								); 
-								Grp!Row("Decoded EasyWildcard™", { Text(decodeEasyWildcard(searchText)); width = 16*fh; }); 
-								Grp!Row(
-									"Help", {
-										Text(
-											bold("LMB")	, " type | "	,
-											bold("Alt+LMB")	, " adv.type | "	,
-											bold("Ctrl+LMB")	, " navig."	
-										); width = 16*fh; 
-									}
-								); 
-							}
-							
-							actContainer.measure; 
-							const treeHeight = mainWindow.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
-							
-							void UI_node(DDB.PathNode* node)
-							{
-								with(im)
-								{
-									if(Btn({ node.UI; }, ((node.identityStr).genericArg!q{id})))
-									{
-										auto ws = workspace; 
-										
-										auto actTreeView() => searchText=="" ? treeView : resultTreeView; 
-										auto getParent() => actTreeView.getParentItem(node); 
-										
-										void type(bool advanced=false)
-										{
-											if(!ws.textSelections.empty)
-											{
-												auto s = node.name, pasted = false; 
-												void pasteText(string s) { ws.pasteText(s); pasted = true; } 
-												void pasteNode(string s) { ws.insertNode(s); pasted = true; } 
-												
-												if(advanced)
-												{
-													if(auto member = node.asMember)
-													if(member.category==DDB.ModuleDeclarations.Member.Category.enum_member)
-													{
-														if(auto p = getParent)
-														{
-															auto t = p.name; 
-															if(t!="")
-															{ pasteNode(`mixin(舉!((`~t~`),q{`~member.name~`}))`); }
-														}
-													}
-												}
-												
-												if(!pasted) pasteText(s); 
-											}
-											else im.flashWarning("Can't insert text. Place a cursor first!"); 
-										} 
-										
-										void navigate()
-										{
-											void doit(File f, int line=0, int col=0)
-											{
-												if(f)
-												{
-													f = f.actualFile; 
-													if(f.exists)
-													{
-														auto m = ws.findModule(f); 
-														if(!m) { ws.loadModule(f);  m = ws.findModule(f); }
-														if(m) {
-															if(!line) ws.jumpTo(m); 
-															else ws.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); 
-														}
-														else { im.flashWarning("Can't load module: "~f.quoted('`')); }
-													}
-													else { im.flashWarning("File not found: "~f.quoted('`')); }
-												}
-											} 
-											
-											int line, char_; 
-											foreach_reverse(n; actTreeView.getAllParentItems(node) ~ node)
-											if(n)
-											{
-												if(auto member = n.asMember)
-												{
-													if(!line && member.line)
-													{
-														line = member.line; 
-														if(!char_ && member.char_) char_ = member.char_; 
-														/+Todo: endline endchar for callable!+/
-													}
-												}
-												else if(auto mod = n.asModule)
-												{
-													if(mod.file)
-													{ doit(mod.file, line, char_); }
-													break; /+Only the last module+/
-												}
-											}
-										} 
-										
-										if(inputs.Ctrl.down)	navigate; 
-										else	type(inputs.Alt.down); 
-									}
-								}
-							} 
-							
-							if(searchText=="")
-							{
-								with(ddb) treeView.root = PathNode(root); /+Todo: this is misleading! It has internal change detection+/
-								treeView.UI(
-									{ sw; outerHeight = treeHeight; }, &UI_node
-									
-								); 
-							}
-							else
-							{ resultTreeView.UI({ sw; outerHeight = treeHeight; }, &UI_node); }
-						}
-					); 
-				}
-			} 
+				if(inputs.Ctrl.down)	navigate; 
+				else	type(inputs.Alt.down); 
+			}
 		} 
 	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
 	{
@@ -5878,7 +5627,7 @@ class Workspace : Container, WorkspaceInterface
 										
 										const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
 										format	!`/+Note:+/
-/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
+	/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
 											(popupWorldPos.x, popupWorldPos.y)
 											.saveTo(f); 
 										
@@ -6360,7 +6109,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x2F0F771008CF4).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x2D4B371008CF4).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			

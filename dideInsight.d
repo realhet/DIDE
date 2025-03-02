@@ -2,8 +2,11 @@ module dideinsight;
 
 import het.ui, dideui, std.parallelism; 
 
-private
-{
+mixin SmartClassGenerator; 
+
+
+
+private {
 	File[] listDLangFiles(Path path, Flag!"recursive" recursive = Yes.recursive)
 	=> listFiles(path, "*.d*", "name", Yes.onlyFiles, Yes.recursive).filter!((a)=>(a.file.extIs("d", "di"))).map!((a)=>(a.file)).array; 
 	
@@ -524,8 +527,8 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x46CE83B10505).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x472683B10505).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x46F083B10505).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x474883B10505).檢((update間(_間)))); 
 	} 
 	
 	void processIncomingProjectJsons(string[] xJsons)
@@ -535,7 +538,7 @@ class DDB
 		version(/+$DIDE_REGION Measure time+/all)
 		{
 			__gshared Time tSum=0*second; const t0 = now; 
-			scope(exit) { tSum += now-t0; ((0x483B83B10505).檢(tSum)); }
+			scope(exit) { tSum += now-t0; ((0x485D83B10505).檢(tSum)); }
 			/+Opt: Cache jsons, Only call createFromJson() when really needed!+/
 		}
 		mixin(求each(q{json},q{xJsons},q{
@@ -548,8 +551,8 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x4A0D83B10505).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x4A6B83B10505).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x4A2F83B10505).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x4A8D83B10505).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -574,9 +577,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x4CC983B10505).檢((update間(_間)))); ((0x4CF483B10505).檢(json.length)); 
-			auto compr = json.compress; 	((0x4D3B83B10505).檢((update間(_間)))); ((0x4D6683B10505).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x4DC983B10505).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x4CEB83B10505).檢((update間(_間)))); ((0x4D1683B10505).檢(json.length)); 
+			auto compr = json.compress; 	((0x4D5D83B10505).檢((update間(_間)))); ((0x4D8883B10505).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4DEB83B10505).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -586,11 +589,11 @@ class DDB
 		ModuleDeclarations newRoot; 
 		try {
 			auto _間=init間; 
-			auto compr = file.read; 	((0x4EC583B10505).檢((update間(_間)))); 
+			auto compr = file.read; 	((0x4EE783B10505).檢((update間(_間)))); 
 			if(!compr.empty)
 			{
-				auto json = (cast(string)(compr.uncompress)); 	((0x4F4083B10505).檢((update間(_間)))); 
-				newRoot.fromJson(json, file.fullName); 	((0x4F9983B10505).檢((update間(_間)))); 
+				auto json = (cast(string)(compr.uncompress)); 	((0x4F6283B10505).檢((update間(_間)))); 
+				newRoot.fromJson(json, file.fullName); 	((0x4FBB83B10505).檢((update間(_間)))); 
 			}
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -918,5 +921,268 @@ class DDB
 			{ import core.thread.fiber; Fiber.yield; /+Note: Fiber time limitation.+/}
 		} 
 		visit([PathNode(this.root)], searchText.split('.')); 
+	} 
+} static struct Insight
+{
+	bool activateRequest; 
+	@STORED
+	{
+		bool visible, setupVisible; 
+		string searchText; 
+	} 
+	
+	void activate(string s)
+	{
+		initialize; 
+		activateRequest = true; searchText=s; 
+	} 
+	
+	void deactivate()
+	{ if(visible.chkClear) { searchText = ""; }} 
+	
+	
+	DDB ddb; 
+	VirtualTreeView!(DDB.PathNode) treeView, resultTreeView; 
+	
+	void initialize()
+	{
+		if(!ddb) {
+			ddb = new DDB(
+				Path(`z:\temp2`),
+				Path(`c:\d\ldc2\import`),
+				Path(`c:\d\libs`),
+				File(appPath, `$stdlib_cache.dat`)
+			); 
+			treeView = new typeof(treeView); 
+			resultTreeView = new typeof(resultTreeView); 
+			
+			ddb.startDelayedCacheLoader; 
+		}
+	} 
+	
+	import core.thread.fiber; 
+	static class InsightFiber : Fiber
+	{
+		/+Todo: this fiber searcher looks common -> SearcFiber too.  Refactor it.+/
+		mixin SmartClass!
+		(
+			q{
+				DDB ddb, 
+				string searchText,
+				Object resultTreeView
+			}, 
+			q{
+				super(
+					&run, 16<<10/+measured stack: only 3840 Bytes+/
+					/+
+						Todo: Display a warning or error when the stack is not enough
+						Manage the fiber stack safely! 
+						It can't run out with access violation, that's totally unreliable.
+					+/
+				); 
+			}
+		); 
+		
+		DateTime timeLimit; 
+		
+		private void run()
+		{
+			auto res = (cast(
+				VirtualTreeView!(DDB.PathNode)
+				/+Todo: SmartClass can't handle this crap.+/
+			)(resultTreeView)).enforce; 
+			if(searchText!="")
+			{ ddb.search_yield(res, searchText, timeLimit); }
+			else
+			{
+				res._root = DDB.PathNode(ddb.root); 
+				res.changed = now; 
+			}
+		} 
+	} 
+	InsightFiber insightFiber; 
+	
+	void updateInsightFiber()/+Todo: rename to update()+/
+	{
+		initialize; 
+		ddb.updateDelayedCacheLoader; 
+		
+		if(insightFiber && !visible) { insightFiber.free; }
+		
+		if(insightFiber)
+		{
+			if(insightFiber.state==Fiber.State.TERM) insightFiber.free; 
+			else {
+				insightFiber.timeLimit = now + 10*milli(second); 
+				insightFiber.call; 
+			}
+		}
+	} 
+	
+	void processIncomingProjectJsons(string[] xJsons)
+	{
+		initialize; 
+		ddb.processIncomingProjectJsons(xJsons); 
+	} 
+	
+	static string decodeEasyWildcard(string s)
+	{
+		{
+			//many spaces to one
+			re: auto len = s.length; s = s.replace("  ", " "); 
+			if(s.length<len) goto re; 
+		}
+		
+		if(s=="" || s==" ") return ""; 
+		
+		if(s.canFind('*') || s.canFind('?') || s.canFind('.')) return s; 
+		
+		if(s.startsWith(" ")) s = s[1..$]; s = '*'~s; 
+		if(s.endsWith(" ")) s = s[0..$-1]; s = s~'*'; 
+		s = s.replace(" ", "*.*"); 
+		return s; 
+	} 
+	
+	bool UI(View2D view, void delegate(DDB.PathNode* node) onClick)
+	{
+		initialize; 
+		with(im)
+		{
+			{
+				bool justActivated; 
+				if(activateRequest.chkClear)
+				{ visible = justActivated = true; }
+				
+				if(visible)
+				{ UI_insightPanel(view, justActivated, onClick); }
+				
+				return visible; 
+			}
+		}
+	} 
+	
+	void UI_insightPanel(View2D view, bool justActivated, void delegate(DDB.PathNode* node) onClick)
+	{
+		enforce(ddb); 
+		with(im)
+		{
+			Column(
+				{
+					//Keyboard shortcuts
+					auto 	kcInsightType	= KeyCombo("Enter"), //only when edit is focused
+						kcInsightClose	= KeyCombo("Esc"); //always
+					
+					void sw() { outerWidth = fh*18; } 
+					
+					Row(
+						{
+							sw; Text("Insight"); .Container editContainer; 
+							
+							const searcHash = searchText.hashOf; 
+							static size_t lastSearchHash; //Todo: static is ugly. It's a workspace property
+							const searchHashChanged = lastSearchHash.chkSet(searcHash); 
+							
+							
+							if(
+								Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								|| justActivated || searchHashChanged
+							)
+							{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
+							
+							BtnRow(
+								{
+									if(Btn("⚙", hint("Setup"), selected(setupVisible)))
+									setupVisible.toggle; 
+								}
+							); 
+							if(
+								Btn(
+									bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+									kcInsightClose, hint("Close panel.")
+								)
+							)
+							{ deactivate; }
+						}
+					); 
+					if(setupVisible)
+					with(ddb)
+					{
+						Row(
+							{
+								Grp!Row(
+									"Wipe", {
+										if(Btn("all")) wipeAll; 
+										if(Btn("project")) wipeProject; 
+									}
+								); 
+								Grp!Row(
+									"Regenerate", {
+										if(Btn("phobos")) regenerateStd/+75.8MB+/; 
+										/+
+											if(Btn("hetLib")) regenerateLib(hetlibFiles)/+14.2MB+/; 
+											if(Btn("dide")) regenerateProject(dideFiles, dideArgs)/+2.1MB+/; 
+											if(Btn("karc")) regenerateProject(karcFiles, karcArgs)/+0.75MB+/; 
+										+/
+									} 
+								); 
+							}
+						); 
+						Grp!Row(
+							"Operations", {
+								if(Btn("Save cache")) saveCache; 
+								if(Btn("Load cache")) loadCache; 
+								if(Btn("Stats")) generateMemberStats.print; 
+								if(Btn("Export source"))
+								{
+									SourceTextOptions so; 
+									root.sourceText(so).saveTo(File(`z:\declarations.d`)); 
+									so.toJson.print; 
+								}
+							}
+						); 
+						Row(
+							{
+								Grp!Row("Mods", { Static(moduleCount, { width = 1.5f*fh; }); }); 
+								Grp!Row("Members", { Static(memberCount, { width = 2.5f*fh; }); }); 
+								Grp!Row("Rows", { Static(((searchText=="") ?(treeView):(resultTreeView)).rows.length, { width = 2.5f*fh; }); }); 
+							}
+						); 
+						Grp!Row("Decoded EasyWildcard™", { Text(decodeEasyWildcard(searchText)); width = 16*fh; }); 
+						Grp!Row(
+							"Help", {
+								Text(
+									bold("LMB")	, " type | "	,
+									bold("Alt+LMB")	, " adv.type | "	,
+									bold("Ctrl+LMB")	, " navig."	
+								); width = 16*fh; 
+							}
+						); 
+					}
+					
+					actContainer.measure; 
+					const treeHeight = mainWindow.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
+					
+					void UI_node(DDB.PathNode* node)
+					{
+						with(im)
+						{
+							if(Btn({ node.UI; }, ((node.identityStr).genericArg!q{id})))
+							{ if(onClick) onClick(node); }
+						}
+					} 
+					
+					if(searchText=="")
+					{
+						with(ddb) treeView.root = PathNode(root); /+Todo: this is misleading! It has internal change detection+/
+						treeView.UI(
+							{ sw; outerHeight = treeHeight; }, &UI_node
+							
+						); 
+					}
+					else
+					{ resultTreeView.UI({ sw; outerHeight = treeHeight; }, &UI_node); }
+				}
+			); 
+		}
 	} 
 } 

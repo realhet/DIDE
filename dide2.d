@@ -105,7 +105,6 @@ version(/+$DIDE_REGION+/all)
 	
 	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	
-	
 	auto frmMain()
 	{ return (cast(FrmMain)mainWindow); } 
 	
@@ -1291,7 +1290,7 @@ version(/+$DIDE_REGION+/all)
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
 							workspace.search.UI(workspace, view),
-							workspace.insight.UI(workspace, view),
+							workspace.insight.UI(view, &workspace.onInsightClick),
 							workspace.outline.UI(workspace, view)
 						]; /+Todo: refactor this terrible menu+/
 						anyVisible = vis.any; 
