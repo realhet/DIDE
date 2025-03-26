@@ -12,7 +12,7 @@ import didedecl : Declaration, 	/+these are for statistics only ->+/dDeclaration
 import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFormat, TextModification, addInspectorParticle, TextModificationRecord, cachedFolderLabel, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, DefaultNewLine, compoundObjectChar, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, drawChangeIndicators, globalChangeindicatorsAppender, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
 import dideinsight : DDB, Insight; 
 import dideai : AiModel, AiChat; 
-alias blink = dideui.blink; mixin SmartClassGenerator; 
+alias blink = dideui.blink; 
 
 class Workspace : Container, WorkspaceInterface
 {
@@ -3599,7 +3599,65 @@ class Workspace : Container, WorkspaceInterface
 			
 			if(!aiModel)
 			{
-				aiModel = new AiModel("https://api.deepseek.com/v1/chat/completions", "deepseek-chat", "You are a helpful assistant."); 
+				aiModel = new AiModel
+				(
+					"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
+					`You are a helpful assistant.
+I don't want you to reformat my code, keep all whitespace as is.
+For newly generated code use TAB to indent.
+For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
+Use higher level DLang functional constructs when possible: ranges, etc.
+Use GLSL-like vector/matrix operations, the user's framework supports that.
+Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.
+
+When communicating in expressions or one line code, use this form: /+Code: code+/
+When inserting multiline code, use form:
+/+Code:
+	multiline
+	source code goes here
++/
+
+Put yout paragraphs into /+Note: text goes here+/ blocks!
+You can do multiline paragrphs like this:
+/+Note:
+	line1
+	line2
++/
+
+Put bullet paragraphs into /+Bullet: text goes here+/ blocks!
+It has a multiline variant too:
+/+Bullet:
+	line1
+	line2
++/
+Use one bullet paragraph for each bullet item!
+
+Word wrap every paragraphs and bullet paragraphs to around 100 characters!
+
+Put bold text inside /+Bold: text goes here+/ blocks! 
+
+Put italic text inside /+Italic: text goes here+/ blocks! 
+
+Put heading text inside /+Hn: text goes here+/ blocks, where n is in range 1 to 6! 
+
+Sometimes I will give or ask the results in a "table", this is my table format, please preserve this exact format and whitespaces when you are communicating with it: `
+					~"\n/+Code:\n"
+					~q{
+						(表([
+							[q{/+Note: Header+/},q{/+Note: 2nd column+/},q{/+Note: 3rd column+/}],
+							[q{normal cell},q{"string cell"},q{/+comment cell+/}],
+							[q{/+If the whole row is a comment, it's ignored+/}],
+							[],
+							[q{/+also empty rows are ignored, they are just there for formatting+/}],
+							[q{
+								another cell 1+1=2
+								/+anything D syntax can go here.+/
+							},q{`Another string.
+This one is multiline and without escapes.`}],
+						]))
+					}.splitLines[1..$-1].join('\n').outdent
+					~"\n+/\n"
+				); 
 				aiModel.apiKey = File(appPath, "a.a").readStr; 
 				NOTIMPL("Ini file for settings!"); 
 			}
@@ -3649,7 +3707,7 @@ class Workspace : Container, WorkspaceInterface
 			import core.thread.fiber; 
 			static class SearchFiber : Fiber
 			{
-				mixin SmartClass!
+				mixin SmartChild!
 				(
 					q{
 						Module[] modules, 
@@ -6109,7 +6167,7 @@ class Workspace : Container, WorkspaceInterface
 		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
 		{
 			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x2D4B371008CF4).檢((update間(_間)))); 
+			auto _間=init間; scope(exit) ((0x2DC7471008CF4).檢((update間(_間)))); 
 			
 			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
 			

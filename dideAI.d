@@ -1,11 +1,10 @@
 module dideai; 
 
 import het; 
-mixin SmartClassGenerator; 
 
 class AiChat
 {
-	mixin SmartClass!(q{@PARENT AiModel model}); 
+	mixin SmartChild!(q{@PARENT AiModel model}); 
 	import std.json; 
 	import std.net.curl : HTTP; 
 	
@@ -302,7 +301,7 @@ class AiChat
 } 
 class AiModel
 {
-	mixin SmartClassParent!(
+	mixin SmartParent!(
 		q{
 			@STORED string 	apiUrl,
 			@STORED string 	model,

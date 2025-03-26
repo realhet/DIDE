@@ -2,10 +2,6 @@ module dideinsight;
 
 import het.ui, dideui, std.parallelism; 
 
-mixin SmartClassGenerator; 
-
-
-
 private {
 	File[] listDLangFiles(Path path, Flag!"recursive" recursive = Yes.recursive)
 	=> listFiles(path, "*.d*", "name", Yes.onlyFiles, Yes.recursive).filter!((a)=>(a.file.extIs("d", "di"))).map!((a)=>(a.file)).array; 
@@ -527,8 +523,8 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x46F083B10505).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x474883B10505).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x46CD83B10505).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x472583B10505).檢((update間(_間)))); 
 	} 
 	
 	void processIncomingProjectJsons(string[] xJsons)
@@ -538,7 +534,7 @@ class DDB
 		version(/+$DIDE_REGION Measure time+/all)
 		{
 			__gshared Time tSum=0*second; const t0 = now; 
-			scope(exit) { tSum += now-t0; ((0x485D83B10505).檢(tSum)); }
+			scope(exit) { tSum += now-t0; ((0x483A83B10505).檢(tSum)); }
 			/+Opt: Cache jsons, Only call createFromJson() when really needed!+/
 		}
 		mixin(求each(q{json},q{xJsons},q{
@@ -551,8 +547,8 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x4A2F83B10505).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x4A8D83B10505).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x4A0C83B10505).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x4A6A83B10505).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -577,9 +573,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x4CEB83B10505).檢((update間(_間)))); ((0x4D1683B10505).檢(json.length)); 
-			auto compr = json.compress; 	((0x4D5D83B10505).檢((update間(_間)))); ((0x4D8883B10505).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x4DEB83B10505).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x4CC883B10505).檢((update間(_間)))); ((0x4CF383B10505).檢(json.length)); 
+			auto compr = json.compress; 	((0x4D3A83B10505).檢((update間(_間)))); ((0x4D6583B10505).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4DC883B10505).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -589,11 +585,11 @@ class DDB
 		ModuleDeclarations newRoot; 
 		try {
 			auto _間=init間; 
-			auto compr = file.read; 	((0x4EE783B10505).檢((update間(_間)))); 
+			auto compr = file.read; 	((0x4EC483B10505).檢((update間(_間)))); 
 			if(!compr.empty)
 			{
-				auto json = (cast(string)(compr.uncompress)); 	((0x4F6283B10505).檢((update間(_間)))); 
-				newRoot.fromJson(json, file.fullName); 	((0x4FBB83B10505).檢((update間(_間)))); 
+				auto json = (cast(string)(compr.uncompress)); 	((0x4F3F83B10505).檢((update間(_間)))); 
+				newRoot.fromJson(json, file.fullName); 	((0x4F9883B10505).檢((update間(_間)))); 
 			}
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -964,7 +960,7 @@ class DDB
 	static class InsightFiber : Fiber
 	{
 		/+Todo: this fiber searcher looks common -> SearcFiber too.  Refactor it.+/
-		mixin SmartClass!
+		mixin SmartChild!
 		(
 			q{
 				DDB ddb, 
