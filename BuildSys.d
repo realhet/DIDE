@@ -55,8 +55,8 @@ version(/+$DIDE_REGION+/all) {
 	import het, het.parser, std.file, std.regex, std.path, std.process; 
 	
 	
-	enum LDCVER = 128
-	/+The targeted LDC version by this builder.  Valid versions: 120, 128+/; 
+	enum LDCVER = 139
+	/+The targeted LDC version by this builder.  Valid versions: 139+/; 
 	
 	mixin((
 		(表([
@@ -71,6 +71,9 @@ version(/+$DIDE_REGION+/all) {
 			[q{flawless},q{clLime}],
 		]))
 	) .GEN!q{GEN_enumTable}); 
+	
+	bool buildStateIsCompleted(ModuleBuildState a)
+	{ with(ModuleBuildState) return !!a.among(hasWarnings, hasDeprecations, flawless); } 
 	
 	
 	
@@ -119,6 +122,27 @@ version(/+$DIDE_REGION+/all) {
 	
 	alias globalPidList = Singleton!GlobalPidList; 
 	//Todo: globalPidList... Not the best naming...
+	
+	//convinience function with default settings only, no search paths
+	File[] allProjectFilesFromModule(File file)
+	{
+		if(!file.exists) return []; 
+		//Todo: not just for //@exe of //@dll
+		BuildSettings settings = {verbose : false}; 
+		BuildSystem buildSystem; 
+		return buildSystem.findDependencies(file, settings).map!(m => m.file).array; 
+	} 
+	
+	struct CompilationResult
+	{
+		File file; 
+		int result = int.min; 
+		string output, xJson; 
+		DateTime t0, t1; @property duration() => t1-t0; 
+		
+		bool valid() const => file && result==0; 
+		bool opCast(T : bool)() const => valid; 
+	} 
 	
 	struct SpawnProcessMultiSettings
 	{
@@ -148,7 +172,7 @@ a new compiler instance."}],
 	int spawnProcessMulti(
 		File[] ids, in string[][] cmdLines, 
 		in string[string] env, Path workPath, Path logPath, out string[] sOutput, 
-		bool delegate(int idx, int result, string output) onProgress/*returns enable flag*/, 
+		bool delegate(int idx, int result, string output, DateTime t0, DateTime t1) onProgress/*returns enable flag*/, 
 		bool delegate(int inFlight, int justStartedIdx) onIdle/*return cancel flag*/,
 		in ref SpawnProcessMultiSettings settings,
 		void delegate(string id, ref string[] stdOut, ref string[] stdErr, bool isFinal) onStdLineReceived
@@ -178,6 +202,9 @@ a new compiler instance."}],
 			int result; 
 			bool ended; 
 			string output; 
+			
+			//timing
+			DateTime t0, t1; @property duration() => t1-t0; 
 			
 			enum State
 			{ idle, running, finished} 
@@ -231,6 +258,7 @@ a new compiler instance."}],
 			{
 				result = val; 
 				pipes = ProcessPipes.init; 
+				t1 = now; 
 				ended = true; 
 			} 
 			
@@ -269,6 +297,7 @@ a new compiler instance."}],
 			{
 				if(isRunning) { ERR("already running"); return; }
 				
+				t0 = now; 
 				pipes = pipeProcess(
 					cmd, Redirect.stdout | Redirect.stderr, env, 
 					Config.suppressConsole, workPath.fullPath
@@ -363,7 +392,13 @@ a new compiler instance."}],
 			
 		} 
 		/// returns true if it must work more
-		static bool update(Executor[] executors, bool delegate(int idx, int result, string output) onProgress = null)
+		static bool update(
+			Executor[] executors, 
+			bool delegate(
+				int idx, int result, string output, 
+				DateTime t0, DateTime t1
+			) onProgress = null
+		)
 		{
 			bool doBreak; 
 			foreach(i, e; executors)
@@ -373,7 +408,7 @@ a new compiler instance."}],
 					e.update; 
 					if(e.isFinished && (onProgress !is null))
 					{
-						const doContinue = onProgress(i.to!int, e.result, e.output); 
+						const doContinue = onProgress(i.to!int, e.result, e.output, e.t0, e.t1); 
 						if(!doContinue) doBreak = true; 
 					}
 				}
@@ -1476,11 +1511,7 @@ Experimental:
 		} 
 		
 		struct MsgCompileProgress
-		{
-			File file; 
-			int result; 
-			string output, xJson; 
-		} 
+		{ CompilationResult compilationResult; } 
 		
 		struct MsgBuildFinished
 		{
@@ -1531,11 +1562,11 @@ Experimental:
 			} 
 			buildSystem.onBuildStarted = &onBuildStarted; 
 			
-			void onCompileProgress(File file, int result, string output, string xJson)
+			void onCompileProgress(in CompilationResult cr)
 			{
 				state.compiledModules++; 
 				//LOG("######################", file, result, output);
-				ownerTid.send(MsgCompileProgress(file, result, output, xJson)); 
+				ownerTid.send(MsgCompileProgress(cr)); 
 			} 
 			buildSystem.onCompileProgress = &onCompileProgress; 
 			
@@ -1608,7 +1639,7 @@ Experimental:
 		int[File] results; //command line console exit codes
 		
 		DMDMessage[] incomingMessages; //incoming from the MessageDecoder. Must be polled and fetched.
-		string[] incomingXJsons; //incoming X Json files.  Other side must pull!
+		CompilationResult[] incomingCompilationResults; //incoming X Json files.  Other side must pull!
 		
 		SourceStats sourceStats; 
 		
@@ -1656,8 +1687,7 @@ Experimental:
 							//Todo: initialize fileNameFixer with these correct names
 						}); 
 						
-						foreach(f; filesInCache)
-						{
+						foreach(f; filesInCache)	{
 							//generate valid outputs of cached files.
 							results[f] = 0;  //0 = success
 						}
@@ -1670,10 +1700,10 @@ Experimental:
 					}),
 					
 					((in MsgCompileProgress msg) {
-						auto f = msg.file; 
+						const f = msg.compilationResult.file; 
 						filesInFlight.remove(f); 
-						results[f] = msg.result; 
-						incomingXJsons ~= msg.xJson; 
+						results[f] = msg.compilationResult.result; 
+						incomingCompilationResults ~= msg.compilationResult; 
 					}),
 					
 					((in MsgBuildMessages msg) {
@@ -1753,7 +1783,7 @@ struct BuildSystem
 		File mainFile, in File[] filesToCompile, in File[] filesInCache, 
 		in string[] todos, in SourceStats sourceStats
 	) onBuildStarted; 
-		void delegate(File f, int result, string output, string xJson) onCompileProgress; 
+		void delegate(in CompilationResult) onCompileProgress; 
 		void delegate (DMDMessage[] messages) onBuildMessages; 
 		bool delegate(int inFlight, int justStartedIdx) onIdle; //returns true if IDE wants to cancel.
 	
@@ -2332,7 +2362,12 @@ struct BuildSystem
 				output	= outputCache[objHash]; 
 			
 			if(onCompileProgress)
-			onCompileProgress(srcFile, 0/+success+/, output, jsonCache[objHash]); 
+			onCompileProgress(
+				mixin(體!((CompilationResult),q{
+					srcFile, 0/+success+/, output, jsonCache[objHash],
+					DateTime.init, DateTime.init /+because cached+/
+				}))
+			); 
 			
 			accumulateOutput(output, srcFile); 
 			
@@ -2349,7 +2384,7 @@ struct BuildSystem
 		(
 			srcFiles, cmdLines, null, 
 			/*working dir=*/mainFile.path, /*log path=*/workPath, outputs, 
-			((idx, result, output) {
+			((idx, result, output, t0, t1) {
 				//logln(bold("COMPILED("~result.text~"): ")~joinCommandLine(cmdLines[idx]));
 				log(
 					" \33#*\33\7 "	.replace("#", result ? "\14" : "\12")
@@ -2376,7 +2411,7 @@ struct BuildSystem
 				}
 				
 				if(onCompileProgress)
-				onCompileProgress(srcFiles[idx], result, output, xJson); 
+				onCompileProgress(mixin(體!((CompilationResult),q{srcFiles[idx], result, output, xJson, t0, t1}))); 
 				
 				static if(0)
 				{

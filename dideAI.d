@@ -45,8 +45,22 @@ class AiChat
 	{
 		bool running() const => workerPending; 
 		const messages() => query.messages[max(1, $)..$]; 
-	} 
+	} 
 	
+	
+	enum Event { text, error, warning, done } 
+	
+	void printEvent(Event event, string s)
+	{
+		final switch(event)
+		{
+			case Event.text: 	write(s); 	break; 
+			case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
+			case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
+			case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
+		}
+	} 
+	
 	static private void worker(shared AiChat _chat)
 	{
 		/+this is where the blocking CURL HTTP client runs.+/
@@ -209,20 +223,9 @@ class AiChat
 	} 
 	
 	void stop()
-	{ workerPending = false; } 
-	enum Event { text, error, warning, done } 
+	{ workerPending = false; } 
 	
-	void printEvent(Event event, string s)
-	{
-		final switch(event)
-		{
-			case Event.text: 	write(s); 	break; 
-			case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
-			case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
-			case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
-		}
-	} 
-	
+	
 	bool update(void delegate(Event, string) onEvent=null)
 	{
 		if(onEvent is null) onEvent = &printEvent; 

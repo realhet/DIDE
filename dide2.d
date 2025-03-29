@@ -265,31 +265,33 @@ version(/+$DIDE_REGION+/all)
 		
 		void updateBuildSystem()
 		{
-			buildResult.receiveBuildMessages; 
-			auto 	msgs 	= buildResult.incomingMessages.fetchAll,
-				xJsons 	= buildResult.incomingXJsons.fetchAll; 
-			
-			workspace.processBuildMessages(msgs); 
-			
-			static if((常!(bool)(1)))
 			{
-				if(xJsons.length) workspace.insight.processIncomingProjectJsons(xJsons); 
-				/+Opt: Cache these jsons, only generate if changed.+/
+				buildResult.receiveBuildMessages; 
+				auto msgs = buildResult.incomingMessages.fetchAll; 
+				workspace.processBuildMessages(msgs); 
+			}
+			
+			{
+				auto compilationResults = buildResult.incomingCompilationResults.fetchAll; 
 				
-				/+
-					foreach(x; xJsons) {
-						print("######################### XJSON START ######################"); 
-						x.print; 
-						print("----------------------------- XJSON END ---------------------------"); 
-					}
-				+/
+				foreach(cr; compilationResults)
+				{
+					workspace.insight.processIncomingProjectJson(cr.xJson); 
+					/+Opt: Cache these jsons, only generate if changed.+/
+					
+					if((常!(bool)(0))) print("Incoming CR:", cr.file, cr.xJson.length, cr.t0, cr.t1, cr.t1-cr.t0); 
+					
+					if(auto Δt = cr.t1 - cr.t0)
+					if(auto m = workspace.modules.findModule(cr.file))
+					m.compilationTime = Δt.value(second); 
+				}
 			}
 			
 			//Note: These operations are fast: only 0.015 ms
 			
 			if(dbgsrv.exe_pid)
 			{
-				const running = PIDModuleFileIsRunning(dbgsrv.exe_pid, workspace.mainModuleFile.otherExt("exe")); 
+				const running = PIDModuleFileIsRunning(dbgsrv.exe_pid, workspace.modules.mainModuleFile.otherExt("exe")); 
 				
 				if(!running) {
 					dbgsrv.exe_pid = 0; /+It's been terminated.+/
@@ -357,7 +359,7 @@ version(/+$DIDE_REGION+/all)
 			void addOpt(string o)
 			{ if(o.length) bs.compileArgs.addIfCan(o); } 
 			
-			buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.mainModuleFile, bs)); 
+			buildSystemWorkerTid.send(cast(immutable)MsgBuildRequest(workspace.modules.mainModuleFile, bs)); 
 			//Todo: immutable is needed because of the dynamic arrays in BuildSettings... sigh...
 		} 
 		
@@ -366,8 +368,8 @@ version(/+$DIDE_REGION+/all)
 		{
 			clearDebugImageBlobs; 
 			workspace.firstErrorMessageArrived = false; 
-			workspace.modules.each!((m){ m.resetBuildMessages; }); 
-			workspace.modules.each!((m){ m.resetInspectors; }); 
+			workspace.modules.modules.each!((m){ m.resetBuildMessages; }); 
+			workspace.modules.modules.each!((m){ m.resetInspectors; }); 
 			dbgsrv.resetBeforeRun; 
 		} 
 		
@@ -475,7 +477,7 @@ version(/+$DIDE_REGION+/all)
 							value 	= wild[1],
 							moduleHash 	= (cast(uint)(id)),
 							location 	= (cast(uint)(id>>32)); 
-						if(auto m = moduleHash in workspace.moduleByHash)
+						if(auto m = moduleHash in workspace.modules.moduleByHash)
 						{
 							if(auto node = m.getInspectorNode(location))
 							{
@@ -497,7 +499,7 @@ version(/+$DIDE_REGION+/all)
 							location 	= (cast(uint)(id>>32)),
 							value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
 						
-						if(auto m = moduleHash in workspace.moduleByHash)
+						if(auto m = moduleHash in workspace.modules.moduleByHash)
 						{
 							if(auto node = m.getInspectorNode(location))
 							{
@@ -568,7 +570,7 @@ version(/+$DIDE_REGION+/all)
 						}
 						catch(Exception e)
 						{ error = e.simpleMsg; }
-						if(auto m = moduleHash in workspace.moduleByHash)
+						if(auto m = moduleHash in workspace.modules.moduleByHash)
 						{
 							if(auto node = m.getInspectorNode(location))
 							{
@@ -707,7 +709,7 @@ version(/+$DIDE_REGION+/all)
 			} 
 			
 			message = processExceptionMessage(message); 
-			auto dmdMessages = decodeDMDMessages(message, workspace.mainModuleFile); 
+			auto dmdMessages = decodeDMDMessages(message, workspace.modules.mainModuleFile); 
 			if(dmdMessages.length)
 			{
 				workspace.processBuildMessages(dmdMessages); 
@@ -825,8 +827,8 @@ version(/+$DIDE_REGION+/all)
 			caption = format!"%s%s - [%s] %s %s"(
 				baseCaption,
 				D_Optimized ? " (opt)" : "",
-				workspace.mainModuleFile.fullName,
-				workspace.modules.any!"a.changed" ? "Edited" : "",
+				workspace.modules.mainModuleFile.fullName,
+				workspace.modules.modules.any!"a.changed" ? "Edited" : "",
 				buildSystemWorkerState.building ? format!"Building: %d,  %d/%d"(buildSystemWorkerState.inFlight, buildSystemWorkerState.compiledModules, buildSystemWorkerState.totalModules) : "" 
 				/+
 					dbgsrv.pingLedStateText,
@@ -911,7 +913,7 @@ version(/+$DIDE_REGION+/all)
 			}
 			
 			with(workspace)
-			if(!selectedStickers.empty)
+			if(!modules.selectedStickers.empty)
 			with(im)
 			Panel(
 				PanelPosition.topCenter, 
@@ -940,7 +942,7 @@ version(/+$DIDE_REGION+/all)
 								)
 							)
 							{
-								foreach(s; selectedStickers)
+								foreach(s; modules.selectedStickers)
 								if(s.props.color.chkSet(colorName))
 								s.needMeasure; 
 							}
@@ -958,7 +960,7 @@ version(/+$DIDE_REGION+/all)
 					Row(
 						{
 							 //Todo: Panel should be a Row, not a Column...
-							Row({ workspace.UI_ModuleBtns; flex = 1; }); 
+							Row({ workspace.modules.UI_ModuleBtns; flex = 1; }); 
 						}
 					); 
 				}
@@ -1003,7 +1005,7 @@ version(/+$DIDE_REGION+/all)
 				PanelPosition.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
-					if(auto m = moduleWithPrimaryTextSelection)
+					if(auto m = modules.primaryModule)
 					{
 						Container(
 							{
@@ -1223,7 +1225,7 @@ version(/+$DIDE_REGION+/all)
 									 flex = 1; margin = "0 3"; flags.yAlign = YAlign.center; flags.clipSubCells = true; 
 									//style.fontHeight = 18+6;
 									
-									if(lod.moduleLevel) workspace.UI_selectedModulesHint; 
+									if(lod.moduleLevel) workspace.modules.UI_selectedModulesHint; 
 									if(!lod.moduleLevel) workspace.UI_mouseLocationHint(view); 
 									
 									
@@ -1342,10 +1344,10 @@ version(/+$DIDE_REGION+/all)
 							
 							//	flags.targetSurface = 0; 
 							
-							auto enabledModule = workspace.moduleWithPrimaryTextSelection; 
+							auto enabledModule = workspace.modules.primaryModule; 
 							const oldStyle = style; scope(exit) style = oldStyle; 
 							
-							mixin(求each(q{m},q{workspace.modules},q{
+							mixin(求each(q{m},q{workspace.modules.modules},q{
 								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
 								m.UI_constantNodes(moduleIsEnabled, 0); 
 							})); 
@@ -1366,7 +1368,7 @@ version(/+$DIDE_REGION+/all)
 			
 			view.subScreenArea = im.clientArea / clientSize; 
 			
-			workspace.UI_Popup; 
+			workspace.modules.UI_PopupScrumMenu(view.mousePos.vec2); 
 			
 			//bottomRight hint
 			with(im)
@@ -1391,7 +1393,7 @@ version(/+$DIDE_REGION+/all)
 					if(cancelling) return NO; 
 					if(building) return APPSTARTING; 
 					if(im.mouseOverUI || im.wantMouse) return ARROW; //Todo: im.chooseMouseCursor
-					with(workspace.moduleSelectionManager)
+					with(workspace.modules.moduleSelectionManager)
 					{
 						if(mouseOp == MouseOp.move) return SIZEALL; 
 						if(mouseOp == MouseOp.rectSelect) return CROSS; 

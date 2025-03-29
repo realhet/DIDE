@@ -1006,10 +1006,10 @@ version(/+$DIDE_REGION+/all)
 	{
 		//this is any file in the project
 		File file; 
-		uint fileNameHash; 
+		ulong fileNameHash; 
 		
 		DateTime fileLoaded, fileModified, fileSaved; //Opt: detect these times from the outside
-		size_t sizeBytes;  //Todo: update this form the outside
+		size_t sizeBytes; //Todo: update this form the outside
 		
 		StructureLevel structureLevel; 
 		static foreach(e; EnumMembers!StructureLevel)
@@ -1029,6 +1029,9 @@ version(/+$DIDE_REGION+/all)
 		
 		uint 	_rearrangeCounter,
 			_updateSearchResults_state; 
+		
+		float compilationTime=0; 
+		Module[] importedModules; 
 		
 		override SyntaxKind syntax() const
 		{ return skWhitespace; } 
@@ -1060,7 +1063,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			fileLoaded = now; 
 			file = file_.actualFile; 
-			fileNameHash = file.fullName.xxh32; 
+			fileNameHash = file.toHash; 
 			reload(desiredStructureLevel); 
 		} 
 		
@@ -1653,6 +1656,7 @@ version(/+$DIDE_REGION+/all)
 							props.pos = outerPos; 
 							props.fromJson(cmt.content.sourceText); 
 							outerPos = props.pos; 
+							//Todo: This conflicts with modules.lastKnownPosition and Ctrl+R reload.
 							/+
 								Note: This position will be overwritten by IDE.settings if it is exists there.
 								But it is used to export stickers.

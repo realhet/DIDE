@@ -9,10 +9,16 @@ import diderow : CodeRow, sourceText, hitTest;
 import didecolumn : CodeColumn; 
 import didenode : CodeNode, CodeComment, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
 import didedecl : Declaration, 	/+these are for statistics only ->+/dDeclarationRecords, processHighLevelPatterns_block; 
-import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFormat, TextModification, addInspectorParticle, TextModificationRecord, cachedFolderLabel, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, DefaultNewLine, compoundObjectChar, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, drawChangeIndicators, globalChangeindicatorsAppender, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
+import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFormat, TextModification, addInspectorParticle, TextModificationRecord, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, DefaultNewLine, compoundObjectChar, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, drawChangeIndicators, globalChangeindicatorsAppender, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
+import didemodulemanager : ModuleManager; 
 import dideinsight : DDB, Insight; 
 import dideai : AiModel, AiChat; 
 alias blink = dideui.blink; 
+
+
+
+
+
 
 class Workspace : Container, WorkspaceInterface
 {
@@ -54,23 +60,8 @@ class Workspace : Container, WorkspaceInterface
 		IBuildServices buildServices; //this lets access the main form's project builder.
 		//there are mainWindow dependencies
 		
-		File[] openQueue; 
-		Module[] modules; 
-		Module[uint] moduleByHash; 
+		@STORED ModuleManager modules; 
 		
-		@STORED File mainModuleFile; 
-		@property
-		{
-			Module mainModule()
-			{ return findModule(mainModuleFile); } void mainModule(Module m)
-			{
-				enforce(modules.canFind(m), "Invalid module."); 
-				enforce(m.isMain, "This module can't be selected as main module."); 
-				mainModuleFile = m.file; 
-			} 
-		} 
-		
-		ContainerSelectionManager!Module moduleSelectionManager; 
 		TextSelectionManager textSelectionManager; 
 		
 		protected TextSelection[] textSelections_internal; 
@@ -100,14 +91,9 @@ class Workspace : Container, WorkspaceInterface
 		
 		auto markerLayerSettings = [EnumMembers!(DMDMessage.Type)].map!MarkerLayerSettings.array; 
 		
-		@STORED vec2[size_t] lastModulePositions; 
-		
-		
 		//Restrict convertBuildResultToSearchResults calls.
 		size_t lastBuildStateHash; 
 		bool buildStateChanged; 
-		
-		FileDialog fileDialog; 
 		
 		Nullable!bounds2 scrollInBoundsRequest; 
 		
@@ -120,44 +106,37 @@ class Workspace : Container, WorkspaceInterface
 		SyntaxHighlightWorker syntaxHighlightWorker; 
 		
 		StructureMap structureMap; 
-		
-		@STORED StructureLevel desiredStructureLevel = StructureLevel.highlighted; 
-		
-		struct AutoReloader
-		{
-			@STORED bool enabled; 
-			
-			size_t idx; 
-			
-			void update(Module[] modules)
-			{
-				if(!enabled) return; 
-				if(modules.empty) return; 
-				
-				version(/+$DIDE_REGION advance idx+/all)
-				{ idx ++;  if(idx>=modules.length) idx = 0; }
-				
-				auto m = modules[idx]; 
-				if(typeid(m) is typeid(Module) /+Opt: It takes 120us for a file.  It is problematic with the stickers...+/)
-				if(!m.changed && m.fileModified < m.file.modified)
-				m.reload(m.structureLevel); 
-			} 
-		} 
-		
-		@STORED AutoReloader autoReloader; 
 		
+		void smartScrollTo(bounds2 b)
+		{ mainView.smartScrollTo(b); } 
+		
+		ref desiredStructureLevel()
+		=> modules.desiredStructureLevel; 
+		
+		void setTextSelectionReference(string s)
+		{ textSelections = [TextSelectionReference(s, &modules.findModule).fromReference]; } 
+		
 		this()
 		{
+			modules = new ModuleManager; 
+			modules.parent = this; 
+			modules.afterModulesChanged = &updateSubCells; 
+			modules.onSmartScrollTo = &smartScrollTo; 
+			modules.onGetPrimaryModule = &primaryModule; 
+			modules.onSetTextSelectionReference = &setTextSelectionReference; 
+			
 			flags.targetSurface = 0; 
 			flags.noBackground = true; 
-			fileDialog = new FileDialog(mainWindow.hwnd, "Dlang source file", ".d", "DLang sources(*.d), Any files(*.*)"); 
 			syntaxHighlightWorker = new SyntaxHighlightWorker; 
 			structureMap = new StructureMap; 
 			needMeasure; 
 		} 
 		
 		~this()
-		{ syntaxHighlightWorker.destroy; } 
+		{
+			syntaxHighlightWorker.free; 
+			modules.free; 
+		} 
 		
 		override @property bool isReadOnly()
 		{
@@ -190,65 +169,29 @@ class Workspace : Container, WorkspaceInterface
 		//! Module handling ///////////////////////////////////////
 		version(/+$DIDE_REGION+/all)
 		{
-			version(/+$DIDE_REGION ModuleSettings+/all)
+			protected void updateSubCells()
 			{
-				protected
-				{
-					//ModuleSettings is a temporal storage for saving and loading the workspace.
-					struct ModuleSettings {
-						string fileName; 
-						vec2 pos; 
-					} 
-					@STORED ModuleSettings[] moduleSettings; 
-					
-					void toModuleSettings()
-					{ moduleSettings = modules.map!(m => ModuleSettings(m.file.fullName, m.outerPos)).array; } 
-					
-					void fromModuleSettings()
-					{
-						clear; 
-						
-						foreach(ms; moduleSettings)
-						{
-							try
-							{ loadModule(File(ms.fileName), ms.pos); }
-							catch(Exception e)
-							{ WARN(e.simpleMsg); }
-						}
-						
-						updateSubCells; 
-					} 
-					
-					void updateSubCells()
-					{
-						invalidateTextSelections; 
-						moduleSelectionManager.validateItemReferences(modules); 
-						subCells = cast(Cell[])modules; 
-					} 
-				} 
-			}
-			
-			
-			auto calcBounds()
-			{ return modules.fold!((a, b)=> a|b.outerBounds)(bounds2.init); } 
+				invalidateTextSelections; 
+				subCells = (cast(Cell[])(modules.modules)); 
+			} 
 			
 			void clear()
 			{
-				modules = []; 
-				moduleByHash.clear; 
+				modules.closeAllModules; 
 				textSelections = []; 
 				updateSubCells; 
 			} 
 			
 			void loadWorkspace(string jsonData)
 			{
+				//Todo: don't need to fuck here
 				auto fuck = this; fuck.fromJson(jsonData); 
-				fromModuleSettings; 
+				modules.fromModuleSettings; 
 			} 
 			
 			string saveWorkspace()
 			{
-				toModuleSettings; 
+				modules.toModuleSettings; 
 				return this.toJson; 
 			} 
 			
@@ -257,44 +200,11 @@ class Workspace : Container, WorkspaceInterface
 			
 			void saveWorkspace(File f)
 			{ f.write(saveWorkspace); } 
-			
-			Module findModule(File file)
-			{
-				if(auto m = file.fullName.xxh32 in moduleByHash)
-				return *m; 
-				
-				foreach(m; modules)
-				if(sameText(m.file.fullName, file.fullName))
-				{ WARN("slow find", "\n"~file.fullName, "\n"~m.file.fullName); return m; }
-				//Opt: hash table with fileName.lc...
-				
-				return null; 
-			} 
-		}version(/+$DIDE_REGION+/all)
+		}
+		
+		
+		version(/+$DIDE_REGION+/all)
 		{
-			void closeModule(File file)
-			{
-				//Todo: ask user to save if needed
-				if(!file) return; 
-				const idx = modules.map!(m => m.file).countUntil(file); 
-				if(idx<0) return; 
-				
-				const h = modules[idx].fileNameHash; 
-				if(h in moduleByHash) moduleByHash.remove(h); 
-				
-				modules = modules.remove(idx); 
-				updateSubCells; 
-			} 
-			
-			auto selectedModules()
-			{ return modules.filter!(m => m.flags.selected).array; } 
-			auto unselectedModules()
-			{ return modules.filter!(m => !m.flags.selected).array; } 
-			auto hoveredModule()
-			{ return moduleSelectionManager.hoveredItem; } 
-			auto modulesWithTextSelection()
-			{ return textSelections.map!(s => s.moduleOf).nonNulls.uniq; } 
-			
 			auto primaryTextSelection()
 			{
 				{
@@ -313,42 +223,13 @@ class Workspace : Container, WorkspaceInterface
 			auto primaryCaret()
 			{ return primaryTextSelection.caret; } 
 			
-			auto moduleWithPrimaryTextSelection()
-			{
-				auto res = textSelections.filter!"a.primary".map!moduleOf.frontOrNull; 
-				if(!res) res = textSelections.map!moduleOf.frontOrNull; //if there is no Primary, pick the front one
-				return res; 
-			} 
+			auto primaryModule()
+			{ return primaryTextSelection.moduleOf; } 
 			
-			alias primaryModule = moduleWithPrimaryTextSelection; 
+			auto modulesWithTextSelection()
+			{ return textSelections.map!(s => s.moduleOf).nonNulls.uniq; } 
 			
-			Module oneSelectedModule()
-			{
-				if(selectedModules.take(2).walkLength==1)
-				return selectedModules.front; 
-				return null; 
-			} 
 			
-			Module singleSelectedModule()
-			{ return oneSelectedModule.ifz(primaryModule); } 
-			
-			Module expectOneSelectedModule()
-			{
-				auto m = oneSelectedModule; 
-				if(!m)
-				im.flashWarning("This operation requires a single selected module."); 
-				//Todo: put the operation's name in the message.
-				
-				return m; 
-			} 
-			
-			Module[] selectedModulesOrAll()
-			{
-				auto res = selectedModules.array; 
-				if(res.empty) res = modules; 
-				return res; 
-			} 
-			
 			/+
 				+Selects all the CodeColumns under the cursors. 
 				If there is none, selects all the modules' content CodeColumns.
@@ -360,140 +241,15 @@ class Workspace : Container, WorkspaceInterface
 				foreach(c; textSelections.map!"a.codeColumn")
 				if(!cols.canFind(c)) cols ~= c; 
 				if(cols.empty)
-				foreach(c; selectedModules.map!"a.content")
+				foreach(c; modules.selectedModules.map!"a.content")
 				cols ~= c; 
 				
 				return cols; 
 			} 
 			
-			auto selectedStickers()
-			{ return selectedModules.map!(m => cast(ScrumSticker) m).filter!"a"; } 
 			
-			auto changedModules()
-			{ modules.filter!"a.changed"; } 
-			auto projectModules()
-			{ return mainModule ? allFilesFromModule(mainModule.file).map!(f => findModule(f)).nonNulls.array : []; } 
-			auto changedProjectModules()
-			{ return projectModules.filter!"a.changed"; } 
-			void saveChangedProjectModules()
-			{ changedProjectModules.each!"a.save"; } 
-			
-			
-			private void closeSelectedModules_impl()
-			{
-				//Todo: ask user to save if needed
-				modules = unselectedModules; 
-				moduleByHash = assocArray(modules.map!"a.fileNameHash".array, modules); 
-				updateSubCells; 
-				invalidateTextSelections; 
-			} 
-			
-			private void closeAllModules_impl()
-			{
-				//Todo: ask user to save if needed
-				clear; 
-				invalidateTextSelections; 
-			} 
-			
-			private void bringToFrontSelectedModules()
-			{
-				//Not: Do not raise alwaysOnBottom modules to the top.
-				static isSel(Module m)
-				{ return m.flags.selected && !m.alwaysOnBottom; } 
-				
-				modules = chain(
-					modules.filter!(m=>!isSel(m)), 
-					modules.filter!isSel
-				).array; 
-				updateSubCells; 
-			} 
-			
-			bool loadModule(in File file)
-			{
-				const vec2 targetPos = lastModulePositions.get(file.actualFile.hashOf, vec2(calcBounds.right+24, 0)); 
-				return loadModule(file, targetPos); //default position
-			} 
-			
-			bool loadModule(in File file, vec2 targetPos)
-			{
-				if(!file.exists) return false; 
-				if(auto m = findModule(file))
-				{
-					m.fileLoaded = now; //it's just a flash indicator
-					mainView.smartScrollTo(m.outerBounds); 
-					return false; //no loading was issued
-				}
-				
-				Module m; 
-				if(file.extIs("scrum"))	m = new ScrumTable(this, file, desiredStructureLevel); 
-				else if(file.extIs("sticker"))	m = new ScrumSticker(this, file, desiredStructureLevel); 
-				else	m = new Module(this, file, desiredStructureLevel); 
-				
-				//m.flags.targetSurface = 0; not needed, workspace is on s0 already
-				m.measure; 
-				m.outerPos = targetPos; 
-				modules ~= m; 
-				moduleByHash[m.fileNameHash] = m; 
-				updateSubCells; 
-				
-				/+
-					justLoadedSomething |= true;
-					justLoadedBounds |= m.outerBounds; 
-				+/
-				
-				mainView.smartScrollTo(m.outerBounds); 
-				
-				return true; 
-			} 
 			
-			File[] allFilesFromModule(File file)
-			{
-				if(!file.exists) return []; 
-				//Todo: not just for //@exe of //@dll
-				BuildSettings settings = {verbose : false}; 
-				BuildSystem buildSystem; 
-				return buildSystem.findDependencies(file, settings).map!(m => m.file).array; 
-			} 
 			
-			auto loadModuleRecursive(File file)
-			{ allFilesFromModule(file).each!(f => loadModule(f)); } 
-			
-			void queueModule(File f)
-			{
-				/+
-					Todo: this workaround is there to let the filedialog handle 
-					virtual files like: virtual:\clipboard.txt.  This should be put inside openDialog class.
-				+/
-				if(f.fullName.isWild(`*\?*:*`)) f.fullName = wild[1].split('\\').back~':'~wild[2]; 
-				openQueue ~= f; 
-			} 
-			void queueModuleRecursive(File f)
-			{ if(f.exists) openQueue ~= allFilesFromModule(f); } 
-			
-			void updateOpenQueue(int maxWork)
-			{
-				while(openQueue.length)
-				{
-					auto f = openQueue.fetchFront; 
-					if(loadModule(f))
-					{
-						maxWork--; 
-						if(maxWork<=0) return; 
-					}
-				}
-			} 
-			
-			void updateModuleBuildStates(in BuildResult buildResult)
-			{
-				foreach(m; modules)
-				{ m.buildState = buildResult.getBuildStateOfFile(m.file); }
-			} 
-			
-			void updateLastKnownModulePositions()
-			{
-				foreach(m; modules)
-				lastModulePositions[m.file.hashOf] = m.outerPos; 
-			} 
 			
 		}
 	}version(/+$DIDE_REGION+/all)
@@ -588,7 +344,7 @@ class Workspace : Container, WorkspaceInterface
 			
 			if(!loc) return []; 
 			
-			if(auto mod = findModule(loc.file))
+			if(auto mod = modules.findModule(loc.file))
 			{
 				Container.SearchResult[] doit()
 				{
@@ -723,7 +479,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		void processBuildMessage(DMDMessage msg)
 		{
-			if(!mainModule) return; 
+			if(!modules.mainModule) return; 
 			
 			static bool disable = false; 
 			
@@ -759,7 +515,7 @@ class Workspace : Container, WorkspaceInterface
 					return fallbackNode; 
 				} 
 				
-				auto containerModule = findModule(msg.location.file).ifNull(mainModule); 
+				auto containerModule = modules.findModule(msg.location.file).ifNull(modules.mainModule); 
 				if(auto containerNode = getContainerNode(containerModule))
 				{
 					void addMessageToModule(bool isNew)
@@ -844,19 +600,19 @@ class Workspace : Container, WorkspaceInterface
 		} 
 		
 		auto getMarkerLayerCount(DMDMessage.Type type)
-		{ return (mixin(求sum(q{mod},q{modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
+		{ return (mixin(求sum(q{mod},q{modules.modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
 		
 		auto getMarkerLayer_find()
-		{ return modules.map!((m)=>(m.findSearchResults)).joiner; } 
+		{ return modules.modules.map!((m)=>(m.findSearchResults)).joiner; } 
 		
 		auto getMarkerLayer(DMDMessage.Type type)
 		{
 			enforce(type!=DMDMessage.Type.find); 
-			return modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
+			return modules.modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
 		} 
 		
 		auto clearMarkerLayer_find()
-		{ foreach(m; modules) m.findSearchResults = []; } 
+		{ foreach(m; modules.modules) m.findSearchResults = []; } 
 		
 		
 		
@@ -867,7 +623,7 @@ class Workspace : Container, WorkspaceInterface
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
 		{
 			ofs += innerPos; 
-			foreach_reverse(m; modules) {
+			foreach_reverse(m; modules.modules) {
 				auto st = m.locate(mouse, ofs); 
 				if(st.length) return st; 
 			}
@@ -1249,7 +1005,7 @@ class Workspace : Container, WorkspaceInterface
 			{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
 			
 			void scrollInAllModules()
-			{ scrollInModules(modules); } 
+			{ scrollInModules(modules.modules); } 
 			
 			void scrollInModule(Module m)
 			{ if(m) scrollInModules([m]); } 
@@ -1289,7 +1045,7 @@ class Workspace : Container, WorkspaceInterface
 					//Opt: this is helping nothing compared to
 					
 					if(auto m = cast(Module)c)
-					if(modules.canFind(m))
+					if(modules.modules.canFind(m))
 					{
 						cachedExistingModule = c; 
 						return true; 
@@ -1322,7 +1078,7 @@ class Workspace : Container, WorkspaceInterface
 			//Todo: preserve module selections too
 			const savedTextSelections = textSelections.map!(a => a.toReference.text).array; 
 			scope(exit)
-			{ textSelections = savedTextSelections.map!(a => TextSelection(a, &findModule)).array; }
+			{ textSelections = savedTextSelections.map!(a => TextSelection(a, &modules.findModule)).array; }
 			if(fun) fun(); 
 		} 
 		
@@ -1421,12 +1177,12 @@ class Workspace : Container, WorkspaceInterface
 		{
 			//cancelSelection_impl //////////////////////////////////////
 			auto ts = textSelections; 
-			auto mp = moduleWithPrimaryTextSelection; 
+			auto mp = modules.primaryModule; 
 			
 			void selectPrimaryModule()
 			{
 				textSelections = []; 
-				foreach(m; modules) m.flags.selected = m is mp; 
+				foreach(m; modules.modules) m.flags.selected = m is mp; 
 				scrollInModule(mp); 
 			} 
 			
@@ -1438,7 +1194,7 @@ class Workspace : Container, WorkspaceInterface
 			}
 			
 			void deselectAllModules() {
-				modules.each!(m => m.flags.selected = false); 
+				modules.modules.each!(m => m.flags.selected = false); 
 				/+Todo: It is declared in workspace+/
 			} 
 			
@@ -1530,7 +1286,7 @@ class Workspace : Container, WorkspaceInterface
 		{ return ts.map!(a=>a.toReference.text).join(';'); } 
 		
 		TextSelection[] importTextSelections(string s)
-		{ return s.splitter(';').map!(s=>s.TextSelectionReference(&findModule).fromReference).array; } 
+		{ return s.splitter(';').map!(s=>s.TextSelectionReference(&modules.findModule).fromReference).array; } 
 		
 		bool verifyTextSelections(string s)
 		{ return s == exportTextSelections(validate(importTextSelections(s))); } 
@@ -1684,7 +1440,7 @@ class Workspace : Container, WorkspaceInterface
 			{
 				string where = rec.where; 
 				if(reduceToStart) where = where.reduceTextSelectionReferenceStringToStart; 
-				ts = TextSelection(where, &findModule); 
+				ts = TextSelection(where, &modules.findModule); 
 				bool res = ts.valid; 
 				if(!res) WARN("Invalid ts: "~where); 
 				return res; 
@@ -1716,7 +1472,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		protected void execute_reload(string where, string what)
 		{
-			if(auto m=findModule(File(where)))
+			if(auto m=modules.findModule(File(where)))
 			{
 				m.reload(desiredStructureLevel, nullable(what)); 
 				//selectAll
@@ -1732,7 +1488,7 @@ class Workspace : Container, WorkspaceInterface
 		{
 			//Todo: select the latest undo/redo operation if there are more than 
 			//one modules selected. If no modules selected: select from all of them.
-			if(auto m = moduleWithPrimaryTextSelection)
+			if(auto m = modules.primaryModule)
 			{
 				//Todo: undo should not remove textSelections on other modules.
 				mixin(q{m.undoManager.$(&execute_$, &execute_reload); }.replace("$", what)); 
@@ -2132,241 +1888,7 @@ class Workspace : Container, WorkspaceInterface
 			); 
 		} 
 		
-	}struct ContainerSelectionManager(T : Container)
-	{
-		version(/+$DIDE_REGION+/all)
-		{
-			//Todo: Combine and refactor this with the one inside het.ui
-			
-			//T must have some bool properties:
-			static if(1)
-			static assert(
-				__traits(
-					compiles, {
-						T a; 
-						a.setSelected(a.getSelected); 
-						a.setOldSelected(a.getOldSelected); 
-						bounds2 b = a.getBounds; 
-					}
-				), "Field requirements not met."
-			); 
-			
-			enum MouseOp
-			{ idle, beforeMove, move, rectSelect} 
-			MouseOp mouseOp; 
-			
-			enum SelectOp
-			{ none, add, sub, toggle, clearAdd} 
-			SelectOp selectOp; 
-			
-			vec2 dragSource; 
-			bounds2 dragBounds;   //Todo: rect selection: if start.x>end.x then touching_select, not contain_select
-			
-			//these are calculated after update. No notifications, just keep calling update frequently
-			T hoveredItem; 
-			
-			private float mouseTravelDistance = 0; 
-			private vec2 accumulatedMoveStartDelta, mouseLast; 
-			
-			///must be called after an items removed
-			void validateItemReferences(T[] items)
-			{
-				if(
-					!items.canFind(hoveredItem)//Opt: slow linear search
-				)
-				hoveredItem = null; 
-				//Todo: maybe use a hovered containerflag.
-			}  
-			
-			 private static void select(alias op)(T[] items, T selectItem=null)
-			{
-				foreach(a; items)
-				a.setSelected = a.getSelected.unaryFun!op; 
-				if(selectItem) select!"true"([selectItem]); 
-			}   
-			
-			bounds2 selectionBounds()
-			{
-				if(mouseOp == MouseOp.rectSelect)
-				return dragBounds /+Note: It's sorted.+/; 
-				else
-				return bounds2.init; 
-			} 
-			
-		}
-		void update(
-			bool 	mouseEnabled, 
-			View2D 	view, 
-			T[] 	items, 
-			bool 	anyTextSelected, 
-			void delegate() 	onResetTextSelection,
-			void delegate() 	onMoveStarted
-		)
-		{
-			version(/+$DIDE_REGION detect mouse travel+/all) {
-				if(inputs.LMB.down)
-				mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta); 
-				else
-				mouseTravelDistance = 0; 
-			}
-			
-			void selectNone()
-			{ select!"false"(items); } 
-			void selectOnly(T item)
-			{ select!"false"(items, item); } 
-			void saveOldSelected()
-			{ foreach(a; items) a.setOldSelected = a.getSelected; } 
-			
-			auto mouseAct = view.mousePos.vec2; 
-			//view.invTrans(frmMain.mouse.act.screen.vec2, false/+non animated!!!+/); //note: non animeted view for mouse is better.
-			
-			auto mouseDelta = mouseAct-mouseLast; 
-			mouseLast = mouseAct; 
-			
-			const 	LMB	= inputs.LMB.down,
-				LMB_pressed	= inputs.LMB.pressed,
-				LMB_released	= inputs.LMB.released,
-				Shift	= inputs.Shift.down,
-				Ctrl	= inputs.Ctrl.down,
-				Alt	= inputs.Alt.down; 
-			
-			const 	modNone	 = !Shift 	&& !Ctrl,
-				modShift	 = Shift 	&& !Ctrl,
-				modCtrl	 = !Shift 	&& Ctrl,
-				modShiftCtrl	 = Shift 	&& Ctrl; 
-			
-			const inputChanged = mouseDelta || inputs.LMB.changed || inputs.Shift.changed || inputs.Ctrl.changed; 
-			
-			version(/+$DIDE_REGION update current selection mode+/all) {
-				if(modNone) selectOp = SelectOp.clearAdd; 
-				if(modShift) selectOp = SelectOp.add; 
-				if(modCtrl) selectOp = SelectOp.sub; 
-				if(modShiftCtrl) selectOp = SelectOp.toggle; 
-			}
-			
-			version(/+$DIDE_REGION update dragBounds+/all) {
-				if(LMB_pressed) dragSource = mouseAct; 
-				if(LMB) dragBounds = bounds2(dragSource, mouseAct).sorted; 
-			}
-			
-			version(/+$DIDE_REGION update hovered item+/all) {
-				hoveredItem = null; 
-				if(mouseEnabled)
-				foreach(item; items)
-				if(item.getBounds.contains!"[)"(mouseAct))
-				hoveredItem = item; 
-			}
-			version(/+$DIDE_REGION LMB was pressed+/all)
-			{
-				if(LMB_pressed && mouseEnabled)
-				{
-					if(
-						hoveredItem && 
-						(
-							!hoveredItem.alwaysOnBottom || Alt || hoveredItem.flags.selected
-							/+
-								do rectSelect on alwaysOnBottom modules 
-								except when Alt is pressed.
-							+/
-						)
-					)
-					{
-						if(!anyTextSelected)
-						{
-							if(modNone)
-							{
-								if(!hoveredItem.flags.selected)
-								selectOnly(hoveredItem); 
-								accumulatedMoveStartDelta = 0; 
-								mouseOp = MouseOp.beforeMove; 
-							}
-							if(modShift || modCtrl || modShiftCtrl)
-							hoveredItem.flags.selected = !hoveredItem.flags.selected; 
-						}
-						else
-						{
-							//any mouse operation goes to text selection
-						}
-					}
-					else
-					{
-						mouseOp = MouseOp.rectSelect; 
-						saveOldSelected; 
-					}
-				}
-			}
-			
-			version(/+$DIDE_REGION Update ongoing operations+/all)
-			{
-				
-				
-				version(/+$DIDE_REGION update rectangle selection+/all)
-				{
-					if(mouseOp == MouseOp.rectSelect && inputChanged)
-					{
-						foreach(a; items)
-						if(dragBounds.contains!"[]"(a.getBounds))
-						{
-							final switch(selectOp)
-							{
-								case 	SelectOp.add, 
-									SelectOp.clearAdd: 	a.flags.selected = true; 	break; 
-								case SelectOp.sub: 	a.flags.selected = false; 	break; 
-								case SelectOp.toggle: 	a.flags.selected = !a.flags.oldSelected; 	break; 
-								case SelectOp.none: 		break; 
-							}
-						}
-						else
-						{ a.flags.selected = (selectOp == SelectOp.clearAdd) ? false : a.flags.selected; }
-					}
-				}
-				
-				version(/+$DIDE_REGION trigger selection dragging+/all) {
-					if(mouseOp == MouseOp.beforeMove && mouseTravelDistance>4)
-					{
-						mouseOp = MouseOp.move; 
-						if(onMoveStarted)
-						onMoveStarted(); 
-					}
-					
-					if(mouseOp == MouseOp.beforeMove && mouseDelta)
-					accumulatedMoveStartDelta += mouseDelta; 
-				}
-				
-				version(/+$DIDE_REGION drag the selection+/all)
-				{
-					if(mouseOp == MouseOp.move && mouseDelta)
-					{
-						foreach(a; items)
-						if(a.flags.selected)
-						{
-							a.outerPos += mouseDelta + accumulatedMoveStartDelta; 
-							
-							accumulatedMoveStartDelta = 0; 
-							
-							//Todo: jelezni kell valahogy az elmozdulast!!!
-							version(/+$DIDE_REGION+/none)
-							{
-								//this is a good example of a disabled DIDE region
-								static if(is(a.cachedDrawing))
-								a.cachedDrawing.free; 
-							}
-						}
-					}
-				}
-			}
-			version(/+$DIDE_REGION LMB was released+/all)
-			{
-				if(LMB_released) {
-					if(mouseOp == MouseOp.rectSelect) { onResetTextSelection(); }
-					//...                                               ou
-					
-					mouseOp = MouseOp.idle; 
-					accumulatedMoveStartDelta = 0; 
-				}
-			}
-		} 
-	} struct TextSelectionManager
+	}struct TextSelectionManager
 	{
 		
 		struct SELECTIONS; 
@@ -2995,7 +2517,7 @@ class Workspace : Container, WorkspaceInterface
 		{
 			if(!loc) return; 
 			
-			if(auto mod = findModule(loc.file))
+			if(auto mod = modules.findModule(loc.file))
 			{
 				/+
 					Todo: load the module automatically, 
@@ -3049,11 +2571,11 @@ class Workspace : Container, WorkspaceInterface
 						{
 							if(auto loc = cmt.content.sourceText.withoutStarting("$DIDE_LOC ").CodeLocation)
 							{
-								if(!findModule(loc.file) && inputs["Shift"].down)
+								if(!modules.findModule(loc.file) && inputs["Shift"].down)
 								{
 									if(!loc.file.exists)
 									{ im.flashWarning(i"File not found $(loc.file.fullName.quoted).".text); return; }
-									loadModule(loc.file); 
+									modules.loadModule(loc.file); 
 									//Todo: move all buildMessages from mainFile to the newly opened file.
 								}
 								jumpTo(loc); return; 
@@ -3072,13 +2594,13 @@ class Workspace : Container, WorkspaceInterface
 		
 		void updateMessageConnectionArrows()
 		{
-			if(_messageConnectionArrows_hash.chkSet(mixin(求sum(q{m},q{modules},q{m._updateSearchResults_state}))))
+			if(_messageConnectionArrows_hash.chkSet(mixin(求sum(q{m},q{modules.modules},q{m._updateSearchResults_state}))))
 			{
 				messageConnectionArrows.clear; 
 				foreach(t; [EnumMembers!(DMDMessage.Type)])
 				if(!t.among(DMDMessage.Type.find, DMDMessage.Type.console))
 				{
-					foreach(mod; modules)
+					foreach(mod; modules.modules)
 					foreach(mm; mod.messagesByType[t])
 					buildMessageConnectionArrows(mm.message); 
 				}
@@ -3107,9 +2629,8 @@ class Workspace : Container, WorkspaceInterface
 				handleXBox; 
 				handleKeyboard; 
 				
-				{ autoReloader.enabled = true; autoReloader.update(modules); }
-				
-				updateOpenQueue(1); 
+				modules.updateAutoReload; 
+				modules.updateLoadQueue(1); 
 				updateResyntaxQueue; 
 				
 				measure; //measures all containers if needed, updates ElasticTabstops
@@ -3146,12 +2667,12 @@ class Workspace : Container, WorkspaceInterface
 				if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
 				{}
 				
-				moduleSelectionManager.update(
+				modules.moduleSelectionManager.update(
 					!im.wantMouse && mainWindow.canProcessUserInput
 					&& view.isMouseInside /+&& lod.moduleLevel+/,
-					view, modules, textSelections.length>0, 
+					view, modules.modules, textSelections.length>0, 
 					{ textSelections = []; },
-					{ bringToFrontSelectedModules; }
+					{ modules.bringToFrontSelectedModules; }
 				); 
 				textSelectionManager.update(view, this, mouseMappings); 
 				
@@ -3161,7 +2682,7 @@ class Workspace : Container, WorkspaceInterface
 				//if there are any cursors, module selection if forced to modules with textSelections
 				if(textSelectionChanged && textSelections.length)
 				{
-					foreach(m; modules) m.flags.selected = false; 
+					foreach(m; modules.modules) m.flags.selected = false; 
 					foreach(m; modulesWithTextSelection) m.flags.selected = true; 
 				}
 				
@@ -3229,7 +2750,7 @@ class Workspace : Container, WorkspaceInterface
 				//update buildresults if needed (compilation progress or layer mask change)
 				size_t calcBuildStateHash()
 				{
-					return modules	.map!"tuple(a.file, a.outerPos)"
+					return modules.modules	.map!"tuple(a.file, a.outerPos)"
 						.array
 						.hashOf(
 						buildResult.lastUpdateTime.hashOf(
@@ -3244,13 +2765,13 @@ class Workspace : Container, WorkspaceInterface
 				+/
 				buildStateChanged = lastBuildStateHash.chkSet(calcBuildStateHash); 
 				if(buildStateChanged)
-				{ updateModuleBuildStates(buildResult); }
+				{ modules.updateModuleBuildStates(buildResult); }
 				
-				updateLastKnownModulePositions; 
+				modules.updateLastKnownModulePositions; 
 				
 				insight.updateInsightFiber; 
 				search.updateSearchFiber; 
-				foreach(m; modules) m.updateSearchResults; 
+				foreach(m; modules.modules) m.updateSearchResults; 
 				updateMessageConnectionArrows; 
 				
 				updateAi; 
@@ -3854,7 +3375,7 @@ This one is multiline and without escapes.`}],
 											//Todo: ez ugorhatna regionra is.
 											
 											workspace.textSelections = []; 
-											if(auto mod = workspace.expectOneSelectedModule)
+											if(auto mod = workspace.modules.expectOneSelectedModule)
 											if(auto line = searchText[1..$].to!int.ifThrown(0))
 											{
 												workspace.jumpTo(format!"%s%s(%d,1)"(CodeLocationPrefix, mod.file.fullName, line)); 
@@ -3864,8 +3385,8 @@ This one is multiline and without escapes.`}],
 										}
 										else
 										{
-											auto mods = lookInAllModules ? workspace.modules : workspace.selectedModules; 
-											if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules; }
+											auto mods = lookInAllModules ? workspace.modules.modules : workspace.modules.selectedModules; 
+											if(mods.empty && lookInAllModules.chkSet) { mods = workspace.modules.modules; }
 											searchFiber = new SearchFiber(mods, searchText, searchOptions, &searchStats); 
 											/+Note: the old searchFiber stops because it loses all references and will not be called again.+/
 										}
@@ -4279,7 +3800,7 @@ This one is multiline and without escapes.`}],
 										isPath 	? n.asPath.fullPath : ""; 
 									auto ws = workspace; 
 									Module mod; if(isFile && fullName!="")
-									mod = ws.findModule(fullName.File/+Opt: this is a slow query+/); 
+									mod = ws.modules.findModule(fullName.File/+Opt: this is a slow query+/); 
 									const canSelectModules = ws.textSelections.empty /+Only synch module selection when no text selected.+/; 
 									
 									if(
@@ -4317,7 +3838,7 @@ This one is multiline and without escapes.`}],
 											auto matchingModules(string prefix)
 											{
 												auto p = prefix.lc; 
-												return ws.modules.filter!((m)=>(m.file.fullName.map!toLower.startsWith(p))).cache; 
+												return ws.modules.modules.filter!((m)=>(m.file.fullName.map!toLower.startsWith(p))).cache; 
 											} 
 											
 											auto calcBounds(A)(A a)
@@ -4349,14 +3870,14 @@ This one is multiline and without escapes.`}],
 												if(isFile && isDoubleClick && !mod)
 												{
 													const f = fullName.File; 
-													ws.loadModule(f); 
+													ws.modules.loadModule(f); 
 													if(inputs.Alt.down)
-													ws.queueModuleRecursive(f); 
+													ws.modules.queueModuleRecursive(f); 
 												}else { jumpTo(fullName, isDoubleClick); }
 												
 												if(canSelectModules)
 												{
-													foreach(m; ws.modules) m.flags.selected = false; 
+													foreach(m; ws.modules.modules) m.flags.selected = false; 
 													foreach(m; matchingModules(fullName)) m.flags.selected = true; 
 												}
 											}
@@ -4419,8 +3940,8 @@ This one is multiline and without escapes.`}],
 							f = f.actualFile; 
 							if(f.exists)
 							{
-								auto m = ws.findModule(f); 
-								if(!m) { ws.loadModule(f);  m = ws.findModule(f); }
+								auto m = ws.modules.findModule(f); 
+								if(!m) { ws.modules.loadModule(f); m = ws.modules.findModule(f); }
 								if(m) {
 									if(!line) ws.jumpTo(m); 
 									else {
@@ -4774,7 +4295,7 @@ This one is multiline and without escapes.`}],
 					
 				} 
 				
-				if(auto mod = singleSelectedModule)
+				if(auto mod = modules.singleSelectedModule)
 				{
 					auto locator = LineIdxLocator(3050); 
 					
@@ -4852,6 +4373,64 @@ This one is multiline and without escapes.`}],
 				addInspectorParticle(actSearchKeywordSelection.worldBounds, clWhite, bounds2.init); 
 			}
 			else im.flashWarning("Nothing to select."); 
+		} 
+		
+		void makeModuleDependencyGraph()
+		{
+			insight.initialize; auto ddb = insight.ddb; 
+			
+			string lastFQN; 
+			auto findModuleDeclarationsByFile(DDB.ModuleDeclarations md, File f, string path="")
+			{
+				path ~= '.' ~ md.name; 
+				if(sameFile(md.file, f)) { lastFQN = path.withoutStarting(".."); return md; }
+				foreach(a; md.modules)
+				{ if(auto res = findModuleDeclarationsByFile(a, f, path)) return res; }
+				lastFQN = ""; return null; 
+			}; 
+			
+			version(/+$DIDE_REGION Collect selected modules and moduleDeclarations+/all)
+			{
+				Module[string] moduleByName; 
+				DDB.ModuleDeclarations[string] moduleDeclarationsByName; 
+				
+				foreach(m; modules.selectedModules/+OrAll+/)
+				if(auto md = findModuleDeclarationsByFile(ddb.root, m.file))
+				{
+					moduleByName[lastFQN] = m; 
+					moduleDeclarationsByName[lastFQN] = md; 
+				}
+			}
+			
+			version(/+$DIDE_REGION Build import dependency graph+/all)
+			{
+				bool[Module][Module] moduleImportGraph; 
+				foreach(name, m; moduleByName)
+				{
+					auto md = moduleDeclarationsByName[name]; 
+					foreach(const ref member; md.members)
+					with(member)
+					if(category==Category.import_)
+					if(auto im = moduleByName.get(member.name))
+					moduleImportGraph[m][im] = true; 
+				}
+			}
+			
+			version(/+$DIDE_REGION Apply import info to the actual modules+/all)
+			{
+				foreach(m; modules.modules) m.importedModules = []; 
+				foreach(importer, imports; moduleImportGraph)
+				{
+					importer.importedModules = imports.keys; 
+					
+					static if((常!(bool)(0))/+dump import graph+/)
+					{
+						print(importer.file.name~':'); 
+						foreach(imported; imports.byKey) print("  "~imported.file.name); 
+					}
+				}
+			}
+			
 		} 
 	}
 	version(/+$DIDE_REGION Keyboard    +/all)
@@ -5046,9 +4625,9 @@ This one is multiline and without escapes.`}],
 								.map!(m => m.content.allSelection(textSelections.any!(s => s.primary && s.moduleOf is m))).array; 
 							+/
 						}],
-						[q{"Ctrl+Shift+A"},q{selectAllModules},q{textSelections = []; modules.each!(m => m.flags.selected = true); scrollInAllModules; }],
+						[q{"Ctrl+Shift+A"},q{selectAllModules},q{textSelections = []; modules.modules.each!(m => m.flags.selected = true); scrollInAllModules; }],
 						[q{""},q{deselectAllModules},q{
-							modules.each!(m => m.flags.selected = false); 
+							modules.modules.each!(m => m.flags.selected = false); 
 							//Note: left clicking on emptyness does this too.
 						}],
 						[q{"Esc"},q{cancelSelection},q{
@@ -5128,8 +4707,8 @@ This one is multiline and without escapes.`}],
 							//Todo: moveLineUp
 						}],
 						[q{"Alt+Down"},q{moveLineDown},q{/+Todo: moveLineDown+/}],
-						[q{"Ctrl+Z"},q{undo},q{if(expectOneSelectedModule) undoRedo_impl!"undo"; }],
-						[q{"Ctrl+Y"},q{redo},q{if(expectOneSelectedModule) undoRedo_impl!"redo"; }],
+						[q{"Ctrl+Z"},q{undo},q{if(modules.expectOneSelectedModule) undoRedo_impl!"undo"; }],
+						[q{"Ctrl+Y"},q{redo},q{if(modules.expectOneSelectedModule) undoRedo_impl!"redo"; }],
 						[],
 					]))
 				) .GEN!q{GEN_verbs}); 
@@ -5139,28 +4718,28 @@ This one is multiline and without escapes.`}],
 				mixin((
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Alt+O"},q{openModule},q{fileDialog.openMulti.each!(f => queueModule(f)); }],
-						[q{"Alt+Shift+O"},q{openModuleRecursive},q{fileDialog.openMulti.each!(f => queueModuleRecursive(f)); }],
+						[q{"Alt+O"},q{openModule},q{modules.openModule; }],
+						[q{"Alt+Shift+O"},q{openModuleRecursive},q{modules.openModuleRecursive; }],
 						[q{"Ctrl+R"},q{revertSelectedModules},q{
 							preserveTextSelections
 							(
 								{
-									foreach(m; selectedModules)
+									foreach(m; modules.selectedModules)
 									{ m.reload(desiredStructureLevel); m.fileLoaded = now; }
 								}
 							); 
 						}],
 						[],
-						[q{"Alt+S"},q{saveSelectedModules},q{feedAndSaveModules(selectedModules); }],
-						[q{"Ctrl+S"},q{saveSelectedModulesIfChanged},q{feedAndSaveModules(selectedModules.filter!"a.changed"); }],
-						[q{"Ctrl+Alt+S"},q{saveSelectedModulesIfChanged_noSyntaxCheck},q{feedAndSaveModules(selectedModules.filter!"a.changed", No.syntaxCheck); }],
-						[q{"Ctrl+Shift+S"},q{saveAllModulesIfChanged},q{feedAndSaveModules(modules.filter!"a.changed"); }],
+						[q{"Alt+S"},q{saveSelectedModules},q{feedAndSaveModules(modules.selectedModules); }],
+						[q{"Ctrl+S"},q{saveSelectedModulesIfChanged},q{feedAndSaveModules(modules.selectedModules.filter!"a.changed"); }],
+						[q{"Ctrl+Alt+S"},q{saveSelectedModulesIfChanged_noSyntaxCheck},q{feedAndSaveModules(modules.selectedModules.filter!"a.changed", No.syntaxCheck); }],
+						[q{"Ctrl+Shift+S"},q{saveAllModulesIfChanged},q{feedAndSaveModules(modules.modules.filter!"a.changed"); }],
 						[],
 						[q{"Ctrl+W"},q{closeSelectedModules},q{
-							closeSelectedModules_impl; 
+							modules.closeSelectedModules; 
 							//Todo: this hsould work for selections and modules based on textSelections.empty
 						}],
-						[q{"Ctrl+Shift+W"},q{closeAllModules},q{closeAllModules_impl; }],
+						[q{"Ctrl+Shift+W"},q{closeAllModules},q{modules.closeAllModules; }],
 						[],
 						[q{"Ctrl+F"},q{searchBoxActivate(bool global=false)},q{
 							insight.deactivate; outline.deactivate; /+Todo: motherfucking lame+/
@@ -5174,7 +4753,7 @@ This one is multiline and without escapes.`}],
 						[q{"F3"},q{gotoNextFind},q{NOTIMPL; }],
 						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
 						[q{"Ctrl+G"},q{gotoLine},q{
-							if(auto m = expectOneSelectedModule)
+							if(auto m = modules.expectOneSelectedModule)
 							{ search.activate(":"); }
 						}],
 						[q{"F8"},q{gotoNextError},q{NOTIMPL; }],
@@ -5201,7 +4780,7 @@ This one is multiline and without escapes.`}],
 							with(buildServices)
 							if(ready && !running)
 							{
-								feedAndSaveModules(changedProjectModules); 
+								feedAndSaveModules(modules.changedProjectModules); 
 								run; 
 							}
 						}],
@@ -5209,7 +4788,7 @@ This one is multiline and without escapes.`}],
 							with(buildServices)
 							if(ready && !running)
 							{
-								feedAndSaveModules(changedProjectModules); 
+								feedAndSaveModules(modules.changedProjectModules); 
 								messageUICache.clear; //Todo: This UI cache should be emptied automatically.
 								rebuild; 
 							}
@@ -5244,9 +4823,9 @@ This one is multiline and without escapes.`}],
 						[],
 						[q{//Experimental
 						}],
-						[q{"F1"},q{function1},q{}],
+						[q{"F1"},q{function1},q{/+it's the help+/ }],
 						[q{"F2"},q{function2},q{}],
-						[q{"F3"},q{function3},q{}],
+						[q{"F3"},q{function3},q{makeModuleDependencyGraph; }],
 						[q{"F4"},q{function4},q{}],
 					]))
 				) .GEN!q{GEN_verbs}); 
@@ -5332,31 +4911,51 @@ This one is multiline and without escapes.`}],
 		}
 	}version(/+$DIDE_REGION UI      +/all)
 	{
-		void UI_ModuleBtns()
+		void UI_BuildMessageType(DMDMessage.Type bmt, View2D view)
 		{
 			with(im) {
-				File fileToClose; 
-				foreach(m; modules)
-				{
-					if(
-						Btn(
-							m.file.name,
-							hint(m.file.fullName),
-							genericId(m.file.fullName),
-							selected(0),
-							{
-								fh = 12; theme="tool"; 
-								if(Btn(symbol("Cancel")))
-								fileToClose = m.file; 
-							}
-						)
-					) {}
-				}
-				if(Btn(symbol("Add"))) openModule; 
-				
-				if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))) { closeAllModules; }
-				
-				if(fileToClose) closeModule(fileToClose); 
+				if(
+					Btn(
+						{
+							const hidden = markerLayerSettings[bmt].visible ? 0 : .75f; 
+							
+							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
+							
+							const syntax = DMDMessage.typeSyntax[bmt]; 
+							style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
+							const highContrastFontColor = syntax.syntaxFontColor; 
+							style.fontColor = fade(highContrastFontColor); 
+							
+							Row(
+								{
+									flags.hAlign = HAlign.center; 
+									//innerWidth = ceil(fh*2); 
+									innerHeight = ceil(fh*1.66f); 
+									flags.clickable = false; 
+									Text(DMDMessage.typeShortCaption[bmt]); NL; 
+									fh = ceil(fh*.66f); 
+									
+									theme = "tool"; 
+									const m = Margin(0, .5, 0, .5); 
+									
+									if(const len = getMarkerLayerCount(bmt))
+									{
+										if(Btn(len.text))
+										{
+											markerLayerSettings[bmt].visible = true; 
+											if(bmt==DMDMessage.Type.find)	zoomAt(view, getMarkerLayer_find); 
+											else	zoomAt(view, getMarkerLayer(bmt)); 
+										}
+									}
+								}
+							); 
+							
+							markerLayerSettings[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
+						},
+						((bmt).genericArg!q{id})
+					)
+				)
+				markerLayerSettings[bmt].visible.toggle; 
 			}
 		} 
 		
@@ -5365,7 +4964,7 @@ This one is multiline and without escapes.`}],
 			with(im) {
 				BtnRow(
 					{
-						Module[] modules = selectedModules; 
+						Module[] modules = modules.selectedModules; 
 						if(modules.empty) modules = modulesWithTextSelection.array; 
 						
 						static foreach(lvl; EnumMembers!StructureLevel)
@@ -5419,54 +5018,6 @@ This one is multiline and without escapes.`}],
 			}
 		} 
 		
-		void UI_BuildMessageType(DMDMessage.Type bmt, View2D view)
-		{
-			with(im) {
-				if(
-					Btn(
-						{
-							const hidden = markerLayerSettings[bmt].visible ? 0 : .75f; 
-							
-							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
-							
-							const syntax = DMDMessage.typeSyntax[bmt]; 
-							style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
-							const highContrastFontColor = syntax.syntaxFontColor; 
-							style.fontColor = fade(highContrastFontColor); 
-							
-							Row(
-								{
-									flags.hAlign = HAlign.center; 
-									//innerWidth = ceil(fh*2); 
-									innerHeight = ceil(fh*1.66f); 
-									flags.clickable = false; 
-									Text(DMDMessage.typeShortCaption[bmt]); NL; 
-									fh = ceil(fh*.66f); 
-									
-									theme = "tool"; 
-									const m = Margin(0, .5, 0, .5); 
-									
-									if(const len = getMarkerLayerCount(bmt))
-									{
-										if(Btn(len.text))
-										{
-											markerLayerSettings[bmt].visible = true; 
-											if(bmt==DMDMessage.Type.find)	zoomAt(view, getMarkerLayer_find); 
-											else	zoomAt(view, getMarkerLayer(bmt)); 
-										}
-									}
-								}
-							); 
-							
-							markerLayerSettings[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
-						},
-						((bmt).genericArg!q{id})
-					)
-				)
-				markerLayerSettings[bmt].visible.toggle; 
-			}
-		} 
-		
 		void zoomAt(R)(View2D view, R searchResults)
 		if(isInputRange!(R, Container.SearchResult))
 		{
@@ -5476,45 +5027,6 @@ This one is multiline and without escapes.`}],
 			view.scale = min(view.scale, maxScale); 
 		} 
 		
-		void UI_selectedModulesHint()
-		{
-			with(im) {
-				auto sm = selectedModules; 
-				void stats()
-				{
-					Row(
-						format!"(%d LOC, %sB)"(
-							sm.map!(m => m.linesOfCode).sum,
-							shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
-						)
-					); 
-				} 
-				if(sm.length==1)
-				{
-					auto m = sm.front; 
-					Row(
-						{ padding="0 8"; }, 
-						"Selected module: ", 
-						{ CodeLocation(m.file.fullName).UI; },
-						{
-							if(sameText(m.file.fullName, mainModuleFile.fullName))
-							{ Btn("Main", enable(false)); }
-							else
-							{
-								if(m.isMain)
-								{ if(Btn("Set Main")) mainModule = m; }
-							}
-							stats; 
-						}
-					); 
-				}
-				else if(sm.length>1)
-				{ Row({ padding="0 8"; }, sm.length.text, " modules selected ", { stats; }); }
-				else
-				{ Row({ padding="0 8"; }, "No modules selected."); }
-			}
-		} 
-		
 		void UI_mouseLocationHint(View2D view)
 		{
 			with(im) {
@@ -5644,81 +5156,6 @@ This one is multiline and without escapes.`}],
 			}
 		} 
 		
-		void UI_Popup()
-		{
-			version(/+$DIDE_REGION Popup menu+/all)
-			{
-				static Module popupModule; 
-				static vec2 popupGuiPos, popupWorldPos; 
-				bool justPopped; 
-				
-				if(inputs.RMB.pressed)
-				if(auto tbl = cast(ScrumTable) moduleSelectionManager.hoveredItem)
-				{
-					popupModule = tbl; 
-					popupGuiPos = (cast(GLWindow)(mainWindow)).viewGUI.mousePos.vec2; 
-					popupWorldPos = mainView.mousePos.vec2; 
-					justPopped = true; 
-				}
-				
-				if(popupModule)
-				{
-					with(im)
-					{
-						Column(
-							{
-								outerPos = popupGuiPos; 
-								border = "1 normal black"; padding = "4"; theme = "tool"; 
-								Row(
-									{
-										Text("ScrumTable Menu"); 
-										if(Btn(symbol("ChromeClose"))) popupModule = null; 
-									}
-								); 
-								Spacer; 
-								if(!modules.canFind(popupModule)) popupModule = null; 
-								if(popupModule)
-								{
-									if(Btn("New Sticker", genericId("New Sticker")).clicked)
-									{
-										scope(exit) popupModule = null; 
-										
-										const f = File(popupModule.file.path, now.timestamp ~ `.sticker`); 
-										format	!`/+Note:+/
-	/+{  "color": "StickyBlue",  "pos": [%.3f, %.3f]}+/`
-											(popupWorldPos.x, popupWorldPos.y)
-											.saveTo(f); 
-										
-										//Ez felesleges volt!!! -> A loadModule() direkt fogadja a poziciot.
-										version(/+$DIDE_REGION+/none)
-										{
-											const ms = ModuleSettings(f.fullName, popupWorldPos); 
-											const idx = moduleSettings.map!"a.fileName".countUntil(ms.fileName); 
-											if(idx>=0)	moduleSettings[idx] = ms; 
-											else	moduleSettings ~= ms; 
-										}
-										
-										loadModule(f, popupWorldPos); 
-										
-										textSelections([TextSelectionReference(f.fullName~`|C0|R0|N0|C0|R0|X0*`, &findModule).fromReference]); 
-										//Miért kell egy ilyen hosszú izét beírni, hogy beleugorjon a kurzor az új dokumentumba????!!!!!!!!
-										
-									}
-								}
-							}
-						); 
-					}
-					
-					if(
-						inputs.Esc.pressed 
-						|| inputs.RMB.pressed && !justPopped 
-						|| inputs.LMB.released && false//Todo: MUST NOT!!! Btn can't catch it in the next frame. -> LAME
-						|| inputs.MMB.pressed || inputs.MB4.pressed || inputs.MB4.pressed
-					)
-					popupModule = null; 
-				}
-			}
-		} 
 	}version(/+$DIDE_REGION Draw     +/all)
 	{
 		
@@ -5823,41 +5260,6 @@ This one is multiline and without escapes.`}],
 			}
 		} 
 		
-		/// A flashing effect, when right after the module was loaded.
-		void drawModuleLoadingHighlights(string field)(Drawing dr, RGB c)
-		{
-			const t0 = now; 
-			foreach(m; modules)
-			{
-				const dt = (t0-mixin("m."~field)).value(2.5f*second); 
-				if(dt<1)
-				drawHighlight(dr, m, c, sqr(1-dt)); 
-			}
-		} 
-		
-		/*
-			protected void drawSelectedModules(
-				Drawing dr, RGB clSelected, float selectedAlpha, 
-				RGB clHovered, float hoveredAlpha
-			){ with(dr){
-				selectedModules.each!(m => drawHighlight(dr, m, clSelected, selectedAlpha));
-				drawHighlight(dr, hoveredModule, clHovered, hoveredAlpha);
-			}}
-		*/
-		
-		protected void drawSelectionRect(Drawing dr, RGB clRect)
-		{
-			if(auto bnd = moduleSelectionManager.selectionBounds)
-			with(dr) {
-				lineWidth = -1; 
-				lineStyle = LineStyle.dash; 
-				color = clRect; 
-				drawRect(bnd); 
-				lineStyle = LineStyle.normal; 
-			}
-		} 
-		
-		
 		void drawMessageConnectionArrows(Drawing dr)
 		{
 			enum sc = 1.5f; 
@@ -6153,98 +5555,37 @@ This one is multiline and without escapes.`}],
 		} 
 		
 		
-		protected void drawMainModuleOutlines(Drawing dr)
-		{
-			auto mm=mainModule; 
-			foreach(m; modules)
-			{
-				if(m==mm) { dr.color = RGB(0xFF, 0xD7, 0x00); dr.lineWidth = -2.5f; dr.drawRect(m.outerBounds); }
-				else if(m.isMain) { dr.color = clSilver; dr.lineWidth = -1.5f; dr.drawRect(m.outerBounds); }
-				//else if(m.file.extIs(".d")){ dr.color = clSilver; dr.lineWidth = 12; dr.drawRect(m.outerBounds); }
-			}
-		} 
-		
-		protected void drawFolders(Drawing dr, RGB clFrame, RGB clText)
-		{
-			//Opt: detect changes and only collect info when changed.
-			auto _間=init間; scope(exit) ((0x2DC7471008CF4).檢((update間(_間)))); 
-			
-			const paths = modules.map!(m => m.file.path.fullPath).array.sort.uniq.array; 
-			
-			foreach(folderPath; paths)
-			{
-				bounds2 bnd; 
-				foreach(m; modules)
-				{
-					const modulePath = m.file.path.fullPath; 
-					if(modulePath.startsWith(folderPath))
-					{
-						const intermediateFolderCount = modulePath[folderPath.length..$].filter!`a=='\\'`.walkLength; 
-						
-						bnd |= m.outerBounds.inflated((1+intermediateFolderCount)*255.0f/*max font size ATM*/); 
-					}
-				}
-				
-				if(bnd) {
-					dr.lineWidth = -1; 
-					dr.color = clFrame; 
-					dr.drawRect(bnd); 
-				}
-				
-				with(cachedFolderLabel(folderPath))
-				{
-					outerPos = bnd.topLeft - vec2(0, 255); 
-					draw(dr); 
-				}
-			}
-		} 
-		
-		void drawModuleBuildStates(Drawing dr)
-		{
-			with(ModuleBuildState)
-			foreach(m; modules)
-			if(m.buildState!=notInProject)
-			{
-				dr.color = moduleBuildStateColors[m.buildState]; 
-				dr.lineWidth = -4; 
-				//if(m.buildState==compiling) dr.drawRect(m.outerBounds);
-				dr.alpha = m.buildState==compiling ? mix(.15f, .55f, blink) : .15f; 
-				dr.fillRect(m.outerBounds); 
-			}
-			dr.alpha = 1; 
-		} 
-		
 		void customDraw(Drawing dr)
 		{
 			//customDraw //////////////////////////////
 			if(textSelections.empty)
 			{
 				//select means module selection
-				foreach(m; modules)
+				foreach(m; modules.modules)
 				if(m.flags.selected)
 				drawHighlight(dr, m, clAccent, .25); 
 				if(!lod.codeLevel)
 				{
 					if(0/+It's annoying, so I disabled it.+/)
-					drawHighlight(dr, hoveredModule, clWhite, .125); 
+					drawHighlight(dr, modules.hoveredModule, clWhite, .125); 
 				}
 			}
 			else
 			{
 				//select means text editing
-				foreach(m; modules)
+				foreach(m; modules.modules)
 				if(!m.flags.selected)
 				drawHighlight(dr, m, clGray, .25); 
 			}
 			
-			if(lod.moduleLevel || buildServices.building) drawModuleBuildStates(dr); 
+			if(lod.moduleLevel || buildServices.building) modules.drawModuleBuildStates(dr); 
 			
-			drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  ); 
-			drawModuleLoadingHighlights!"fileSaved" (dr, clYellow); 
+			modules.drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  ); 
+			modules.drawModuleLoadingHighlights!"fileSaved" (dr, clYellow); 
 			
-			drawMainModuleOutlines(dr); 
-			drawFolders(dr, clGray, clWhite); 
-			drawSelectionRect(dr, clAccent); 
+			modules.drawMainModuleOutlines(dr); 
+			modules.drawFolders(dr, clGray, clWhite); 
+			modules.drawSelectionRect(dr, clAccent); 
 			
 			if(auto b = actSearchKeywordBounds) {
 				dr.color = clWhite; dr.alpha = .6*blink; dr.lineWidth = 2; dr.lineStyle = LineStyle.dot; 
@@ -6280,6 +5621,8 @@ This one is multiline and without escapes.`}],
 			
 			drawTextSelections(dr, mainView); //Bug: this will not work for multiple workspace views!!!
 			
+			modules.drawModuleImportGraph(dr); 
+			
 			void drawProgressBalls()
 			{
 				//Todo: put this into the drawing module
@@ -6301,7 +5644,7 @@ This one is multiline and without escapes.`}],
 			globalVisualizeSpacesAndTabs = !textSelections_internal.empty; 
 			
 			globalChangeindicatorsAppender.clear; 
-			mixin(求each(q{m},q{modules},q{m.visibleConstantNodes.clear})); 
+			mixin(求each(q{m},q{modules.modules},q{m.visibleConstantNodes.clear})); 
 			
 			structureMap.beginCollect; 
 			super.draw(dr); 

@@ -527,28 +527,20 @@ class DDB
 		acquireMembers(isStd, importedModules); 	((0x472583B10505).檢((update間(_間)))); 
 	} 
 	
-	void processIncomingProjectJsons(string[] xJsons)
+	void processIncomingProjectJson(string xJson)
 	{
-		if(xJsons.empty) return; 
-		
-		version(/+$DIDE_REGION Measure time+/all)
-		{
-			__gshared Time tSum=0*second; const t0 = now; 
-			scope(exit) { tSum += now-t0; ((0x483A83B10505).檢(tSum)); }
-			/+Opt: Cache jsons, Only call createFromJson() when really needed!+/
-		}
-		mixin(求each(q{json},q{xJsons},q{
-			try { acquireMembers(isStd: false, ModuleDeclarations.createFromJson(json)); }
-			catch(Exception e) { ERR(e.simpleMsg); }
-		})); 
+		if(xJson=="") return; 
+		/+Opt: Cache jsons, Only call createFromJson() when really needed!+/
+		try { acquireMembers(isStd: false, ModuleDeclarations.createFromJson(xJson)); }
+		catch(Exception e) { ERR(e.simpleMsg); }
 	} 
 	
 	void regenerateStd()
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x4A0C83B10505).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x4A6A83B10505).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x492483B10505).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x498283B10505).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -573,9 +565,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x4CC883B10505).檢((update間(_間)))); ((0x4CF383B10505).檢(json.length)); 
-			auto compr = json.compress; 	((0x4D3A83B10505).檢((update間(_間)))); ((0x4D6583B10505).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x4DC883B10505).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0x4BE083B10505).檢((update間(_間)))); ((0x4C0B83B10505).檢(json.length)); 
+			auto compr = json.compress; 	((0x4C5283B10505).檢((update間(_間)))); ((0x4C7D83B10505).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0x4CE083B10505).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -585,11 +577,11 @@ class DDB
 		ModuleDeclarations newRoot; 
 		try {
 			auto _間=init間; 
-			auto compr = file.read; 	((0x4EC483B10505).檢((update間(_間)))); 
+			auto compr = file.read; 	((0x4DDC83B10505).檢((update間(_間)))); 
 			if(!compr.empty)
 			{
-				auto json = (cast(string)(compr.uncompress)); 	((0x4F3F83B10505).檢((update間(_間)))); 
-				newRoot.fromJson(json, file.fullName); 	((0x4F9883B10505).檢((update間(_間)))); 
+				auto json = (cast(string)(compr.uncompress)); 	((0x4E5783B10505).檢((update間(_間)))); 
+				newRoot.fromJson(json, file.fullName); 	((0x4EB083B10505).檢((update間(_間)))); 
 			}
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -918,6 +910,7 @@ class DDB
 		} 
 		visit([PathNode(this.root)], searchText.split('.')); 
 	} 
+	
 } static struct Insight
 {
 	bool activateRequest; 
@@ -1015,11 +1008,14 @@ class DDB
 		}
 	} 
 	
-	void processIncomingProjectJsons(string[] xJsons)
+	void processIncomingProjectJson(string xJson)
 	{
-		initialize; 
-		ddb.processIncomingProjectJsons(xJsons); 
+		if(xJson!="") {
+			initialize; 
+			ddb.processIncomingProjectJson(xJson); 
+		}
 	} 
+	
 	
 	static string decodeEasyWildcard(string s)
 	{
