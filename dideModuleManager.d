@@ -243,7 +243,7 @@ struct ContainerSelectionManager(T : Container)
 } class ModuleManager
 {
 	Module[] modules; //alias this = modules; 
-	Module[ulong] moduleByHash; 
+	Module[uint/+32bit hash+/] moduleByHash; 
 	ContainerSelectionManager!Module moduleSelectionManager; 
 	File[] loadQueue/+modules queued to load+/; 
 	size_t autoReloadIdx; 
@@ -254,12 +254,12 @@ struct ContainerSelectionManager(T : Container)
 	//ModuleSettings is a temporal storage for saving and loading the workspace.
 	struct ModuleSettings { string fileName; vec2 pos; } 
 	@STORED ModuleSettings[] moduleSettings/+The current workspace+/; 
-	@STORED vec2[ulong] lastModulePositions/+An ever growing list of positions for modules+/; 
+	@STORED vec2[uint/+32bit hash+/] lastModulePositions/+An ever growing list of positions for modules+/; 
 	
 	FileDialog fileDialog; 
 	
 	//outside commands.  Should do with in interfaces later.
-	Container parent; 
+	Container workspaceContainer; 
 	void delegate() afterModulesChanged; 
 	void delegate(bounds2) onSmartScrollTo; 
 	Module delegate() onGetPrimaryModule; 
@@ -304,7 +304,7 @@ struct ContainerSelectionManager(T : Container)
 	
 	Module findModule(File file)
 	{
-		if(auto m = file.hashOf in moduleByHash) return *m; 
+		if(auto m = (cast(uint)(file.hashOf)) in moduleByHash) return *m; 
 		return null; 
 		/+
 			//Todo: use hash of LC fileNames
@@ -385,7 +385,7 @@ struct ContainerSelectionManager(T : Container)
 	bool loadModule(File file)
 	{
 		file = file.actualFile; 
-		const vec2 targetPos = lastModulePositions.get(file.hashOf, vec2(calcBounds.right+24, 0)); 
+		const vec2 targetPos = lastModulePositions.get((cast(uint)(file.hashOf)), vec2(calcBounds.right+24, 0)); 
 		return loadModule(file, targetPos); //default position
 	} 
 	
@@ -402,9 +402,9 @@ struct ContainerSelectionManager(T : Container)
 		}
 		
 		Module m; 
-		if(file.extIs("scrum"))	m = new ScrumTable(parent, file, desiredStructureLevel); 
-		else if(file.extIs("sticker"))	m = new ScrumSticker(parent, file, desiredStructureLevel); 
-		else	m = new Module(parent, file, desiredStructureLevel); 
+		if(file.extIs("scrum"))	m = new ScrumTable(workspaceContainer, file, desiredStructureLevel); 
+		else if(file.extIs("sticker"))	m = new ScrumSticker(workspaceContainer, file, desiredStructureLevel); 
+		else	m = new Module(workspaceContainer, file, desiredStructureLevel); 
 		
 		//m.flags.targetSurface = 0; not needed, workspace is on s0 already
 		m.measure; 

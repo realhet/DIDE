@@ -1006,7 +1006,7 @@ version(/+$DIDE_REGION+/all)
 	{
 		//this is any file in the project
 		File file; 
-		ulong fileNameHash; 
+		uint fileNameHash/+It must be uint because Inspector ID is 64 bit total: 32bit nameHash + 32bit line+/; 
 		
 		DateTime fileLoaded, fileModified, fileSaved; //Opt: detect these times from the outside
 		size_t sizeBytes; //Todo: update this form the outside
@@ -1063,7 +1063,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			fileLoaded = now; 
 			file = file_.actualFile; 
-			fileNameHash = file.toHash; 
+			fileNameHash = (cast(uint)(file.toHash)); 
 			reload(desiredStructureLevel); 
 		} 
 		

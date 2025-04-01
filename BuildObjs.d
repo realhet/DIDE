@@ -78,7 +78,7 @@ version(/+$DIDE_REGION+/all) {
 		{
 			synchronized(this)
 			{
-				list.keys.each!kill; 
+				list.keys.each!killAndWaitProcess; 
 				list.clear; 
 			} 
 		} 
@@ -334,23 +334,14 @@ a new compiler instance."}],
 					if(pid)
 					try
 					{
-						std.process.kill(pid); 
 						/+
-							Bug: ACCESS DENIED bug when stopping compilers:
-							After a process has terminated, call to TerminateProcess with open handles to the process fails with ERROR_ACCESS_DENIED (5) error code.
-							https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess
-							If you need to be sure the process has terminated, call the WaitForSingleObject function with a handle to the process.
-							The handle must have the SYNCHRONIZE access right. For more information, see Standard Access Rights.
+							/+Code: std.process.kill(pid);+/ <- Sometimes it gives "access denied".
+							Must wait for the process to terminate, not just kill.
 						+/
+						killAndWaitProcess(pid); 
 					}
 					catch(Exception e)
-					{
-						WARN(e.extendedMsg); 
-						/+
-							Sometimes it gives "Access is denied.", 
-							maybe because it's already dead, so just ignore.
-						+/
-					}
+					{ WARN(e.extendedMsg); }
 					setEndResult(-1); 
 				}
 			} 

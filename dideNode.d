@@ -1,7 +1,8 @@
 module didenode; 
 
-import het.ui, het.parser, dideui, didebase; 
+import het.ui, het.parser, dideui; 
 
+import didebase : TextSelection; 
 import diderow : CodeRow, SourceTextBuilder; 
 import didecolumn : CodeColumn, CodeColumnBuilder; 
 import didedecl : Declaration; 

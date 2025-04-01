@@ -412,9 +412,11 @@ version(/+$DIDE_REGION+/all)
 		{
 			if(canKillRunningProcess)
 			{
-				import core.sys.windows.windows; 
-				if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
-				{
+				killAndWaitProcess(dbgsrv.exe_pid); 
+				/+
+					import core.sys.windows.windows; 
+					if(auto hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dbgsrv.exe_pid))
+					{
 					/+
 						Bug: ACCESS DENIED:
 						After a process has terminated, call to TerminateProcess with open handles to the process fails with ERROR_ACCESS_DENIED (5) error code.
@@ -422,9 +424,10 @@ version(/+$DIDE_REGION+/all)
 						If you need to be sure the process has terminated, call the WaitForSingleObject function with a handle to the process.
 						The handle must have the SYNCHRONIZE access right. For more information, see Standard Access Rights.
 					+/
-					TerminateProcess(hProcess, 0); 
-					CloseHandle(hProcess); 
-				}
+						TerminateProcess(hProcess, 0); 
+						CloseHandle(hProcess); 
+					}
+				+/
 			}
 		} 
 		
@@ -970,12 +973,12 @@ version(/+$DIDE_REGION+/all)
 			with(im)
 			with(workspace)
 			{
-				if(textSelections.length)
+				if(textSelections[].length)
 				{
 					NL; 
-					if(textSelections.length>1)
+					if(textSelections[].length>1)
 					{ Text(format!"  Multiple Text Selections: %d  "(textSelections.length)); }
-					else if(textSelections.length==1)
+					else if(textSelections[].length==1)
 					{ Text(format!"  Text Selection: %s  "(textSelections[0].toReference.text)); }
 				}
 			}
@@ -1398,7 +1401,7 @@ version(/+$DIDE_REGION+/all)
 						if(mouseOp == MouseOp.move) return SIZEALL; 
 						if(mouseOp == MouseOp.rectSelect) return CROSS; 
 					}
-					if(workspace.textSelections.any)
+					if(workspace.textSelections[].any)
 					{
 						return IBEAM; 
 						/+
