@@ -7,7 +7,7 @@
 import core.thread, std.concurrency; 
 import het.ui, het.parser, buildsys, dideui, didebase, syntaxExamples; 
 
-import diderow : CodeRow, sourceText, hitTest; 
+import diderow : CodeRow; 
 import didecolumn : CodeColumn; 
 import didenode : CodeNode, CodeComment, CodeContainer, CodeString, CodeBlock, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
 import didemodule : Module, moduleOf, WorkspaceInterface, TextFormat, StructureLevel, TextModificationRecord, TextModification, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, DefaultNewLine, compoundObjectChar, addInspectorParticle, cachedFolderLabel, globalChangeindicatorsAppender, drawChangeIndicators, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
@@ -103,7 +103,7 @@ version(/+$DIDE_REGION+/all)
 		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
 	+/
 	
-	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
+	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(1)); //Todo: make this a debug option in a menu
 	
 	auto frmMain()
 	{ return (cast(FrmMain)mainWindow); } 

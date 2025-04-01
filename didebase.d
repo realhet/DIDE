@@ -1,10 +1,10 @@
 module didebase; 
 import het.ui; 
-
+import het.parser : CodeLocation; 
 import didecolumn: CodeColumn; 
 import diderow: CodeRow; 
 import didenode : CodeNode; 
-import didemodule: Module, AnimatedCursors, DefaultNewLine; 
+import didemodule: Module, AnimatedCursors, DefaultNewLine, moduleOf; 
 
 version(/+$DIDE_REGION+/all) {
 	struct TextCursor
@@ -880,6 +880,66 @@ version(/+$DIDE_REGION+/all) {
 		}
 		return sel; 
 	} 
+	
+	/// input newLine must be standardized. Only that type of newLine is recognized.
+	/// it only adds newLine when the last item doesn't have one at its end
+	/// replaces all '\n' to specidied newLine
+	string sourceTextJoin(R)(R r, string newLine)
+	{
+		string[] a = r.array; 
+		
+		foreach(i; 0..a.length.to!int-1)
+		{
+			const 	n0 = a[i  ].endsWith(newLine),
+				n1 = a[i+1].startsWith(newLine); 
+			if(n0 && n1)
+			{
+				a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
+			}
+			else if(!n0 && !n1)
+			{
+				  //add a newLine when there are 0
+				a[i] ~= newLine; 
+			}
+		}
+		
+		return a.join; 
+	} 
+	
+	
+	string sourceText(R)(R cells)
+	if(isInputRange!(R, Cell))
+	{
+		string res; 
+		foreach(cell; cells)
+		{
+			//Note: this is redundant code. The same is inside TextSelection.sourceText, but it's fast.
+			if(auto g = cast(Glyph)cell)
+			{ res ~= g.ch; }
+			else if(auto n = cast(CodeNode)cell)
+			{
+				res ~= n.sourceText; 
+				//this can throw exceptions if the node has an invalid content
+			}
+			else
+			{ raise("Fatal error: Source cells must be either Glyph or CodeNode"); }
+		}
+		return res; 
+	} 
+	
+	string sourceText(TextSelection[] ts)
+	{
+		return ts	.filter!"a.valid && !a.isZeroLength"
+			.map!"a.sourceText"
+			.sourceTextJoin(DefaultNewLine); 
+	} 
+	
+	bool hitTest(TextSelection[] ts, vec2 p)
+	{
+		return ts.map!(a => a.hitTest(p)).any; 
+		//Todo: this should be in the draw routine with automatic mouse hittest
+	} 
+	
 	
 	struct TextCursorReference
 	{
@@ -1171,5 +1231,445 @@ version(/+$DIDE_REGION+/all) {
 		
 		static private int pathElementToIntex(Container parent, Cell child)
 		{ return parent.subCellIndex(child); } 
+	} 
+	
+	auto validate(TextCursor c, Container workspaceContainer)
+	=> validate(TextSelection(c, c, false), workspaceContainer).cursors[0]; 
+	
+	auto validate(TextSelection s, Container workspaceContainer)
+	=> validate(only(s), workspaceContainer).frontOr; 
+	
+	auto validate(R)(R arr, Container workspaceContainer)
+	if(isInputRange!(R, TextSelection))
+	{
+		
+		bool isValid(TextSelection sel)
+		{
+			if(!sel.valid) return false; 
+			auto r = sel.toReference; 
+			if(!r.valid) return false; 
+			
+			auto p = r.cursors[0].path; 
+			if(p[0] !is workspaceContainer) return false; 	//not this workspace
+			
+			//Todo: check if selection is inside row boundaries.
+			return true; 
+		} 
+		
+		return arr.filter!((a)=>(isValid(a))).array; 
+		//Todo: try to fix partially broken selections
+	} 
+	
+	static CellLocation[] findLastCodeRow(CellLocation[] st)
+	{
+		foreach_reverse(i; 0..st.length) {
+			//Todo: functinal
+			auto row = cast(CodeRow)st[i].cell; 
+			if(row) return st[i..$]; 
+		}
+		return []; 
+	} 
+	
+	TextCursor cellLocationToTextCursor(CellLocation[] st, Container workspaceContainer)
+	{
+		TextCursor res; 
+		st = findLastCodeRow(st); 
+		if(auto row = cast(CodeRow)st.get(0).cell)
+		{
+			auto cell = st.get(1).cell; 
+			
+			//try to find cell with smaller height than the row, vertically at x,
+			//   if the mouse is not exactly inside the cell. Also snap from the sides.
+			if(!cell) {
+				cell = row.subCellAtX(st[0].localPos.x, Yes.snapToNearest); 
+				if(cell) {
+					st  ~= CellLocation(cell, st[0].localPos-cell.innerPos); 
+					//pass in localPos inside the cell
+				}
+			}
+			
+			res.codeColumn = row.parent; 
+			
+			res.desiredX = st[0].localPos.x; 
+			res.pos.y = row.index; 
+			
+			//find x character index
+			int x; 
+			if(cell)
+			{
+				x = row.subCellIndex(cell); 
+				assert(x>=0); 
+				if(st[1].localPos.x>cell.innerWidth/2) x++; 
+			}
+			else
+			{ x = res.desiredX<0 ? 0 : row.cellCount; }
+			assert(x.inRange(0, row.cellCount)); 
+			res.pos.x = x; 
+		}
+		
+		return validate(res, workspaceContainer); 
+	} 
+	
+	
+	auto insertCursorAtEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
+	{
+		auto res = 	textSelections[]
+			.filter!"a.valid"  //just to make sure
+			.map!(
+			//create cursors in every lines at the start of the line
+			sel => 	iota(sel.start.pos.y, sel.end.pos.y+1)
+				.map!((y)=>(TextCursor(sel.codeColumn, ivec2(0, y))))
+		)
+			.joiner
+			.map!((c){
+			//move the cursor to the end or home of the line
+			if(toTheEnd) c.moveToLineEnd; 
+			else c.moveToLineStart; //Todo: it's not functional yet
+			return TextSelection(c, c, false); //make a selection out of them
+		})
+			.merge /+merge it, because there can be duplicates+/; 
+		
+		if(res.length) res[0].primary = true; //Todo: primary selection is inconsistent when multiselect
+		
+		return res; 
+	} 
+	
+	auto insertCursorAtStartOfEachLineSelected_impl(R)(R textSelections)
+	{ return insertCursorAtEachLineSelected_impl(textSelections[], No.toTheEnd); } 
+	
+	auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
+	{ return insertCursorAtEachLineSelected_impl(textSelections, Yes.toTheEnd); } 
+	
+	auto selectCharAtEachSelection(R)(R textSelections, dchar ch)
+	{
+		TextSelection transform(TextSelection sel)
+		{
+			TextSelection res; 
+			if(sel.cursors[0].charAt == ch)
+			{
+				res = sel.dup; 
+				res.cursors[1] = res.cursors[0]; 
+				res.cursors[1].moveRight(1); 
+			}
+			return res; 
+		} 
+		
+		return 	textSelections[]
+			.map!(a => transform(a))
+			.cache
+			.filter!"a.valid"
+			.merge; 
+	} 
+	
+	TextSelection searchResultToTextSelection(Container.SearchResult sr, Container workspaceContainer)
+	{
+		if(sr.cells.length)
+		if(auto row = cast(CodeRow)sr.container)
+		if(auto col = row.parent)
+		{
+			auto 	rowIdx = row.index,
+				//Todo: could find other cells as well.
+				//If the user edits the document for example.
+				st = row.subCellIndex(sr.cells.front),
+				en = row.subCellIndex(sr.cells.back); 
+			if(rowIdx>=0 && st>=0 && en>=0)
+			{
+				auto ts = TextSelection
+				(
+					TextCursor(col, ivec2(st, rowIdx)), 
+					TextCursor(col, ivec2(en+1, rowIdx)),
+					false
+				); 
+				return validate(ts, workspaceContainer); 
+			}
+		}
+		
+		return TextSelection.init; 
+	} 
+	
+	auto extend(TextSelection sel)
+	{
+		if(sel.valid)
+		{
+			const fwd = sel.cursors[0]<=sel.cursors[1]; 
+			
+			auto home = sel.start; home.move(TextCursor.home.ivec2); 
+			auto end = sel.end; end.move(TextCursor.end.ivec2); 
+			
+			if(home!=sel.start || end!=sel.end)
+			{
+				sel.cursors[0] = home; 
+				sel.cursors[1] = end; 
+			}
+			else
+			{
+				auto parents = sel.codeColumn.allParents.take(3).array; 
+				if(parents.length==3)
+				if(auto parentNode = cast(CodeNode) parents[0])
+				if(auto parentRow = cast(CodeRow) parents[1])
+				if(auto parentCol = cast(CodeColumn) parents[2])
+				{
+					const 	x = parentRow.subCellIndex(parentNode),
+						y = parentCol.subCellIndex(parentRow); 
+					if(x>=0 && y>=0)
+					{
+						void set(C)(ref C c, int x)
+						{
+							c.codeColumn = parentCol; 
+							c.pos = ivec2(x, y); 
+							c.calcDesiredX_unsafe; 
+						} 
+						set(sel.cursors[0], x); 
+						set(sel.cursors[1], x+1); 
+					}
+				}
+			}
+			
+			//preserve selection direction
+			if(fwd != (sel.cursors[0]<=sel.cursors[1]))
+			swap(sel.cursors[0], sel.cursors[1]); 
+		}
+		return sel; 
+	} 
+	
+	private auto _extendTwice(bool eq)(TextSelection ts)
+	{
+		auto ext = extend(ts); 
+		if(ext.valid && (ext.codeColumn==ts.codeColumn)==eq)
+		ext = extend(ext); 
+		return ext; 
+	} 
+	
+	///steps out from the current codeColumn
+	auto extendOut(TextSelection ts)
+	{
+		if(!ts.valid || ts.codeColumn.allParents!CodeColumn.empty) return ts; 
+		return _extendTwice!true(ts); 
+	} 
+	
+	///extends selection to the an codeColumn
+	auto extendAll(TextSelection ts)
+	{
+		if(!ts.valid) return ts; 
+		return _extendTwice!false(ts); 
+	} 
+	
+	auto extend(TextSelection[] sels)
+	{ return sels.map!(ts=>extend(ts)).merge; } 
+	auto extendOut(TextSelection[] sels)
+	{ return sels.map!(ts=>extendOut(ts)).merge; } 
+	auto extendAll(TextSelection[] sels)
+	{ return sels.map!(ts=>extendAll(ts)).merge; } 
+	
+	CodeLocation cellLocationToCodeLocation(CellLocation[] st)
+	{
+		CodeLocation res; 
+		
+		//Todo: it's only detects the lineIdx
+		while(st.length) {
+			void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; } 
+			auto cell = st.back.cell; 
+			
+			if(auto glyph = cast(Glyph)cell)
+			setLineIdx(glyph.lineIdx); 
+			else if(auto node = cast(CodeNode)cell)
+			setLineIdx(node.lineIdx); 
+			else if(auto row = cast(CodeRow)cell)
+			{
+				setLineIdx(row.lineIdx); 
+				/+
+					Todo: this should be row.findLineIdx_max,
+					because the mouse is at the end of the row
+				+/
+				
+				if(auto mod = moduleOf(row))
+				res.file = mod.file; 
+				break; 
+			}
+			//Todo: Tabs would look better in this if chain.
+			
+			st.popBack; 
+		}
+		
+		return res; 
+	} 
+	
+	CellLocation[] cursorToCellLocations(TextCursor cr)
+	{
+		//Note: it does not return local/global positions, just the cell chain.
+		if(auto row = rowAt(cr))
+		{
+			auto res = row.thisAndAllParents.array.retro.map!((a)=>(CellLocation(a))).array; 
+			if(cr.isAtLineEnd) cr.pos.x--; 
+			if(auto cell = cellAt(cr)) res ~= CellLocation(cell); 
+			return res; 
+		}
+		return []; 
+	} 
+	
+	CodeLocation cursorToCodeLocation(TextCursor cr)
+	{ return cellLocationToCodeLocation(cursorToCellLocations(cr)); } 
+	
+	string wordAt(
+		CellLocation[] st, bool canStepLeft = false/+can see one cell to the left+/, 
+		bounds2* globalBounds, TextSelection* ts
+	)
+	{
+		if(globalBounds) *globalBounds = bounds2.init; 
+		if(ts) *ts = TextSelection.init; //Todo: refactor these wordat() results to a struct
+		
+		static isWordGlyph(Cell c)
+		{
+			if(auto g = (cast(Glyph)(c))) return g.ch.isDLangIdentifierCont /+|| g.ch=='.'+/; 
+			return false; 
+		} 
+		if(st.length>=2)
+		if(auto row = (cast(CodeRow)(st[$-2].cell)))
+		{
+			auto idx = row.subCells.countUntil(st.back.cell); 
+			
+			//optionally it can step back a cell
+			if(canStepLeft && !isWordGlyph(row.subCells[idx]) && idx>0) idx--; 
+			
+			if(idx>=0 && isWordGlyph(row.subCells[idx]))
+			{
+				auto fw() => row.subCells[idx..$].until!(not!isWordGlyph); 
+				auto bk() => row.subCells[0..idx].retro.until!(not!isWordGlyph); 
+				bounds2 bnd; 
+				auto res = chain(bk.array.retro, fw)	.map	!((n)=>((cast(Glyph)(n))))
+					.tee	!((g){ bnd |= g.outerBounds; })
+					.map	!((g)=>(g.ch)).text; 
+				bnd += row.worldInnerPos; 
+				
+				if(globalBounds) *globalBounds = bnd; 
+				if(ts)
+				{
+					const fwCnt = (cast(int)(fw.walkLength)); 
+					const bkCnt = (cast(int)(bk.walkLength)); 
+					const rowIdx = row.index; 
+					*ts = TextSelection(
+						TextCursor(row.parent, ivec2(idx-bkCnt, rowIdx)),
+						TextCursor(row.parent, ivec2(idx+fwCnt, rowIdx)), false
+					); 
+				}
+				
+				return res; 
+			}
+		}
+		return ""; 
+	} 
+	
+	void applyCursorOp(ref TextSelection[] arr, ivec2 dir, bool select, bool stepInOut=false)
+	{
+		const stepOut = stepInOut; 
+		const stepIn = stepInOut; 
+		
+		void dump(string title)
+		{
+			static if(0)
+			if(arr.length)
+			{
+				LOG(title, arr[0], arr[0].valid, arr[0].toReference.valid); 
+				TextCursorReference res; 
+				with(arr[0].cursors[0])
+				if(valid)
+				{
+					auto row = codeColumn.getRow(pos.y); 
+					LOG("ROW", row); 
+					if(row)
+					{
+						LOG("parents", row.thisAndAllParents.array.retro.array); 
+						res.path = CellPath(row); 
+						res.left	= row.subCells.get(pos.x-1); 
+						res.right	= row.subCells.get(pos.x); 
+					}
+				}
+				LOG("refCursor",res.path, res.left, res.right); 
+			}
+		} 
+		
+		dump("BEFORE"); 
+		
+		foreach(ref ts; arr)
+		if(!stepInOut)
+		{ ts.move(dir, select); }
+		else
+		{
+			const fwd = dir.x>0 || dir.y>0; 
+			
+			auto prev = ts; 
+			
+			scope(exit)
+			{
+				//Adjust the local positions when the codeColumn changes.
+				version(AnimatedCursors)
+				if(prev.valid && ts.valid && prev.codeColumn != ts.codeColumn)
+				{
+					const delta = prev.codeColumn.worldInnerPos - ts.codeColumn.worldInnerPos; 
+					
+					foreach(ref c; ts.cursors[])
+					{
+						if(!c.animatedPos.x.isnan) c.animatedPos += delta; 
+						if(!c.targetPos.x.isnan) c.targetPos += delta; 
+					}
+				}
+			}
+			
+			ts.move(dir, select); 
+			
+			//step into the first node that has any subColumns
+			if(stepIn && !select && prev!=ts && prev.valid && prev.isZeroLength)
+			{
+				auto nodes = TextSelection(prev.cursors[0], ts.cursors[0], prev.primary).cells!CodeNode; 
+				if(
+					auto nearestNode = fwd 	? nodes.frontOrNull
+						: nodes.backOrNull
+				)
+				if(
+					auto subCol = fwd 	? nearestNode.firstSubColumn 
+						: nearestNode.lastSubColumn
+				)
+				{
+					//Todo: It will miss nodes that has no subColumns
+					ts.cursors[] = fwd ? subCol.homeCursor : subCol.endCursor; 
+					continue; 
+				}
+			}
+			
+			//step out because the it reached the end (was unable to move)
+			if(ts.valid && prev==ts)
+			{
+				//step into the next codeColumn inside a codeNode
+				if(stepIn && ts.valid && !select)
+				if(auto node = cast(CodeNode) ts.codeColumn.getParent)
+				if(
+					auto nextCol = fwd 	? node.columnAfter(ts.codeColumn)
+						: node.columnBefore(ts.codeColumn)
+				)
+				{
+					if(fwd)	ts.cursors[] = nextCol.homeCursor; 
+					else	ts.cursors[] = nextCol.endCursor; 
+					continue; 
+				}
+				
+				//step out
+				auto ext = extendOut(ts); 
+				if(ext.valid)
+				{
+					ts = ext; 
+					if(select)
+					{/+if(!fwd) swap(ts.cursors[0], ts.cursors[1]); +/}
+					else
+					{
+						if(fwd)	ts.cursors[0] = ts.cursors[1]; 
+						else	ts.cursors[1] = ts.cursors[0]; 
+					}
+				}
+			}
+		}
+		
+		dump("AFTER"); 
+		
+		arr = merge(arr); //Todo: maybe merge should reside in validateTextSelections
 	} 
 }

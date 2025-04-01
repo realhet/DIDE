@@ -1,6 +1,6 @@
 module buildsys; 
 
-import het, std.regex; 
+import het; 
 import std.file: dirEntries, SpanMode; 
 import std.process: executeShell, Config, spawnProcess; 
 import het.parser: DPaths, CodeLocation; 
@@ -405,7 +405,8 @@ struct BuildSystem
 	{
 		//processes each errorlog individually, making absolute filepaths
 		string[] list; 
-		auto rx = ctRegex!`(.+)\(.+\): `; 
+		
+		auto rx = rtRegex!`(.+)\(.+\): `; 
 		foreach(s; sErr.splitLines)
 		{
 			

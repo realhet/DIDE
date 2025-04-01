@@ -8,66 +8,6 @@ import didemodule : autoSpaceAfterDeclarations, rearrangeFlash, DefaultNewLine, 
 
 
 version(/+$DIDE_REGION+/all) {
-	/// input newLine must be standardized. Only that type of newLine is recognized.
-	/// it only adds newLine when the last item doesn't have one at its end
-	/// replaces all '\n' to specidied newLine
-	string sourceTextJoin(R)(R r, string newLine)
-	{
-		string[] a = r.array; 
-		
-		foreach(i; 0..a.length.to!int-1)
-		{
-			const 	n0 = a[i  ].endsWith(newLine),
-				n1 = a[i+1].startsWith(newLine); 
-			if(n0 && n1)
-			{
-				a[i] = a[i][0..$-newLine.length]; //remove a newLine when there are 2
-			}
-			else if(!n0 && !n1)
-			{
-				  //add a newLine when there are 0
-				a[i] ~= newLine; 
-			}
-		}
-		
-		return a.join; 
-	} 
-	
-	
-	string sourceText(R)(R cells)
-	if(isInputRange!(R, Cell))
-	{
-		string res; 
-		foreach(cell; cells)
-		{
-			//Note: this is redundant code. The same is inside TextSelection.sourceText, but it's fast.
-			if(auto g = cast(Glyph)cell)
-			{ res ~= g.ch; }
-			else if(auto n = cast(CodeNode)cell)
-			{
-				res ~= n.sourceText; 
-				//this can throw exceptions if the node has an invalid content
-			}
-			else
-			{ raise("Fatal error: Source cells must be either Glyph or CodeNode"); }
-		}
-		return res; 
-	} 
-	
-	string sourceText(TextSelection[] ts)
-	{
-		return ts	.filter!"a.valid && !a.isZeroLength"
-			.map!"a.sourceText"
-			.sourceTextJoin(DefaultNewLine); 
-	} 
-	
-	bool hitTest(TextSelection[] ts, vec2 p)
-	{
-		return ts.map!(a => a.hitTest(p)).any; 
-		//Todo: this should be in the draw routine with automatic mouse hittest
-	} 
-	
-	
 	struct SourceTextBuilder
 	{
 		enum CODE = true, UI = !CODE; 

@@ -55,7 +55,6 @@ version(/+$DIDE_REGION+/all) {
 	
 	import het, het.parser; 
 	import std.process: executeShell, Config; 
-	import std.regex; 
 	//std.file, std.path, std.process
 	
 	
@@ -235,7 +234,7 @@ a new compiler instance."}],
 				ignoreExceptions({ if(thr) thr.join; }); 
 				thr.free; 
 			} 
-			
+			
 			protected void fetchPipes(Time minT, bool isFinal=false)
 			{
 				if(stdOutGrouper.canGet(minT) || stdErrGrouper.canGet(minT) || isFinal /+Fast exit without synching.+/)
@@ -257,7 +256,7 @@ a new compiler instance."}],
 			protected void fetchPipes_final()
 			{ fetchPipes(0*second, true); } 
 			
-			
+			
 			void start()
 			{
 				if(isRunning) { ERR("already running"); return; }
@@ -1215,7 +1214,9 @@ Experimental:
 		} 
 		
 		
-		private enum rxDMDMessage = ctRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?[^(]*\(([0-9]+),([0-9]+)\): (.*)`
+		static auto rxDMDMessage()
+		=> 
+		rtRegex!	`^((\w:\\)?[\w\\ \-.,]+.d)(-mixin-([0-9]+))?[^(]*\(([0-9]+),([0-9]+)\): (.*)`
 			/+1:fn 2:drive       3       4            5      6       7+/
 			/+drive:\ is optional.+/
 			/+Todo: detect multiple mixin line indices!+/; 
@@ -1316,7 +1317,7 @@ Experimental:
 			
 			static File decodeFileMarker(string line, FileNameFixer fileNameFixer)
 			{
-				enum rx = ctRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
+				auto rx = rtRegex!`^(\w:\\[\w\\ \-.,]+.d): COMPILER OUTPUT:$`; 
 				auto m = matchFirst(line, rx); 
 				return m.empty ? File.init : fileNameFixer(m[1]); 
 				/+

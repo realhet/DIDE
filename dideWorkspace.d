@@ -5,419 +5,19 @@ import het.ui, dideui, didebase;
 import het.parser : CodeLocation, SyntaxKind, syntaxFontColor, syntaxBkColor; 
 import buildsys : DMDMessage, decodeDMDMessages, BuildSettings, BuildSystem, BuildResult, ModuleBuildState, moduleBuildStateColors; 
 
-import diderow : CodeRow, sourceText, hitTest; 
+import diderow : CodeRow; 
 import didecolumn : CodeColumn; 
 import didenode : CodeNode, CodeComment, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
 import didedecl : Declaration, 	/+these are for statistics only ->+/dDeclarationRecords, processHighLevelPatterns_block; 
 import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFormat, TextModification, addInspectorParticle, TextModificationRecord, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, DefaultNewLine, compoundObjectChar, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, drawChangeIndicators, globalChangeindicatorsAppender, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
 import didemodulemanager : ModuleManager; 
+import didetextselectionmanager : TextSelectionManager; 
 import dideinsight : ModuleDeclarations, DDB, Insight; 
-import dideai : AiModel, AiChat; 
+import dideai : AiHandler; 
 alias blink = dideui.blink; 
 
 
 
-static class TextSelectionManager
-{
-	protected
-	{
-		ModuleManager modules; 
-		TextSelection[] textSelections_internal; 
-		bool mustValidateTextSelections; 
-		size_t textSelectionsHash; 
-	} 
-	Container workspaceContainer; 
-	
-	@property
-	{
-		auto items()
-		{
-			validateTextSelectionsIfNeeded; 
-			return textSelections_internal; 
-		} 	auto textSelections()
-		{ return items; } 
-		void items()(TextSelection[] ts)
-		{
-			textSelections_internal = ts; 
-			invalidateTextSelections; 
-		} 	void textSelections()(TextSelection[] ts)
-		{ items = ts; } 
-		void items()(TextSelection ts)
-		{ items = [ts]; } 	void textSelections()(TextSelection ts)
-		{ items = ts; } 
-	} 
-	
-	auto opIndex() => items; 
-	auto opIndex(size_t i) => items.get(i); 
-	auto length() => items.length; 
-	auto empty() => items.empty; 
-	
-	void clear() { items = []; } 
-	
-	version(/+$DIDE_REGION Validate+/all)
-	{
-		void invalidateTextSelections()
-		{
-			mustValidateTextSelections = true; 
-			invalidateInternalSelections; 
-		} 
-		
-		void validateTextSelectionsIfNeeded()
-		{
-			if(mustValidateTextSelections.chkClear)
-			{ textSelections_internal = validate(textSelections_internal); }
-		} 
-		
-		auto validate(TextCursor c)
-		{ return validate(TextSelection(c, c, false)).cursors[0]; } 
-		
-		auto validate(TextSelection s)
-		{
-			auto ts = validate([s]); 
-			return ts.empty ? TextSelection.init : ts[0]; 
-		} 
-		
-		auto validate(TextSelection[] arr)
-		{
-			Cell cachedExistingModule; 
-			
-			bool isExistingModule(Cell c)
-			{
-				if(c is cachedExistingModule) return true; 
-				//Opt: this is helping nothing compared to
-				
-				if(auto m = cast(Module)c)
-				if(modules.modules.canFind(m))
-				{
-					cachedExistingModule = c; 
-					return true; 
-				}
-				return false; 
-			} 
-			
-			bool validate(TextSelection sel)
-			{
-				if(!sel.valid) return false; 
-				auto r = sel.toReference; 
-				if(!r.valid) return false; 
-				
-				auto p = r.cursors[0].path; 
-				if(p[0] !is workspaceContainer) return false; 	//not this workspace
-				if(!isExistingModule(p[1])) return false; 	//module died
-				
-				//Todo: check if selection is inside row boundaries.
-				return true; 
-			} 
-			
-			auto res = arr.filter!((a)=>(validate(a))).array; 
-			return res; 
-			//Todo: try to fix partially broken selections
-		} 
-	}
-	
-	version(/+$DIDE_REGION Mouse ops on textSelections+/all)
-	{
-		struct SELECTIONS; 
-		@SELECTIONS
-		{
-			//Note: these cursors MUST BE validated!!!!!
-			TextCursor cursorAtMouse, cursorToExtend; 
-			TextSelection	selectionAtMouse; 
-			TextSelection[] 	selectionsWhenMouseWasPressed; 
-		} 
-		
-		bool 	mouseScrolling,
-			wordSelecting,
-			cursorToExtend_primary; 
-		
-		Nullable!vec2 	scrollInRequest; 
-		
-		version(/+$DIDE_REGION validation of textSelections+/all)
-		{
-			bool mustValidateInternalSelections; 
-			
-			
-			public void invalidateInternalSelections()
-			{ mustValidateInternalSelections = true; } 
-			
-			void validateInternalSelections(Workspace workspace)
-			{
-				if(mustValidateInternalSelections.chkClear)
-				{
-					//validate all the cursors market with @SELECTIONS UDA
-					static foreach(f; FieldNamesWithUDA!(typeof(this), SELECTIONS, false))
-					mixin(format!"%s = validate(%s);"(f, f)); 
-					PING2; 
-				}
-			} 
-		}
-		
-		version(/+$DIDE_REGION preprocess mouse input+/all)
-		{
-			private
-			{
-				bool 	opSelectColumn,
-					opSelectColumnAdd,
-					opSelectAdd,
-					opSelectExtend; 
-				
-				DateTime lastMainMousePressTime; 
-				ClickDetector cdMainMouseButton; 
-				float mouseTravelDistance = 0; 
-				bool doubleClick; 
-				
-				void updateInputs(in Workspace.MouseMappings mouseMappings)
-				{
-					//detectMouseTravel
-					if(inputs[mouseMappings.main].down)
-					{
-						//Todo: copy/paste
-						mouseTravelDistance += abs(inputs.MX.delta) + abs(inputs.MY.delta); 
-					}
-					else
-					{ mouseTravelDistance = 0; }
-					
-					cdMainMouseButton.update(inputs[mouseMappings.main].down); 
-					doubleClick = cdMainMouseButton.doubleClicked; 
-					
-					//check if a keycombo modifier with the main mouse button isactive
-					bool _kc(string sh) { return KeyCombo([sh, mouseMappings.main].join("+")).active; } 
-					opSelectColumn = _kc(mouseMappings.selectColumn	); 
-					opSelectColumnAdd = _kc(mouseMappings.selectColumnAdd	); 
-					opSelectAdd = _kc(mouseMappings.selectAdd	); 
-					opSelectExtend = _kc(mouseMappings.selectExtend	); 
-					
-				} 
-			} 
-		}
-		
-		bool update(
-			View2D 	view	, //input: mouse position,  output: zoom/scroll.
-			Workspace 	workspace	, //used to access and modify textSelection, create tectCursor at mouse.
-			in Workspace.MouseMappings 	mouseMappings	, //mouse buttons, shift modifier settings.
-		)
-		{
-			//Todo: make textSelection functional, not a ref
-			//Opt: only call this when the workspace changed (remove module, cut, paste)
-			
-			validateInternalSelections(workspace); 
-			cursorAtMouse = workspace.createCursorAt(view.mousePos.vec2); 
-			
-			updateInputs(mouseMappings); 
-			scrollInRequest.nullify; 
-			if(doubleClick) { wordSelecting = true; }
-			
-			void initiateMouseOperations()
-			{
-				if(auto dw = inputs[mouseMappings.zoom].delta) view.zoomAroundMouse(dw*workspace.wheelSpeed); 
-				if(inputs[mouseMappings.zoomInHold].down) view.zoomAroundMouse(.125); 
-				if(inputs[mouseMappings.zoomOutHold].down) view.zoom/+AroundMouse+/(-.125); 
-				
-				if(inputs[mouseMappings.scroll].pressed) mouseScrolling = true; 
-				
-				if(inputs[mouseMappings.main].pressed)
-				{
-					if(textSelections.hitTest(view.mousePos.vec2))
-					{
-						//Todo: start dragging the selection contents and paste on mouse button release
-					}
-					else if(cursorAtMouse.valid)
-					{
-						//start selecting with mouse
-						selectionsWhenMouseWasPressed = textSelections.dup; 
-						
-						if(textSelections.empty)
-						{
-							if(doubleClick)
-							{
-								selectionAtMouse = TextSelection(cursorAtMouse, false); 
-								wordSelecting = false; 
-							}else {
-								//single click goes to module selection
-							}
-						}
-						else
-						{
-							//extension cursor is the nearest selection.cursors[0]
-							if(!doubleClick)
-							{
-								auto selectionToExtend = 	selectionsWhenMouseWasPressed
-									.filter!(a => a.codeColumn is cursorAtMouse.codeColumn)
-									.minElement!(a => distance(a, cursorAtMouse))(TextSelection.init); 
-								
-								cursorToExtend = selectionToExtend.cursors[0]; 
-								cursorToExtend_primary = selectionToExtend.primary; 
-							}
-							
-							if(!cursorToExtend.valid)
-							{
-								cursorToExtend = cursorAtMouse; //defaults extension pos is mouse press pos.
-								cursorToExtend_primary = false; 
-							}
-							
-							selectionAtMouse = TextSelection(cursorAtMouse, false); 
-						}
-					}
-				}
-			} 
-			
-			void updateMouseScrolling() //(middle button panning)
-			{
-				if(mouseScrolling)
-				{
-					if(!inputs[mouseMappings.scroll])
-					mouseScrolling = false; 
-					else if(const delta = inputs.mouseDelta)
-					view.scroll(delta); 
-				}
-			} 
-			
-			void restrictDraggedMousePos()
-			{
-				//restrict dragged mousePos to the bounds of the current codeColumn
-				if(selectionAtMouse.valid && workspace.mainIsForeground && inputs[mouseMappings.main])
-				{
-					auto bnd = worldInnerBounds(selectionAtMouse.codeColumn); 
-					bnd.high = nextDown(bnd.high); //make sure it's inside
-					
-					const restrictedMousePos = opSelectColumn || opSelectColumnAdd 	? restrictPos_normal(view.mousePos.vec2, bnd) //normal clamping for columnSelect
-						: restrictPos_editor(view.mousePos.vec2, bnd) /+text editor clamping for normal select+/; 
-					
-					auto restrictedCursorAtMouse = workspace.createCursorAt(restrictedMousePos); 
-					
-					if(restrictedCursorAtMouse.valid && restrictedCursorAtMouse.codeColumn==selectionAtMouse.codeColumn)
-					selectionAtMouse.cursors[1] = restrictedCursorAtMouse; 
-					
-					if(mouseTravelDistance>4)
-					{
-						scrollInRequest = restrictPos_normal(view.mousePos.vec2, bnd); 
-						//always normal clipping for mouse focus point
-					}
-				}
-			} 
-			
-			void handleReleasedSelectionButton()
-			{
-				//resets mouse selection when the button is released
-				if(selectionAtMouse.valid && !inputs[mouseMappings.main])
-				{
-					selectionAtMouse = TextSelection.init; 
-					selectionsWhenMouseWasPressed = []; 
-					wordSelecting = false; 
-				}
-			} 
-			void combineFinalSelection()
-			{
-				//combine previous selection with the current mouse selection
-				
-				if(!selectionAtMouse.valid) return; //nothing to do with an empty selection
-				
-				//Todo: for additive operations, only the selections on the most recent
-				
-				auto applyWordSelect(TextSelection s) { return wordSelecting ? s.extendToWordsOrSpaces : s; } 
-				auto applyWordSelectArr(TextSelection[] s) { return wordSelecting ? s.map!(a => a.extendToWordsOrSpaces).array : s; } 
-				
-				TextSelection[] ts; //the new text selection
-				
-				if(opSelectColumn || opSelectColumnAdd)
-				{
-					auto getPrimaryCursor()
-					{
-						auto a = selectionsWhenMouseWasPressed.filter!"a.primary"; 
-						if(!a.empty) return a.front.cursors[0]; 
-						return cursorToExtend; 
-					} 
-					
-					//Column select
-					auto 	c0	= opSelectColumnAdd 	? selectionAtMouse.cursors[0] 
-								: getPrimaryCursor,  //Bug: what if primary cursor is on another module
-						c1	= selectionAtMouse.cursors[1]; 
-					
-					const 	downward 	= c0.pos.y<c1.pos.y,
-						dir	= downward ? 1 : -1,
-						count	= abs(c0.pos.y-c1.pos.y)+1; 
-					
-					auto 	a0 = iota(count).map!((i){ auto res = c0; c0.move(ivec2(0,  dir)); return res; }).array,
-						a1 = iota(count).map!((i){ auto res = c1; c1.move(ivec2(0, -dir)); return res; }).array; 
-					
-					if(downward) a1 = a1.retro.array; else a0 = a0.retro.array; 
-					
-					ts = iota(count).map!(i => TextSelection(a0[i], a1[i], false)).array; 
-					assert(ts.isSorted); 
-					
-					if(opSelectColumn)
-					{
-						//the first selection created is at the mosue, it must be the primary
-						(downward ? ts.front : ts.back).primary = true; 
-					}
-					
-					//if there are any nonZeroLength selections, remove all zeroLength carets
-					if(ts.any!"!a.isZeroLength")
-					ts = ts.remove!"a.isZeroLength"; 
-					
-					//if all are carets, remove those at line ends
-					if(ts.all!"a.isZeroLength" && !ts.all!"a.isAtLineStart" && !ts.all!"a.isAtLineEnd")
-					{
-						/+
-							Todo: Shift+Alt+LMB multicursor bug
-							01,
-							
-							02,
-							03
-							Can't put 3 cursors after the numbers, only 2.
-						+/
-						ts = ts.remove!"a.isAtLineEnd"; 
-					}
-					
-					ts = applyWordSelectArr(ts); 
-					
-					if(
-						opSelectColumnAdd//Ctrl+Alt+Shift = add column selection
-					)
-					ts = merge(selectionsWhenMouseWasPressed ~ ts); 
-					
-				}
-				else if(opSelectAdd || opSelectExtend)
-				{
-					auto actSelection = applyWordSelect(
-						opSelectAdd 	? selectionAtMouse
-							: TextSelection(
-							cursorToExtend, 
-							selectionAtMouse.caret, 
-							cursorToExtend_primary
-						)
-							//Bug: what if primary cursor to extend is on another module
-					); 
-					//remove touched existing selections first.
-					auto baseSelections = selectionsWhenMouseWasPressed.remove!(a => touches(a, actSelection)); 
-					ts = merge(baseSelections ~ actSelection); 
-				}
-				else
-				{
-					auto s = applyWordSelect(selectionAtMouse); 
-					ts = [s]; 
-				}
-				
-				//Todo: some selection operations may need 'overlaps' instead of 'touches'. Overlap only touch when on operand is a zeroLength selection.
-				//automatically mark primary for single selections
-				if(ts.length==1)
-				ts[0].primary = true; 
-				
-				textSelections = ts; 
-			} 
-			
-			//selection bussiness logic
-			if(!im.wantMouse && workspace.mainIsForeground && view.isMouseInside) initiateMouseOperations; 
-			updateMouseScrolling; 
-			restrictDraggedMousePos; 
-			handleReleasedSelectionButton; 
-			combineFinalSelection; 
-			
-			const changed = textSelectionsHash.chkSet(textSelections.hashOf); 
-			return changed; 
-		} 
-	}
-} 
 
 
 class Workspace : Container, WorkspaceInterface
@@ -464,7 +64,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		TextSelectionManager textSelections; 
 		
-		string[] extendSelectionStack; 
+		
 		
 		struct MarkerLayerSettings {
 			const DMDMessage.Type type; //this is the identity
@@ -499,6 +99,9 @@ class Workspace : Container, WorkspaceInterface
 		void setTextSelectionReference(string s)
 		{ textSelections.items = [TextSelectionReference(s, &modules.findModule).fromReference]; } 
 		
+		Container workspaceContainer()
+		=> this/+safe access to functions needeng a workspace. 'this' would be unsafe.+/; 
+		
 		this()
 		{
 			modules = new ModuleManager; 
@@ -508,9 +111,15 @@ class Workspace : Container, WorkspaceInterface
 			modules.onGetPrimaryModule = &primaryModule; 
 			modules.onSetTextSelectionReference = &setTextSelectionReference; 
 			
-			textSelections = new TextSelectionManager; 
-			textSelections.workspaceContainer = this; 
-			textSelections.modules = modules; 
+			textSelections = new TextSelectionManager(this, modules); 
+			
+			aiHandler.textSelections = textSelections; 
+			aiHandler.pasteText = &pasteText; 
+			aiHandler.insertNode = &insertNode; 
+			aiHandler.insertNewLine = &insertNewLine; 
+			aiHandler.cursorLeftSelect = &cursorLeftSelect; 
+			aiHandler.deleteToLeft = &deleteToLeft; 
+			
 			
 			flags.targetSurface = 0; 
 			flags.noBackground = true; 
@@ -593,28 +202,16 @@ class Workspace : Container, WorkspaceInterface
 		version(/+$DIDE_REGION+/all)
 		{
 			auto primaryTextSelection()
-			{
-				{
-					auto a = textSelections[].filter!"a.primary"; 
-					if(!a.empty) return a.front; 
-				}
-				
-				{
-					auto a = textSelections[]; //choose the first if none is marked with the primary flag.
-					if(!a.empty) return a.front; 
-				}
-				
-				return TextSelection.init; 
-			} 
+			=> textSelections.primary; 
 			
 			auto primaryCaret()
-			{ return primaryTextSelection.caret; } 
+			=> primaryTextSelection.caret; 
 			
 			auto primaryModule()
-			{ return primaryTextSelection.moduleOf; } 
+			=> primaryTextSelection.moduleOf; 
 			
 			auto modulesWithTextSelection()
-			{ return textSelections[].map!(s => s.moduleOf).nonNulls.uniq; } 
+			=> textSelections[].map!(s => s.moduleOf).nonNulls.uniq; 
 			
 			
 			/+
@@ -1005,7 +602,7 @@ class Workspace : Container, WorkspaceInterface
 		
 		
 		
-		//Todo: since all the code containers have parents, location() is not needed anymore
+		
 		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
 		{
@@ -1082,155 +679,11 @@ class Workspace : Container, WorkspaceInterface
 			
 			return st; 
 		} 
-		
-		CodeLocation cellLocationToCodeLocation(CellLocation[] st)
-		{
-			CodeLocation res; 
-			
-			//Todo: it's only detects the lineIdx
-			while(st.length) {
-				void setLineIdx(int i) { if(!res.lineIdx) res.lineIdx = i; } 
-				auto cell = st.back.cell; 
-				
-				if(auto glyph = cast(Glyph)cell)
-				setLineIdx(glyph.lineIdx); 
-				else if(auto node = cast(CodeNode)cell)
-				setLineIdx(node.lineIdx); 
-				else if(auto row = cast(CodeRow)cell)
-				{
-					setLineIdx(row.lineIdx); 
-					/+
-						Todo: this should be row.findLineIdx_max,
-						because the mouse is at the end of the row
-					+/
-					
-					if(auto mod = moduleOf(row))
-					res.file = mod.file; 
-					break; 
-				}
-				//Todo: Tabs would look better in this if chain.
-				
-				st.popBack; 
-			}
-			
-			return res; 
-		} 
 		
-		CellLocation[] cursorToCellLocations(TextCursor cr)
-		{
-			//Note: it does not return local/global positions, just the cell chain.
-			if(auto row = rowAt(cr))
-			{
-				auto res = row.thisAndAllParents.array.retro.map!((a)=>(CellLocation(a))).array; 
-				if(cr.isAtLineEnd) cr.pos.x--; 
-				if(auto cell = cellAt(cr)) res ~= CellLocation(cell); 
-				return res; 
-			}
-			return []; 
-		} 
-		
-		CodeLocation cursorToCodeLocation(TextCursor cr)
-		{ return cellLocationToCodeLocation(cursorToCellLocations(cr)); } 
-		
-		static CellLocation[] findLastCodeRow(CellLocation[] st)
-		{
-			foreach_reverse(i; 0..st.length) {
-				//Todo: functinal
-				auto row = cast(CodeRow)st[i].cell; 
-				if(row) return st[i..$]; 
-			}
-			return []; 
-		} 
-		
-		TextCursor cellLocationToTextCursor(CellLocation[] st)
-		{
-			TextCursor res; 
-			st = findLastCodeRow(st); 
-			if(auto row = cast(CodeRow)st.get(0).cell)
-			{
-				auto cell = st.get(1).cell; 
-				
-				//try to find cell with smaller height than the row, vertically at x,
-				//   if the mouse is not exactly inside the cell. Also snap from the sides.
-				if(!cell) {
-					cell = row.subCellAtX(st[0].localPos.x, Yes.snapToNearest); 
-					if(cell) {
-						st  ~= CellLocation(cell, st[0].localPos-cell.innerPos); 
-						//pass in localPos inside the cell
-					}
-				}
-				
-				res.codeColumn = row.parent; 
-				
-				res.desiredX = st[0].localPos.x; 
-				res.pos.y = row.index; 
-				
-				//find x character index
-				int x; 
-				if(cell)
-				{
-					x = row.subCellIndex(cell); 
-					assert(x>=0); 
-					if(st[1].localPos.x>cell.innerWidth/2) x++; 
-				}
-				else
-				{ x = res.desiredX<0 ? 0 : row.cellCount; }
-				assert(x.inRange(0, row.cellCount)); 
-				res.pos.x = x; 
-			}
-			
-			return textSelections.validate(res); 
-		} 
-		
-		string wordAt(CellLocation[] st, bool canStepLeft = false/+can see one cell to the left+/, bounds2* globalBounds, TextSelection* ts)
-		{
-			if(globalBounds) *globalBounds = bounds2.init; 
-			if(ts) *ts = TextSelection.init; //Todo: refactor these wordat() results to a struct
-			
-			static isWordGlyph(Cell c)
-			{
-				if(auto g = (cast(Glyph)(c))) return g.ch.isDLangIdentifierCont /+|| g.ch=='.'+/; 
-				return false; 
-			} 
-			if(st.length>=2)
-			if(auto row = (cast(CodeRow)(st[$-2].cell)))
-			{
-				auto idx = row.subCells.countUntil(st.back.cell); 
-				
-				//optionally it can step back a cell
-				if(canStepLeft && !isWordGlyph(row.subCells[idx]) && idx>0) idx--; 
-				
-				if(idx>=0 && isWordGlyph(row.subCells[idx]))
-				{
-					auto fw() => row.subCells[idx..$].until!(not!isWordGlyph); 
-					auto bk() => row.subCells[0..idx].retro.until!(not!isWordGlyph); 
-					bounds2 bnd; 
-					auto res = chain(bk.array.retro, fw)	.map	!((n)=>((cast(Glyph)(n))))
-						.tee	!((g){ bnd |= g.outerBounds; })
-						.map	!((g)=>(g.ch)).text; 
-					bnd += row.worldInnerPos; 
-					
-					if(globalBounds) *globalBounds = bnd; 
-					if(ts)
-					{
-						const fwCnt = (cast(int)(fw.walkLength)); 
-						const bkCnt = (cast(int)(bk.walkLength)); 
-						const rowIdx = row.index; 
-						*ts = TextSelection(
-							TextCursor(row.parent, ivec2(idx-bkCnt, rowIdx)),
-							TextCursor(row.parent, ivec2(idx+fwCnt, rowIdx)), false
-						); 
-					}
-					
-					return res; 
-				}
-			}
-			return ""; 
-		} 
 	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
 	{
 		TextCursor createCursorAt(vec2 p)
-		{ return cellLocationToTextCursor(locate_snapToRow(p)); } 
+		{ return cellLocationToTextCursor(locate_snapToRow(p), workspaceContainer); } 
 		
 		//textSelection, cursor movements /////////////////////////////
 		
@@ -1239,122 +692,28 @@ class Workspace : Container, WorkspaceInterface
 		int pageSize()
 		{ return (mainView.subScreenBounds_anim.height/lineSize*.9f).iround.clamp(2, 100); } 
 		
+		
 		void cursorOp(ivec2 dir, bool select, bool stepInOut=false)
+		{ auto ts = textSelections[]; applyCursorOp(ts, dir, select, stepInOut); textSelections.items = ts; } 
+		
+		void insertCursor(int dir)
 		{
-			const stepOut = stepInOut; 
-			const stepIn = stepInOut; 
+			auto 	prev = textSelections[],
+				next = prev.dup; 
 			
-			auto arr = textSelections[]; 
+			foreach(ref ts; next)
+			foreach(
+				ref tc; ts.cursors
+				/+
+					Note: It is important to move the cursors separately here.
+					Don't let TextSelection.move do cursor collapsing.
+				+/
+			)
+			tc.move(ivec2(0, dir)); 
 			
-			void dump(string title)
-			{
-				static if(0)
-				if(arr.length)
-				{
-					LOG(title, arr[0], arr[0].valid, arr[0].toReference.valid); 
-					TextCursorReference res; 
-					with(arr[0].cursors[0])
-					if(valid)
-					{
-						auto row = codeColumn.getRow(pos.y); 
-						LOG("ROW", row); 
-						if(row)
-						{
-							LOG("parents", row.thisAndAllParents.array.retro.array); 
-							res.path = CellPath(row); 
-							res.left	= row.subCells.get(pos.x-1); 
-							res.right	= row.subCells.get(pos.x); 
-						}
-					}
-					LOG("refCursor",res.path, res.left, res.right); 
-				}
-			} 
-			
-			dump("BEFORE"); 
-			
-			foreach(ref ts; arr)
-			if(!stepInOut)
-			{ ts.move(dir, select); }
-			else
-			{
-				const fwd = dir.x>0 || dir.y>0; 
-				
-				auto prev = ts; 
-				
-				scope(exit)
-				{
-					//Adjust the local positions when the codeColumn changes.
-					version(AnimatedCursors)
-					if(prev.valid && ts.valid && prev.codeColumn != ts.codeColumn)
-					{
-						const delta = prev.codeColumn.worldInnerPos - ts.codeColumn.worldInnerPos; 
-						
-						foreach(ref c; ts.cursors[])
-						{
-							if(!c.animatedPos.x.isnan) c.animatedPos += delta; 
-							if(!c.targetPos.x.isnan) c.targetPos += delta; 
-						}
-					}
-				}
-				
-				ts.move(dir, select); 
-				
-				//step into the first node that has any subColumns
-				if(stepIn && !select && prev!=ts && prev.valid && prev.isZeroLength)
-				{
-					auto nodes = TextSelection(prev.cursors[0], ts.cursors[0], prev.primary).cells!CodeNode; 
-					if(
-						auto nearestNode = fwd 	? nodes.frontOrNull
-							: nodes.backOrNull
-					)
-					if(
-						auto subCol = fwd 	? nearestNode.firstSubColumn 
-							: nearestNode.lastSubColumn
-					)
-					{
-						//Todo: It will miss nodes that has no subColumns
-						ts.cursors[] = fwd ? subCol.homeCursor : subCol.endCursor; 
-						continue; 
-					}
-				}
-				
-				//step out because the it reached the end (was unable to move)
-				if(ts.valid && prev==ts)
-				{
-					//step into the next codeColumn inside a codeNode
-					if(stepIn && ts.valid && !select)
-					if(auto node = cast(CodeNode) ts.codeColumn.getParent)
-					if(
-						auto nextCol = fwd 	? node.columnAfter(ts.codeColumn)
-							: node.columnBefore(ts.codeColumn)
-					)
-					{
-						if(fwd)	ts.cursors[] = nextCol.homeCursor; 
-						else	ts.cursors[] = nextCol.endCursor; 
-						continue; 
-					}
-					
-					//step out
-					auto ext = extendOut(ts); 
-					if(ext.valid)
-					{
-						ts = ext; 
-						if(select)
-						{/+if(!fwd) swap(ts.cursors[0], ts.cursors[1]); +/}
-						else
-						{
-							if(fwd)	ts.cursors[0] = ts.cursors[1]; 
-							else	ts.cursors[1] = ts.cursors[0]; 
-						}
-					}
-				}
-			}
-			
-			dump("AFTER"); 
-			
-			textSelections.items = merge(arr); //Todo: maybe merge should reside in validateTextSelections
+			textSelections.items = merge(prev ~ next); 
 		} 
-		
+		
 		version(/+$DIDE_REGION Scrolling+/all)
 		{
 			void scrollV(float dy)
@@ -1369,24 +728,6 @@ class Workspace : Container, WorkspaceInterface
 			float zoomSpeed()
 			=> application.deltaTime.value(second)*8; 
 			float wheelSpeed = 0.375f; 
-				
-			void insertCursor(int dir)
-			{
-				auto 	prev = textSelections[],
-					next = prev.dup; 
-				
-				foreach(ref ts; next)
-				foreach(
-					ref tc; ts.cursors
-					/+
-						Note: It is important to move the cursors separately here.
-						Don't let TextSelection.move do cursor collapsing.
-					+/
-				)
-				tc.move(ivec2(0, dir)); 
-				
-				textSelections.items = merge(prev ~ next); 
-			} 
 			
 			void scrollInModules(Module[] m)
 			{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
@@ -1397,92 +738,6 @@ class Workspace : Container, WorkspaceInterface
 			void scrollInModule(Module m)
 			{ if(m) scrollInModules([m]); } 
 		}
-		
-		
-		void preserveTextSelections(void delegate() fun)
-		{
-			//Todo: preserve module selections too
-			const savedTextSelections = textSelections[].map!(a => a.toReference.text).array; 
-			scope(exit)
-			{ textSelections.items = savedTextSelections.map!(a => TextSelection(a, &modules.findModule)).array; }
-			if(fun) fun(); 
-		} 
-		
-		auto insertCursorAtEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
-		{
-			auto res = 	textSelections[]
-				.filter!"a.valid"  //just to make sure
-				.map!(
-				//create cursors in every lines at the start of the line
-				sel => 	iota(sel.start.pos.y, sel.end.pos.y+1)
-					.map!((y)=>(TextCursor(sel.codeColumn, ivec2(0, y))))
-			)
-				.joiner
-				.map!((c){
-				//move the cursor to the end or home of the line
-				if(toTheEnd) c.moveToLineEnd; 
-				else c.moveToLineStart; //Todo: it's not functional yet
-				return TextSelection(c, c, false); //make a selection out of them
-			})
-				.merge /+merge it, because there can be duplicates+/; 
-			
-			if(res.length) res[0].primary = true; //Todo: primary selection is inconsistent when multiselect
-			
-			return res; 
-		} 
-		
-		auto insertCursorAtStartOfEachLineSelected_impl(R)(R textSelections)
-		{ return insertCursorAtEachLineSelected_impl(textSelections[], No.toTheEnd); } 
-		
-		auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
-		{ return insertCursorAtEachLineSelected_impl(textSelections, Yes.toTheEnd); } 
-		
-		auto selectCharAtEachSelection(R)(R textSelections, dchar ch)
-		{
-			TextSelection transform(TextSelection sel)
-			{
-				TextSelection res; 
-				if(sel.cursors[0].charAt == ch)
-				{
-					res = sel.dup; 
-					res.cursors[1] = res.cursors[0]; 
-					res.cursors[1].moveRight(1); 
-				}
-				return res; 
-			} 
-			
-			return 	textSelections[]
-				.map!(a => transform(a))
-				.cache
-				.filter!"a.valid"
-				.merge; 
-		} 
-		
-		TextSelection searchResultToTextSelection(SearchResult sr)
-		{
-			if(sr.cells.length)
-			if(auto row = cast(CodeRow)sr.container)
-			if(auto col = row.parent)
-			{
-				auto 	rowIdx = row.index,
-					//Todo: could find other cells as well.
-					//If the user edits the document for example.
-					st = row.subCellIndex(sr.cells.front),
-					en = row.subCellIndex(sr.cells.back); 
-				if(rowIdx>=0 && st>=0 && en>=0)
-				{
-					auto ts = TextSelection
-					(
-						TextCursor(col, ivec2(st, rowIdx)), 
-						TextCursor(col, ivec2(en+1, rowIdx)),
-						false
-					); 
-					return textSelections.validate(ts); 
-				}
-			}
-			
-			return TextSelection.init; 
-		} 
 		
 		void selectSearchResults(R)(R arr)
 		if(isInputRange!(R, Container.SearchResult))
@@ -1496,9 +751,9 @@ class Workspace : Container, WorkspaceInterface
 			//Todo: restrict to the current selection!
 			
 			//Todo: dont select text inside error messages!
-			textSelections.items = merge(arr.map!((a)=>(searchResultToTextSelection(a))).filter!"a.valid".array); 
+			textSelections.items = merge(arr.map!((a)=>(searchResultToTextSelection(a, workspaceContainer))).filter!"a.valid".array); 
 		} 
-		
+		
 		void cancelSelection_impl()
 		{
 			//cancelSelection_impl //////////////////////////////////////
@@ -1530,129 +785,6 @@ class Workspace : Container, WorkspaceInterface
 			//as a final act, zoom all
 			deselectAllModules; scrollInAllModules; 
 		} 
-		
-		auto extend(TextSelection sel)
-		{
-			if(sel.valid)
-			{
-				const fwd = sel.cursors[0]<=sel.cursors[1]; 
-				
-				auto home = sel.start; home.move(TextCursor.home.ivec2); 
-				auto end = sel.end; end.move(TextCursor.end.ivec2); 
-				
-				if(home!=sel.start || end!=sel.end)
-				{
-					sel.cursors[0] = home; 
-					sel.cursors[1] = end; 
-				}
-				else
-				{
-					auto parents = sel.codeColumn.allParents.take(3).array; 
-					if(parents.length==3)
-					if(auto parentNode = cast(CodeNode) parents[0])
-					if(auto parentRow = cast(CodeRow) parents[1])
-					if(auto parentCol = cast(CodeColumn) parents[2])
-					{
-						const 	x = parentRow.subCellIndex(parentNode),
-							y = parentCol.subCellIndex(parentRow); 
-						if(x>=0 && y>=0)
-						{
-							void set(C)(ref C c, int x)
-							{
-								c.codeColumn = parentCol; 
-								c.pos = ivec2(x, y); 
-								c.calcDesiredX_unsafe; 
-							} 
-							set(sel.cursors[0], x); 
-							set(sel.cursors[1], x+1); 
-						}
-					}
-				}
-				
-				//preserve selection direction
-				if(fwd != (sel.cursors[0]<=sel.cursors[1]))
-				swap(sel.cursors[0], sel.cursors[1]); 
-			}
-			return sel; 
-		} 
-		
-		protected auto _extendTwice(bool eq)(TextSelection ts)
-		{
-			auto ext = extend(ts); 
-			if(ext.valid && (ext.codeColumn==ts.codeColumn)==eq)
-			ext = extend(ext); 
-			return ext; 
-		} 
-		
-		///steps out from the current codeColumn
-		auto extendOut(TextSelection ts)
-		{
-			if(!ts.valid || ts.codeColumn.allParents!CodeColumn.empty) return ts; 
-			return _extendTwice!true(ts); 
-		} 
-		
-		///extends selection to the an codeColumn
-		auto extendAll(TextSelection ts)
-		{
-			if(!ts.valid) return ts; 
-			return _extendTwice!false(ts); 
-		} 
-		
-		auto extend(TextSelection[] sels)
-		{ return sels.map!(ts=>extend(ts)).merge; } 
-		auto extendOut(TextSelection[] sels)
-		{ return sels.map!(ts=>extendOut(ts)).merge; } 
-		auto extendAll(TextSelection[] sels)
-		{ return sels.map!(ts=>extendAll(ts)).merge; } 
-		
-		
-		
-		
-		string exportTextSelections(TextSelection[] ts)
-		{ return ts.map!(a=>a.toReference.text).join(';'); } 
-		
-		TextSelection[] importTextSelections(string s)
-		{ return s.splitter(';').map!(s=>s.TextSelectionReference(&modules.findModule).fromReference).array; } 
-		
-		bool verifyTextSelections(string s)
-		{ return s == exportTextSelections(textSelections.validate(importTextSelections(s))); } 
-		
-		bool extendSelection_impl(Flag!"selectAll" selectAll=No.selectAll)
-		{
-			const s0 = exportTextSelections(textSelections[]); 
-			textSelections.items = selectAll ? extendAll(textSelections[]) : extend(textSelections[]); 
-			const s1 = exportTextSelections(textSelections[]); 
-			
-			if(s0!="" && s1!="" && s0!=s1)
-			{
-				if(extendSelectionStack.length && extendSelectionStack.back==s0)
-				extendSelectionStack ~= s1; 
-				else
-				extendSelectionStack = [s0, s1]; 
-				return true; 
-			}
-			else
-			return false; 
-		} 
-		
-		bool shrinkSelection_impl()
-		{
-			if(extendSelectionStack.length>=2)
-			{
-				const 	act = extendSelectionStack[$-1],
-					prev = extendSelectionStack[$-2]; 
-				if(act==exportTextSelections(textSelections[]) && verifyTextSelections(prev))
-				{
-					textSelections.items = importTextSelections(prev); 
-					extendSelectionStack = extendSelectionStack[0..$-1]; 
-					return true; //success
-				}
-			}
-			return false; 
-		} 
-		
-		bool selectAll_impl()
-		{ return extendSelection_impl(Yes.selectAll); } 
 	}version(/+$DIDE_REGION Permissions+/all)
 	{
 		protected
@@ -1745,73 +877,71 @@ class Workspace : Container, WorkspaceInterface
 		} 
 	}version(/+$DIDE_REGION Undo/Redo+/all)
 	{
-		//Undo/Redo
-		
-		/+
-			3 levels
-				1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
-							 beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
-							 meg lenne 2 extra: removedNextRow, removedPrevRow)
-				2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
-							 nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
-							 Innentol nem idovonal van, hanem graph.
-				3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
-					allapotot. Ezt kesobb delta codinggal tomoriteni kell. 
-		+/
-		
-		protected void executeUndoRedoRecord(in bool isUndo, in bool isInsert, in TextModificationRecord rec)
-		{
-			TextSelection ts; 
-			bool decodeTs(bool reduceToStart)
-			{
-				string where = rec.where; 
-				if(reduceToStart) where = where.reduceTextSelectionReferenceStringToStart; 
-				ts = TextSelection(where, &modules.findModule); 
-				bool res = ts.valid; 
-				if(!res) WARN("Invalid ts: "~where); 
-				return res; 
-			} 
-			
-			const isCut = isUndo==isInsert; 
-			
-			if(decodeTs(!isCut))
-			{
-				if(isCut)
-				cut_impl!true([ts]); 
-				else
-				paste_impl!true([ts], rec.what); 
-				
-				if(decodeTs(isCut))
-				textSelections.items = ts; 
-			}
-		} 
-		
-		protected void executeUndoRedo(bool isUndo)(in TextModification tm)
-		{
-			static if(isUndo) auto r = tm.modifications.retro; else auto r = tm.modifications; 
-			r.each!(m => executeUndoRedoRecord(isUndo, tm.isInsert, m)); 
-		} 
-		
-		protected void execute_undo(in TextModification tm)
-		{ executeUndoRedo!true (tm); } protected void execute_redo(in TextModification tm)
-		{ executeUndoRedo!false(tm); } 
-		
-		protected void execute_reload(string where, string what)
-		{
-			if(auto m=modules.findModule(File(where)))
-			{
-				m.reload(desiredStructureLevel, nullable(what)); 
-				//selectAll
-				textSelections.items = [m.content.allSelection(true)]; 
-				//Todo: refactor codeColumn.allTextSelection(bool primary or not)
-			}
-			else
-			assert(0, "execute_reload: module lost: "~where.quoted); 
-			//Todo: somehow signal bact to the undo manager, if an undo operation is failed
-		} 
-		
 		void undoRedo_impl(string what)()
 		{
+			/+
+				3 levels
+					1. Save, SaveAll (ehhez csak egy olyan kell, hogy a legutolso save/load ota a user 
+								 beleirt-e valamit.   Hierarhikus formaban lennenek a changed flag-ek, a soroknal 
+								 meg lenne 2 extra: removedNextRow, removedPrevRow)
+					2. Opcionalis Undo: ez csak 2 save kozott mukodhetne. Viszont a redo utani modositas
+								 nem semmisitene meg az utana levo undokat, hanem csak becsatlakoztatna a graph-ba. 
+								 Innentol nem idovonal van, hanem graph.
+					3.	Opcionalis history: Egy kulon konyvtarba behany minden menteskori es betolteskori 
+						allapotot. Ezt kesobb delta codinggal tomoriteni kell. 
+			+/
+			
+			void executeUndoRedoRecord(in bool isUndo, in bool isInsert, in TextModificationRecord rec)
+			{
+				TextSelection ts; 
+				bool decodeTs(bool reduceToStart)
+				{
+					string where = rec.where; 
+					if(reduceToStart) where = where.reduceTextSelectionReferenceStringToStart; 
+					ts = TextSelection(where, &modules.findModule); 
+					bool res = ts.valid; 
+					if(!res) WARN("Invalid ts: "~where); 
+					return res; 
+				} 
+				
+				const isCut = isUndo==isInsert; 
+				
+				if(decodeTs(!isCut))
+				{
+					if(isCut)
+					cut_impl!true([ts]); 
+					else
+					paste_impl!true([ts], rec.what); 
+					
+					if(decodeTs(isCut))
+					textSelections.items = ts; 
+				}
+			} 
+			
+			void executeUndoRedo(bool isUndo)(in TextModification tm)
+			{
+				static if(isUndo) auto r = tm.modifications.retro; else auto r = tm.modifications; 
+				r.each!(m => executeUndoRedoRecord(isUndo, tm.isInsert, m)); 
+			} 
+			
+			void execute_undo(in TextModification tm)
+			{ executeUndoRedo!true (tm); } void execute_redo(in TextModification tm)
+			{ executeUndoRedo!false(tm); } 
+			
+			void execute_reload(string where, string what)
+			{
+				if(auto m=modules.findModule(File(where)))
+				{
+					m.reload(desiredStructureLevel, nullable(what)); 
+					//selectAll
+					textSelections.items = [m.content.allSelection(true)]; 
+					//Todo: refactor codeColumn.allTextSelection(bool primary or not)
+				}
+				else
+				assert(0, "execute_reload: module lost: "~where.quoted); 
+				//Todo: somehow signal bact to the undo manager, if an undo operation is failed
+			} 
+			
 			//Todo: select the latest undo/redo operation if there are more than 
 			//one modules selected. If no modules selected: select from all of them.
 			if(auto m = modules.primaryModule)
@@ -1821,6 +951,179 @@ class Workspace : Container, WorkspaceInterface
 				textSelections.invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
 		} 
+	}version(/+$DIDE_REGION Resyntax+/all)
+	{
+		class SyntaxHighlightWorker
+		{
+			//Todo: Make a BackgroundWorker pattern template
+			static struct Job
+			{
+				DateTime changeId; //must be a globally unique id, also sorted by chronology
+				CodeColumn col; //only one object allowed with the same referenceId
+				
+				bool valid; 
+				bool opCast(b:bool)() const { return valid; } 
+			} 
+			
+			private int destroyLevel; 
+			private Job[] inputQueue, outputQueue; 
+			
+			void put(DateTime changeId, CodeColumn col)
+			{
+				synchronized(this)
+					inputQueue = 	inputQueue.remove!(j => j.col is col) 
+						~ Job(changeId, col); 
+			} 
+			
+			Job getResult()
+			{
+				Job res; 
+				synchronized(this)
+					if(outputQueue.length)
+						res = outputQueue.fetchFront; 
+				return res; 
+			} 
+			
+			private Job _workerGetJob()
+			{
+				Job res; 
+				synchronized(this)
+					if(inputQueue.length) {
+					res = inputQueue.fetchBack; 
+					res.valid = true; 
+				} 
+				return res; 
+			} 
+			
+			private void _workerCompleteJob(Job job)
+			{
+				synchronized(this)
+					outputQueue ~= job; 
+			} 
+			
+			static private void worker(shared SyntaxHighlightWorker shw_)
+			{
+				auto shw = cast()shw_; 
+				while(shw.destroyLevel==0)
+				{
+					if(auto job = shw._workerGetJob)
+					{
+						//actual work comes here
+						shw._workerCompleteJob(job); 
+					}
+					else
+					{
+						//LOG("Worker Idling");
+						sleep(10); 
+					}
+				}
+				shw.destroyLevel = 2; 
+				//LOG("Worker finished");
+			} 
+			
+			this()
+			{ spawn(&worker, cast(shared)this); } 
+			
+			~this()
+			{
+				destroyLevel = 1; 
+				while(destroyLevel==1)
+				{
+					//LOG("Waiting for worker thread to finish");
+					sleep(10); //Todo: it's slow... rewrite to message based
+				}
+			} 
+		} version(/+$DIDE_REGION Resyntax+/all)
+		{
+			void needResyntax(CodeColumn col)
+			{
+				static DateTime uniqueTime; 
+				uniqueTime.actualize; 
+				scope(exit) col.lastResyntaxTime = uniqueTime; 
+				
+				const doItRightNow = (col.flags.columnIsTable && col.rowCount<1000); 
+				if(doItRightNow)
+				{
+					/+
+						Note: Immediate resyntax for smaller tables.
+						It's annoying when the arrangement of the table cells are shifting.
+					+/
+					resyntaxNow(col); 
+				}
+				else
+				{
+					//Note: Delayed resyntax.  It's needed for large highlighted texts.
+					if(
+						//fast-update last item if possible
+						resyntaxQueue.map!"a.what".backOrNull is col
+					)
+					{ resyntaxQueue.back.when = uniqueTime; }
+					else
+					{
+						//remove if alreay exists
+						resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
+						//add
+						resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
+					}
+				}
+			} 
+			
+			void UI_ResyntaxQueue()
+			{
+				with(im) {
+					foreach(e; resyntaxQueue)
+					Row(
+						{
+							Row(e.when.text, { width = fh*9; }); 
+							if(auto col = cast(CodeColumn)e.what)
+							{
+								auto tc = TextCursor(col, ivec2(0, 0)); 
+								Row(tc.toReference.text); 
+							}
+						}
+					); 
+				}
+			} 
+			
+			void resyntaxNow(CodeColumn col)
+			{ col.resyntax; } 
+			
+			void resyntaxLater(CodeColumn col, DateTime changedId)
+			{ syntaxHighlightWorker.put(changedId, col); } 
+			
+			/// returns true if any work done or queued
+			bool updateResyntaxQueue()
+			{
+				if(auto job = syntaxHighlightWorker.getResult)
+				{
+					auto col = job.col; 
+					if(col.getStructureLevel >= StructureLevel.highlighted)
+					{
+						static DateTime lastOutdatedResyncTime; 
+						if(
+							col.lastResyntaxTime==job.changeId || 
+							now-lastOutdatedResyncTime > .25*second
+						)
+						{
+							//mod.resyntax_src(job.sourceCode);
+							resyntaxNow(col); 
+							lastOutdatedResyncTime = now; 
+						}
+					}
+				}
+				
+				if(resyntaxQueue.empty) return false; 
+				
+				//limit the frequency of slow sourceText() calls
+				static DateTime lastResyntaxLaterTime; 
+				if(now-lastResyntaxLaterTime < .25*second) return false; 
+				lastResyntaxLaterTime = now; 
+				
+				auto act = resyntaxQueue.fetchBack; 
+				resyntaxLater(act.what, act.when); 
+				return true; 
+			} 
+		}
 	}
 	version(/+$DIDE_REGION Cut   +/all)
 	{
@@ -2214,179 +1517,6 @@ class Workspace : Container, WorkspaceInterface
 			); 
 		} 
 		
-	}version(/+$DIDE_REGION Resyntax+/all)
-	{
-		class SyntaxHighlightWorker
-		{
-			//Todo: Make a BackgroundWorker pattern template
-			static struct Job
-			{
-				DateTime changeId; //must be a globally unique id, also sorted by chronology
-				CodeColumn col; //only one object allowed with the same referenceId
-				
-				bool valid; 
-				bool opCast(b:bool)() const { return valid; } 
-			} 
-			
-			private int destroyLevel; 
-			private Job[] inputQueue, outputQueue; 
-			
-			void put(DateTime changeId, CodeColumn col)
-			{
-				synchronized(this)
-					inputQueue = 	inputQueue.remove!(j => j.col is col) 
-						~ Job(changeId, col); 
-			} 
-			
-			Job getResult()
-			{
-				Job res; 
-				synchronized(this)
-					if(outputQueue.length)
-						res = outputQueue.fetchFront; 
-				return res; 
-			} 
-			
-			private Job _workerGetJob()
-			{
-				Job res; 
-				synchronized(this)
-					if(inputQueue.length) {
-					res = inputQueue.fetchBack; 
-					res.valid = true; 
-				} 
-				return res; 
-			} 
-			
-			private void _workerCompleteJob(Job job)
-			{
-				synchronized(this)
-					outputQueue ~= job; 
-			} 
-			
-			static private void worker(shared SyntaxHighlightWorker shw_)
-			{
-				auto shw = cast()shw_; 
-				while(shw.destroyLevel==0)
-				{
-					if(auto job = shw._workerGetJob)
-					{
-						//actual work comes here
-						shw._workerCompleteJob(job); 
-					}
-					else
-					{
-						//LOG("Worker Idling");
-						sleep(10); 
-					}
-				}
-				shw.destroyLevel = 2; 
-				//LOG("Worker finished");
-			} 
-			
-			this()
-			{ spawn(&worker, cast(shared)this); } 
-			
-			~this()
-			{
-				destroyLevel = 1; 
-				while(destroyLevel==1)
-				{
-					//LOG("Waiting for worker thread to finish");
-					sleep(10); //Todo: it's slow... rewrite to message based
-				}
-			} 
-		} version(/+$DIDE_REGION Resyntax+/all)
-		{
-			void needResyntax(CodeColumn col)
-			{
-				static DateTime uniqueTime; 
-				uniqueTime.actualize; 
-				scope(exit) col.lastResyntaxTime = uniqueTime; 
-				
-				const doItRightNow = (col.flags.columnIsTable && col.rowCount<1000); 
-				if(doItRightNow)
-				{
-					/+
-						Note: Immediate resyntax for smaller tables.
-						It's annoying when the arrangement of the table cells are shifting.
-					+/
-					resyntaxNow(col); 
-				}
-				else
-				{
-					//Note: Delayed resyntax.  It's needed for large highlighted texts.
-					if(
-						//fast-update last item if possible
-						resyntaxQueue.map!"a.what".backOrNull is col
-					)
-					{ resyntaxQueue.back.when = uniqueTime; }
-					else
-					{
-						//remove if alreay exists
-						resyntaxQueue = resyntaxQueue.remove!(e => e.what is col); 
-						//add
-						resyntaxQueue ~= ResyntaxEntry(col, uniqueTime); 
-					}
-				}
-			} 
-			
-			void UI_ResyntaxQueue()
-			{
-				with(im) {
-					foreach(e; resyntaxQueue)
-					Row(
-						{
-							Row(e.when.text, { width = fh*9; }); 
-							if(auto col = cast(CodeColumn)e.what)
-							{
-								auto tc = TextCursor(col, ivec2(0, 0)); 
-								Row(tc.toReference.text); 
-							}
-						}
-					); 
-				}
-			} 
-			
-			void resyntaxNow(CodeColumn col)
-			{ col.resyntax; } 
-			
-			void resyntaxLater(CodeColumn col, DateTime changedId)
-			{ syntaxHighlightWorker.put(changedId, col); } 
-			
-			/// returns true if any work done or queued
-			bool updateResyntaxQueue()
-			{
-				if(auto job = syntaxHighlightWorker.getResult)
-				{
-					auto col = job.col; 
-					if(col.getStructureLevel >= StructureLevel.highlighted)
-					{
-						static DateTime lastOutdatedResyncTime; 
-						if(
-							col.lastResyntaxTime==job.changeId || 
-							now-lastOutdatedResyncTime > .25*second
-						)
-						{
-							//mod.resyntax_src(job.sourceCode);
-							resyntaxNow(col); 
-							lastOutdatedResyncTime = now; 
-						}
-					}
-				}
-				
-				if(resyntaxQueue.empty) return false; 
-				
-				//limit the frequency of slow sourceText() calls
-				static DateTime lastResyntaxLaterTime; 
-				if(now-lastResyntaxLaterTime < .25*second) return false; 
-				lastResyntaxLaterTime = now; 
-				
-				auto act = resyntaxQueue.fetchBack; 
-				resyntaxLater(act.what, act.when); 
-				return true; 
-			} 
-		}
 	}version(/+$DIDE_REGION Update+/all)
 	{
 		
@@ -2394,20 +1524,6 @@ class Workspace : Container, WorkspaceInterface
 		//Todo: Ctrl+D word select and find
 		
 		//Mouse ---------------------------------------------------
-		
-		struct MouseMappings
-		{
-			string 	main	= "LMB",
-				scroll	= "MMB", //Todo: soft scroll/zoom, fast scroll
-				menu	= "RMB",
-				zoom	= "MW",
-				zoomInHold	= "MB5",
-				zoomOutHold	= "MB4",
-				selectAdd	= "Alt",
-				selectExtend	= "Shift",
-				selectColumn	= "Shift+Alt",
-				selectColumnAdd 	= "Ctrl+Shift+Alt"; 
-		} 
 		
 		private bool MMBReleasedWithoutScrolling()
 		{
@@ -2632,7 +1748,6 @@ class Workspace : Container, WorkspaceInterface
 			}
 		} 
 		
-		const mouseMappings = MouseMappings.init; 
 		uint _messageConnectionArrows_hash; 
 		
 		void update(
@@ -2698,9 +1813,9 @@ class Workspace : Container, WorkspaceInterface
 					{ textSelections.clear; },
 					{ modules.bringToFrontSelectedModules; }
 				); 
-				const textSelectionChanged = textSelections.update(view, this, mouseMappings); 
+				const textSelectionChanged = textSelections.update(view, &createCursorAt, mainIsForeground, wheelSpeed); 
 				
-				//if there are any cursors, module selection if forced to modules with textSelections
+				//Only if there are any cursors, module selection is forced to modules with textSelections
 				if(textSelectionChanged && textSelections.length)
 				{
 					foreach(m; modules.modules) m.flags.selected = false; 
@@ -2722,7 +1837,7 @@ class Workspace : Container, WorkspaceInterface
 				}
 				else if(textSelectionChanged)
 				{
-					if(!inputs[mouseMappings.main].down)
+					if(!inputs[textSelections.mouseMappings.main].down)
 					{
 						//don't focus to changed selection when the main mouse button is held down
 						
@@ -2795,7 +1910,7 @@ class Workspace : Container, WorkspaceInterface
 				foreach(m; modules.modules) m.updateSearchResults; 
 				updateMessageConnectionArrows; 
 				
-				updateAi; 
+				aiHandler.update; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -2922,305 +2037,8 @@ class Workspace : Container, WorkspaceInterface
 			}
 			catch(Exception e) {}
 		} 
-		CodeComment activeAiNode; 
-		string[] aiSnippets; 
+		AiHandler aiHandler; 
 		
-		AiModel aiModel; 
-		
-		AiChat[CodeComment] pendingAiChatByAiAssistantNode; 
-		
-		void updateAi()
-		{
-			//Todo: check if activeAiNode was deleted...
-			CodeComment[] toRemove; 
-			foreach(node, chat; pendingAiChatByAiAssistantNode)
-			{
-				//Todo: check if the node was deleted...
-				
-				with(chat)
-				{
-					update(
-						(Event event, string s)
-						{
-							final switch(event)
-							{
-								case Event.text: 	preserveTextSelections
-								(
-									{
-										textSelections.items = node.content.endSelection(true); 
-										pasteText(s); 
-									}
-								); 	break; 
-								case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
-								case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
-								case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
-							}
-						}
-					); 
-					if(!running) toRemove ~= node; 
-				}
-			}
-			
-			foreach(node; toRemove)
-			{
-				auto chat = pendingAiChatByAiAssistantNode[node]; 
-				pendingAiChatByAiAssistantNode.remove(node); 
-				im.flashInfo("AiChat removed: "~chat.identityStr); 
-			}
-		} 
-		
-		CodeComment getSurroundingAiNode()
-		{
-			auto s = primaryTextSelection; 
-			return ((s)?(s.codeColumn.allParents!CodeComment.filter!((a)=>(a.isAi)).frontOrNull):(null)); 
-		} 
-		
-		void initiateAi_impl()
-		{
-			//Todo: activeAiNode must be validated in update()
-			
-			/+
-				This is a one-button function for initiating an AI chat:
-				- Memorizes selected code snippets if there is no active aiNode.
-				- Attach selected code snippets to active aiNode.
-				- Creates a new AI prompt if selection is a single cursor.
-				- Selectes the active aiNode if inside one.
-				(aiNode is CodeComment where customPrefix = "AI:")
-			+/
-			
-			void copySnippets()
-			{
-				aiSnippets = textSelections[].map!((a)=>(a.sourceText)).filter!"a!=``".array; 
-				textSelections.clear; 
-			} 
-			
-			void insertSnippets()
-			{
-				auto col = activeAiNode.content; 
-				foreach(src; aiSnippets)
-				{
-					textSelections.items = col.endSelection(true); 
-					if(!col.rows.back.empty) pasteText("\n"); 
-					insertNode("/+code:\0+/", 0); 
-					pasteText(src); 
-					textSelections.items = col.endSelection(true); 
-				}
-				im.flashInfo(i"Added $(aiSnippets.length) snippets to AI prompt.".text); 
-				aiSnippets.clear; //one time use only
-			} 
-			
-			void createAiNode()
-			{
-				insertNode("/+AI:\0+/", 0); 
-				activeAiNode = getSurroundingAiNode; 
-				im.flashInfo("Type AI prompt, press [Ctrl+Enter] to send."); 
-				
-				if(aiSnippets.length) insertSnippets; 
-			} 
-			
-			auto ts = textSelections; 
-			
-			if(ts.empty) { im.flashWarning("Call AI: must have a a cursor or text selection first!"); return; }
-			
-			if(ts.length==1 && ts[0].valid && ts[0].isZeroLength)
-			{
-				//create/select active ai node
-				auto aiNode = getSurroundingAiNode; 
-				if(aiNode)
-				{
-					activeAiNode = aiNode; 
-					im.flashWarning("This is the active AI prompt.  [Alt+A] will copy selection to here."); 
-				}
-				else
-				{ createAiNode; }
-			}
-			else
-			{
-				//attach copy code snippets to ai prompt
-				copySnippets; 
-				if(activeAiNode)
-				{ insertSnippets; }
-				else
-				{ im.flashInfo(i"$(aiSnippets.length) snippets collected for new AI prompt.".text); }
-			}
-			
-		} 
-		
-		void launchAi_impl()
-		{
-			{
-				auto n = getSurroundingAiNode; 
-				if(!n) { im.flashWarning("Can't launch AI prompt.  Cursor must be inside an AI Node.".text); return; }
-				activeAiNode = n; 
-			}
-			
-			auto col = activeAiNode.content; 
-			static bool isWhite(Cell c)
-			{
-				if(!c /+null: NewLine+/) return true; 
-				if(auto g = (cast(Glyph)(c))) return g.ch.isDLangWhitespace; 
-				return false; 
-			} 
-			static isAi(Cell cell)
-			{
-				if(isWhite(cell)) return false; 
-				if(auto cmt = (cast(CodeComment)(cell))) return cmt.isAiRelated; 
-				return false; 
-			} 
-			static isAssistant(Cell cell)
-			=> isAi(cell) && (cast(CodeComment)(cell)).isAssistant; 
-			
-			static sourceText(Cell c)
-			{
-				if(!c) return "\n"; 
-				if(auto g = (cast(Glyph)(c))) return g.ch.text; 
-				if(auto n = (cast(CodeNode)(c))) return n.sourceText; 
-				return "?"; 
-			} 
-			
-			TextSelection[] userRanges; 
-			foreach(grp; col.byCell.chunkBy!((a)=>(isAi(a))))
-			{
-				if(!grp[0])
-				{
-					auto nodes = grp[1].array; 
-					while(nodes.length && isWhite(nodes.front)) nodes.popFront; 
-					while(nodes.length && isWhite(nodes.back)) nodes.popBack; 
-					if(nodes.length)
-					{ userRanges ~= col.selectionOf(nodes.front, nodes.back, false); }
-				}
-			}
-			
-			//Elfold new user contents
-			textSelections.items = userRanges; 
-			insertNode("/+User:\0+/"); 
-			
-			{
-				//Put cursor to the end and remove trailing whitespace and all the assistant contents
-				textSelections.items = col.endSelection(true); 
-				auto cells = col.byCell.array; 
-				const trailingWhiteCnt = cells.retro.countUntil!((a)=>(!(isWhite(a) || isAssistant(a)))).to!int; 
-				if(trailingWhiteCnt>0)
-				{
-					foreach(i; 0..trailingWhiteCnt) cursorLeftSelect; 
-					deleteToLeft; 
-				}
-			}
-			
-			
-			{
-				//Put all the ai contents into new lines
-				auto sel = chain(only(Cell.init), col.byCell)
-					.array.slide!(No.withPartial)(2)
-					.filter!((a)=>(a[0] && isAi(a[1])))//if there's something before the ai node
-					.map!((a)=>(col.cursorOf(a[1])))
-					.map!((a)=>(TextSelection(a, a, false)))
-					.array; 
-				if(sel.length) { textSelections.items = sel; insertNewLine; }
-			}
-			
-			string[][] messages; 
-			{
-				//Gather the prompt
-				messages = 	col.byNode!CodeComment.filter!((a)=>(isAi(a)))
-					.map!((a)=>(
-					[
-						/+role+/	a.customPrefix.wordAt(0).decapitalize, 
-						/+content+/	a.content.sourceText/+Todo: process code snippets!+/
-					]
-				)).array; 
-			}
-			
-			//Select the very end
-			textSelections.items = col.endSelection(true); 
-			
-			//create a new assistant node.
-			insertNewLine; 
-			insertNode("/+Assistant:\0+/", 0); 
-			auto assistantNode = (cast(CodeComment)(textSelections[0].codeColumn.parent)); 
-			
-			if(!aiModel)
-			{
-				aiModel = new AiModel
-				(
-					"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
-					`You are a helpful assistant.
-I don't want you to reformat my code, keep all whitespace as is.
-For newly generated code use TAB to indent.
-For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
-Use higher level DLang functional constructs when possible: ranges, etc.
-Use GLSL-like vector/matrix operations, the user's framework supports that.
-Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.
-
-When communicating in expressions or one line code, use this form: /+Code: code+/
-When inserting multiline code, use form:
-/+Code:
-	multiline
-	source code goes here
-+/
-
-Put yout paragraphs into /+Note: text goes here+/ blocks!
-You can do multiline paragrphs like this:
-/+Note:
-	line1
-	line2
-+/
-
-Put bullet paragraphs into /+Bullet: text goes here+/ blocks!
-It has a multiline variant too:
-/+Bullet:
-	line1
-	line2
-+/
-Use one bullet paragraph for each bullet item!
-
-Word wrap every paragraphs and bullet paragraphs to around 100 characters!
-
-Put bold text inside /+Bold: text goes here+/ blocks! 
-
-Put italic text inside /+Italic: text goes here+/ blocks! 
-
-Put heading text inside /+Hn: text goes here+/ blocks, where n is in range 1 to 6! 
-
-Sometimes I will give or ask the results in a "table", this is my table format, please preserve this exact format and whitespaces when you are communicating with it: `
-					~"\n/+Code:\n"
-					~q{
-						(表([
-							[q{/+Note: Header+/},q{/+Note: 2nd column+/},q{/+Note: 3rd column+/}],
-							[q{normal cell},q{"string cell"},q{/+comment cell+/}],
-							[q{/+If the whole row is a comment, it's ignored+/}],
-							[],
-							[q{/+also empty rows are ignored, they are just there for formatting+/}],
-							[q{
-								another cell 1+1=2
-								/+anything D syntax can go here.+/
-							},q{`Another string.
-This one is multiline and without escapes.`}],
-						]))
-					}.splitLines[1..$-1].join('\n').outdent
-					~"\n+/\n"
-				); 
-				aiModel.apiKey = File(appPath, "a.a").readStr; 
-				NOTIMPL("Ini file for settings!"); 
-			}
-			
-			
-			{
-				//launch ai query
-				if(auto a = assistantNode in pendingAiChatByAiAssistantNode)
-				{
-					//stop the already running query
-					(*a).stop; 
-					pendingAiChatByAiAssistantNode.remove(assistantNode); 
-				}
-				
-				auto chat = aiModel.newChat; 
-				chat.ask(messages); 
-				pendingAiChatByAiAssistantNode[assistantNode] = chat; 
-				
-				im.flashInfo("AiChat launched: "~chat.identityStr); 
-			}
-		} 
 	}
 	version(/+$DIDE_REGION+/all)
 	{
@@ -3965,10 +2783,7 @@ This one is multiline and without escapes.`}],
 								if(!m) { ws.modules.loadModule(f); m = ws.modules.findModule(f); }
 								if(m) {
 									if(!line) ws.jumpTo(m); 
-									else {
-										import het.parser : CodeLocation; 
-										ws.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); 
-									}
+									else { ws.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); }
 								}
 								else { im.flashWarning("Can't load module: "~f.quoted('`')); }
 							}
@@ -4256,7 +3071,7 @@ This one is multiline and without escapes.`}],
 		
 		void feedAndSaveModules(R)(R modules, Flag!"syntaxCheck" syntaxCheck = Yes.syntaxCheck)
 		{
-			preserveTextSelections(
+			textSelections.preserve(
 				{
 					modules.each!((m){ feedChangedModule(m, syntaxCheck); }); 
 					modules.each!"a.save"; 
@@ -4367,7 +3182,7 @@ This one is multiline and without escapes.`}],
 					=> s.start.toReference.text.splitter('|').enumerate.map!((a)=>(((a.index)?(a.value[1..$].to!uint) :(a.value.xxh32)))); 
 					
 					auto srs = mod	.search(actSel.sourceText, mod.worldInnerPos, Yes.caseSensitive, Yes.wholeWords)
-						.map!((sr)=>(searchResultToTextSelection(sr)))
+						.map!((sr)=>(searchResultToTextSelection(sr, workspaceContainer)))
 						.filter!((ts)=>(ts.valid && ts.codeColumn.isPartOfSourceCode)).array; 
 					static if(isPrev) srs = srs.retro.array; 
 					auto act = dissect(actSel); 
@@ -4634,12 +3449,12 @@ This one is multiline and without escapes.`}],
 				mixin((
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Shift+Alt+Right"},q{extendSelection},q{if(!extendSelection_impl) { if(0) im.flashWarning("Unable to extend selection."); }}],
-						[q{"Shift+Alt+Left"},q{shrinkSelection},q{if(!shrinkSelection_impl) { if(0) im.flashWarning("Unable to shrink selection."); }}],
+						[q{"Shift+Alt+Up"},q{extendSelection},q{if(!textSelections.extend) { if((常!(bool)(0))) im.flashWarning("Unable to extend selection."); }}],
+						[q{"Shift+Alt+Down"},q{shrinkSelection},q{if(!textSelections.shrink) { if((常!(bool)(0))) im.flashWarning("Unable to shrink selection."); }}],
 						[q{"Shift+Alt+U"},q{insertCursorAtStartOfEachLineSelected},q{textSelections.items = insertCursorAtStartOfEachLineSelected_impl(textSelections[]); }],
 						[q{"Shift+Alt+I"},q{insertCursorAtEndOfEachLineSelected},q{textSelections.items = insertCursorAtEndOfEachLineSelected_impl(textSelections[]); }],
 						[q{"Ctrl+A"},q{selectAll},q{
-							selectAll_impl; 
+							textSelections.selectAll; 
 							//textSelections.items = extendAll(textSelections[]); 
 							/+
 								textSelections.items = modulesWithTextSelection
@@ -4742,7 +3557,7 @@ This one is multiline and without escapes.`}],
 						[q{"Alt+O"},q{openModule},q{modules.openModule; }],
 						[q{"Alt+Shift+O"},q{openModuleRecursive},q{modules.openModuleRecursive; }],
 						[q{"Ctrl+R"},q{revertSelectedModules},q{
-							preserveTextSelections
+							textSelections.preserve
 							(
 								{
 									foreach(m; modules.selectedModules)
@@ -4794,7 +3609,7 @@ This one is multiline and without escapes.`}],
 						[],
 						[q{""},q{feed},q{
 							enforce(buildServices.ready, "BuildSystem is working."); 
-							preserveTextSelections({ feedChangedModule(primaryCaret.moduleOf); }); 
+							textSelections.preserve({ feedChangedModule(primaryCaret.moduleOf); }); 
 						}],
 						[],
 						[q{"F9"},q{run},q{
@@ -4839,8 +3654,8 @@ This one is multiline and without escapes.`}],
 						[],
 						[q{"F1"},q{help_bing},q{startChrome(scrapeLinks_bing(actHelpQuery).get(0), actSearchKeyword); }],
 						[q{"Ctrl+F1"},q{help_dlang},q{startChrome(scrapeLinks_dpldocs(actSearchKeyword).get(0), actSearchKeyword); }],
-						[q{"Alt+A"},q{initiateAi},q{initiateAi_impl; }],
-						[q{"Ctrl+Enter"},q{launchAi},q{launchAi_impl; }],
+						[q{"Alt+A"},q{initiateAi},q{aiHandler.initiate; }],
+						[q{"Ctrl+Enter"},q{launchAi},q{aiHandler.launch; }],
 						[],
 						[q{//Experimental
 						}],
@@ -4874,7 +3689,7 @@ This one is multiline and without escapes.`}],
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
 						[q{""},q{realignVerticalTabs},q{
 							//Todo: This fucks up Undo/Redo and ignored edit permissions.
-							preserveTextSelections
+							textSelections.preserve
 							(
 								{
 									visitSelectedNestedCodeColumns((col){ col.removeVerticalTabs; }); 
@@ -4884,7 +3699,7 @@ This one is multiline and without escapes.`}],
 						}],
 						[q{""},q{removeVerticalTabs},q{
 							//Todo: This fucks up Undo/Redo and ignored edit permissions.
-							preserveTextSelections
+							textSelections.preserve
 							({ visitSelectedNestedCodeColumns((col){ col.removeVerticalTabs; }); }); 
 						}],
 						[q{""},q{addInternalNewLines},q{
@@ -5010,7 +3825,7 @@ This one is multiline and without escapes.`}],
 									if(
 										inputs.Ctrl.down//apply
 									)
-									preserveTextSelections
+									textSelections.preserve
 									(
 										{
 											Module[] cantReload; 
