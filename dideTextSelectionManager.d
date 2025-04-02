@@ -135,6 +135,27 @@ class TextSelectionManager
 	
 	bool selectAll()
 	=> extend(Yes.selectAll); 
+	
+	void select(R)(R arr)
+	if(isInputRange!(R, Container.SearchResult))
+	{
+		//selectSearchResults ///////////////////////////
+		//Todo: use this as a revalidator after the modules were changed under the search results.
+		//Maybe verify the search results while drawing. Cache the last change or something.
+		
+		//T0; scope(exit) DT.LOG;
+		
+		//Todo: restrict to the current selection!
+		
+		//Todo: dont select text inside error messages!
+		items = merge(arr.map!((a)=>(searchResultToTextSelection(a, workspaceContainer))).filter!"a.valid".array); 
+	} 
+	
+	void insertCursorAtStartOfEachLineSelected()
+	{ items = .insertCursorAtStartOfEachLineSelected(items); } 
+	
+	void insertCursorAtEndOfEachLineSelected()
+	{ items = .insertCursorAtEndOfEachLineSelected(items); } 
 	
 	version(/+$DIDE_REGION Mouse ops on textSelections+/all)
 	{

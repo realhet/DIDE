@@ -13,11 +13,361 @@ import didemodule : Module, moduleOf, WorkspaceInterface, StructureLevel, TextFo
 import didemodulemanager : ModuleManager; 
 import didetextselectionmanager : TextSelectionManager; 
 import dideinsight : ModuleDeclarations, DDB, Insight; 
-import dideai : AiHandler; 
+import dideai : AiManager; 
 alias blink = dideui.blink; 
 
 
-
+class BuildMessageManager
+{
+	mixin SmartChild!q{ModuleManager modules}; 
+	
+	
+	struct MarkerLayerSettings
+	{
+		const DMDMessage.Type type; //this is the identity
+		bool visible = true; //this is the settings
+		bounds2 btnWorldBounds; //Screen bounds of the button, for particle effect.
+	} 
+	
+	auto markerLayerSettings = [EnumMembers!(DMDMessage.Type)].map!MarkerLayerSettings.array; 
+	
+	
+	CodeRow[string] messageUICache; 
+	string[string] messageSourceTextByLocation; 
+	
+	static struct MessageConnectionArrow
+	{
+		vec2 p1, p2; 
+		DMDMessage.Type type; 
+		bool isException; //a side-information for type
+	} 
+	bool[MessageConnectionArrow] messageConnectionArrows; 
+	
+	uint _messageConnectionArrows_hash; 
+	
+	Module.Message[] incomingVisibleModuleMessageQueue; 
+	bool firstErrorMessageArrived; 
+	
+	
+	auto getMarkerLayerCount(DMDMessage.Type type)
+	{ return (mixin(求sum(q{mod},q{modules.modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
+	
+	auto getMarkerLayer_find()
+	{ return modules.modules.map!((m)=>(m.findSearchResults)).joiner; } 
+	
+	auto getMarkerLayer(DMDMessage.Type type)
+	{
+		enforce(type!=DMDMessage.Type.find); 
+		return modules.modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
+	} 
+	
+	auto clearMarkerLayer_find()
+	{ foreach(m; modules.modules) m.findSearchResults = []; } 
+	
+	
+	void process(DMDMessage[] messages)
+	{ mixin(求each(q{m},q{messages},q{process(m)})); } 
+	
+	static CodeNode renderBuildMessage(DMDMessage msg)
+	{
+		/+
+			Todo: An option to not render all codeLocations.
+			- When the next line's location is same as the precceding line's.
+			- When the message is at it's designated location.
+		+/
+		
+		auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
+			msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
+			msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
+		msgNode.buildMessageHash = msg.hash; 
+		msgNode.measure; /+
+			It's required to initialize bkColor. 
+			For example: Animation effect needs to know the color.
+		+/
+		return msgNode; 
+	} 
+	
+	void appendMessageConnectionArrows(DMDMessage rootMessage)
+	{
+		void visit(DMDMessage[] path)
+		{
+			if(path.back.subMessages.length)
+			{
+				foreach(sm; path.back.subMessages)
+				visit(path ~ sm); 
+			}
+			else
+			{
+				auto conv(DMDMessage msg)
+				{
+					auto sr = codeLocationToSearchResults(msg.location, &modules.findModule); 
+					if(sr.empty) return vec2(0); 
+					return 	/+sum(sr.map!(s => s.bounds.center))/sr.length+/
+						sr.front.bounds.leftCenter + vec2(-6, 0); ; 
+				} 
+				
+				auto segments = path.map!((a)=>(conv(a))).filter!"a".cache.uniq.array.slide!(No.withPartial)(2); 
+				foreach(a; segments)
+				{
+					auto mca = MessageConnectionArrow(a[1], a[0], rootMessage.type, rootMessage.isException); 
+					messageConnectionArrows[mca] = true; 
+				}
+			}
+		} 
+		visit([rootMessage]); 
+	} 
+	
+	void updateMessageConnectionArrows()
+	{
+		if(_messageConnectionArrows_hash.chkSet(mixin(求sum(q{m},q{modules.modules},q{m._updateSearchResults_state}))))
+		{
+			messageConnectionArrows.clear; 
+			foreach(t; [EnumMembers!(DMDMessage.Type)])
+			if(!t.among(DMDMessage.Type.find, DMDMessage.Type.console))
+			{
+				foreach(mod; modules.modules)
+				foreach(mm; mod.messagesByType[t])
+				appendMessageConnectionArrows(mm.message); 
+			}
+			//5.6ms, not bad
+		}
+	} 
+	
+	void process(DMDMessage msg)
+	{
+		if(!modules.mainModule) return; 
+		
+		static bool disable = false; 
+		
+		try
+		{
+			auto 	msgNode 	= renderBuildMessage(msg),
+				layer 	= &markerLayerSettings[msg.type]; 
+			
+			
+			Container.SearchResult[] searchResults; 
+			
+			CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
+			{
+				searchResults = codeLocationToSearchResults(msg.location, &modules.findModule); 
+				
+				if(
+					/+Note: Special case: There's only one node is in the searchresults.+/
+					searchResults.length==1 && searchResults[0].cells.length==1
+				)
+				if(auto n = (cast(CodeNode)(searchResults[0].cells[0])))
+				if(n.canAcceptBuildMessages)
+				{ return n; }
+				
+				
+				CodeNode[] getNodePath(Container.SearchResult sr)
+				{
+					return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
+						.filter!((a)=>(a && a.canAcceptBuildMessages))
+						.array.retro.array; 
+				} 
+				auto paths = searchResults.map!((a)=>(getNodePath(a))); 
+				if(!paths.empty) return paths.fold!commonPrefix.backOrNull; 
+				return fallbackNode; 
+			} 
+			
+			auto containerModule = modules.findModule(msg.location.file).ifNull(modules.mainModule); 
+			if(auto containerNode = getContainerNode(containerModule))
+			{
+				void addMessageToModule(bool isNew)
+				{
+					auto mm = containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); 
+					
+					if(layer.visible && isNew) incomingVisibleModuleMessageQueue ~= mm; 
+				} 
+				
+				if(msg.isPersistent && !(cast(Module)(containerNode)))
+				{
+					//persistent message at it's designated place. -> no need to insert anywhere.
+					
+					CodeComment locateActualComment()
+					{
+						//find the actual comment in searchResults
+						bool isMatchingComment(CodeComment cmt)
+						{
+							return cmt && (cmt.customPrefix==msg.type.text.capitalize~':') && 
+								equal(
+								cmt.content.rows[0].chars!'`'	.until!((ch)=>(!ch.among('`'))),
+								msg.content	.until!((ch)=>(!ch.among('`', '\r', '\n')))
+							); 
+							/+It's not perfect, it only checks the first line before any `code` references.+/
+						} 
+						
+						foreach(sr; searchResults)
+						if(auto row = (cast(CodeRow)(sr.container)) /+multiline messages can be found in rows+/)
+						{
+							
+							//single line comments
+							if(auto col = row.parent)
+							if(auto cmt = (cast(CodeComment)(col.parent)))
+							if(isMatchingComment(cmt))
+							{ return cmt; }
+							
+							/+multiline comments+/
+							if(sr.cells.length==1)
+							if(auto cmt = (cast(CodeComment)(sr.cells[0])))
+							if(isMatchingComment(cmt))
+							{ return cmt; }
+							
+							//problematic: The message is at the very end of a line. It tries to escape 2 times.
+							/+
+								Todo: This is a bug in the LineIdxLocator. It should be fixed there.
+								The LineIdxLocator only finds other cells on the line, but not the comment itself.
+								If it's fixet there, this workaround is not needed anymore.
+							+/
+							foreach(r; row.allParents!CodeRow.take(2))
+							foreach(cmt; r.subCells.map!((c)=>((cast(CodeComment)(c)))))
+							if(isMatchingComment(cmt))
+							return cmt; 
+						}
+						
+						WARN("Can't find buildMessage in code:\n"~msg.text~"\n"~searchResults.text); 
+						return null; 
+					} 
+					
+					if(auto cmt = locateActualComment)
+					{
+						//only a single searchResult remains, and with the actual persistent message
+						msgNode = cmt; 
+						searchResults = [nodeToSearchResult(cmt, null)]; 
+					}
+					
+					addMessageToModule(true); 
+					//Todo: firework effect
+				}
+				else
+				{
+					//This buildMessage is injected at the bottom of a node.
+					const isNewMessage = containerNode.addBuildMessage(msgNode); 
+					searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
+					addMessageToModule(isNewMessage); 
+				}
+			}
+			else
+			raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
+			
+		}
+		catch(Exception e) { ERR(e.text~"\n"~msg.text); }
+	} 
+	
+	void zoomAt(R)(View2D view, R searchResults)
+	if(isInputRange!(R, .Container.SearchResult))
+	{
+		if(searchResults.empty) return; 
+		const maxScale = max(view.scale, 1); 
+		view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12); 
+		view.scale = min(view.scale, maxScale); 
+	} 
+	
+	void UI_BuildMessageType(DMDMessage.Type bmt, View2D view, )
+	{
+		with(im) {
+			if(
+				Btn(
+					{
+						const hidden = markerLayerSettings[bmt].visible ? 0 : .75f; 
+						
+						auto fade(RGB c) { return c.mix(clSilver, hidden); } 
+						
+						const syntax = DMDMessage.typeSyntax[bmt]; 
+						style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
+						const highContrastFontColor = syntax.syntaxFontColor; 
+						style.fontColor = fade(highContrastFontColor); 
+						
+						Row(
+							{
+								flags.hAlign = HAlign.center; 
+								//innerWidth = ceil(fh*2); 
+								innerHeight = ceil(fh*1.66f); 
+								flags.clickable = false; 
+								Text(DMDMessage.typeShortCaption[bmt]); NL; 
+								fh = ceil(fh*.66f); 
+								
+								theme = "tool"; 
+								const m = Margin(0, .5, 0, .5); 
+								
+								if(const len = getMarkerLayerCount(bmt))
+								{
+									if(Btn(len.text))
+									{
+										markerLayerSettings[bmt].visible = true; 
+										
+										if(bmt==DMDMessage.Type.find)	zoomAt(view, getMarkerLayer_find); 
+										else	zoomAt(view, getMarkerLayer(bmt)); 
+									}
+								}
+							}
+						); 
+						
+						markerLayerSettings[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
+					},
+					((bmt).genericArg!q{id})
+				)
+			)
+			markerLayerSettings[bmt].visible.toggle; 
+		}
+	} 
+	
+	void drawMessageConnectionArrows(Drawing dr, View2D view)
+	{
+		enum sc = 1.5f; 
+		
+		dr.lineWidth = -1.5f*sc; 
+		dr.pointSize = -5*sc; 
+		//dr.lineStyle = LineStyle.dash; 
+		/+
+			Todo: animated dashed line is only going one direction on the screen. 
+			Must rewrite that part completely.
+		+/
+		dr.arrowStyle = ArrowStyle.arrow; 
+		dr.alpha = blink.remap(0, 1, .5, 1); 
+		
+		const pixelSize = view.invScale_anim; 
+		
+		foreach(const ref a; messageConnectionArrows.keys)
+		{
+			with(a)
+			{
+				auto layer = &markerLayerSettings[type]; 
+				if(layer.visible)
+				{
+					dr.color = DMDMessage.typeColor[type]; 
+					static if((常!(bool)(0))) dr.line(p1, p2); 
+					static if((常!(bool)(1))) {
+						auto pc = mix(p1, p2, .5f) + vec2(0, -(magnitude(p2-p1)))*(.125f*sc); 
+						
+						const d = (normalize(p2-pc))*pixelSize; 
+						
+						static if((常!(bool)(1))/+Note: shadow/outline+/)
+						{
+							version(/+$DIDE_REGION Save state+/all) { const c = dr.color; const lw = dr.lineWidth; }
+							version(/+$DIDE_REGION Alter state+/all) { dr.color = isException ? clYellow : blackOrWhiteFor(dr.color); dr.lineWidth = -2.7*sc; }
+							
+							dr.bezier2(p1, pc, p2); 
+							
+							dr.lineWidth = -1.95*sc; 
+							dr.line(p2, p2 + d*(2.35f*sc)); 
+							
+							version(/+$DIDE_REGION Restore state+/all) { dr.color = c; dr.lineWidth = lw; }
+						}
+						
+						dr.bezier2(p1, pc, p2); dr.line(p2 - d, p2); 
+						//lame: arrow not included in bezier
+					}
+					static if((常!(bool)(0))) dr.bezier2(p1, p2 - vec2((magnitude(p2-p1))*(.125f*sc), 0), p2); 
+				}
+			}
+		}
+		//dr.lineStyle = LineStyle.normal; 
+		dr.arrowStyle = ArrowStyle.none; 
+		dr.alpha = 1; 
+	} 
+} 
 
 
 class Workspace : Container, WorkspaceInterface
@@ -61,18 +411,10 @@ class Workspace : Container, WorkspaceInterface
 		//there are mainWindow dependencies
 		
 		@STORED ModuleManager modules; 
-		
 		TextSelectionManager textSelections; 
+		BuildMessageManager buildMessages; 
 		
 		
-		
-		struct MarkerLayerSettings {
-			const DMDMessage.Type type; //this is the identity
-			bool visible = true; //this is the settings
-			bounds2 btnWorldBounds; //Screen bounds of the button, for particle effect.
-		} 
-		
-		auto markerLayerSettings = [EnumMembers!(DMDMessage.Type)].map!MarkerLayerSettings.array; 
 		
 		//Restrict convertBuildResultToSearchResults calls.
 		size_t lastBuildStateHash; 
@@ -111,14 +453,16 @@ class Workspace : Container, WorkspaceInterface
 			modules.onGetPrimaryModule = &primaryModule; 
 			modules.onSetTextSelectionReference = &setTextSelectionReference; 
 			
+			buildMessages = new BuildMessageManager(modules); 
+			
 			textSelections = new TextSelectionManager(this, modules); 
 			
-			aiHandler.textSelections = textSelections; 
-			aiHandler.pasteText = &pasteText; 
-			aiHandler.insertNode = &insertNode; 
-			aiHandler.insertNewLine = &insertNewLine; 
-			aiHandler.cursorLeftSelect = &cursorLeftSelect; 
-			aiHandler.deleteToLeft = &deleteToLeft; 
+			aiManager.textSelections = textSelections; 
+			aiManager.pasteText = &pasteText; 
+			aiManager.insertNode = &insertNode; 
+			aiManager.insertNewLine = &insertNewLine; 
+			aiManager.cursorLeftSelect = &cursorLeftSelect; 
+			aiManager.deleteToLeft = &deleteToLeft; 
 			
 			
 			flags.targetSurface = 0; 
@@ -154,11 +498,11 @@ class Workspace : Container, WorkspaceInterface
 			size_t markerLayerHideMask() const
 			{
 				size_t res; 
-				foreach(idx, const layer; markerLayerSettings) if(!layer.visible) res |= 1 << idx; 
+				foreach(idx, const layer; buildMessages.markerLayerSettings) if(!layer.visible) res |= 1 << idx; 
 				return res; 
 			} 
 			void markerLayerHideMask(size_t v)
-			{ foreach(idx, ref layer; markerLayerSettings) layer.visible = ((1<<idx)&v)==0; } 
+			{ foreach(idx, ref layer; buildMessages.markerLayerSettings) layer.visible = ((1<<idx)&v)==0; } 
 		} 
 	}version(/+$DIDE_REGION Module handling+/all)
 	{
@@ -239,371 +583,7 @@ class Workspace : Container, WorkspaceInterface
 	}version(/+$DIDE_REGION+/all)
 	{
 		
-		struct LineIdxLocator
-		{
-			int lineIdx; 
-			Object reference; 
-			bool optimized = true; 
-			
-			Container.SearchResult[] searchResults; 
-			Container.SearchResult[] searchResults_nodes;  //Fallback to nodes when there is no glyps on line
-			
-			void visitNode(CodeNode node)
-			{
-				foreach(col; node.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a")
-				visitColumn(col); 
-			} 
-			
-			void visitColumn(CodeColumn col)
-			{
-				if(col.containsBuildMessages) return; 
-				
-				auto rows = col.rows; 
-				
-				//ignore trailing empty rows
-				while(rows.length && !rows.back.lineIdx)
-				rows.popBack; 
-				
-				//Todo: must do something with the fucking lineIdx==0 rows at the end...
-				
-				if(optimized)
-				{
-					//ignore all rows higher than lineIdx
-					rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length]; 
-					
-					//process same lines
-					while(rows.length && rows.back.lineIdx==lineIdx)
-					{
-						visitRow(rows.back); 
-						rows.popBack; 
-					}
-					
-					//process one more row which can contain lineIdx, but starts earlier
-					if(rows.length) visitRow(rows.back); 
-				}
-				else
-				{
-					static if((常!(bool)(0))/+Note: verify sort order+/)
-					if(!rows.map!"a.lineIdx".isSorted)
-					ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
-					
-					mixin(求each(q{r},q{rows},q{visitRow(r)})); 
-				}
-			} 
-			
-			void visitRow(CodeRow row)
-			{
-				void collectCells(T, R)(ref R res)
-				{
-					auto cells = row.subCells.filter!((cell){
-						if(auto a = (cast(T)(cell)))
-						return a.lineIdx == lineIdx; 
-						else return false; 
-					}).array; 
-					/+Opt: binary search+/
-					if(cells.length)
-					{
-						res ~= (
-							mixin(體!((Container.SearchResult),q{
-								cells 	: cells,
-								container	: row,
-								absInnerPos	: row.worldInnerPos,
-								reference	: reference
-							}))
-						); 
-						//Opt: appender
-					}
-				} 
-				
-				collectCells!Glyph(searchResults); 
-				if(searchResults.empty) collectCells!CodeNode(searchResults_nodes); 
-				
-				row.byNode.each!((n){ visitNode(n); }); /+Opt: early exit+/
-			} 
-		} 
 		
-		Container.SearchResult[] codeLocationToSearchResults(CodeLocation loc, bool optimized = true)
-		{
-			//Opt: unoptimal to return a dynamic array
-			
-			if(!loc) return []; 
-			
-			if(auto mod = modules.findModule(loc.file))
-			{
-				Container.SearchResult[] doit()
-				{
-					//Opt: bottleneck! linear search
-					//Todo: return the whole module if the line is unspecified, or unable to find
-					
-					if(!loc.lineIdx)
-					{
-						//Todo: mark the whole module
-						return []; 
-					}
-					
-					auto locator = LineIdxLocator(loc.lineIdx, null); 
-					locator.optimized = optimized; 
-					locator.visitNode(mod); 
-					
-					auto res = ((locator.searchResults.length) ?(locator.searchResults) :(
-						locator.searchResults_nodes /+
-							Note: When no glyphs at all, fallback to nodes.
-							This founds multiline messages.
-						+/
-					)); 
-					
-					static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
-					if(res.empty)
-					{
-						if(optimized)
-						{
-							WARN("Optimized LineIdxLocator failed:", loc); 
-							return codeLocationToSearchResults(loc, reference, false); 
-						}
-						else
-						{ ERR("Standard LineLocator failed:", loc); }
-					}
-					
-					if(res.length>1) mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false})); 
-					
-					return res; 
-				} 
-				
-				if(auto a = loc in mod.searchResultsByCodeLocation) return *a; 
-				else return mod.searchResultsByCodeLocation[loc] = doit; 
-			}
-			else
-			{
-				//module not loaded
-				//LOG(msg);
-				//if(msg.location.file.exists) queueModule(msg.location.file);
-				return []; 
-			}
-		} 
-		
-		
-		auto nodeToSearchResult(CodeNode node, Object reference)
-		{
-			return (
-				mixin(體!((Container.SearchResult),q{
-					cells 	: [node],
-					container	: node.parent,
-					absInnerPos	: node.parent.worldInnerPos,
-					reference	: reference
-				}))
-			); 
-		} 
-		
-		CodeRow[string] messageUICache; 
-		string[string] messageSourceTextByLocation; 
-		
-		static struct MessageConnectionArrow
-		{
-			vec2 p1, p2; 
-			DMDMessage.Type type; 
-			bool isException; //a side-information for type
-		} 
-		bool[MessageConnectionArrow] messageConnectionArrows; 
-		
-		void buildMessageConnectionArrows(DMDMessage rootMessage)
-		{
-			void visit(DMDMessage[] path)
-			{
-				if(path.back.subMessages.length)
-				{
-					foreach(sm; path.back.subMessages)
-					visit(path ~ sm); 
-				}
-				else
-				{
-					auto conv(DMDMessage msg)
-					{
-						auto sr = codeLocationToSearchResults(msg.location); 
-						if(sr.empty) return vec2(0); 
-						return 	/+sum(sr.map!(s => s.bounds.center))/sr.length+/
-							sr.front.bounds.leftCenter + vec2(-6, 0); ; 
-					} 
-					
-					auto segments = path.map!((a)=>(conv(a))).filter!"a".cache.uniq.array.slide!(No.withPartial)(2); 
-					foreach(a; segments)
-					{
-						auto mca = MessageConnectionArrow(a[1], a[0], rootMessage.type, rootMessage.isException); 
-						messageConnectionArrows[mca] = true; 
-					}
-				}
-			} 
-			visit([rootMessage]); 
-		} 
-		
-		
-		void processBuildMessages(DMDMessage[] messages)
-		{ mixin(求each(q{m},q{messages},q{processBuildMessage(m)})); } 
-		
-		static CodeNode renderBuildMessage(DMDMessage msg)
-		{
-			/+
-				Todo: An option to not render all codeLocations.
-				- When the next line's location is same as the precceding line's.
-				- When the message is at it's designated location.
-			+/
-			
-			auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
-				msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
-				msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
-			msgNode.buildMessageHash = msg.hash; 
-			msgNode.measure; /+
-				It's required to initialize bkColor. 
-				For example: Animation effect needs to know the color.
-			+/
-			return msgNode; 
-		} 
-		
-		Module.Message[] incomingVisibleModuleMessageQueue; 
-		bool firstErrorMessageArrived; 
-		
-		void processBuildMessage(DMDMessage msg)
-		{
-			if(!modules.mainModule) return; 
-			
-			static bool disable = false; 
-			
-			try
-			{
-				auto 	msgNode 	= renderBuildMessage(msg),
-					layer 	= &markerLayerSettings[msg.type]; 
-				
-				
-				Container.SearchResult[] searchResults; 
-				
-				CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
-				{
-					searchResults = codeLocationToSearchResults(msg.location); 
-					
-					if(
-						/+Note: Special case: There's only one node is in the searchresults.+/
-						searchResults.length==1 && searchResults[0].cells.length==1
-					)
-					if(auto n = (cast(CodeNode)(searchResults[0].cells[0])))
-					if(n.canAcceptBuildMessages)
-					{ return n; }
-					
-					
-					CodeNode[] getNodePath(Container.SearchResult sr)
-					{
-						return sr.container.thisAndAllParents	.map!((a)=>((cast(CodeNode)(a))))
-							.filter!((a)=>(a && a.canAcceptBuildMessages))
-							.array.retro.array; 
-					} 
-					auto paths = searchResults.map!((a)=>(getNodePath(a))); 
-					if(!paths.empty) return paths.fold!commonPrefix.backOrNull; 
-					return fallbackNode; 
-				} 
-				
-				auto containerModule = modules.findModule(msg.location.file).ifNull(modules.mainModule); 
-				if(auto containerNode = getContainerNode(containerModule))
-				{
-					void addMessageToModule(bool isNew)
-					{
-						auto mm = containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); 
-						
-						if(layer.visible && isNew) incomingVisibleModuleMessageQueue ~= mm; 
-					} 
-					
-					if(msg.isPersistent && !(cast(Module)(containerNode)))
-					{
-						//persistent message at it's designated place. -> no need to insert anywhere.
-						
-						CodeComment locateActualComment()
-						{
-							//find the actual comment in searchResults
-							bool isMatchingComment(CodeComment cmt)
-							{
-								return cmt && (cmt.customPrefix==msg.type.text.capitalize~':') && 
-									equal(
-									cmt.content.rows[0].chars!'`'	.until!((ch)=>(!ch.among('`'))),
-									msg.content	.until!((ch)=>(!ch.among('`', '\r', '\n')))
-								); 
-								/+It's not perfect, it only checks the first line before any `code` references.+/
-							} 
-							
-							foreach(sr; searchResults)
-							if(auto row = (cast(CodeRow)(sr.container)) /+multiline messages can be found in rows+/)
-							{
-								
-								//single line comments
-								if(auto col = row.parent)
-								if(auto cmt = (cast(CodeComment)(col.parent)))
-								if(isMatchingComment(cmt))
-								{ return cmt; }
-								
-								/+multiline comments+/
-								if(sr.cells.length==1)
-								if(auto cmt = (cast(CodeComment)(sr.cells[0])))
-								if(isMatchingComment(cmt))
-								{ return cmt; }
-								
-								//problematic: The message is at the very end of a line. It tries to escape 2 times.
-								/+
-									Todo: This is a bug in the LineIdxLocator. It should be fixed there.
-									The LineIdxLocator only finds other cells on the line, but not the comment itself.
-									If it's fixet there, this workaround is not needed anymore.
-								+/
-								foreach(r; row.allParents!CodeRow.take(2))
-								foreach(cmt; r.subCells.map!((c)=>((cast(CodeComment)(c)))))
-								if(isMatchingComment(cmt))
-								return cmt; 
-							}
-							
-							WARN("Can't find buildMessage in code:\n"~msg.text~"\n"~searchResults.text); 
-							return null; 
-						} 
-						
-						if(auto cmt = locateActualComment)
-						{
-							//only a single searchResult remains, and with the actual persistent message
-							msgNode = cmt; 
-							searchResults = [nodeToSearchResult(cmt, null)]; 
-						}
-						
-						addMessageToModule(true); 
-						//Todo: firework effect
-					}
-					else
-					{
-						//This buildMessage is injected at the bottom of a node.
-						const isNewMessage = containerNode.addBuildMessage(msgNode); 
-						searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
-						addMessageToModule(isNewMessage); 
-					}
-				}
-				else
-				raise(i"Failed to find module  $(msg.location.file), also no MainModule.".text); 
-				
-			}
-			catch(Exception e) { ERR(e.text~"\n"~msg.text); }
-		} 
-		
-		auto getMarkerLayerCount(DMDMessage.Type type)
-		{ return (mixin(求sum(q{mod},q{modules.modules},q{((type==DMDMessage.Type.find)?(mod.findSearchResults.length) :(mod.messagesByType[type].length))}))); } 
-		
-		auto getMarkerLayer_find()
-		{ return modules.modules.map!((m)=>(m.findSearchResults)).joiner; } 
-		
-		auto getMarkerLayer(DMDMessage.Type type)
-		{
-			enforce(type!=DMDMessage.Type.find); 
-			return modules.modules.map!((m)=>(m.messagesByType[type].map!((msg)=>(msg.searchResults)).joiner)).joiner; 
-		} 
-		
-		auto clearMarkerLayer_find()
-		{ foreach(m; modules.modules) m.findSearchResults = []; } 
-		
-		
-		
-		
-		
-		
-		
 		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
 		{
 			ofs += innerPos; 
@@ -739,47 +719,21 @@ class Workspace : Container, WorkspaceInterface
 			{ if(m) scrollInModules([m]); } 
 		}
 		
-		void selectSearchResults(R)(R arr)
-		if(isInputRange!(R, Container.SearchResult))
-		{
-			//selectSearchResults ///////////////////////////
-			//Todo: use this as a revalidator after the modules were changed under the search results.
-			//Maybe verify the search results while drawing. Cache the last change or something.
-			
-			//T0; scope(exit) DT.LOG;
-			
-			//Todo: restrict to the current selection!
-			
-			//Todo: dont select text inside error messages!
-			textSelections.items = merge(arr.map!((a)=>(searchResultToTextSelection(a, workspaceContainer))).filter!"a.valid".array); 
-		} 
-		
 		void cancelSelection_impl()
 		{
-			//cancelSelection_impl //////////////////////////////////////
-			auto ts = textSelections; 
-			auto mp = modules.primaryModule; 
+			auto pm = modules.primaryModule; 
 			
 			void selectPrimaryModule()
-			{
-				textSelections.clear; 
-				foreach(m; modules.modules) m.flags.selected = m is mp; 
-				scrollInModule(mp); 
-			} 
+			{ textSelections.clear; modules.select(pm); scrollInModule(pm); } 
 			
 			//multiTextSelect -> primaryTextSelect
-			if(ts.length>1)
-			{
-				if(auto pts = primaryTextSelection)
-				{ textSelections.items = pts; return; }
-			}
+			if(auto pts = primaryTextSelection)
+			{ textSelections.items = pts; return; }
 			
-			void deselectAllModules() {
-				modules.modules.each!(m => m.flags.selected = false); 
-				/+Todo: It is declared in workspace+/
-			} 
+			void deselectAllModules()
+			{ modules.modules.each!((m)=>(m.flags.selected = false)); } 
 			
-			if(ts.length>0)
+			if(!textSelections.empty)
 			{ textSelections.clear; deselectAllModules; return; }
 			
 			//as a final act, zoom all
@@ -1124,8 +1078,7 @@ class Workspace : Container, WorkspaceInterface
 				return true; 
 			} 
 		}
-	}
-	version(/+$DIDE_REGION Cut   +/all)
+	}version(/+$DIDE_REGION Cut   +/all)
 	{
 		///All operations must go through copy_impl or cut_impl. Those are calling 
 		///requestModifyPermission and blocks modifications when the module is readonly. Also that is needed for UNDO.
@@ -1665,7 +1618,7 @@ class Workspace : Container, WorkspaceInterface
 				+/
 				
 				
-				auto searchResults = codeLocationToSearchResults(loc); 
+				auto searchResults = codeLocationToSearchResults(loc, &modules.findModule); 
 				if(searchResults.length)
 				{
 					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
@@ -1731,25 +1684,6 @@ class Workspace : Container, WorkspaceInterface
 			}
 		} 
 		
-		
-		void updateMessageConnectionArrows()
-		{
-			if(_messageConnectionArrows_hash.chkSet(mixin(求sum(q{m},q{modules.modules},q{m._updateSearchResults_state}))))
-			{
-				messageConnectionArrows.clear; 
-				foreach(t; [EnumMembers!(DMDMessage.Type)])
-				if(!t.among(DMDMessage.Type.find, DMDMessage.Type.console))
-				{
-					foreach(mod; modules.modules)
-					foreach(mm; mod.messagesByType[t])
-					buildMessageConnectionArrows(mm.message); 
-				}
-				//5.6ms, not bad
-			}
-		} 
-		
-		uint _messageConnectionArrows_hash; 
-		
 		void update(
 			View2D view, 
 			ref BuildResult buildResult/+
@@ -1780,13 +1714,13 @@ class Workspace : Container, WorkspaceInterface
 				
 				
 				//particle effects for incoming messages
-				foreach(mm; incomingVisibleModuleMessageQueue.fetchAll)
+				foreach(mm; buildMessages.incomingVisibleModuleMessageQueue.fetchAll)
 				{
-					auto layer = &markerLayerSettings[mm.type]; 
+					auto layer = &buildMessages.markerLayerSettings[mm.type]; 
 					addInspectorParticle(mm.node, mm.node.bkColor, layer.btnWorldBounds); 
 					if(
 						mm.type==DMDMessage.Type.error && !mm.isException
-						&& firstErrorMessageArrived.chkSet
+						&& buildMessages.firstErrorMessageArrived.chkSet
 						/+
 							Note: Catch the first compile error
 							(Exceptions are always shown.)
@@ -1908,9 +1842,9 @@ class Workspace : Container, WorkspaceInterface
 				insight.updateInsightFiber; 
 				search.updateSearchFiber; 
 				foreach(m; modules.modules) m.updateSearchResults; 
-				updateMessageConnectionArrows; 
+				buildMessages.updateMessageConnectionArrows; 
 				
-				aiHandler.update; 
+				aiManager.update; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -2037,7 +1971,7 @@ class Workspace : Container, WorkspaceInterface
 			}
 			catch(Exception e) {}
 		} 
-		AiHandler aiHandler; 
+		AiManager aiManager; 
 		
 	}
 	version(/+$DIDE_REGION+/all)
@@ -2062,7 +1996,7 @@ class Workspace : Container, WorkspaceInterface
 			} 
 			
 			void deactivate(Workspace workspace)
-			{ if(searchBoxVisible.chkClear) { searchText = ""; workspace.clearMarkerLayer_find; }} 
+			{ if(searchBoxVisible.chkClear) { searchText = ""; workspace.buildMessages.clearMarkerLayer_find; }} 
 			
 			import core.thread.fiber; 
 			static class SearchFiber : Fiber
@@ -2199,7 +2133,7 @@ class Workspace : Container, WorkspaceInterface
 									)
 									{
 										//refresh search results
-										workspace.clearMarkerLayer_find; 
+										workspace.buildMessages.clearMarkerLayer_find; 
 										searchStats = SearchStats.init; 
 										
 										if(searchText.startsWith(':'))
@@ -2231,7 +2165,7 @@ class Workspace : Container, WorkspaceInterface
 										}
 									}
 									//display the number of matches. Also save the location of that number on the screen.
-									const matchCnt = workspace.getMarkerLayerCount(DMDMessage.Type.find); 
+									const matchCnt = workspace.buildMessages.getMarkerLayerCount(DMDMessage.Type.find); 
 									Row({ if(matchCnt) Text(" ", clGray, matchCnt.text, " "); }); 
 									
 									BtnRow(
@@ -2242,14 +2176,14 @@ class Workspace : Container, WorkspaceInterface
 													enable(matchCnt>0), hint("Zoom screen on search results.")
 												)
 											)
-											{ workspace.zoomAt(view, workspace.getMarkerLayer_find); }
+											{ workspace.buildMessages.zoomAt(view, workspace.buildMessages.getMarkerLayer_find); }
 											if(
 												Btn(
 													"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
 													enable(matchCnt>0), hint("Select search results.")
 												)
 											)
-											{ workspace.selectSearchResults(workspace.getMarkerLayer_find); }
+											{ workspace.textSelections.select(workspace.buildMessages.getMarkerLayer_find); }
 										}
 									); 
 									
@@ -2947,7 +2881,7 @@ class Workspace : Container, WorkspaceInterface
 				
 				assert(buildServices.ready); 
 				auto messages = decodeDMDMessages(output, moduleFile); 
-				processBuildMessages(messages); 
+				buildMessages.process(messages); 
 				
 				const errIdx = messages.countUntil!((m)=>(m.type==DMDMessage.Type.error)); 
 				if(errIdx>0)
@@ -3017,7 +2951,7 @@ class Workspace : Container, WorkspaceInterface
 			//reset all caches in Module
 			mod.resetBuildMessages; 
 			mod.resetSearchResults; 
-			firstErrorMessageArrived = true; 
+			buildMessages.firstErrorMessageArrived = true; 
 			
 			void feedNode(CodeNode oldNode)
 			{
@@ -3172,6 +3106,7 @@ class Workspace : Container, WorkspaceInterface
 		} 
 		void selectAdjacentWord_impl(bool isPrev)()
 		{
+			//Todo: put this into TextSelectionManager
 			auto ts = textSelections[]; ref actSel() => isPrev ? ts.front : ts.back; 
 			if(!ts.empty && !actSel.isZeroLength)
 			{
@@ -3451,8 +3386,8 @@ class Workspace : Container, WorkspaceInterface
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
 						[q{"Shift+Alt+Up"},q{extendSelection},q{if(!textSelections.extend) { if((常!(bool)(0))) im.flashWarning("Unable to extend selection."); }}],
 						[q{"Shift+Alt+Down"},q{shrinkSelection},q{if(!textSelections.shrink) { if((常!(bool)(0))) im.flashWarning("Unable to shrink selection."); }}],
-						[q{"Shift+Alt+U"},q{insertCursorAtStartOfEachLineSelected},q{textSelections.items = insertCursorAtStartOfEachLineSelected_impl(textSelections[]); }],
-						[q{"Shift+Alt+I"},q{insertCursorAtEndOfEachLineSelected},q{textSelections.items = insertCursorAtEndOfEachLineSelected_impl(textSelections[]); }],
+						[q{"Shift+Alt+U"},q{insertCursorAtStartOfEachLineSelected},q{textSelections.insertCursorAtStartOfEachLineSelected; }],
+						[q{"Shift+Alt+I"},q{insertCursorAtEndOfEachLineSelected},q{textSelections.insertCursorAtEndOfEachLineSelected; }],
 						[q{"Ctrl+A"},q{selectAll},q{
 							textSelections.selectAll; 
 							//textSelections.items = extendAll(textSelections[]); 
@@ -3585,7 +3520,7 @@ class Workspace : Container, WorkspaceInterface
 						[q{"Ctrl+Shift+F"},q{searchBoxActivateGlobal},q{searchBoxActivate(true); }],
 						[q{"Ctrl+D"},q{selectNextWord},q{selectAdjacentWord_impl!false; }],
 						[q{"Ctrl+Shift+D"},q{selectPrevWord},q{selectAdjacentWord_impl!true; }],
-						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{selectSearchResults(getMarkerLayer(DMDMessage.Type.find)); }],
+						[q{"Ctrl+Shift+L"},q{selectSearchResults},q{textSelections.select(buildMessages.getMarkerLayer(DMDMessage.Type.find)); }],
 						[q{"F3"},q{gotoNextFind},q{NOTIMPL; }],
 						[q{"Shift+F3"},q{gotoPrevFind},q{NOTIMPL; }],
 						[q{"Ctrl+G"},q{gotoLine},q{
@@ -3625,7 +3560,7 @@ class Workspace : Container, WorkspaceInterface
 							if(ready && !running)
 							{
 								feedAndSaveModules(modules.changedProjectModules); 
-								messageUICache.clear; //Todo: This UI cache should be emptied automatically.
+								buildMessages.messageUICache.clear; //Todo: This UI cache should be emptied automatically.
 								rebuild; 
 							}
 						}],
@@ -3654,8 +3589,8 @@ class Workspace : Container, WorkspaceInterface
 						[],
 						[q{"F1"},q{help_bing},q{startChrome(scrapeLinks_bing(actHelpQuery).get(0), actSearchKeyword); }],
 						[q{"Ctrl+F1"},q{help_dlang},q{startChrome(scrapeLinks_dpldocs(actSearchKeyword).get(0), actSearchKeyword); }],
-						[q{"Alt+A"},q{initiateAi},q{aiHandler.initiate; }],
-						[q{"Ctrl+Enter"},q{launchAi},q{aiHandler.launch; }],
+						[q{"Alt+A"},q{initiateAi},q{aiManager.initiate; }],
+						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch; }],
 						[],
 						[q{//Experimental
 						}],
@@ -3747,54 +3682,6 @@ class Workspace : Container, WorkspaceInterface
 		}
 	}version(/+$DIDE_REGION UI      +/all)
 	{
-		void UI_BuildMessageType(DMDMessage.Type bmt, View2D view)
-		{
-			with(im) {
-				if(
-					Btn(
-						{
-							const hidden = markerLayerSettings[bmt].visible ? 0 : .75f; 
-							
-							auto fade(RGB c) { return c.mix(clSilver, hidden); } 
-							
-							const syntax = DMDMessage.typeSyntax[bmt]; 
-							style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
-							const highContrastFontColor = syntax.syntaxFontColor; 
-							style.fontColor = fade(highContrastFontColor); 
-							
-							Row(
-								{
-									flags.hAlign = HAlign.center; 
-									//innerWidth = ceil(fh*2); 
-									innerHeight = ceil(fh*1.66f); 
-									flags.clickable = false; 
-									Text(DMDMessage.typeShortCaption[bmt]); NL; 
-									fh = ceil(fh*.66f); 
-									
-									theme = "tool"; 
-									const m = Margin(0, .5, 0, .5); 
-									
-									if(const len = getMarkerLayerCount(bmt))
-									{
-										if(Btn(len.text))
-										{
-											markerLayerSettings[bmt].visible = true; 
-											if(bmt==DMDMessage.Type.find)	zoomAt(view, getMarkerLayer_find); 
-											else	zoomAt(view, getMarkerLayer(bmt)); 
-										}
-									}
-								}
-							); 
-							
-							markerLayerSettings[bmt].btnWorldBounds = view.invTrans(actContainerBounds); 
-						},
-						((bmt).genericArg!q{id})
-					)
-				)
-				markerLayerSettings[bmt].visible.toggle; 
-			}
-		} 
-		
 		void UI_structureLevel()
 		{
 			with(im) {
@@ -3852,15 +3739,6 @@ class Workspace : Container, WorkspaceInterface
 					}
 				); 
 			}
-		} 
-		
-		void zoomAt(R)(View2D view, R searchResults)
-		if(isInputRange!(R, Container.SearchResult))
-		{
-			if(searchResults.empty) return; 
-			const maxScale = max(view.scale, 1); 
-			view.zoom(searchResults.map!(r => r.bounds).fold!"a|b", 12); 
-			view.scale = min(view.scale, maxScale); 
 		} 
 		
 		void UI_mouseLocationHint(View2D view)
@@ -3957,7 +3835,7 @@ class Workspace : Container, WorkspaceInterface
 						if(!mouseOverHintCntr)
 						if(auto mm = (cast(Module.Message)(nearestSearchResult.reference)))
 						{
-							auto msgNode = renderBuildMessage(mm.message); 
+							auto msgNode = buildMessages.renderBuildMessage(mm.message); 
 							with(msgNode) {
 								outerWidth 	= min(outerWidth, max(this.outerWidth-50, 50)),
 								outerHeight 	= min(outerHeight, DefaultFontHeight * 3); 
@@ -4094,61 +3972,6 @@ class Workspace : Container, WorkspaceInterface
 					dr.alpha = 1;
 				*/
 			}
-		} 
-		
-		void drawMessageConnectionArrows(Drawing dr)
-		{
-			enum sc = 1.5f; 
-			
-			dr.lineWidth = -1.5f*sc; 
-			dr.pointSize = -5*sc; 
-			//dr.lineStyle = LineStyle.dash; 
-			/+
-				Todo: animated dashed line is only going one direction on the screen. 
-				Must rewrite that part completely.
-			+/
-			dr.arrowStyle = ArrowStyle.arrow; 
-			dr.alpha = blink.remap(0, 1, .5, 1); 
-			
-			const pixelSize = mainView.invScale_anim; 
-			
-			foreach(const ref a; messageConnectionArrows.keys)
-			{
-				with(a)
-				{
-					auto layer = &markerLayerSettings[type]; 
-					if(layer.visible)
-					{
-						dr.color = DMDMessage.typeColor[type]; 
-						static if((常!(bool)(0))) dr.line(p1, p2); 
-						static if((常!(bool)(1))) {
-							auto pc = mix(p1, p2, .5f) + vec2(0, -(magnitude(p2-p1)))*(.125f*sc); 
-							
-							const d = (normalize(p2-pc))*pixelSize; 
-							
-							static if((常!(bool)(1))/+Note: shadow/outline+/)
-							{
-								version(/+$DIDE_REGION Save state+/all) { const c = dr.color; const lw = dr.lineWidth; }
-								version(/+$DIDE_REGION Alter state+/all) { dr.color = isException ? clYellow : blackOrWhiteFor(dr.color); dr.lineWidth = -2.7*sc; }
-								
-								dr.bezier2(p1, pc, p2); 
-								
-								dr.lineWidth = -1.95*sc; 
-								dr.line(p2, p2 + d*(2.35f*sc)); 
-								
-								version(/+$DIDE_REGION Restore state+/all) { dr.color = c; dr.lineWidth = lw; }
-							}
-							
-							dr.bezier2(p1, pc, p2); dr.line(p2 - d, p2); 
-							//lame: arrow not included in bezier
-						}
-						static if((常!(bool)(0))) dr.bezier2(p1, p2 - vec2((magnitude(p2-p1))*(.125f*sc), 0), p2); 
-					}
-				}
-			}
-			//dr.lineStyle = LineStyle.normal; 
-			dr.arrowStyle = ArrowStyle.none; 
-			dr.alpha = 1; 
 		} 
 		
 		void drawTextSelections(Drawing dr, View2D view)
@@ -4432,15 +4255,15 @@ class Workspace : Container, WorkspaceInterface
 			
 			resetNearestSearchResult; 
 			
-			markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
+			buildMessages.markerLayerSettings[DMDMessage.Type.unknown].visible = false; 
 			//markerLayerSettings[DMDMessage.Type.console].visible = true; 
 			
 			foreach_reverse(t; [EnumMembers!(DMDMessage.Type)])
-			if(markerLayerSettings[t].visible)
+			if(buildMessages.markerLayerSettings[t].visible)
 			{
 				void doit(R)(R sr) { drawSearchResults(dr, sr, DMDMessage.typeSyntax[t].syntaxBkColor); } 
-				if(t==DMDMessage.Type.find)	doit(getMarkerLayer_find); 
-				else	doit(getMarkerLayer(t)); 
+				if(t==DMDMessage.Type.find)	doit(buildMessages.getMarkerLayer_find); 
+				else	doit(buildMessages.getMarkerLayer(t)); 
 			}
 			
 			if(nearestSearchResult_dist > mainView.invScale*24)
@@ -4451,7 +4274,7 @@ class Workspace : Container, WorkspaceInterface
 			
 			drawChangeIndicators(dr, globalChangeindicatorsAppender[]); globalChangeindicatorsAppender.clear; 
 			
-			drawMessageConnectionArrows(dr); 
+			buildMessages.drawMessageConnectionArrows(dr, mainView); 
 			
 			mixin(求each(q{ref p},q{inspectorParticles},q{p.updateAndDraw(dr)})); 
 			

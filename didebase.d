@@ -1102,8 +1102,8 @@ version(/+$DIDE_REGION+/all) {
 			return s0~"|=>|"~s1.split('|')[$-2..$].join('|') ~ primaryStr; 
 		} 
 		
-		this(string s, Module delegate(File) onFindModule)
-		{ this = TextSelection(s, onFindModule).toReference; } 
+		this(string s, Module delegate(File) findModule)
+		{ this = TextSelection(s, findModule).toReference; } 
 		
 	} 
 	
@@ -1310,10 +1310,9 @@ version(/+$DIDE_REGION+/all) {
 		return validate(res, workspaceContainer); 
 	} 
 	
-	
-	auto insertCursorAtEachLineSelected_impl(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
+	auto insertCursorAtEachLineSelected(R)(R textSelections, Flag!"toTheEnd" toTheEnd = Yes.toTheEnd)
 	{
-		auto res = 	textSelections[]
+		auto res = 	textSelections
 			.filter!"a.valid"  //just to make sure
 			.map!(
 			//create cursors in every lines at the start of the line
@@ -1334,11 +1333,11 @@ version(/+$DIDE_REGION+/all) {
 		return res; 
 	} 
 	
-	auto insertCursorAtStartOfEachLineSelected_impl(R)(R textSelections)
-	{ return insertCursorAtEachLineSelected_impl(textSelections[], No.toTheEnd); } 
+	auto insertCursorAtStartOfEachLineSelected(R)(R textSelections)
+	{ return insertCursorAtEachLineSelected(textSelections[], No.toTheEnd); } 
 	
-	auto insertCursorAtEndOfEachLineSelected_impl(R)(R textSelections)
-	{ return insertCursorAtEachLineSelected_impl(textSelections, Yes.toTheEnd); } 
+	auto insertCursorAtEndOfEachLineSelected(R)(R textSelections)
+	{ return insertCursorAtEachLineSelected(textSelections, Yes.toTheEnd); } 
 	
 	auto selectCharAtEachSelection(R)(R textSelections, dchar ch)
 	{
@@ -1354,7 +1353,7 @@ version(/+$DIDE_REGION+/all) {
 			return res; 
 		} 
 		
-		return 	textSelections[]
+		return textSelections
 			.map!(a => transform(a))
 			.cache
 			.filter!"a.valid"
@@ -1385,6 +1384,163 @@ version(/+$DIDE_REGION+/all) {
 		}
 		
 		return TextSelection.init; 
+	} 
+	
+	struct LineIdxLocator
+	{
+		int lineIdx; 
+		Object reference; 
+		bool optimized = true; 
+		
+		Container.SearchResult[] searchResults; 
+		Container.SearchResult[] searchResults_nodes;  //Fallback to nodes when there is no glyps on line
+		
+		void visitNode(CodeNode node)
+		{
+			foreach(col; node.subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a")
+			visitColumn(col); 
+		} 
+		
+		void visitColumn(CodeColumn col)
+		{
+			if(col.containsBuildMessages) return; 
+			
+			auto rows = col.rows; 
+			
+			//ignore trailing empty rows
+			while(rows.length && !rows.back.lineIdx)
+			rows.popBack; 
+			
+			//Todo: must do something with the fucking lineIdx==0 rows at the end...
+			
+			if(optimized)
+			{
+				//ignore all rows higher than lineIdx
+				rows = rows[0 .. rows.map!"a.lineIdx".assumeSorted.lowerBound(lineIdx+1).length]; 
+				
+				//process same lines
+				while(rows.length && rows.back.lineIdx==lineIdx)
+				{
+					visitRow(rows.back); 
+					rows.popBack; 
+				}
+				
+				//process one more row which can contain lineIdx, but starts earlier
+				if(rows.length) visitRow(rows.back); 
+			}
+			else
+			{
+				static if((常!(bool)(0))/+Note: verify sort order+/)
+				if(!rows.map!"a.lineIdx".isSorted)
+				ERR("LineIdx is NOT sorted: ", rows.map!"a.lineIdx"); 
+				
+				mixin(求each(q{r},q{rows},q{visitRow(r)})); 
+			}
+		} 
+		
+		void visitRow(CodeRow row)
+		{
+			void collectCells(T, R)(ref R res)
+			{
+				auto cells = row.subCells.filter!((cell){
+					if(auto a = (cast(T)(cell)))
+					return a.lineIdx == lineIdx; 
+					else return false; 
+				}).array; 
+				/+Opt: binary search+/
+				if(cells.length)
+				{
+					Container.SearchResult sr = {
+						cells 	: cells,
+						container	: row,
+						absInnerPos	: row.worldInnerPos,
+						reference	: reference
+					}; 
+					res ~= sr; 
+					//Opt: appender
+				}
+			} 
+			
+			collectCells!Glyph(searchResults); 
+			if(searchResults.empty) collectCells!CodeNode(searchResults_nodes); 
+			
+			row.byNode.each!((n){ visitNode(n); }); /+Opt: early exit+/
+		} 
+	} 
+	
+	Container.SearchResult[] codeLocationToSearchResults(
+		CodeLocation loc, 
+		Module delegate(File) findModule, 
+		bool optimized = true
+	)
+	{
+		//Opt: unoptimal to return a dynamic array
+		
+		if(!loc) return []; 
+		
+		if(auto mod = findModule(loc.file))
+		{
+			Container.SearchResult[] doit()
+			{
+				//Opt: bottleneck! linear search
+				//Todo: return the whole module if the line is unspecified, or unable to find
+				
+				if(!loc.lineIdx)
+				{
+					//Todo: mark the whole module
+					return []; 
+				}
+				
+				auto locator = LineIdxLocator(loc.lineIdx, null); 
+				locator.optimized = optimized; 
+				locator.visitNode(mod); 
+				
+				auto res = ((locator.searchResults.length) ?(locator.searchResults) :(
+					locator.searchResults_nodes /+
+						Note: When no glyphs at all, fallback to nodes.
+						This founds multiline messages.
+					+/
+				)); 
+				
+				static if((常!(bool)(0))/+Note: Do unotpimized search for debug.+/)
+				if(res.empty)
+				{
+					if(optimized)
+					{
+						WARN("Optimized LineIdxLocator failed:", loc); 
+						return codeLocationToSearchResults(loc, reference, false); 
+					}
+					else
+					{ ERR("Standard LineLocator failed:", loc); }
+				}
+				
+				if(res.length>1) mixin(求each(q{ref a},q{res[1..$]},q{a.showArrow = false})); 
+				
+				return res; 
+			} 
+			
+			if(auto a = loc in mod.searchResultsByCodeLocation) return *a; 
+			else return mod.searchResultsByCodeLocation[loc] = doit; 
+		}
+		else
+		{
+			//module not loaded
+			//LOG(msg);
+			//if(msg.location.file.exists) queueModule(msg.location.file);
+			return []; 
+		}
+	} 
+	
+	
+	auto nodeToSearchResult(CodeNode node, Object reference)
+	{
+		Container.SearchResult sr = {
+			cells 	: [node],
+			container	: node.parent,
+			absInnerPos	: node.parent.worldInnerPos,
+			reference	: reference
+		}; 
+		return sr; 
 	} 
 	
 	auto extend(TextSelection sel)

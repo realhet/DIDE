@@ -60,7 +60,7 @@ class AiChat
 			case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
 		}
 	} 
-	
+	
 	static private void worker(shared AiChat _chat)
 	{
 		/+this is where the blocking CURL HTTP client runs.+/
@@ -165,7 +165,7 @@ class AiChat
 		} 
 		Usage usage; 
 	} 
-	
+	
 	void ask(Message[] messages)
 	{
 		if(running) return; 
@@ -339,7 +339,7 @@ class AiModel
 import het.ui, didebase; 
 import didenode: CodeNode, CodeComment; 
 import didetextselectionmanager : TextSelectionManager; 
-static struct AiHandler
+static struct AiManager
 {
 	TextSelectionManager textSelections; 
 	
@@ -402,7 +402,7 @@ static struct AiHandler
 		auto s = textSelections.primary; 
 		return ((s)?(s.codeColumn.allParents!CodeComment.filter!((a)=>(a.isAi)).frontOrNull):(null)); 
 	} 
-	
+	
 	void initiate()
 	{
 		//Todo: activeAiNode must be validated in update()
@@ -412,16 +412,19 @@ static struct AiHandler
 			- Memorizes selected code snippets if there is no active aiNode.
 			- Attach selected code snippets to active aiNode.
 			- Creates a new AI prompt if selection is a single cursor.
-			- Selectes the active aiNode if inside one.
+			- Selects the active aiNode if inside one.
 			(aiNode is CodeComment where customPrefix = "AI:")
 		+/
 		
-		void copySnippets()
+		/// A "snippet" is source text or plain text captured for AI processing,  
+		/// wrapped in triple quotes when sent to the model.  
+		void captureSnippets()
 		{
 			aiSnippets = textSelections[].map!((a)=>(a.sourceText)).filter!"a!=``".array; 
 			textSelections.clear; 
 		} 
 		
+		/// Inserts captured snippets into the active AI node
 		void insertSnippets()
 		{
 			auto col = activeAiNode.content; 
@@ -437,6 +440,7 @@ static struct AiHandler
 			aiSnippets.clear; //one time use only
 		} 
 		
+		/// Creates a new interactive AI node (textbox) in the editor, ready for user input.  
 		void createAiNode()
 		{
 			insertNode("/+AI:\0+/", 0); 
@@ -465,7 +469,7 @@ static struct AiHandler
 		else
 		{
 			//attach copy code snippets to ai prompt
-			copySnippets; 
+			captureSnippets; 
 			if(activeAiNode)
 			{ insertSnippets; }
 			else

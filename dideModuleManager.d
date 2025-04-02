@@ -380,6 +380,9 @@ struct ContainerSelectionManager(T : Container)
 		return m; 
 	} 
 	
+	void select(Module s)
+	{ foreach(m; modules) m.flags.selected = m is s; } 
+	
 	
 	
 	bool loadModule(File file)

@@ -268,7 +268,7 @@ version(/+$DIDE_REGION+/all)
 			{
 				buildResult.receiveBuildMessages; 
 				auto msgs = buildResult.incomingMessages.fetchAll; 
-				workspace.processBuildMessages(msgs); 
+				workspace.buildMessages.process(msgs); 
 			}
 			
 			{
@@ -367,7 +367,7 @@ version(/+$DIDE_REGION+/all)
 		void resetBuildState()
 		{
 			clearDebugImageBlobs; 
-			workspace.firstErrorMessageArrived = false; 
+			workspace.buildMessages.firstErrorMessageArrived = false; 
 			workspace.modules.modules.each!((m){ m.resetBuildMessages; }); 
 			workspace.modules.modules.each!((m){ m.resetInspectors; }); 
 			dbgsrv.resetBeforeRun; 
@@ -390,7 +390,7 @@ version(/+$DIDE_REGION+/all)
 		void cancelBuild()
 		{
 			if(building) {
-				workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
+				workspace.buildMessages.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
 				buildSystemWorkerTid.send(MsgBuildCommand.cancel); 
 			}
 		} 
@@ -400,7 +400,7 @@ version(/+$DIDE_REGION+/all)
 		
 		void killCompilers()
 		{
-			workspace.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
+			workspace.buildMessages.firstErrorMessageArrived = true; //Don't focus on the upcoming cancellation error message!
 			globalPidList.killAll; 
 		} 
 		
@@ -715,7 +715,7 @@ version(/+$DIDE_REGION+/all)
 			auto dmdMessages = decodeDMDMessages(message, workspace.modules.mainModuleFile); 
 			if(dmdMessages.length)
 			{
-				workspace.processBuildMessages(dmdMessages); 
+				workspace.buildMessages.process(dmdMessages); 
 				im.flashException(dmdMessages[0].oneLineText); 
 			}
 			else
@@ -1244,7 +1244,7 @@ version(/+$DIDE_REGION+/all)
 									margin = "0 3"; flags.yAlign = YAlign.center; 
 									foreach(t; [EnumMembers!(DMDMessage.Type)]) {
 										if(!t.among(DMDMessage.Type.unknown))
-										workspace.UI_BuildMessageType(t, view); 
+										workspace.buildMessages.UI_BuildMessageType(t, view); 
 									}
 								}
 							); 
