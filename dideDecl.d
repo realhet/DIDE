@@ -1,10 +1,8 @@
 module didedecl; 
 
-import het.ui, het.parser, dideui, didebase; 
-import diderow : CodeRow, SourceTextBuilder; 
-import didecolumn : CodeColumn; 
-import didenode : NodeStyle, specialCommentMarker, CodeNode, CodeBlock, CodeComment, CodeString; 
-import didemodule : TextFormat, compoundObjectChar, autoSpaceAfterDeclarations, joinSemicolonsAfterBlocks; 
+import didebase, het.parser; 
+import diderow : SourceTextBuilder; 
+import didenode : NodeStyle, specialCommentMarker, CodeBlock, CodeComment, CodeString; 
 import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNiceStatementRow, processNiceExpressionBlock; 
 
 version(/+$DIDE_REGION+/all) {

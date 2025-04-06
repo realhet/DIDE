@@ -1,7 +1,8 @@
 module didetextselectionmanager; 
 
-import het.ui, didebase; 
-import didemodule : Module; 
+import didebase; 
+import didenode : visitNestedCodeColumns, visitNestedCodeNodes; 
+import didedecl : Declaration; 
 import didemodulemanager : ModuleManager; 
 
 
@@ -64,7 +65,7 @@ class TextSelectionManager
 	
 	void clear() { items = []; } 
 	
-	
+	
 	
 	version(/+$DIDE_REGION Validate+/all)
 	{
@@ -119,7 +120,7 @@ class TextSelectionManager
 	
 	bool shrink()
 	{
-		if(((0xBD25AE8A3C6).檢 (extendSelectionStack.length>=2)))
+		if(((0xC0E5AE8A3C6).檢 (extendSelectionStack.length>=2)))
 		{
 			const 	act = extendSelectionStack[$-1],
 				prev = extendSelectionStack[$-2]; 
@@ -131,7 +132,7 @@ class TextSelectionManager
 			}
 		}
 		return false; 
-	} 
+	} 
 	
 	bool selectAll()
 	=> extend(Yes.selectAll); 
@@ -156,6 +157,41 @@ class TextSelectionManager
 	
 	void insertCursorAtEndOfEachLineSelected()
 	{ items = .insertCursorAtEndOfEachLineSelected(items); } 
+	
+	Module[] modulesWithTextSelection()
+	=> textSelections[].map!moduleOf.nonNulls.uniq.array; 
+	
+	/+
+		+Selects all the CodeColumns under the cursors. 
+		If there is none, selects all the modules' content CodeColumns.
+	+/
+	CodeColumn[] selectedOuterColumns()
+	{
+		CodeColumn[] cols; 
+		
+		foreach(c; textSelections.map!"a.codeColumn")
+		if(!cols.canFind(c)) cols ~= c; 
+		if(cols.empty)
+		foreach(c; modules.selectedModules.map!"a.content")
+		cols ~= c; 
+		
+		return cols; 
+	} 
+	
+	void visitSelectedNestedCodeColumns(void delegate(CodeColumn) fun)
+	{
+		foreach_reverse(col; selectedOuterColumns)
+		visitNestedCodeColumns(col, fun); 
+	} 
+	
+	void visitSelectedNestedCodeNodes(void delegate(CodeNode) fun)
+	{
+		foreach_reverse(col; selectedOuterColumns)
+		visitNestedCodeNodes(col, fun); 
+	} 
+	
+	void visitSelectedNestedDeclarations(void delegate(Declaration) fun)
+	{ visitSelectedNestedCodeNodes((node){ if(auto decl = cast(Declaration) node) fun(decl); }); } 
 	
 	version(/+$DIDE_REGION Mouse ops on textSelections+/all)
 	{
@@ -230,6 +266,8 @@ class TextSelectionManager
 				} 
 			} 
 		}
+		
+		
 		
 		bool update(
 			View2D view, //input: mouse position,  output: zoom/scroll.
@@ -456,5 +494,304 @@ class TextSelectionManager
 			const changed = textSelectionsHash.chkSet(textSelections.hashOf); 
 			return changed; 
 		} 
-	}
+	}
+	void UI_structureLevel()
+	{
+		with(im) {
+			BtnRow(
+				{
+					auto mods = modules.selectedModules; 
+					if(mods.empty) mods = modulesWithTextSelection; 
+					
+					static foreach(lvl; EnumMembers!StructureLevel)
+					{
+						{
+							const capt = lvl.text[0..1].capitalize; 
+							if(
+								Btn(
+									{
+										style.bold = mods.any!((m)=>(m.structureLevel==lvl)); 
+										Text(capt); 
+									}, 
+									genericId(capt), 
+									selected(modules.desiredStructureLevel==lvl), 
+									{ width = fh/4; },
+									hint("Select desired StructureLevel.\n(Ctrl = reload and apply)")
+								)
+							)
+							{
+								modules.desiredStructureLevel = lvl; 
+								
+								if(
+									inputs.Ctrl.down//apply
+								)
+								preserve
+								(
+									{
+										Module[] cantReload; 
+										foreach(m; mods)
+										if(m.structureLevel != modules.desiredStructureLevel)
+										{
+											if(m.changed)	{ cantReload ~= m; }
+											else	{ m.reload(modules.desiredStructureLevel); }
+										}
+										
+										if(!cantReload.empty)
+										{
+											beep; 
+											WARN(
+												"Unable to reload modules because they has unsaved changes. ", 
+												cantReload.map!"a.file.name"
+											); 
+										}
+									}
+								); 
+							}
+						}
+					}
+				}
+			); 
+		}
+	} 
+	
+	void draw(Drawing dr, View2D view)
+	{
+		version(/+$DIDE_REGION+/all)
+		{
+			scope(exit) dr.alpha = 1; 
+			
+			const 	near	= lod.zoomFactor.smoothstep(0.02, 0.1),
+				clSelected	= mix(
+				mix(RGB(0x404040), clGray, near*.66f),
+				mix(clWhite, clGray, near*.66f), blink
+			),
+				clCaret	= clSilver,
+				clPrimaryCaret 	= clWhite,
+				alpha	= mix(0.75f, .4f, near); 
+			
+			const cullBounds = view.subScreenBounds_anim; 
+			
+			dr.color = clSelected; 
+			dr.alpha = alpha; 
+			foreach(sel; textSelections[])
+			if(!sel.isZeroLength)
+			{
+				auto col = sel.codeColumn; 
+				const 	colInnerPos	= worldInnerPos(col), //Opt: group selections by codeColumn.
+					colInnerBounds 	= bounds2(colInnerPos, colInnerPos+col.innerSize); 
+				if(cullBounds.overlaps(colInnerBounds))
+				{
+					const localCullBounds = cullBounds - colInnerPos; 
+					auto 	st	= sel.start,
+						en 	= sel.end; 
+					
+					const 	pages = col.getPageRowRanges,
+						singlePage = pages.length==1; 
+					
+					foreach(y; st.pos.y..en.pos.y+1)
+					{
+						//Todo: this loop is in the copy routine as well. Must refactor and reuse
+						auto row = col.rows[y]; 
+						const rowCellCount = row.cellCount; 
+						
+						//culling
+						if(row.outerBottom < localCullBounds.top) continue;  //Opt: trisect
+						if(singlePage)
+						{ if(row.outerTop > localCullBounds.bottom) break; }
+						else
+						{
+							if(row.outerTop > localCullBounds.bottom) continue; //next page can follow
+							if(row.outerLeft > localCullBounds.right) break; 
+						}
+						
+						const 	isFirstRow 	= y==st.pos.y,
+							isLastRow	= y==en.pos.y; 
+						const 	x0 	= isFirstRow ? st.pos.x : 0,
+							x1	= isLastRow ? en.pos.x : rowCellCount+1; 
+						const 	rowInnerPos 	= colInnerPos + row.innerPos; 
+						
+						dr.translate(rowInnerPos); scope(exit) dr.pop; 
+						
+						if(lod.level<=1)
+						{
+							foreach(x; x0..x1)
+							{
+								
+								void fade(bounds2 bnd)
+								{
+									dr.color = clSelected; 
+									dr.alpha = alpha; 
+									
+									enum gap = .5f; 
+									if(isFirstRow)
+									{
+										bnd.top += gap; 
+										if(x==x0) bnd.left += gap; 
+									}
+									if(isLastRow)
+									{
+										bnd.bottom -= gap; 
+										if(x==x1-1) bnd.right -= gap; 
+									}
+									dr.fillRect(bnd); 
+								} 
+								
+								assert(x.inRange(0, rowCellCount), "out of range"); 
+								if(x<rowCellCount)
+								{
+									/+
+										Todo: make the nice version: the font will be NOT blended to gray, 
+										but it hides the markerLayers completely. Should make a 
+										text drawer that uses alpha on the background and leaves 
+										the font color as is.
+									+/
+									/+
+										if(auto g = row.glyphs[x]){
+											const old = tuple(g.bkColor, g.fontColor);
+											g.bkColor = mix(g.bkColor, clSelected, alpha);// g.fontColor = clBlack;
+											dr.alpha = 1;
+											g.draw(dr);
+											g.bkColor = old[0]; g.fontColor = old[1];
+										}else
+									+/
+									{ fade(row.subCells[x].outerBounds); }
+								}
+								else
+								{
+									//newLine
+									auto g = newLineGlyph; 
+									const originalSize = g.outerSize; 
+									const mustShrink = g.outerHeight>row.outerHeight+.125f; 
+									if(mustShrink) g.outerSize = originalSize * (row.outerHeight / g.outerHeight); 
+									scope(exit) if(mustShrink) g.outerSize = originalSize; 
+									
+									g.bkColor = row.bkColor;  g.fontColor = clGray; 
+									dr.alpha = 1; 
+									g.outerPos = row.newLinePos; 
+									g.draw(dr); 
+									
+									fade(g.outerBounds); 
+								}
+							}
+							
+						}
+						else
+						{
+							if(!isFirstRow && !isLastRow)
+							{
+								if(row.cellCount)
+								dr.fillRect(bounds2(0, 0, row.subCells.back.outerRight, row.innerHeight)); 
+							}
+							else
+							{
+								dr.fillRect(
+									bounds2(
+										row.localCaretPos(x0).pos.x, 0, 
+										row.localCaretPos(x1).pos.x, row.innerHeight
+									)
+								); 
+							}
+						}
+					}
+					
+				}
+			}
+		}version(/+$DIDE_REGION+/all)
+		{
+			//caret trail
+			static if(AnimatedCursors)
+			{
+				if(textSelections.length <= MaxAnimatedCursors)
+				{
+					dr.alpha = blink/2; 
+					dr.lineWidth = -1-(blink)*3; 
+					dr.color = clCaret; 
+					//Opt: culling
+					//Opt: limit max munber of animated cursors
+					foreach(s; textSelections[])
+					{
+						CaretPos[3] cp; 
+						cp[0] = s.caret.worldPos; 
+						cp[1..3] = cp[0]; 
+						cp[2].pos += s.caret.animatedPos - s.caret.targetPos; 
+						cp[2].height = s.caret.animatedHeight; 
+						cp[1].pos = mix(cp[0].pos, cp[2].pos, .25f); 
+						
+						auto dir = cp[1].pos-cp[2].pos; 
+						if(dir)
+						{
+							if(dir.normalize.x.abs<0.05f)
+							{
+								//vertical line
+								vec2[2] p = [cp[1].pos, cp[2].pos]; 
+								if(p[0].y<p[1].y) p[1].y += cp[2].height; 
+								else p[0].y += cp[1].height; 
+								dr.line(p[0], p[1]); 
+							}
+							else
+							{
+								//horizontal bar
+								vec2[4] p; 
+								p[0] = cp[1].pos; 
+								p[1] = cp[1].pos + vec2(0, cp[1].height); 
+								p[2] = cp[2].pos + vec2(0, cp[2].height); 
+								p[3] = cp[2].pos; 
+								
+								if(p[0].x<p[3].x)
+								{
+									dr.fillTriangle(p[0], p[1], p[3]); 
+									dr.fillTriangle(p[1], p[2], p[3]); 
+								}
+								else
+								{
+									dr.fillTriangle(p[3], p[2], p[0]); 
+									dr.fillTriangle(p[2], p[1], p[0]); 
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			
+			{
+				const clamper = RectClamperF(view, 7*blink+2); 
+				
+				auto getCaretWorldPos(TextSelection ts)
+				{
+					CaretPos res = ts.caret.worldPos; 
+					
+					if(!clamper.overlaps(res.bounds))
+					{
+						res.pos = clamper.clamp(res.center); 
+						res.height = lod.pixelSize; 
+					}
+					
+					return res; 
+				} 
+				
+				auto carets = textSelections[].map!getCaretWorldPos.array; 
+				
+				void drawCarets(RGB c, float shadow=0)
+				{
+					dr.alpha = blink; 
+					dr.lineWidth = -1-(blink)*3 -shadow; 
+					dr.color = c; 
+					foreach(cwp; carets) cwp.draw(dr); 
+				} 
+				
+				drawCarets(clBlack, 3); 	//shadow
+				drawCarets(clCaret); 	//inner
+				
+				//primary
+				if(auto ts = primary)
+				{
+					dr.color = clPrimaryCaret; 
+					getCaretWorldPos(ts).draw(dr); 
+				}
+			}
+		}
+	} 
+	
+	
 } 

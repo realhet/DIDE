@@ -1,14 +1,11 @@
 module didenode; 
 
-import het.ui, het.parser, dideui; 
+import didebase, het.parser; 
 
-import didebase : TextSelection; 
-import diderow : CodeRow, SourceTextBuilder; 
-import didecolumn : CodeColumn, CodeColumnBuilder; 
+import diderow : SourceTextBuilder; 
+import didecolumn : CodeColumnBuilder; 
 import didedecl : Declaration; 
-import didemodule : Module, moduleOf, DefaultSubScriptFontHeight, rearrangeLOG, addGlobalChangeIndicator, findMultilineMacroBlock; 
-
-alias blink = dideui.blink; 
+import didemodule : addGlobalChangeIndicator, findMultilineMacroBlock; 
 
 version(/+$DIDE_REGION+/all) {
 	enum NodeStyle : ubyte 

@@ -1,402 +1,341 @@
 module didemodule; 
 
-import het.ui, het.parser ,buildsys, dideui, didebase; 
-import diderow : CodeRow, SourceTextBuilder; 
-import didecolumn : CodeColumn, CodeColumnBuilder; 
-import didenode : CodeNode, CodeBlock, CodeString, CodeComment; 
+import didebase, het.parser; 
+import buildsys : ModuleBuildState, DMDMessage; 
+import diderow : SourceTextBuilder; 
+import didecolumn : CodeColumnBuilder; 
+import didenode : CodeBlock, CodeString, CodeComment; 
 import didedecl : Declaration, processHighLevelPatterns_expr, processHighLevelPatterns_block; 
 import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNiceTemplateMixinStatement, processNiceStatementRow, processNiceExpressionBlock; 
-version(/+$DIDE_REGION+/all)
+
+//Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
+//Todo: Multiline #define is NOT allowed in D tokenStrings
+//Todo: Multiline #directeve with \ backslash is not supported at all.
+//Todo: A // comment after a #directive should be possible
+//Todo: Don't apply Italic fontFlag on emojis
+//Todo: Empty () [] synbols should look like they are without inner and outer borders.
+
+/+
+	Todo: FocusEditor shortcuts:
+	
+	Alt+X	Show All Commands
+	Ctrl+P	Open File By Name
+	Ctrl+O	Navigate To File
+	Ctrl+Shift+O 	Navigate To File From Root
+	Ctrl+F	Search in Open File
+	Alt+F	Search in Open File(DropDown Mode)
+	Ctrl+Shift+F	Search in Workspace
++/
+
+//Todo: Vertical tab a commentbe is.
+
+
+/+
+	Todo: Make regions out of attribute blocks: /+
+		Code: private /+$DIDE_REGION Comment+/
+		{ }
+	+/
++/
+//Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
+//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
+//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
+//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
+
+//Todo: hex string literals
+//Todo: import expressions
+
+/+Todo: bug: /+Code: Cₙ,+/ Syntax highlight don't detect coma as a symbol here. -> universal identifier char!!! Here with a space it's ok:/+Code: Cₙ ,+/+/
+
+//Todo: preprocess: with(a, b) -> with(a)with(b)
+
+//Todo: deprecate 'PROBE'
+//Todo: Animated cursor bug when Ctrl+Left -ing out form a node.  if(from_here_to_the_left).  The cursor animates from topleft of the outer block.
+//Todo: Deleting/editing when multiselect and at leas one readonly selection -> fucks up all selection.  It should just ignore the readonly one, keeping all selection.
+//Todo: Experimental color scheme: all function headers could be inverse. That would make a nice contrast.
+/+Todo: /+Code: /+//comment+/+/ if there is no comment, just a // it throws on save...+/
+
+const clModuleBorder = clGray; 
+const clModuleText = clBlack; 
+
+version(/+$DIDE_REGION ChangeIndicator+/all)
 {
-	//Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
-	//Todo: Multiline #define is NOT allowed in D tokenStrings
-	//Todo: Multiline #directeve with \ backslash is not supported at all.
-	//Todo: A // comment after a #directive should be possible
-	//Todo: Don't apply Italic fontFlag on emojis
-	//Todo: Empty () [] synbols should look like they are without inner and outer borders.
+	//ChangeIndicator /////////////////////////////////////
 	
-	/+
-		Todo: FocusEditor shortcuts:
-		
-		Alt+X	Show All Commands
-		Ctrl+P	Open File By Name
-		Ctrl+O	Navigate To File
-		Ctrl+Shift+O 	Navigate To File From Root
-		Ctrl+F	Search in Open File
-		Alt+F	Search in Open File(DropDown Mode)
-		Ctrl+Shift+F	Search in Workspace
-	+/
-	
-	//Todo: Vertical tab a commentbe is.
-	
-	
-	/+
-		Todo: Make regions out of attribute blocks: /+
-			Code: private /+$DIDE_REGION Comment+/
-			{ }
-		+/
-	+/
-	//Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
-	//Todo: backspace, delete should be sequentially read... Mouse buttons	too.	It's a big change to support crap FPS.
-	//Todo: DIDE: Optionally simplify display of long IF chains.  Big example in karc.d.
-	//Todo: Vertical tab on end of the longest row should NOT use extra space for itself!
-	
-	//Todo: hex string literals
-	//Todo: import expressions
-	
-	/+Todo: bug: /+Code: Cₙ,+/ Syntax highlight don't detect coma as a symbol here. -> universal identifier char!!! Here with a space it's ok:/+Code: Cₙ ,+/+/
-	
-	//Todo: preprocess: with(a, b) -> with(a)with(b)
-	
-	//Todo: deprecate 'PROBE'
-	//Todo: Animated cursor bug when Ctrl+Left -ing out form a node.  if(from_here_to_the_left).  The cursor animates from topleft of the outer block.
-	//Todo: Deleting/editing when multiselect and at leas one readonly selection -> fucks up all selection.  It should just ignore the readonly one, keeping all selection.
-	//Todo: Experimental color scheme: all function headers could be inverse. That would make a nice contrast.
-	/+Todo: /+Code: /+//comment+/+/ if there is no comment, just a // it throws on save...+/
-	
-	
-	alias blink = dideui.blink; 
-	
-	enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
-	joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/,
-	handleMultilineCMacros	= (常!(bool)(1)) /+Multiline C Macro support.+/; 
-	
-	//version identifiers: AnimatedCursors
-	enum AnimatedCursors = (常!(bool)(1)); 
-	enum MaxAnimatedCursors = 100; 
-	
-	enum rearrangeLOG = false;  
-	enum rearrangeFlash = false; 
-	
-	enum LogModuleLoadPerformance = false; 
-	
-	enum visualizeStructureLevels = false; 
-	
-	enum MultiPageGapWidth = DefaultFontHeight; 
-	
-	enum SubScriptFontScale 	= .6f,
-	DefaultSubScriptFontHeight 	= iround(DefaultFontHeight * SubScriptFontScale); 
-	
-	__gshared DefaultIndentSize = 4; //global setting that affects freshly loaded source codes.
-	__gshared DefaultNewLine = "\r\n"; //this is used for saving source code
-	__gshared globalVisualizeSpacesAndTabs = true; 
-	
-	const clModuleBorder = clGray; 
-	const clModuleText = clBlack; 
-	
-	enum compoundObjectChar = '￼'; 
-	
-	
-	enum TextFormat : ubyte
+	struct ChangeIndicator
 	{
-		plain, highlighted, cChar, cString, dString, comment, 
+		//Todo: this is quite similar to CaretPos
+		vec2 pos; 
+		float height; 
+		ubyte thickness; 
+		ubyte mask; 
 		
-		managed, managed_block, managed_statement, managed_goInside, managed_optionalBlock,
-		managed_first = managed, managed_last = managed_optionalBlock
+		vec2 top() const
+		{ return pos; } 
+		vec2 center() const
+		{ return pos + vec2(0, height/2); } 
+		vec2 bottom() const
+		{ return pos + vec2(0, height); } 
+		bounds2 bounds() const
+		{ return bounds2(top, bottom); } 
 	} 
 	
-	bool isManaged(TextFormat tf)
-	{ return tf.inRange(TextFormat.managed_first, TextFormat.managed_last); } 
-	
-	version(/+$DIDE_REGION ChangeIndicator+/all)
+	Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
+	
+	void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
+	{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
+	
+	void addGlobalChangeIndicator(Drawing dr, Container cntr)
 	{
-		//ChangeIndicator /////////////////////////////////////
+		with(cntr) {
+			if(const mask = changedMask)
+			{
+				enum ofs = vec2(-4, 0); 
+				if(cast(CodeRow)cntr)
+				addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
+				else if(cast(CodeColumn)cntr)
+				addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
+			}
+		}
+	} 
+	
+	void drawChangeIndicators(Drawing dr, in ChangeIndicator[] arr)
+	{
+		enum palette = [clBlack, clLime, clRed, clYellow]; 
 		
-		struct ChangeIndicator
+		//const clamper = RectClamper(im.getView, 5);
+		
+		void drawPass(int pass)(in ChangeIndicator ci)
 		{
-			//Todo: this is quite similar to CaretPos
-			vec2 pos; 
-			float height; 
-			ubyte thickness; 
-			ubyte mask; 
-			
-			vec2 top() const
-			{ return pos; } 
-			vec2 center() const
-			{ return pos + vec2(0, height/2); } 
-			vec2 bottom() const
-			{ return pos + vec2(0, height); } 
-			bounds2 bounds() const
-			{ return bounds2(top, bottom); } 
+			static if(pass==1) {
+				dr.lineWidth = -float(ci.thickness)-1.5f; 
+				//opted out: dr.color = clBlack;
+			}
+			static if(pass==2) {
+				dr.lineWidth = -float(ci.thickness); 
+				dr.color = palette[ci.mask]; 
+			}
+					
+			//if(clamper.overlaps(ci.bounds)){
+				dr.vLine(ci.pos, ci.pos.y + ci.height); 
+			//}else{
+			//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
+			//}
 		} 
 		
-		Appender!(ChangeIndicator[]) globalChangeindicatorsAppender; 
+		/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
+		/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
 		
-		void addGlobalChangeIndicator(in vec2 pos, in float height, in int thickness, in int mask)
-		{ globalChangeindicatorsAppender ~= ChangeIndicator(pos, height, cast(ubyte)thickness, cast(ubyte)mask); } 
-		
-		void addGlobalChangeIndicator(Drawing dr, Container cntr)
+	} 
+}
+
+
+version(/+$DIDE_REGION InspectorFX+/all)
+{
+	struct InspectorParticle_shrinkingRect
+	{
+		vec2 dst, size; 
+		float life=0; RGB color; 
+		void updateAndDraw(Drawing dr)
 		{
-			with(cntr) {
-				if(const mask = changedMask)
-				{
-					enum ofs = vec2(-4, 0); 
-					if(cast(CodeRow)cntr)
-					addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
-					else if(cast(CodeColumn)cntr)
-					addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
-				}
+			enum scale = 14; 
+			if(life>=.05f)
+			{
+				life *= .91f; 
+				const sqLife = ((life)^^(2)); 
+				
+				auto b = bounds2(((dst).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
+				
+				dr.lineWidth = -1-sqLife*10; 
+				dr.alpha = 1 - sqLife; 
+				dr.color = color; 
+				dr.drawRect(b); 
+				dr.alpha = 1; 
 			}
 		} 
 		
-		void drawChangeIndicators(Drawing dr, in ChangeIndicator[] arr)
+		void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
 		{
-			enum palette = [clBlack, clLime, clRed, clYellow]; 
-			
-			//const clamper = RectClamper(im.getView, 5);
-			
-			void drawPass(int pass)(in ChangeIndicator ci)
-			{
-				static if(pass==1) {
-					dr.lineWidth = -float(ci.thickness)-1.5f; 
-					//opted out: dr.color = clBlack;
-				}
-				static if(pass==2) {
-					dr.lineWidth = -float(ci.thickness); 
-					dr.color = palette[ci.mask]; 
-				}
-						
-				//if(clamper.overlaps(ci.bounds)){
-					dr.vLine(ci.pos, ci.pos.y + ci.height); 
-				//}else{
-				//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
-				//}
-			} 
-			
-			/+pass 1+/dr.color = clBlack; 	foreach_reverse(const a; arr) drawPass!1(a); 
-			/+pass 2+/	foreach_reverse(const a; arr) drawPass!2(a); 
-			
+			color = color_; 
+			life = initialLife; 
+			auto b = dstRect; 
+			dst = b.center; 
+			size = b.size; 
 		} 
-	}
-	
-	version(/+$DIDE_REGION InspectorFX+/all)
+	} 
+	
+	struct InspectorParticle_shoot
 	{
-		struct InspectorParticle_shrinkingRect
+		vec2 pos, velocity, dst; 
+		float life=0; float size=1; RGB color; 
+		void updateAndDraw(Drawing dr)
 		{
-			vec2 dst, size; 
-			float life=0; RGB color; 
-			void updateAndDraw(Drawing dr)
+			if(life>.5f)
 			{
-				enum scale = 14; 
-				if(life>=.05f)
+				life -= 0.01f; 
+				
+				pos += velocity; 
+				velocity += vec2(0, 1); //gravity
+				
+				
+				dr.pointSize = -5; 
+				dr.color = color; 
+				dr.point(mix(pos, dst, ((life.remap(1, .5f, 0, 1))^^(4)))); 
+			}
+			else if(life>0)
+			{
+				life -= 0.01f; 
+				const 	f = life.remap(.5f, 0, 0, 1),
+					a = (1-((1-f)^^(2))),
+					r = a*size*4; 
+				dr.alpha = a; dr.color = mix(color, clWhite, ((f)^^(2))); dr.pointSize = (1-f)*-12; 
+				foreach(i; 0..50)
 				{
-					life *= .91f; 
-					const sqLife = ((life)^^(2)); 
-					
-					auto b = bounds2(((dst).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
-					
-					dr.lineWidth = -1-sqLife*10; 
-					dr.alpha = 1 - sqLife; 
-					dr.color = color; 
-					dr.drawRect(b); 
-					dr.alpha = 1; 
+					auto α = dst.x+dst.y*6+i*123; 
+					auto v = dst + r * vec2(sin(α), cos(α))*sin(dst.x*7+dst.y*3+i*23); 
+					dr.point(v); 
 				}
-			} 
-			
-			void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
+				dr.alpha = 1; 
+			}
+		} 
+		
+		void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
+		{
+			color = color_; 
+			life = initialLife; 
 			{
-				color = color_; 
-				life = initialLife; 
 				auto b = dstRect; 
 				dst = b.center; 
-				size = b.size; 
-			} 
-		} struct InspectorParticle_shoot
-		{
-			vec2 pos, velocity, dst; 
-			float life=0; float size=1; RGB color; 
-			void updateAndDraw(Drawing dr)
+			}
 			{
-				if(life>.5f)
-				{
-					life -= 0.01f; 
-					
-					pos += velocity; 
-					velocity += vec2(0, 1); //gravity
-					
-					
-					dr.pointSize = -5; 
-					dr.color = color; 
-					dr.point(mix(pos, dst, ((life.remap(1, .5f, 0, 1))^^(4)))); 
-				}
-				else if(life>0)
-				{
-					life -= 0.01f; 
-					const 	f = life.remap(.5f, 0, 0, 1),
-						a = (1-((1-f)^^(2))),
-						r = a*size*4; 
-					dr.alpha = a; dr.color = mix(color, clWhite, ((f)^^(2))); dr.pointSize = (1-f)*-12; 
-					foreach(i; 0..50)
-					{
-						auto α = dst.x+dst.y*6+i*123; 
-						auto v = dst + r * vec2(sin(α), cos(α))*sin(dst.x*7+dst.y*3+i*23); 
-						dr.point(v); 
-					}
-					dr.alpha = 1; 
-				}
-			} 
-			
-			void setup(bounds2 dstRect, RGB color_, bounds2 srcRect, float initialLife = 1)
-			{
-				color = color_; 
-				life = initialLife; 
-				{
-					auto b = dstRect; 
-					dst = b.center; 
-				}
-				{
-					auto b = srcRect; 
-					auto rg = randomGaussPair; 
-					pos = b.center; 
-					size = b.height; 
-					velocity = vec2(size*(rg[0]*0.2f), -size*(1+rg[1]*0.2f))*0.3f; 
-				}
-			} 
+				auto b = srcRect; 
+				auto rg = randomGaussPair; 
+				pos = b.center; 
+				size = b.height; 
+				velocity = vec2(size*(rg[0]*0.2f), -size*(1+rg[1]*0.2f))*0.3f; 
+			}
 		} 
-		
-		alias InspectorParticle = 
-		InspectorParticle_shrinkingRect
-		/+InspectorParticle_shoot+/; 
-		
-		__gshared {
-			InspectorParticle[2<<10] inspectorParticles; 
-			size_t inspectorParticleIdx = 0; 
-		} 
-		
-		void addInspectorParticle(bounds2 dstWorldBounds, RGB color, bounds2 srcWorldBounds, float initialLife=1)
-		{
-			inspectorParticleIdx++; 
-			if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
-			inspectorParticles[inspectorParticleIdx].setup(dstWorldBounds, color, srcWorldBounds, initialLife); 
-		} 
-		
-		void addInspectorParticle(CodeNode node, RGB color, bounds2 srcWorldBounds, float initialLife=1)
-		{ addInspectorParticle(node.worldOuterBounds, color, srcWorldBounds, initialLife); } 
-	}
-}version(/+$DIDE_REGION Utility+/all)
-{
-	//Utility //////////////////////////////////////////
+	} 
 	
-	version(/+$DIDE_REGION+/all)
+	alias InspectorParticle = 
+	InspectorParticle_shrinkingRect
+	/+InspectorParticle_shoot+/; 
+	
+	__gshared {
+		InspectorParticle[2<<10] inspectorParticles; 
+		size_t inspectorParticleIdx = 0; 
+	} 
+	
+	void addInspectorParticle(bounds2 dstWorldBounds, RGB color, bounds2 srcWorldBounds, float initialLife=1)
 	{
-		auto moduleOf(inout Cell c)
-		{ return cast(inout)(c ? c.allParents!Module.frontOrNull : null); } 
-		
-		auto moduleOf(TextCursor c)
-		{ return c.codeColumn.moduleOf; } 
-		auto moduleOf(TextSelection s)
-		{ return s.caret.codeColumn.moduleOf; } 
-		
-		bool isReadOnly(in Cell c)
-		{ return c.thisAndAllParents!Module.map!"a.isReadOnly".any; } 
-		bool isReadOnly(in TextCursor c)
-		{ return c.codeColumn.isReadOnly; } 
-		bool isReadOnly(in TextSelection s)
-		{ return s.caret.codeColumn.isReadOnly; } 
-		
-		
-	}
-	version(/+$DIDE_REGION Breadcrumbs+/all)
+		inspectorParticleIdx++; 
+		if(inspectorParticleIdx>=inspectorParticles.length) inspectorParticleIdx=0; 
+		inspectorParticles[inspectorParticleIdx].setup(dstWorldBounds, color, srcWorldBounds, initialLife); 
+	} 
+	
+	void addInspectorParticle(CodeNode node, RGB color, bounds2 srcWorldBounds, float initialLife=1)
+	{ addInspectorParticle(node.worldOuterBounds, color, srcWorldBounds, initialLife); } 
+}
+version(/+$DIDE_REGION Breadcrumbs+/all)
+{
+	struct Breadcrumb
 	{
-		struct Breadcrumb
+		/+Note: This is a hierarchical path element for navigation.+/
+		
+		CodeNode node; 
+		
+		@property valid() const
+		{ return !!node; } 
+		bool opCast(B : bool)() const { return valid; } 
+		
+		string toString()
 		{
-			/+Note: This is a hierarchical path element for navigation.+/
-			
-			CodeNode node; 
-			
-			@property valid() const
-			{ return !!node; } 
-			bool opCast(B : bool)() const { return valid; } 
-			
-			string toString()
-			{
-				if(cast(CodeString) node) return "q{}"; 
-				if(auto d = cast(Declaration) node) { if(d.isRegion) return d.caption.quoted; }; 
-				return node ? node.identifier : "null"; 
-			} 
+			if(cast(CodeString) node) return "q{}"; 
+			if(auto d = cast(Declaration) node) { if(d.isRegion) return d.caption.quoted; }; 
+			return node ? node.identifier : "null"; 
 		} 
-		
-		static toBreadcrumb(Cell cell)
+	} 
+	
+	static toBreadcrumb(Cell cell)
+	{
+		CodeNode n; 
+		if(auto d = cast(Declaration) cell)
 		{
-			CodeNode n; 
-			if(auto d = cast(Declaration) cell)
-			{
-				if(
-					(d.isBlock && d.identifier!="") ||
-					(d.isRegion /+&& d.caption!=""  region can be unnamed+/)
-				) n = d; 
-			}
-			else if(auto m = cast(Module) cell)
-			n = m; 
-			else if(auto s = cast(CodeString) cell) n = s.isTokenString ? s : null; 
-			
-			return Breadcrumb(n); 
-		} 
+			if(
+				(d.isBlock && d.identifier!="") ||
+				(d.isRegion /+&& d.caption!=""  region can be unnamed+/)
+			) n = d; 
+		}
+		else if(auto m = cast(Module) cell)
+		n = m; 
+		else if(auto s = cast(CodeString) cell) n = s.isTokenString ? s : null; 
 		
-		Breadcrumb[] toBreadcrumbs(Cell cell)
+		return Breadcrumb(n); 
+	} 
+	
+	Breadcrumb[] toBreadcrumbs(Cell cell)
+	{
+		if(!cell) return []; 
+		return cell.thisAndAllParents.map!toBreadcrumb.filter!"a".array.retro.array; 
+	} 
+	
+	Breadcrumb[] toBreadcrumbs(TextCursor tc)
+	{ return tc.codeColumn.toBreadcrumbs; } 
+	
+	Breadcrumb[] toBreadcrumbs(TextSelection ts)
+	{ return ts.codeColumn.toBreadcrumbs; } 
+	
+	Breadcrumb[] toBreadcrumbs(CellLocation[] arr)
+	{
+		foreach_reverse(a; arr)
+		static foreach(T; AliasSeq!(CodeNode, CodeRow, CodeColumn))
+		if(auto b = (cast(T)(a.cell))) return b.toBreadcrumbs; return []; 
+	} 
+	
+	
+	bool isTokenString(Cell cell)
+	{ if(auto s = cast(CodeString) cell) return s.isTokenString; return false; } 
+	bool isModule(Cell cell)
+	{ return !!(cast(Module) cell); } 
+	bool isDeclaration(Cell cell)
+	{ return !!(cast(Declaration) cell); } 
+	bool isSimpleBlock(Cell cell)
+	{ if(auto d = cast(Declaration) cell) return d.isSimpleBlock; return false; } 
+	bool isRegion(Cell cell)
+	{ if(auto d = cast(Declaration) cell) return d.isRegion; return false; } 
+	bool isFunction(Cell cell)
+	{ if(auto d = cast(Declaration) cell) return d.isFunction; return false; } 
+	bool isAttributeBlock(Cell cell)
+	{ if(auto d = cast(Declaration) cell) return d.isAttributeBlock; return false; } 
+	
+	static isAnyDeclarationBlock(Cell cell)
+	{
+		if(auto d = cast(Declaration) cell)
 		{
-			if(!cell) return []; 
-			return cell.thisAndAllParents.map!toBreadcrumb.filter!"a".array.retro.array; 
-		} 
+			if(d.isAttributeBlock) return true; 
+			if(d.isBlock && d.keyword.among("template", "struct", "union", "class", "interface")) return true; 
+		}
+		else if(cast(Module) cell)
+		return true; 
 		
-		Breadcrumb[] toBreadcrumbs(TextCursor tc)
-		{ return tc.codeColumn.toBreadcrumbs; } 
+		return false; 
+	} 
+	
+	CodeNode nearestDeclarationBlock(Cell cell)
+	{
+		auto nodes = cell.thisAndAllParents.map!(c=>cast(CodeNode)c).filter!"a".array.retro; 
+		auto skippable = nodes.until!(n=>!n.isAnyDeclarationBlock && !n.isRegion).array; 
+		auto unskippable = nodes[skippable.length..$]; 
 		
-		Breadcrumb[] toBreadcrumbs(TextSelection ts)
-		{ return ts.codeColumn.toBreadcrumbs; } 
+		//a non nested function is a valid candidate
+		if(unskippable.length && unskippable.front.isFunction) return unskippable.front; 
 		
-		Breadcrumb[] toBreadcrumbs(CellLocation[] arr)
-		{
-			foreach_reverse(a; arr)
-			static foreach(T; AliasSeq!(CodeNode, CodeRow, CodeColumn))
-			if(auto b = (cast(T)(a.cell))) return b.toBreadcrumbs; return []; 
-		} 
+		return skippable.backOrNull; 
 		
-		
-		bool isTokenString(Cell cell)
-		{ if(auto s = cast(CodeString) cell) return s.isTokenString; return false; } 
-		bool isModule(Cell cell)
-		{ return !!(cast(Module) cell); } 
-		bool isDeclaration(Cell cell)
-		{ return !!(cast(Declaration) cell); } 
-		bool isSimpleBlock(Cell cell)
-		{ if(auto d = cast(Declaration) cell) return d.isSimpleBlock; return false; } 
-		bool isRegion(Cell cell)
-		{ if(auto d = cast(Declaration) cell) return d.isRegion; return false; } 
-		bool isFunction(Cell cell)
-		{ if(auto d = cast(Declaration) cell) return d.isFunction; return false; } 
-		bool isAttributeBlock(Cell cell)
-		{ if(auto d = cast(Declaration) cell) return d.isAttributeBlock; return false; } 
-		
-		static isAnyDeclarationBlock(Cell cell)
-		{
-			if(auto d = cast(Declaration) cell)
-			{
-				if(d.isAttributeBlock) return true; 
-				if(d.isBlock && d.keyword.among("template", "struct", "union", "class", "interface")) return true; 
-			}
-			else if(cast(Module) cell)
-			return true; 
-			
-			return false; 
-		} 
-		
-		CodeNode nearestDeclarationBlock(Cell cell)
-		{
-			auto nodes = cell.thisAndAllParents.map!(c=>cast(CodeNode)c).filter!"a".array.retro; 
-			auto skippable = nodes.until!(n=>!n.isAnyDeclarationBlock && !n.isRegion).array; 
-			auto unskippable = nodes[skippable.length..$]; 
-			
-			//a non nested function is a valid candidate
-			if(unskippable.length && unskippable.front.isFunction) return unskippable.front; 
-			
-			return skippable.backOrNull; 
-			
-			/+Note: Do not deal with tokenStrings, stop at the very first function block.+/
-		} 
-		
-	}	
-}version(/+$DIDE_REGION CMacros+/all)
+		/+Note: Do not deal with tokenStrings, stop at the very first function block.+/
+	} 
+	
+}
+version(/+$DIDE_REGION CMacros+/all)
 {
 	string preprocessMultilineMacros(StructureLevel structureLevel, string sourceText, File file=File.init/+just for info+/)
 	{
@@ -560,7 +499,8 @@ version(/+$DIDE_REGION+/all)
 		{ return blk; }
 		return null; 
 	} 
-}version(/+$DIDE_REGION+/all)
+}
+version(/+$DIDE_REGION+/all)
 {
 	
 	/// Label //////////////////////////////////////////
@@ -701,7 +641,8 @@ version(/+$DIDE_REGION+/all)
 		TextModificationRecord[] modifications; //Must preserve order!!!!
 	} 
 	
-}struct UndoManager
+}
+struct UndoManager
 {
 	version(/+$DIDE_REGION+/all)
 	{
@@ -984,15 +925,10 @@ version(/+$DIDE_REGION+/all)
 		Container createUI()
 		{ return rootEvent ? rootEvent.createUI(actEvent) : null; } 
 	}
-} version(/+$DIDE_REGION+/all)
+} 
+version(/+$DIDE_REGION+/all)
 {
 	/// Module ///////////////////////////////////////////////
-	interface WorkspaceInterface
-	{ @property bool isReadOnly(); } 
-	
-	enum StructureLevel : ubyte
-	{ plain, highlighted, structured, managed} 
-	
 	class Module : CodeBlock
 	{
 		//this is any file in the project
@@ -1079,7 +1015,7 @@ version(/+$DIDE_REGION+/all)
 		bool isReadOnly()
 		{
 			//return inputs["ScrollLockState"].active;
-			return isCompiling || isFileReadOnly || isStdModule || (cast(WorkspaceInterface)parent).isReadOnly; 
+			return isCompiling || isFileReadOnly || isStdModule || (cast(IWorkspace)parent).isReadOnly; 
 		} 
 		
 		void resetModuleTypeFlags()
@@ -1492,7 +1428,8 @@ version(/+$DIDE_REGION+/all)
 		
 		
 	} 
-}version(/+$DIDE_REGION SCRUM+/all)
+}
+version(/+$DIDE_REGION SCRUM+/all)
 {
 	class ScrumTable: Module
 	{

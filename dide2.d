@@ -5,21 +5,14 @@
 //@release
 
 import core.thread, std.concurrency; 
-import het.ui, het.parser, buildsys, dideui, didebase, syntaxExamples; 
 
-import diderow : CodeRow; 
-import didecolumn : CodeColumn; 
-import didenode : CodeNode, CodeComment, CodeContainer, CodeString, CodeBlock, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
-import didemodule : Module, moduleOf, WorkspaceInterface, TextFormat, StructureLevel, TextModificationRecord, TextModification, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, AnimatedCursors, MaxAnimatedCursors, rearrangeLOG, DefaultNewLine, compoundObjectChar, addInspectorParticle, cachedFolderLabel, globalChangeindicatorsAppender, drawChangeIndicators, globalVisualizeSpacesAndTabs, inspectorParticles, ScrumTable, ScrumSticker; 
-import didedecl : Declaration, dDeclarationRecords, processHighLevelPatterns_block; 
+import didebase, buildsys, syntaxExamples; 
+import didenode : CodeComment, CodeContainer, CodeString, CodeBlock; 
+import didemodule : addInspectorParticle; 
+import didedecl : Declaration; 
 import dideexpr : NiceExpression, ToolPalette; 
+import dideworkspace : Workspace; 
 
-import dideworkspace; 
-
-import dideinsight : DDB; 
-import dideai : AiModel, AiChat; 
-
-alias blink = dideui.blink; 
 
 version(/+$DIDE_REGION+/all)
 {
@@ -103,16 +96,13 @@ version(/+$DIDE_REGION+/all)
 		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
 	+/
 	
-	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(1)); //Todo: make this a debug option in a menu
+	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	
 	auto frmMain()
 	{ return (cast(FrmMain)mainWindow); } 
 	
 	auto global_getBuildResult()
 	{ return frmMain.buildResult; } 
-	
-	auto global_getMarkerLayerHideMask()
-	{ return frmMain.workspace.markerLayerHideMask; } 
 	
 	size_t allocatedSize(in Cell c)
 	{
@@ -171,7 +161,7 @@ version(/+$DIDE_REGION+/all)
 	{ return a.cellInfo.text; } 
 	
 	
-	class FrmMain : GLWindow, Workspace.IBuildServices
+	class FrmMain : GLWindow, IBuildServices
 	{
 		mixin autoCreate; 
 		
@@ -225,9 +215,8 @@ version(/+$DIDE_REGION+/all)
 			{ auto a = this; a.fromJson(ini.read("settings", "")); }//Todo: this.fromJson
 			
 			initBuildSystem; 
-			workspace = new Workspace; 
-			workspace.mainView = view; 
-			workspace.buildServices = this; 
+			workspace = new Workspace(view, (cast(IBuildServices)(this))); 
+			
 			workspaceFile = appFile.otherExt(Workspace.defaultExt); 
 			overlay = new MainOverlayContainer; 
 			
@@ -895,7 +884,7 @@ version(/+$DIDE_REGION+/all)
 											case MenuPage.Palette: 	with(toolPalette) {
 												UI(toolPalettePage); 
 												if(templateSource!="" && KeyCombo("LMB").pressed && isForeground)
-												workspace.insertNode(templateSource, subColumnIdx); 
+												workspace.editor.insertNode(templateSource, subColumnIdx); 
 											}	break; 
 													
 											case MenuPage.Settings: 	Grp!Column("BuildSystem: Launch Requirements", { buildsys_spawnProcessMultiSettings.stdUI; }); 	break; 
@@ -1003,12 +992,11 @@ version(/+$DIDE_REGION+/all)
 			
 			if(showUndoStack)
 			with(im)
-			with(workspace)
 			Panel(
 				PanelPosition.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
-					if(auto m = modules.primaryModule)
+					if(auto m = workspace.modules.primaryModule)
 					{
 						Container(
 							{
@@ -1020,16 +1008,17 @@ version(/+$DIDE_REGION+/all)
 				}
 			); 
 			
+			
 			if(showResyntaxQueue)
 			with(im)
-			with(workspace)
 			Panel(
 				PanelPosition.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
-					Column({ UI_ResyntaxQueue; }); 
+					Column({ workspace.editor.UI_ResyntaxQueue; }); 
 				}
 			); 
+			
 			
 			void VLine()
 			{ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); } 
@@ -1229,7 +1218,7 @@ version(/+$DIDE_REGION+/all)
 									//style.fontHeight = 18+6;
 									
 									if(lod.moduleLevel) workspace.modules.UI_selectedModulesHint; 
-									if(!lod.moduleLevel) workspace.UI_mouseLocationHint(view); 
+									if(!lod.moduleLevel) workspace.help.UI_mouseLocationHint(workspace, view); 
 									
 									
 									enum showMousePosCellInfoHint = false; 
@@ -1239,13 +1228,10 @@ version(/+$DIDE_REGION+/all)
 							
 							VLine; //---------------------------
 							
-							Row(
+							BtnRow(
 								{
-									margin = "0 3"; flags.yAlign = YAlign.center; 
-									foreach(t; [EnumMembers!(DMDMessage.Type)]) {
-										if(!t.among(DMDMessage.Type.unknown))
-										workspace.buildMessages.UI_BuildMessageType(t, view); 
-									}
+									margin = "0 3"; 
+									workspace.buildMessages.UI_LayerBtns(view); 
 								}
 							); 
 							VLine; //---------------------------
@@ -1270,7 +1256,7 @@ version(/+$DIDE_REGION+/all)
 							if(1)
 							{
 								VLine; 
-								workspace.UI_structureLevel; 
+								workspace.textSelections.UI_structureLevel; 
 							}
 							
 							//this applies YAlign.stretch
@@ -1294,9 +1280,9 @@ version(/+$DIDE_REGION+/all)
 					{
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
-							workspace.search.UI(workspace, view),
-							workspace.insight.UI(view, &workspace.onInsightClick),
-							workspace.outline.UI(workspace, view)
+							workspace.search.UI(workspace.modules, workspace.textSelections, workspace.buildMessages, (cast(INavigator)(workspace)), view),
+							workspace.insight.UI(workspace.modules, workspace.textSelections, workspace.editor, (cast(INavigator)(workspace)), view),
+							workspace.outline.UI(workspace.modules, workspace.textSelections, view)
 						]; /+Todo: refactor this terrible menu+/
 						anyVisible = vis.any; 
 						
@@ -1383,7 +1369,7 @@ version(/+$DIDE_REGION+/all)
 					border = Border.init; 
 					padding = "0"; 
 					flags.noBackground = true; 
-					workspace.UI_mouseOverHint; 
+					workspace.help.UI_mouseOverHint(workspace.buildMessages, workspace.outerWidth); 
 				}
 			); 
 			

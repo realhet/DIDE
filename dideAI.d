@@ -1,4 +1,4 @@
-module dideai; 
+module dideai;  
 
 import het; 
 
@@ -336,8 +336,8 @@ class AiModel
 	} 
 } 
 
-import het.ui, didebase; 
-import didenode: CodeNode, CodeComment; 
+import didebase; 
+import didenode: CodeComment; 
 import didetextselectionmanager : TextSelectionManager; 
 static struct AiManager
 {
@@ -557,7 +557,7 @@ static struct AiManager
 			messages = 	col.byNode!CodeComment.filter!((a)=>(isAi(a)))
 				.map!((a)=>(
 				[
-					/+role+/	a.customPrefix.wordAt(0).decapitalize, 
+					/+role+/	het.wordAt(a.customPrefix, 0).decapitalize, 
 					/+content+/	a.content.sourceText/+Todo: process code snippets!+/
 				]
 			)).array; 

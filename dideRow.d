@@ -1,10 +1,9 @@
 module diderow; 
 
-import het.ui, het.parser, dideui, didebase; 
-import didecolumn : CodeColumn; 
-import didenode : CodeNode, CodeContainer, CodeComment; 
+import didebase, het.parser; 
+import didenode : CodeContainer, CodeComment; 
 import didedecl : Declaration; 
-import didemodule : autoSpaceAfterDeclarations, rearrangeFlash, DefaultNewLine, compoundObjectChar, SubScriptFontScale, rearrangeLOG, DefaultSubScriptFontHeight, globalVisualizeSpacesAndTabs, addGlobalChangeIndicator, DefaultIndentSize; 
+import didemodule : addGlobalChangeIndicator; 
 
 
 version(/+$DIDE_REGION+/all) {
@@ -261,8 +260,6 @@ version(/+$DIDE_REGION+/all) {
 			{ put(prefix, block, postfix); }
 		} 
 	} 
-	
-	
 	class CodeRow: Row
 	{
 		CodeColumn parent; 

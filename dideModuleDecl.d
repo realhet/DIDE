@@ -1,6 +1,5 @@
-module didemoduledecl;  /+This decodes xJson files produced by LDC2+/
+module didemoduledecl;  /+This decodes xJson files produced by LDC2+/ 
 
-//import het.ui, dideui, std.parallelism; 
 import het; 
 
 public {

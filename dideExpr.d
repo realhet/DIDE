@@ -1,16 +1,12 @@
 module dideexpr; 
 
-import het.ui, het.parser, dideui, didebase; 
-import diderow : CodeRow, SourceTextBuilder; 
-import didecolumn : CodeColumn; 
-import didenode : NodeStyle, CodeNode, CodeContainer, CodeString, CodeBlock, CodeComment, CodeNodeBuilder; 
+import didebase, het.parser; 
+import diderow : SourceTextBuilder; 
+import didenode : NodeStyle, CodeContainer, CodeString, CodeBlock, CodeComment, CodeNodeBuilder; 
 import didedecl : Declaration, extractThisLevelDString, isBreakRow; 
-import didemodule : Module, TextFormat, StructureLevel, DefaultSubScriptFontHeight, moduleOf; 
 
 import dideexprbase; 
 
-
-alias blink = dideui.blink; 
 
 static if(
 	0//Todo: tenary lambda.  (a lambdra which is evaluated)
@@ -1858,8 +1854,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x48CEFC9D3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x48CEFD9C3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0xF7BC3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0xF83F3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -1871,8 +1867,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x48CEFFDD3617740F)))(互!((bool),(1),(0x48CEFF9C3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x48CEFFBF3617740F)))
-					(互!((float/+w=6+/),(1.000),(0x48CEFFFE3617740F)))
+					(互!((bool),(0),(0xFA8C3617740F)))(互!((bool),(1),(0xFAAF3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0xFAD23617740F)))
+					(互!((float/+w=6+/),(1.000),(0xFB1D3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1882,9 +1878,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48CEFDFC3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48CEFEBE3617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48CEFEBF3617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48CEFFBD3617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0xFD133617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0xFD513617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0xFDC23617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0xFE403617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -1977,13 +1973,13 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x48CF2E9C3617740F).檢(expr)) ((0x48CF2EBD3617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x48CF2E9C3617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x10D273617740F).檢(expr)) ((0x10D453617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x10D953617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x48CF2FBF3617740F))) (互!((bool),(1),(0x48CF2FDF3617740F))) (互!((float/+w=6+/),(1.000),(0x48CF2FFF3617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x48CF2FDD3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x48CF349C3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x48CF34FF3617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x48CF34FD3617740F}))
+								(互!((bool),(0),(0x10E393617740F))) (互!((bool),(1),(0x10E5E3617740F))) (互!((float/+w=6+/),(1.000),(0x10E833617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10EC23617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10F023617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10F6E3617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x10FF13617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))

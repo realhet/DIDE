@@ -1,8 +1,6 @@
 module dideexprbase; 
 
-import het.ui, het.parser, /+dideui, +/didebase; 
-
-import didecolumn : CodeColumn; 
+import didebase, het.parser; 
 import didenode : NodeStyle, CodeString, CodeBlock, CodeContainer; 
 import didedecl : Declaration; 
 

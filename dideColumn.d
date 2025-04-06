@@ -1,10 +1,10 @@
 module didecolumn; 
 
-import het.ui, het.parser, dideui, didebase; 
-import diderow : CodeRow, SourceTextBuilder; 
-import didenode : CodeNode, CodeContainer, CodeBlock, CodeComment, CodeString; 
+import didebase, het.parser; 
+import diderow : SourceTextBuilder; 
+import didenode : CodeContainer, CodeBlock, CodeComment, CodeString; 
 import didedecl : Declaration, processHighLevelPatterns, isWhitespaceOrComment, isBreakRow; 
-import didemodule : TextFormat, StructureLevel, compoundObjectChar, rearrangeLOG, addGlobalChangeIndicator, handleMultilineCMacros, preprocessMultilineMacros, moduleOf, DefaultIndentSize, MultiPageGapWidth, visualizeStructureLevels; 
+import didemodule : addGlobalChangeIndicator, preprocessMultilineMacros; 
 import dideexpr : NiceExpression, mixinTableSplitFun, isMixinTableCell, MixinTableContainerClass; 
 
 version(/+$DIDE_REGION+/all) {

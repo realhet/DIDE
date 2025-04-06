@@ -1,6 +1,6 @@
 module buildsys; 
 
-import het; 
+import het;  
 import std.file: dirEntries, SpanMode; 
 import std.process: executeShell, Config, spawnProcess; 
 import het.parser: DPaths, CodeLocation; 
@@ -1223,7 +1223,7 @@ struct BuildSystem
 				logln(m.moduleFullName.leftJustify(20));
 			}
 		*/
-	} 
+	}  
 	
 } version(/+$DIDE_REGION BuildSystemWorker+/all)
 {

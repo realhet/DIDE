@@ -1,6 +1,10 @@
 module dideinsight; 
 
-import het.ui, dideui, std.parallelism; 
+import didebase, std.parallelism; 
+
+import didetextselectionmanager : TextSelectionManager; 
+import didemodulemanager : ModuleManager; 
+import dideeditor : Editor; 
 
 import didemoduledecl; 
 public import didemoduledecl : ModuleDeclarations; 
@@ -52,8 +56,8 @@ class DDB
 				}
 			})); 
 		}
-		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x3DCC7FE3CB5BA4A0).檢((update間(_間)))); 
-		acquireMembers(isStd, importedModules); 	((0x3DCC7EFFCB5BA4A0).檢((update間(_間)))); 
+		else	{ mixin(求each(q{f},q{files},q{importedModules ~= doit(f); })); }	((0x643CB5BA4A0).檢((update間(_間)))); 
+		acquireMembers(isStd, importedModules); 	((0x69ACB5BA4A0).檢((update間(_間)))); 
 	} 
 	
 	void processIncomingProjectJson(string xJson)
@@ -68,8 +72,8 @@ class DDB
 	{
 		LOG(i"Importing std module declarations from $(stdPath.quoted('`'))..."); 
 		auto _間=init間; 
-		auto stdFiles = listDLangFiles(stdPath); 	((0x3DCC7AE3CB5BA4A0).檢((update間(_間)))); 
-		regenerate_internal!true(true, stdFiles, []); 	((0x3DCC7AE7CB5BA4A0).檢((update間(_間)))); 
+		auto stdFiles = listDLangFiles(stdPath); 	((0x898CB5BA4A0).檢((update間(_間)))); 
+		regenerate_internal!true(true, stdFiles, []); 	((0x8F5CB5BA4A0).檢((update間(_間)))); 
 	} 
 	
 	void regenerateLib(in File[] files, in string[] args=[])
@@ -94,9 +98,9 @@ class DDB
 	{
 		try {
 			auto _間=init間; 
-			auto json = root.toJson(true, false, true); 	((0x3DCC7AE7CB5BA4A0).檢((update間(_間)))); ((0x3DCC7BF7CB5BA4A0).檢(json.length)); 
-			auto compr = json.compress; 	((0x3DCC7BE3CB5BA4A0).檢((update間(_間)))); ((0x3DCC7BEFCB5BA4A0).檢((((double(compr.length)))/(json.length)))); 
-			stdCacheFile.write(compr); 	((0x3DCC7BF7CB5BA4A0).檢((update間(_間)))); 
+			auto json = root.toJson(true, false, true); 	((0xB52CB5BA4A0).檢((update間(_間)))); ((0xB7CCB5BA4A0).檢(json.length)); 
+			auto compr = json.compress; 	((0xBC2CB5BA4A0).檢((update間(_間)))); ((0xBECCB5BA4A0).檢((((double(compr.length)))/(json.length)))); 
+			stdCacheFile.write(compr); 	((0xC4ECB5BA4A0).檢((update間(_間)))); 
 		}
 		catch(Exception e) ERR(e.simpleMsg); 
 	} 
@@ -106,11 +110,11 @@ class DDB
 		ModuleDeclarations newRoot; 
 		try {
 			auto _間=init間; 
-			auto compr = file.read; 	((0x3DCC7EF7CB5BA4A0).檢((update間(_間)))); 
+			auto compr = file.read; 	((0xD49CB5BA4A0).檢((update間(_間)))); 
 			if(!compr.empty)
 			{
-				auto json = (cast(string)(compr.uncompress)); 	((0x3DCC7FF7CB5BA4A0).檢((update間(_間)))); 
-				newRoot.fromJson(json, file.fullName); 	((0x3DCC7FF3CB5BA4A0).檢((update間(_間)))); 
+				auto json = (cast(string)(compr.uncompress)); 	((0xDC3CB5BA4A0).檢((update間(_間)))); 
+				newRoot.fromJson(json, file.fullName); 	((0xE1BCB5BA4A0).檢((update間(_間)))); 
 			}
 		}
 		catch(Exception e) { ERR(e.simpleMsg); }
@@ -564,7 +568,7 @@ class DDB
 		return s; 
 	} 
 	
-	bool UI(View2D view, void delegate(DDB.PathNode* node) onClick)
+	bool UI(ModuleManager modules, TextSelectionManager textSelections, Editor editor, INavigator navig, View2D view)
 	{
 		initialize; 
 		with(im)
@@ -575,18 +579,96 @@ class DDB
 				{ visible = justActivated = true; }
 				
 				if(visible)
-				{ UI_insightPanel(view, justActivated, onClick); }
+				{ UI_insightPanel(modules, textSelections, editor, navig, view, justActivated); }
 				
 				return visible; 
 			}
 		}
 	} 
 	
-	void UI_insightPanel(View2D view, bool justActivated, void delegate(DDB.PathNode* node) onClick)
+	void UI_insightPanel(ModuleManager modules, TextSelectionManager textSelections, Editor editor, INavigator navig, View2D view, bool justActivated)
 	{
 		enforce(ddb); 
 		with(im)
 		{
+			void onClick(DDB.PathNode* node)
+			{
+				auto actTreeView() => searchText=="" ? treeView : resultTreeView; 
+				auto getParent() => actTreeView.getParentItem(node); 
+				
+				void type(bool advanced=false)
+				{
+					if(!textSelections.empty)
+					{
+						auto s = node.name, pasted = false; 
+						void pasteText(string s) { editor.pasteText(s); pasted = true; } 
+						void pasteNode(string s) { editor.insertNode(s); pasted = true; } 
+						
+						if(advanced)
+						{
+							if(auto member = node.asMember)
+							if(member.category==ModuleDeclarations.Member.Category.enum_member)
+							{
+								if(auto p = getParent)
+								{
+									auto t = p.name; 
+									if(t!="")
+									{ pasteNode(`mixin(舉!((`~t~`),q{`~member.name~`}))`); }
+								}
+							}
+						}
+						
+						if(!pasted) pasteText(s); 
+					}
+					else im.flashWarning("Can't insert text. Place a cursor first!"); 
+				} 
+				
+				void navigate()
+				{
+					void doit(File f, int line=0, int col=0)
+					{
+						if(f)
+						{
+							f = f.actualFile; 
+							if(f.exists)
+							{
+								auto m = modules.findModule(f); 
+								if(!m) { modules.loadModule(f); m = modules.findModule(f); }
+								if(m) {
+									if(!line) navig.jumpTo(m); 
+									else { navig.jumpTo(CodeLocation(f.fullName, line.max(1), col.max(1))); }
+								}
+								else { flashWarning("Can't load module: "~f.quoted('`')); }
+							}
+							else { flashWarning("File not found: "~f.quoted('`')); }
+						}
+					} 
+					
+					int line, char_; 
+					foreach_reverse(n; actTreeView.getAllParentItems(node) ~ node)
+					if(n)
+					{
+						if(auto member = n.asMember)
+						{
+							if(!line && member.line)
+							{
+								line = member.line; 
+								if(!char_ && member.char_) char_ = member.char_; 
+								/+Todo: endline endchar for callable!+/
+							}
+						}
+						else if(auto mod = n.asModule)
+						{
+							if(mod.file)
+							{ doit(mod.file, line, char_); }
+							break; /+Only the last module+/
+						}
+					}
+				} 
+				
+				if(inputs.Ctrl.down)	navigate; 
+				else	type(inputs.Alt.down); 
+			} 
 			Column(
 				{
 					//Keyboard shortcuts
@@ -688,7 +770,7 @@ class DDB
 						with(im)
 						{
 							if(Btn({ node.UI; }, ((node.identityStr).genericArg!q{id})))
-							{ if(onClick) onClick(node); }
+							{ onClick(node); }
 						}
 					} 
 					

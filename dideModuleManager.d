@@ -1,10 +1,8 @@
 module didemodulemanager; 
 
-import het.ui, dideui, didebase; 
-import het.parser : CodeLocation; 
-import didemodule : Module, StructureLevel, ScrumTable, ScrumSticker, cachedFolderLabel; 
+import didebase; 
+import didemodule : ScrumTable, ScrumSticker, cachedFolderLabel; 
 import buildsys : BuildResult, ModuleBuildState, allProjectFilesFromModule, moduleBuildStateColors, buildStateIsCompleted; 
-alias blink = dideui.blink; 
 
 struct ContainerSelectionManager(T : Container)
 {
