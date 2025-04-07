@@ -1,7 +1,6 @@
 module didemodule; 
 
 import didebase, het.parser; 
-import buildsys : ModuleBuildState, DMDMessage; 
 import diderow : SourceTextBuilder; 
 import didecolumn : CodeColumnBuilder; 
 import didenode : CodeBlock, CodeString, CodeComment; 

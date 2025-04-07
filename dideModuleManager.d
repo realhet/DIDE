@@ -2,7 +2,8 @@ module didemodulemanager;
 
 import didebase; 
 import didemodule : ScrumTable, ScrumSticker, cachedFolderLabel; 
-import buildsys : BuildResult, ModuleBuildState, allProjectFilesFromModule, moduleBuildStateColors, buildStateIsCompleted; 
+import buildmessages : ModuleBuildState, moduleBuildStateColors, buildStateIsCompleted; 
+import buildsys : BuildResult, allProjectFilesFromModule; 
 
 struct ContainerSelectionManager(T : Container)
 {
@@ -583,8 +584,8 @@ struct ContainerSelectionManager(T : Container)
 			
 			if(fileToClose) closeModule(fileToClose); 
 		}
-	} 
-	
+	} 
+	
 	void UI_PopupScrumMenu(vec2 mainViewMousePos)
 	{
 		version(/+$DIDE_REGION Popup menu+/all)
@@ -659,7 +660,8 @@ struct ContainerSelectionManager(T : Container)
 				popupModule = null; 
 			}
 		}
-	} 
+	} 
+	
 	void drawSelectionRect(Drawing dr, RGB clRect)
 	{
 		if(auto bnd = moduleSelectionManager.selectionBounds)

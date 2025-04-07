@@ -1,7 +1,6 @@
 module didebuildmessagemanager; 
 
 import didebase; 
-import buildsys : DMDMessage; 
 import didenode : CodeComment; 
 import didemodulemanager : ModuleManager; 
 

@@ -1,31 +1,16 @@
-module buildsys; 
+module buildsys;      
 
-import het;  
-import std.file: dirEntries, SpanMode; 
-import std.process: executeShell, Config, spawnProcess; 
-import het.parser: DPaths, CodeLocation; 
-import buildobjs: 	SourceCache, SourceStats, DMDMessageDecoder,
+import het;   
+import std.file : dirEntries, SpanMode; 
+import std.process : executeShell, Config, spawnProcess; 
+import het.parser : DPaths, CodeLocation; 
+import buildobjs : 	SourceCache, SourceStats,
 	SpawnProcessMultiSettings, spawnProcessMulti,
 	MSVCEnv, LDCVER, calcHash, mainHelpStr, macroHelpStr, 
 	ModuleInfo, resolveModuleImportDependencies, calculateObjHashes; 
-public import buildobjs: DMDMessage, decodeDMDMessages, BuildSettings, globalPidList; 
-
-mixin((
-	(表([
-		[q{/+Note: ModuleBuildState+/},q{/+Note: Colors+/}],
-		[q{notInProject},q{clBlack}],
-		[q{queued},q{clWhite}],
-		[q{compiling},q{clWhite}],
-		[q{aborted},q{clGray}],
-		[q{hasErrors},q{clRed}],
-		[q{hasWarnings},q{(RGB(128, 255, 0))}],
-		[q{hasDeprecations},q{(RGB(64, 255, 0))}],
-		[q{flawless},q{clLime}],
-	]))
-) .GEN!q{GEN_enumTable}); 
-
-bool buildStateIsCompleted(ModuleBuildState a)
-{ with(ModuleBuildState) return !!a.among(hasWarnings, hasDeprecations, flawless); } 
+import buildobjs: BuildSettings, globalPidList; 
+import buildmessages : 	ModuleBuildState, DMDMessage, DMDMessageDecoder, 
+	decodeDMDMessages; 
 
 //convinience function with default settings only, no search paths
 File[] allProjectFilesFromModule(File file)
@@ -1375,8 +1360,6 @@ struct BuildSystem
 		
 	} 
 }
-
-
 class BuildResult
 {
 	File mainFile; 
@@ -1496,9 +1479,3 @@ class BuildResult
 	} 
 	
 } 
-version(/+$DIDE_REGION+/all) {
-	
-	
-	
-	
-}

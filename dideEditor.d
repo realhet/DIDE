@@ -5,7 +5,7 @@ import didemodule : TextModification, TextModificationRecord, nearestDeclaration
 import didemodulemanager : ModuleManager; 
 import didetextselectionmanager : TextSelectionManager; 
 import didebuildmessagemanager : BuildMessageManager; 
-import buildobjs : DMDMessage, decodeDMDMessages; 
+import buildmessages : DMDMessage, decodeDMDMessages; 
 
 class Editor
 {
@@ -19,13 +19,18 @@ class Editor
 		q{syntaxHighlightWorker = new SyntaxHighlightWorker; }
 	); 
 	
-	struct ResyntaxEntry {
-		CodeColumn what; 
-		DateTime when; 
+	protected 
+	{
+		struct ResyntaxEntry {
+			CodeColumn what; 
+			DateTime when; 
+		} 
+		ResyntaxEntry[] resyntaxQueue; 
+		
+		SyntaxHighlightWorker syntaxHighlightWorker; 
 	} 
-	ResyntaxEntry[] resyntaxQueue; 
 	
-	SyntaxHighlightWorker syntaxHighlightWorker; 
+	@STORED string[10] storedMemSlots; 
 	
 	
 	@property bool isReadOnly()
@@ -35,7 +40,7 @@ class Editor
 		//Bug: deleting (it is not permitted, does nothing) from a readonly module loses its selections.
 	} 
 	
-	
+	
 	version(/+$DIDE_REGION Permissions+/all)
 	{
 		protected
@@ -202,6 +207,36 @@ class Editor
 				mixin(q{m.undoManager.$(&execute_$, &execute_reload); }.replace("$", what)); 
 				textSelections.invalidateTextSelections; //because executeUndo don't call measure() so desiredX's are invalid.
 			}
+		} 
+	}
+	
+	version(/+$DIDE_REGION Clipboard memory slots+/all)
+	{
+		void enforceMemSlotIndex(int n)
+		{
+			enforce(
+				n.inRange(storedMemSlots),
+				n.format!"MemSlot index out of range: %s"
+			); 
+		} 
+		
+		void copyMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			auto s = textSelections[].sourceText; 
+			storedMemSlots[n] = s; 
+			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
+		} 
+		
+		void pasteMemSlot(int n)
+		{
+			enforceMemSlotIndex(n); 
+			if(storedMemSlots[n].empty)
+			{
+				im.flashWarning(n.format!"MemSlot %s is empty."); 
+				return; 
+			}
+			textSelections.items = paste_impl(textSelections[], storedMemSlots[n]); 
 		} 
 	}
 	version(/+$DIDE_REGION Resyntax+/all)

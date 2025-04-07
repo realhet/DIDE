@@ -34,6 +34,8 @@ class TextSelectionManager
 		bool mustValidateTextSelections; 
 		size_t textSelectionsHash; 
 		string[] extendSelectionStack; 
+		
+		@STORED int _dummy = 0; 
 	} 
 	
 	@property
@@ -120,7 +122,7 @@ class TextSelectionManager
 	
 	bool shrink()
 	{
-		if(((0xC0E5AE8A3C6).檢 (extendSelectionStack.length>=2)))
+		if(((0xC2E5AE8A3C6).檢 (extendSelectionStack.length>=2)))
 		{
 			const 	act = extendSelectionStack[$-1],
 				prev = extendSelectionStack[$-2]; 
@@ -157,6 +159,29 @@ class TextSelectionManager
 	
 	void insertCursorAtEndOfEachLineSelected()
 	{ items = .insertCursorAtEndOfEachLineSelected(items); } 
+	
+	void insertCursorVertically(int dir)
+	{
+		auto 	prev = items, 
+			next = prev.dup; 
+		
+		foreach(ref ts; next)
+		foreach(
+			ref tc; ts.cursors
+			/+
+				Note: It is important to move the cursors separately here.
+				Don't let TextSelection.move do cursor collapsing.
+			+/
+		)
+		tc.move(ivec2(0, dir)); 
+		
+		items = merge(prev ~ next); 
+	} 
+	
+	void insertCursorAbove()
+	{ insertCursorVertically(-1); }  void insertCursorBelow()
+	{ insertCursorVertically(1); } 
+	
 	
 	Module[] modulesWithTextSelection()
 	=> textSelections[].map!moduleOf.nonNulls.uniq.array; 

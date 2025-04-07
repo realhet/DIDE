@@ -1,7 +1,7 @@
-module dideworkspace; 
+module dideworkspace;    
 
 import didebase; 
-import buildsys : DMDMessage, decodeDMDMessages, BuildResult; 
+import buildsys : BuildResult; 
 import didenode : CodeComment, StructureMap, visitNestedCodeColumns, visitNestedCodeNodes; 
 import didedecl : Declaration, 	/+these are for statistics only ->+/dDeclarationRecords, processHighLevelPatterns_block; 
 import didemodule : addInspectorParticle, Breadcrumb, toBreadcrumbs, nearestDeclarationBlock, drawChangeIndicators, globalChangeindicatorsAppender, inspectorParticles; 
@@ -9,20 +9,18 @@ import didemodulemanager : ModuleManager;
 import didebuildmessagemanager : BuildMessageManager; 
 import didetextselectionmanager : TextSelectionManager; 
 import dideeditor : Editor; 
+import didenavigator : Navigator; 
 import dideinsight : ModuleDeclarations, DDB, Insight; 
 import didehelp : HelpManager; 
 import dideai : AiManager; 
 import didesearch : SearchBox; 
 import dideoutline : Outline; 
 
-class Workspace : Container, IWorkspace, INavigator
+class Workspace : Container, IWorkspace
 {
 	version(/+$DIDE_REGION Workspace things+/all)
 	{
 		//A workspace is a collection of opened modules
-		
-		enum CodeLocationPrefix 	= "CodeLocation:",
-		MatchPrefix	= "Match:"; 
 		
 		enum defaultExt = ".dide"; 
 		
@@ -33,9 +31,10 @@ class Workspace : Container, IWorkspace, INavigator
 		//there are mainWindow dependencies
 		
 		@STORED ModuleManager modules; 
-		TextSelectionManager textSelections; 
+		@STORED TextSelectionManager textSelections; 
 		@STORED BuildMessageManager buildMessages; 
-		Editor editor; 
+		@STORED Editor editor; 
+		@STORED Navigator navig; 
 		HelpManager help; 
 		AiManager aiManager; 
 		@STORED SearchBox search; 
@@ -46,9 +45,6 @@ class Workspace : Container, IWorkspace, INavigator
 		//Restrict convertBuildResultToSearchResults calls.
 		size_t lastBuildStateHash; 
 		bool buildStateChanged; 
-		
-		Nullable!bounds2 scrollInBoundsRequest; 
-		
 		
 		StructureMap structureMap; 
 		
@@ -67,21 +63,27 @@ class Workspace : Container, IWorkspace, INavigator
 		override @property bool isReadOnly()
 		=> editor.isReadOnly; 
 		
+		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
+		=> navig.locate(mouse, ofs); 
+		
 		this(View2D mainView, IBuildServices buildServices)
 		{
 			this.mainView 	= mainView,
 			this.buildServices 	= buildServices; 
 			
 			modules = new ModuleManager; 
-			modules.workspaceContainer = this; 
+			modules.workspaceContainer = this/+workspaceContainer+/; 
 			modules.afterModulesChanged = &updateSubCells; 
 			modules.onSmartScrollTo = &smartScrollTo; 
 			modules.onGetPrimaryModule = &primaryModule; 
 			modules.onSetTextSelectionReference = &setTextSelectionReference; 
 			
+			textSelections = new TextSelectionManager(this/+workspaceContainer+/, modules); 
+			
 			buildMessages = new BuildMessageManager(modules); 
 			
-			textSelections = new TextSelectionManager(this, modules); 
+			navig = new Navigator(this/+workspaceContainer+/, modules, buildMessages, mainView); 
+			
 			
 			editor = new Editor(modules, textSelections, buildServices, buildMessages); 
 			
@@ -172,88 +174,9 @@ class Workspace : Container, IWorkspace, INavigator
 			
 			
 		}
-	}version(/+$DIDE_REGION+/all)
-	{
-		override CellLocation[] locate(in vec2 mouse, vec2 ofs=vec2(0))
-		{
-			ofs += innerPos; 
-			foreach_reverse(m; modules.modules) {
-				auto st = m.locate(mouse, ofs); 
-				if(st.length) return st; 
-			}
-			return []; 
-		} 
-		
-		CellLocation[] locate_snapToRow(vec2 mouse, float epsilon = .5f)
-		{
-			auto st = locate(mouse); 
-			
-			auto getLastCol() { return cast(CodeColumn) st.map!"a.cell".backOrNull; } 
-			
-			//try snap it from the edge
-			if(auto col = getLastCol)
-			{
-				const ofs = st.back.calcSnapOffsetFromPadding(epsilon); 
-				if(ofs)
-				{ mouse += ofs;  st = locate(mouse); }
-			}
-			
-			//try to avoid the gaps if it is a multiPage Column
-			if(auto col = getLastCol)
-			{
-				auto pages = col.getPageRowRanges; 
-				if(pages.length>1)
-				{
-					const p = st.back.localPos; 
-					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted; 
-					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1); 
-					if(idx<pages.length-1)
-					{
-						const 	xLeft	= pages[idx].front.outerRight - epsilon,
-							xRight 	= pages[idx+1].front.outerLeft + epsilon,
-							xMid	= avg(xLeft, xRight); 
-						
-						if(p.x.inRange(xLeft, xRight))
-						{
-							mouse += (p.x<xMid ? xLeft : xRight) - p.x; 
-							st = locate(mouse); 
-						}
-					}
-				}
-			}
-			
-			//try to snap up from the bottom of a page
-			if(auto col = getLastCol)
-			{
-				auto pages = col.getPageRowRanges; 
-				if(pages.length>1)
-				{
-					const p = st.back.localPos; 
-					auto xStarts = pages.map!(p => p.front.outerLeft).assumeSorted; 
-					size_t idx = (xStarts.length - xStarts.upperBound(p.x).length - 1); 
-					//Todo: too much copy paste. Must refactor these ifs.
-					
-					if(idx<pages.length/+it needs only one page, not two+/)
-					{
-						const limit = pages[idx].back.outerBottom - epsilon; 
-						
-						if(p.y > limit)
-						{
-							mouse.y += limit - p.y; 
-							st = locate(mouse); 
-						}
-					}
-				}
-			}
-			
-			
-			return st; 
-		} 
-		
 	}version(/+$DIDE_REGION Cursor/Selection stuff+/all)
 	{
-		TextCursor createCursorAt(vec2 p)
-		{ return cellLocationToTextCursor(locate_snapToRow(p), workspaceContainer); } 
+		
 		
 		//textSelection, cursor movements /////////////////////////////
 		
@@ -266,55 +189,12 @@ class Workspace : Container, IWorkspace, INavigator
 		void cursorOp(ivec2 dir, bool select, bool stepInOut=false)
 		{ auto ts = textSelections[]; applyCursorOp(ts, dir, select, stepInOut); textSelections.items = ts; } 
 		
-		void insertCursor(int dir)
-		{
-			auto 	prev = textSelections[],
-				next = prev.dup; 
-			
-			foreach(ref ts; next)
-			foreach(
-				ref tc; ts.cursors
-				/+
-					Note: It is important to move the cursors separately here.
-					Don't let TextSelection.move do cursor collapsing.
-				+/
-			)
-			tc.move(ivec2(0, dir)); 
-			
-			textSelections.items = merge(prev ~ next); 
-		} 
-		
-		version(/+$DIDE_REGION Scrolling+/all)
-		{
-			void scrollV(float dy)
-			{ mainView.scrollV(dy); } 
-			void scrollH(float dx)
-			{ mainView.scrollH(dx); } 
-			void zoom(float log)
-			{ mainView.zoom(log); } //Todo: Only zoom when window is foreground
-				
-			float scrollSpeed()
-			=> application.deltaTime.value(second)*2000; 
-			float zoomSpeed()
-			=> application.deltaTime.value(second)*8; 
-			float wheelSpeed = 0.375f; 
-			
-			void scrollInModules(Module[] m)
-			{ if(m.length) scrollInBoundsRequest = m.map!"a.outerBounds".fold!"a|b"; } 
-			
-			void scrollInAllModules()
-			{ scrollInModules(modules.modules); } 
-			
-			void scrollInModule(Module m)
-			{ if(m) scrollInModules([m]); } 
-		}
-		
 		void cancelSelection_impl()
 		{
 			auto pm = modules.primaryModule; 
 			
 			void selectPrimaryModule()
-			{ textSelections.clear; modules.select(pm); scrollInModule(pm); } 
+			{ textSelections.clear; modules.select(pm); navig.scrollInModule(pm); } 
 			
 			//multiTextSelect -> primaryTextSelect
 			if(auto pts = primaryTextSelection)
@@ -327,118 +207,8 @@ class Workspace : Container, IWorkspace, INavigator
 			{ textSelections.clear; deselectAllModules; return; }
 			
 			//as a final act, zoom all
-			deselectAllModules; scrollInAllModules; 
+			deselectAllModules; navig.scrollInAllModules; 
 		} 
-	}version(/+$DIDE_REGION Navigation+/all)
-	{
-		Nullable!vec2 jumpRequest; 
-		
-		void jumpTo(vec2 pos)
-		{
-			with(mainView) if(scale<0.3f) scale = 1; 
-			jumpRequest = nullable(vec2(pos)); 
-		} 
-		
-		void jumpTo(bounds2 bnd)
-		{
-			//if(bnd) jumpTo(bnd.center); 
-			if(bnd)
-			{
-				mainView.scale = 1; 
-				mainView.smartScrollTo(bnd); 
-			}
-		} 
-		
-		void jumpTo(R)(R searchResults)
-		if(isInputRange!(R, SearchResult))
-		{ if(!searchResults.empty) jumpTo(searchResults.map!((r)=>(r.bounds)).fold!"a|b"); } 
-		
-		void jumpTo(Object obj)
-		{
-			if(!obj) return; 
-			if(auto mm = (cast(Module.Message)(obj)))
-			{
-				if(mm.searchResults.length)	jumpTo(mm.searchResults); 
-				else	jumpTo(mm.node.worldOuterBounds); 
-			}
-			else if(auto node = (cast(CodeNode)(obj)))
-			{ jumpTo(node.worldOuterBounds); }
-		} 
-		
-		void jumpTo(in CodeLocation loc)
-		{
-			if(!loc) return; 
-			
-			if(auto mod = modules.findModule(loc.file))
-			{
-				/+
-					Todo: load the module automatically, 
-					focus on module if no line number.  -> Insight
-				+/
-				
-				
-				auto searchResults = codeLocationToSearchResults(loc, &modules.findModule); 
-				if(searchResults.length)
-				{
-					if(const bnd = searchResults.map!(r => r.bounds).fold!"a|b")
-					{ jumpTo(bnd.center); return; }
-				}
-			}
-			
-			im.flashWarning("Unable to jump to: "~loc.text); 
-		} 
-		
-		void jumpTo(string id)
-		{
-			if(id.empty) return; 
-			
-			if(id.startsWith(CodeLocationPrefix))
-			{ jumpTo(CodeLocation(id.withoutStarting(CodeLocationPrefix))); }
-			else if(id.startsWith(MatchPrefix))
-			{ NOTIMPL; }
-		} 
-		
-		void updateJumps(View2D view)
-		{
-			if(MMBReleasedWithoutScrolling)
-			{
-				//check something in the IMGUI that has a codeLocation id.
-				{
-					auto hs = hitTestManager.lastHitStack; 
-					if(!hs.empty && hs.back.id.startsWith(CodeLocationPrefix))
-					{ jumpTo(hs.back.id); return; }
-				}
-				
-				//check a codeLocation CodeComment under mouse
-				if(view.isMouseInside)
-				{
-					auto st = locate(view.mousePos.vec2); 
-					//last thing can be a Glyph or an Img. Just skip it.
-					if(st.length && !(cast(CodeComment)(st.back.cell))) st = st[0..$-1]; 
-					if(st.length)
-					if(auto cmt = (cast(CodeComment)(st.back.cell)))
-					if(cmt.isCodeLocationComment)
-					{
-						if(auto loc = cmt.content.sourceText.withoutStarting("$DIDE_LOC ").CodeLocation)
-						{
-							if(!modules.findModule(loc.file) && inputs["Shift"].down)
-							{
-								if(!loc.file.exists)
-								{ im.flashWarning(i"File not found $(loc.file.fullName.quoted).".text); return; }
-								modules.loadModule(loc.file); 
-								//Todo: move all buildMessages from mainFile to the newly opened file.
-							}
-							jumpTo(loc); return; 
-						}
-					}
-				}
-				
-				//check the nearest searchresult
-				if(view.isMouseInside)
-				jumpTo(buildMessages.nearestSearchResult.reference); 
-			}
-		} 
-		
 	}version(/+$DIDE_REGION Update+/all)
 	{
 		
@@ -446,12 +216,6 @@ class Workspace : Container, IWorkspace, INavigator
 		//Todo: Ctrl+D word select and find
 		
 		//Mouse ---------------------------------------------------
-		
-		private bool MMBReleasedWithoutScrolling()
-		{
-			return inputs.MMB.released && (cast(GLWindow)(mainWindow)).mouse.hoverMax.screen.manhattanLength<=2; 
-			//Todo: Ctrl+left click should be better. I think it will not conflict with the textSelection, only with module selection.
-		} 
 		
 		void handleKeyboard()
 		{
@@ -515,8 +279,8 @@ class Workspace : Container, IWorkspace, INavigator
 			if(!mainIsForeground) return; 
 			
 			const ss = df*32, zs = df*.18f; 
-			if(auto a = inputs.xiRX.value) scrollH	(-a*ss); 
-			if(auto a = inputs.xiRY.value) scrollV	(a*ss); 
+			if(auto a = inputs.xiRX.value) navig.scrollH	(-a*ss); 
+			if(auto a = inputs.xiRY.value) navig.scrollV	(a*ss); 
 			if(auto a = inputs.xiLY.value)
 			{
 				version(/+$DIDE_REGION move mosuse to subScreen center+/all)
@@ -540,7 +304,6 @@ class Workspace : Container, IWorkspace, INavigator
 		} 
 		
 		
-		
 		
 		void update(
 			View2D view, 
@@ -586,13 +349,13 @@ class Workspace : Container, IWorkspace, INavigator
 					)
 					{
 						view.animSpeed = .96f; 
-						jumpTo(mm); 
+						navig.jumpTo(mm); 
 						im.flashError(mm.message.oneLineText); 
 						bloodScreenEffect.activate; 
 					}
 				}
 				
-				updateJumps(view); //jumping to locations with MMB 
+				navig.updateJumps; //jumping to locations with MMB 
 				
 				//Ctrl+Click handling
 				if(!im.wantMouse && view.isMouseInside && KeyCombo("Ctrl+LMB").pressed)
@@ -605,7 +368,7 @@ class Workspace : Container, IWorkspace, INavigator
 					{ textSelections.clear; },
 					{ modules.bringToFrontSelectedModules; }
 				); 
-				const textSelectionChanged = textSelections.update(view, &createCursorAt, mainIsForeground, wheelSpeed); 
+				const textSelectionChanged = textSelections.update(view, &navig.createCursorAt, mainIsForeground, navig.wheelSpeed); 
 				
 				//Only if there are any cursors, module selection is forced to modules with textSelections
 				if(textSelectionChanged && textSelections.length)
@@ -614,20 +377,18 @@ class Workspace : Container, IWorkspace, INavigator
 					foreach(m; modulesWithTextSelection) m.flags.selected = true; 
 				}
 				
-				//focus at selection
-				if(!jumpRequest.isNull)
-				{ with(mainView) origin = jumpRequest.get - (subScreenOrigin-origin); }
-				else if(!scrollInBoundsRequest.isNull)
-				{
-					const b = scrollInBoundsRequest.get; 
-					mainView.scrollZoom(b); 
-				}
-				else if(!textSelections.scrollInRequest.isNull)
+				navig.updateScrollRequests; 
+				
+				//focus at updated selection
+				if(!textSelections.scrollInRequest.isNull)
 				{
 					const p = textSelections.scrollInRequest.get; 
 					mainView.scrollZoom(bounds2(p, p)); 
+					textSelections.scrollInRequest.nullify; 
 				}
-				else if(textSelectionChanged)
+				
+				//focus at changed selection
+				if(textSelectionChanged)
 				{
 					if(!inputs[textSelections.mouseMappings.main].down)
 					{
@@ -641,8 +402,6 @@ class Workspace : Container, IWorkspace, INavigator
 						//Todo: what about latestSelection: the selection that was added recently...
 					}
 				}
-				scrollInBoundsRequest.nullify; 
-				jumpRequest.nullify; 
 				
 				//animate cursors
 				static if(AnimatedCursors)
@@ -707,79 +466,6 @@ class Workspace : Container, IWorkspace, INavigator
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
 		} 
-	}version(/+$DIDE_REGION Location/Clipbrd slots+/all)
-	{
-		struct Location
-		{
-			vec2 origin = vec2(0); 
-			float zoomFactor = 1; 
-		} 
-		
-		@STORED Location[10] storedLocations; 
-		
-		void enforceLocationIndex(int n)
-		{
-			enforce(
-				n.inRange(storedLocations),
-				n.format!"Location index out of range: %s"
-			); 
-		} 
-		
-		void storeLocation(int n)
-		{
-			enforceLocationIndex(n); 
-			with(storedLocations[n])
-			{
-				origin	= mainView.origin.vec2,
-				zoomFactor 	= mainView.scale; 
-			}
-			im.flashInfo(n.format!"Location %s stored."); 
-		} 
-		
-		void jumpToLocation(int n)
-		{
-			enforceLocationIndex(n); 
-			if(storedLocations[n] == Location.init)
-			{
-				im.flashWarning(n.format!"Location %s is uninitialized."); 
-				return; 
-			}
-			with(storedLocations[n])
-			{
-				mainView.origin	= origin.dvec2,
-				mainView.scale 	= zoomFactor; 
-			}
-		} 
-		
-		@STORED string[10] storedMemSlots; 
-		
-		void enforceMemSlotIndex(int n)
-		{
-			enforce(
-				n.inRange(storedMemSlots),
-				n.format!"MemSlot index out of range: %s"
-			); 
-		} 
-		
-		void copyMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			auto s = textSelections[].sourceText; 
-			storedMemSlots[n] = s; 
-			im.flashInfo(format!"MemSlot %s %s."(n, s.empty ? "cleared" : "stored")); 
-		} 
-		
-		void pasteMemSlot(int n)
-		{
-			enforceMemSlotIndex(n); 
-			if(storedMemSlots[n].empty)
-			{
-				im.flashWarning(n.format!"MemSlot %s is empty."); 
-				return; 
-			}
-			textSelections.items = editor.paste_impl(textSelections[], storedMemSlots[n]); 
-		} 
-		
 	}version(/+$DIDE_REGION Refactor+/all)
 	{
 		void declarationStatistics_impl()
@@ -983,12 +669,12 @@ class Workspace : Container, IWorkspace, INavigator
 				mixin((
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Ctrl+Up"},q{scrollLineUp},q{scrollV(DefaultFontHeight); }],
-						[q{"Ctrl+Down"},q{scrollLineDown},q{scrollV(-DefaultFontHeight); }],
-						[q{"Alt+PgUp"},q{scrollPageUp},q{scrollV(mainWindow.clientHeight*.9); }],
-						[q{"Alt+PgDn"},q{scrollPageDown},q{scrollV(-mainWindow.clientHeight*.9); }],
-						[q{"Ctrl+="},q{zoomIn},q{zoom (.5); }],
-						[q{"Ctrl+-"},q{zoomOut},q{zoom (-.5); }],
+						[q{"Ctrl+Up"},q{scrollLineUp},q{navig.scrollV(DefaultFontHeight); }],
+						[q{"Ctrl+Down"},q{scrollLineDown},q{navig.scrollV(-DefaultFontHeight); }],
+						[q{"Alt+PgUp"},q{scrollPageUp},q{navig.scrollV(mainWindow.clientHeight*.9); }],
+						[q{"Alt+PgDn"},q{scrollPageDown},q{navig.scrollV(-mainWindow.clientHeight*.9); }],
+						[q{"Ctrl+="},q{zoomIn},q{navig.zoom (.5); }],
+						[q{"Ctrl+-"},q{zoomOut},q{navig.zoom (-.5); }],
 					]))
 				) .GEN!q{GEN_verbs}); 
 			}
@@ -1039,12 +725,12 @@ class Workspace : Container, IWorkspace, INavigator
 						}],
 						[],
 						[],
-						[q{"W Num8 Up"},q{holdScrollUp2},q{if(NOSEL) scrollV(scrollSpeed); }],
-						[q{"S Num2 Down"},q{holdScrollDown2},q{if(NOSEL) scrollV(-scrollSpeed); }],
-						[q{"A Num4 Left"},q{holdScrollLeft2},q{if(NOSEL) scrollH(scrollSpeed); }],
-						[q{"D Num6 Right"},q{holdScrollRight2},q{if(NOSEL) scrollH(-scrollSpeed); }],
-						[q{"E Num+ PgUp"},q{holdZoomIn2},q{if(NOSEL) zoom (zoomSpeed); }],
-						[q{"Q Num- PgDn"},q{holdZoomOut2},q{if(NOSEL) zoom (-zoomSpeed); }],
+						[q{"W Num8 Up"},q{holdScrollUp2},q{if(NOSEL) navig.scrollV(navig.scrollSpeed); }],
+						[q{"S Num2 Down"},q{holdScrollDown2},q{if(NOSEL) navig.scrollV(-navig.scrollSpeed); }],
+						[q{"A Num4 Left"},q{holdScrollLeft2},q{if(NOSEL) navig.scrollH(navig.scrollSpeed); }],
+						[q{"D Num6 Right"},q{holdScrollRight2},q{if(NOSEL) navig.scrollH(-navig.scrollSpeed); }],
+						[q{"E Num+ PgUp"},q{holdZoomIn2},q{if(NOSEL) navig.zoom (navig.zoomSpeed); }],
+						[q{"Q Num- PgDn"},q{holdZoomOut2},q{if(NOSEL) navig.zoom (-navig.zoomSpeed); }],
 					]))
 				) .GEN!q{GEN_verbs(Yes.hold)}); 
 			}version(/+$DIDE_REGION hold slow NoSel+/all)
@@ -1056,12 +742,12 @@ class Workspace : Container, IWorkspace, INavigator
 							Bug: When NumLockState=true && key==Num8: if the modifier is released
 							after the key, KeyCombo will NEVER detect the release and is stuck!!!
 						+/}],
-						[q{"Shift+W Shift+Up"},q{holdScrollUp_slow2},q{if(NOSEL) scrollV(scrollSpeed/8); }],
-						[q{"Shift+S Shift+Down"},q{holdScrollDown_slow2},q{if(NOSEL) scrollV(-scrollSpeed/8); }],
-						[q{"Shift+A Shift+Left"},q{holdScrollLeft_slow2},q{if(NOSEL) scrollH(scrollSpeed/8); }],
-						[q{"Shift+D Shift+Right"},q{holdScrollRight_slow2},q{if(NOSEL) scrollH(-scrollSpeed/8); }],
-						[q{"Shift+E Shift+PgUp"},q{holdZoomIn_slow2},q{if(NOSEL) zoom (zoomSpeed/8); }],
-						[q{"Shift+Q Shift+PgDn"},q{holdZoomOut_slow2},q{if(NOSEL) zoom (-zoomSpeed/8); }],
+						[q{"Shift+W Shift+Up"},q{holdScrollUp_slow2},q{if(NOSEL) navig.scrollV(navig.scrollSpeed/8); }],
+						[q{"Shift+S Shift+Down"},q{holdScrollDown_slow2},q{if(NOSEL) navig.scrollV(-navig.scrollSpeed/8); }],
+						[q{"Shift+A Shift+Left"},q{holdScrollLeft_slow2},q{if(NOSEL) navig.scrollH(navig.scrollSpeed/8); }],
+						[q{"Shift+D Shift+Right"},q{holdScrollRight_slow2},q{if(NOSEL) navig.scrollH(-navig.scrollSpeed/8); }],
+						[q{"Shift+E Shift+PgUp"},q{holdZoomIn_slow2},q{if(NOSEL) navig.zoom (navig.zoomSpeed/8); }],
+						[q{"Shift+Q Shift+PgDn"},q{holdZoomOut_slow2},q{if(NOSEL) navig.zoom (-navig.zoomSpeed/8); }],
 					]))
 				) .GEN!q{GEN_verbs(Yes.hold)}); 
 			}
@@ -1070,7 +756,7 @@ class Workspace : Container, IWorkspace, INavigator
 				mixin((
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Home"},q{zoomAll2},q{if(NOSEL) scrollInAllModules; }],
+						[q{"Home"},q{zoomAll2},q{if(NOSEL) navig.scrollInAllModules; }],
 						[q{"Alt+Home"},q{zoomClose2},q{
 							mainView.scale = 1; 
 							
@@ -1127,8 +813,8 @@ class Workspace : Container, IWorkspace, INavigator
 						[q{"Shift+Ctrl+Home"},q{cursorTopSelect},q{cursorTop(true); }],
 						[q{"Shift+Ctrl+End"},q{cursorBottomSelect},q{cursorBottom(true); }],
 						[],
-						[q{"Ctrl+Alt+Up"},q{insertCursorAbove},q{insertCursor(-1); }],
-						[q{"Ctrl+Alt+Down"},q{insertCursorBelow},q{insertCursor(1); }],
+						[q{"Ctrl+Alt+Up"},q{insertCursorAbove},q{textSelections.insertCursorAbove; }],
+						[q{"Ctrl+Alt+Down"},q{insertCursorBelow},q{textSelections.insertCursorBelow; }],
 					]))
 				) .GEN!q{GEN_verbs}); 
 			}
@@ -1165,7 +851,7 @@ class Workspace : Container, IWorkspace, INavigator
 								.map!(m => m.content.allSelection(textSelections[].any!(s => s.primary && s.moduleOf is m))).array; 
 							+/
 						}],
-						[q{"Ctrl+Shift+A"},q{selectAllModules},q{textSelections.clear; modules.modules.each!(m => m.flags.selected = true); scrollInAllModules; }],
+						[q{"Ctrl+Shift+A"},q{selectAllModules},q{textSelections.clear; modules.modules.each!(m => m.flags.selected = true); navig.scrollInAllModules; }],
 						[q{""},q{deselectAllModules},q{
 							modules.modules.each!(m => m.flags.selected = false); 
 							//Note: left clicking on emptyness does this too.
@@ -1376,11 +1062,11 @@ class Workspace : Container, IWorkspace, INavigator
 				mixin(
 					(表([
 						[q{/+Note: Key+/},q{/+Note: Name+/},q{/+Note: Script+/}],
-						[q{"Ctrl+Alt+Numₙ"},q{storeLocationₙ},q{storeLocation(ₙ); }],
-						[q{"Ctrl+Numₙ"},q{jumpToLocationₙ},q{jumpToLocation(ₙ); }],
+						[q{"Ctrl+Alt+Numₙ"},q{storeLocationₙ},q{navig.storeLocation(ₙ); }],
+						[q{"Ctrl+Numₙ"},q{jumpToLocationₙ},q{navig.jumpToLocation(ₙ); }],
 						[],
-						[q{"Ctrl+Alt+ₙ"},q{copyMemSlotₙ},q{copyMemSlot(ₙ); }],
-						[q{"Ctrl+ₙ"},q{pasteMemSlotₙ},q{pasteMemSlot(ₙ); }],
+						[q{"Ctrl+Alt+ₙ"},q{copyMemSlotₙ},q{editor.copyMemSlot(ₙ); }],
+						[q{"Ctrl+ₙ"},q{pasteMemSlotₙ},q{editor.pasteMemSlot(ₙ); }],
 					]))
 					.GEN_verbs.replace("ₙ", idx.text)
 				); 
