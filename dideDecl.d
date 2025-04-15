@@ -480,6 +480,7 @@ version(/+$DIDE_REGION+/all) {
 				//Todo: handle .enforce too.   //for .identifier!()() there should be a shortcut!
 				//Todo: detect Row({}) and Column({})
 				//Todo: detect const, auto, ... declaration blocks.
+				//Todo: detect throw ; statement too
 				
 				
 				return kw_space_expr("mixin", true) 	||

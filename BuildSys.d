@@ -1,4 +1,4 @@
-module buildsys;      
+module buildsys; 
 
 import het;   
 import std.file : dirEntries, SpanMode; 

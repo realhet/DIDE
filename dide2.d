@@ -3,7 +3,6 @@
 
 //@debug
 //@release
-
 import core.thread, std.concurrency; 
 
 import didebase, syntaxExamples; 

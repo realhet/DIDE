@@ -5,7 +5,7 @@ import diderow : SourceTextBuilder;
 import didecolumn : CodeColumnBuilder; 
 import didenode : CodeBlock, CodeString, CodeComment; 
 import didedecl : Declaration, processHighLevelPatterns_expr, processHighLevelPatterns_block; 
-import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNiceTemplateMixinStatement, processNiceStatementRow, processNiceExpressionBlock; 
+import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNiceTemplateMixinStatement, processNiceExpressionBlock; 
 
 //Todo: pragma(msg, __traits(getLocation, print)); Use this to locate precisely anything from any scope. It gives a result in 1-2 seconds.
 //Todo: Multiline #define is NOT allowed in D tokenStrings

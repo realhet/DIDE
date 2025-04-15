@@ -197,6 +197,7 @@ class Workspace : Container, IWorkspace
 			{ textSelections.clear; modules.select(pm); navig.scrollInModule(pm); } 
 			
 			//multiTextSelect -> primaryTextSelect
+			if(textSelections.length>1)
 			if(auto pts = primaryTextSelection)
 			{ textSelections.items = pts; return; }
 			
@@ -1042,8 +1043,10 @@ class Workspace : Container, IWorkspace
 						[q{//@VERB("F11") void stepInto() { NOTIMPL; }
 						}],
 						[],
-						[q{"F1"},q{help_bing},q{help.bing; }],
+						[q{"F1"},q{help_combined},q{help.combinedSearch; }],
+						[q{"Shift+F1"},q{help_bing},q{help.bing; }],
 						[q{"Ctrl+F1"},q{help_dlang},q{help.dpldocs; }],
+						[q{"Alt+F1"},q{help_deepsearch},q{help.deepsearch; }],
 						[q{"Alt+A"},q{initiateAi},q{aiManager.initiate; }],
 						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch; }],
 						[],

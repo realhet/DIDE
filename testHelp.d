@@ -1,147 +1,13 @@
-module didehelp;  
+//@exe
+//@debug
+///@release
 
-import didebase, het.ai; 
-import didedecl : Declaration; 
-import didemodule : Breadcrumb, toBreadcrumbs; 
-import didetextselectionmanager : TextSelectionManager; 
-import didebuildmessagemanager : BuildMessageManager; 
+import het.ui, het.ai; 
 
 struct HelpManager
 {
-	TextSelectionManager textSelections; 
-	
 	string actHelpQuery, actSearchKeyword; 
-	bounds2 actSearchKeywordBounds; 
-	TextSelection actSearchKeywordSelection; 
 	
-	void UI_mouseLocationHint(INavigator navig, View2D view)
-	{
-		with(im) {
-			//Todo: This UI thing updated internal state. Not good...
-			actSearchKeyword = ""; 
-			actSearchKeywordBounds = bounds2.init; 
-			actHelpQuery = ""; 
-			
-			bool isCaret, isAtLineEnd, wordIsSelectedText; 
-			CellLocation[] st; 
-			
-			auto primary = textSelections.primary; 
-			
-			if(primary.caret)
-			{
-				isCaret = true; 
-				
-				if(textSelections.length==1)
-				{
-					if(primary.isZeroLength)
-					{
-						isAtLineEnd = primary.caret.isAtLineEnd; 
-						st = cursorToCellLocations(primary.caret); 
-					}
-					else if(primary.isSingleLine)
-					{
-						st = cursorToCellLocations(primary.start); 
-						wordIsSelectedText = true; 
-					}
-				}
-			}
-			else
-			{ if(view.isMouseInside) st = navig.locate_snapToRow(view.mousePos.vec2); }
-			
-			if(st.length)
-			{
-				auto 	loc 	= cellLocationToCodeLocation(st),
-					breadcrumbs 	= st.toBreadcrumbs; 
-				if(wordIsSelectedText)
-				{
-					actSearchKeyword = "$DIDE_PRIMARY_SELECTION$"; 
-					actSearchKeywordBounds = textSelections.primary.worldBounds; 
-					//Todo: Don't get the actual source text becaus it can be very large.  Needs a size estimation first.
-				}
-				else
-				{ actSearchKeyword = wordAt(st, isCaret && !isAtLineEnd, &actSearchKeywordBounds, &actSearchKeywordSelection); }
-				actHelpQuery = extractHelpQuery(breadcrumbs, actSearchKeyword); 
-				
-				
-				Row(
-					{ padding="0 8"; }, ((isCaret)?("Ꮖ"):("⌖")), " ",
-					{
-						theme = "tool"; 
-						loc.UI; NL; 
-						foreach(i, b; breadcrumbs)
-						{
-							if(
-								Btn(
-									{
-										style.bkColor = bkColor = b.node.bkColor; 
-										style.fontColor = blackOrWhiteFor(bkColor); 
-										Text(b.text); 
-									},
-									(("Breadcrumb:"~i.text).genericArg!q{id})
-								)
-							)
-							{ navig.jumpTo(b.node); }
-						}
-						
-						if(actHelpQuery!="")
-						if(Btn("Search: "~actHelpQuery))
-						{/+Todo: bing.com?q=query+string -> shellExecute start chrome ...+/}
-					}
-				); 
-			}
-		}
-	} 
-	string lastNearestSearchResultReference; 
-	Container mouseOverHintCntr; 
-	
-	///must be called from root level
-	void UI_mouseOverHint(BuildMessageManager buildMessages, float workspaceOuterWidth)
-	{
-		with(im) {
-			if(lastNearestSearchResultReference.chkSet((cast(size_t)((cast(void*)(buildMessages.nearestSearchResult.reference)))).text))
-			{
-				mouseOverHintCntr = null; 
-				
-				if(buildMessages.nearestSearchResult.reference)
-				{
-					if(!mouseOverHintCntr)
-					if(auto mm = (cast(Module.Message)(buildMessages.nearestSearchResult.reference)))
-					{
-						auto msgNode = buildMessages.createNode(mm.message); 
-						with(msgNode) {
-							outerWidth 	= min(outerWidth, max(workspaceOuterWidth-50, 50)),
-							outerHeight 	= min(outerHeight, DefaultFontHeight * 3); 
-						}
-						if(0/+Todo: most letiltom a hintet, de optionsba ki kell rakni...+/) mouseOverHintCntr = msgNode; 
-						
-						/+
-							auto msgSrc = messageSourceTextByLocation[wild[0]]; 
-							if(msgSrc in messageUICache)
-							{
-								mouseOverHintCntr = cast(.Container)(messageUICache[msgSrc].subCells[0]); 
-								//Todo: Highlight the CodeLocation comment which is nerest to the mouse
-								//Todo: show bezier arrows from the message hint's codelocations
-								//Todo: a way to lock the message hint to be able to interact with it using the mouse
-								//Todo: a way to scroll errorlist over the hovered item
-							}
-						+/
-					}
-					
-					//if unable to generate a hint, display the SearchResult.reference:
-					static if(0)
-					if(!mouseOverHintCntr) {
-						Text(nearestSearchResult.reference); 
-						mouseOverHintCntr = removeLastContainer; 
-					}
-					
-				}
-			}
-			
-			if(mouseOverHintCntr)
-			actContainer.append(mouseOverHintCntr); 
-		}
-	} 
-	
 	/+
 		Todo: Fix these shitty help providers:
 		
@@ -156,32 +22,35 @@ struct HelpManager
 	protected void prepareHelpQuery(ref string s)
 	{
 		//Todo: this is kinda lame: It avoids getting the actual textSelection until the last moment.
-		if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
-		{ s = s.replace("$DIDE_PRIMARY_SELECTION$", textSelections.primary.sourceText.replace("\n", " ")); }
+		/+
+			if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
+			{ s = s.replace("$DIDE_PRIMARY_SELECTION$", textSelections.primary.sourceText.replace("\n", " ")); }
+		+/
 	} 
 	
-	string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
-	{
-		//filter out breadcrumbs
-		static bool validBreadcrumb(Breadcrumb bc)
+	/+
+		string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
 		{
-			if(auto decl = (cast(Declaration)(bc.node)))
-			return 	decl.identifier!="" && 
-				decl.keyword.among("struct", "union", "enum", "class", "interface"); 
-			if(auto mod = (cast(Module)(bc.node)))
-			return bc.text!=""; 
-			return false; 
+			//filter out breadcrumbs
+			static bool validBreadcrumb(Breadcrumb bc)
+			{
+				if(auto decl = (cast(Declaration)(bc.node)))
+				return 	decl.identifier!="" && 
+					decl.keyword.among("struct", "union", "enum", "class", "interface"); 
+				if(auto mod = (cast(Module)(bc.node)))
+				return bc.text!=""; 
+				return false; 
+			} 
+			breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
+			
+			string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
+			if(word!="" && word!=s.get(0)) s ~= word; 
+			if(s.length==2) s.back = '+'~s.back; 
+			auto query = s.join(' '); 
+			
+			return query; 
 		} 
-		breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
-		
-		string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
-		if(word!="" && word!=s.get(0)) s ~= word; 
-		if(s.length==2) s.back = '+'~s.back; 
-		auto query = s.join(' '); 
-		
-		return query; 
-	} 
-	
+	+/
 	
 	string[string] cache; 
 	Path cachePath() => Path(appPath, "WebCache"); 
@@ -253,7 +122,7 @@ struct HelpManager
 		
 		static if((常!(bool)(0)))	{ return links; }
 		else	{ if(links.length<=1) return links.take(1).array; else return [queryUrl]; }
-	} 
+	} 
 	
 	string[] scrapeLinks_mslearn(string query)
 	{
@@ -282,8 +151,8 @@ struct HelpManager
 				(
 					"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
 					"The user will give a search string, you must reply with a documentation link. 
-	The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
-	Reply only the link, no talking! I need a working link!"
+The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
+Reply only the link, no talking! I need a working link!"
 				); 
 				model.apiKey = File(appPath, "a.a").readStr; 
 			}
@@ -304,7 +173,6 @@ struct HelpManager
 	
 	string scrapeLinks_combined(string w)
 	{
-		//Opt: Make these web accesses in parallel and do it in the background.
 		string[] list = scrapeLinks_dpldocs(w); 
 		if(list.length) return list[0]; 
 		else {
@@ -319,7 +187,7 @@ struct HelpManager
 			}
 		}
 	} 
-	
+	
 	void startChrome(string url, string keyword="")
 	{
 		if(url==``) return; 
@@ -363,7 +231,18 @@ struct HelpManager
 		if(links.empty) return false; 
 		startChrome(links[0], actSearchKeyword); 
 		return true; 
-	}  bool combinedSearch()
+	} 
+	
+	bool bing()
+	=> startChrome!scrapeLinks_bing; 
+	
+	bool dpldocs()
+	=> startChrome!scrapeLinks_dpldocs; 
+	
+	bool deepsearch()
+	=> startChrome!scrapeLinks_deepseek; 
+	
+	bool combinedSearch()
 	{
 		auto link = scrapeLinks_combined(actHelpQuery); 
 		if(link=="") return false; 
@@ -371,11 +250,49 @@ struct HelpManager
 		return true; 
 	} 
 	
-	bool bing()
-	=> startChrome!scrapeLinks_bing;  bool dpldocs()
-	=> startChrome!scrapeLinks_dpldocs; 	bool deepsearch()
-	=> startChrome!scrapeLinks_deepseek; 		
+} 
+
+class FrmHelp : GLWindow
+{
+	mixin autoCreate; 
 	
+	HelpManager hlp; 
 	
+	override void onCreate()
+	{ clientSize = ivec2(640, 480); } 
+	
+	override void onUpdate()
+	{
+		with(im)
+		Panel(
+			PanelPosition.client, 
+			{
+				const testWords = [
+					"max", "maxElement", "registerClass", "HBITMAP", "vec3", "glClearColor", 
+					"VkPhysicalDev", "GL_FRONT_AND_BACK", "AUDCLNT_E_DEVICE_IN_USE",
+					"texParameterf", "WM_USER", "gl_FragCoord", "vkGetPhysicalDeviceProperties"
+				]; 
+				Row(
+					{
+						foreach(w; testWords)
+						if(Btn(w, ((w).genericArg!q{id}))) {
+							/+
+								print(w); 
+								hlp.scrapeLinks_dpldocs(w).each!((a){ print("dpldocs:", a); }); 
+								hlp.scrapeLinks_bing(w).each!((a){ print("bing:", a); }); 
+								hlp.scrapeLinks_mslearn(w).each!((a){ print("mslearn:", a); }); 
+								hlp.scrapeLinks_deepseek(w).each!((a){ print("deepsearch:", a); }); 
+								print; 
+							+/
+							
+							hlp.startChrome(hlp.scrapeLinks_combined(w), w); 
+						}
+					}
+				); 
+			}
+		); 
+		
+		invalidate; 
+	} 
 	
 } 
