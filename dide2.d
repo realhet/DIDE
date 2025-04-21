@@ -629,8 +629,8 @@ version(/+$DIDE_REGION+/all)
 					{
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
-							workspace.search.UI(workspace.modules, workspace.textSelections, workspace.buildMessages, (cast(INavigator)(workspace)), view),
-							workspace.insight.UI(workspace.modules, workspace.textSelections, workspace.editor, (cast(INavigator)(workspace)), view),
+							workspace.search.UI(workspace.modules, workspace.textSelections, workspace.buildMessages, workspace.navig, view),
+							workspace.insight.UI(workspace.modules, workspace.textSelections, workspace.editor, workspace.navig, view),
 							workspace.outline.UI(workspace.modules, workspace.textSelections, view)
 						]; /+Todo: refactor this terrible menu+/
 						anyVisible = vis.any; 

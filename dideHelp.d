@@ -1,10 +1,13 @@
 module didehelp;  
 
-import didebase, het.ai; 
+import het.ai; 
+import didebase; 
 import didedecl : Declaration; 
 import didemodule : Breadcrumb, toBreadcrumbs; 
 import didetextselectionmanager : TextSelectionManager; 
 import didebuildmessagemanager : BuildMessageManager; 
+
+enum HelpProvider {bing, msdn, dpldocs, dpldocs_searchPage, deepseek, combined, combined_noContext} 
 
 struct HelpManager
 {
@@ -13,6 +16,30 @@ struct HelpManager
 	string actHelpQuery, actSearchKeyword; 
 	bounds2 actSearchKeywordBounds; 
 	TextSelection actSearchKeywordSelection; 
+	
+	bool enableDebug; 
+	
+	static string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
+	{
+		//filter out breadcrumbs
+		static bool validBreadcrumb(Breadcrumb bc)
+		{
+			if(auto decl = (cast(Declaration)(bc.node)))
+			return 	decl.identifier!="" && 
+				decl.keyword.among("struct", "union", "enum", "class", "interface"); 
+			if(auto mod = (cast(Module)(bc.node)))
+			return bc.text!=""; 
+			return false; 
+		} 
+		breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
+		
+		string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
+		if(word!="" && word!=s.get(0)) s ~= word; 
+		if(s.length==2) s.back = '+'~s.back; 
+		auto query = s.join(' '); 
+		
+		return query; 
+	} 
 	
 	void UI_mouseLocationHint(INavigator navig, View2D view)
 	{
@@ -90,7 +117,7 @@ struct HelpManager
 				); 
 			}
 		}
-	} 
+	} 
 	string lastNearestSearchResultReference; 
 	Container mouseOverHintCntr; 
 	
@@ -142,240 +169,294 @@ struct HelpManager
 		}
 	} 
 	
-	/+
-		Todo: Fix these shitty help providers:
-		
-		win32	: https://learn.microsoft.com/api/search?locale=en-us&scoringprofile=semantic-captions&%24top=3&search=RegisterClass
-		vulkan	: https://registry.khronos.org/vulkan/specs/latest/man/html/   (no search...)
-		D	: A forrasban benne van a dokumentacio. Fel kell dolgoznom (nem most).
-		GLSL	: Manualisan hasznalom a web browsert...
-		bing	: fuck that. -> deepseek
-		google	: fuck that too. -> deepseek
-	+/
-	
-	protected void prepareHelpQuery(ref string s)
+	void launch(HelpProvider provider)
 	{
-		//Todo: this is kinda lame: It avoids getting the actual textSelection until the last moment.
-		if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
-		{ s = s.replace("$DIDE_PRIMARY_SELECTION$", textSelections.primary.sourceText.replace("\n", " ")); }
-	} 
-	
-	string extractHelpQuery(Breadcrumb[] breadcrumbs, string word)
-	{
-		//filter out breadcrumbs
-		static bool validBreadcrumb(Breadcrumb bc)
+		static void doLaunch(HelpProvider provider, string actHelpQuery, string actSearchKeyword, bool enableDebug)
 		{
-			if(auto decl = (cast(Declaration)(bc.node)))
-			return 	decl.identifier!="" && 
-				decl.keyword.among("struct", "union", "enum", "class", "interface"); 
-			if(auto mod = (cast(Module)(bc.node)))
-			return bc.text!=""; 
-			return false; 
-		} 
-		breadcrumbs = breadcrumbs.filter!validBreadcrumb.array; 
-		
-		string[] s; if(breadcrumbs.length) s ~= breadcrumbs.back.text; 
-		if(word!="" && word!=s.get(0)) s ~= word; 
-		if(s.length==2) s.back = '+'~s.back; 
-		auto query = s.join(' '); 
-		
-		return query; 
-	} 
-	
-	
-	string[string] cache; 
-	Path cachePath() => Path(appPath, "WebCache"); 
-	
-	string cachedQuery(string cacheId, string delegate() executeQuery)
-	{
-		const useCache = cacheId!=""; 
-		File cacheFile; 
-		
-		if(useCache) {
-			cacheFile = File(cachePath, cacheId.encodeFileName); 
-			try return cacheFile.readStr(true); catch(Exception e) {}
-		}
-		string res = executeQuery(); 
-		if(useCache) cacheFile.write(res); 
-		return res; 
-	} 
-	
-	string httpGet(string url, string cacheId="")
-	=> cachedQuery(cacheId, ((){ import het.http; return het.http.curlGet(url); })); 
-	
-	string[] scrapeLinks_bing(string query)
-	{
-		prepareHelpQuery(query); if(query=="") return []; 
-		
-		auto 	bloatml 	= httpGet(`https://bing.com/search?q=`~urlEncode(query), query~".bing"),
-			links 	= bloatml	.splitter(`href="`).drop(1)
-					.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``".array; 
-		links = links.filter!((a)=>(a.startsWith("https://") && !a.canFind(".bing.com"))).array; 
-		
-		immutable helpProviders = [
-			`https://registry.khronos.org/vulkan/specs/`,
-			`https://registry.khronos.org/OpenGL-Refpages/`,
-			`https://www.khronos.org/opengl/wiki/`,
-			`https://learn.microsoft.com/en-us/windows/win32/`
-		]; 
-		
-		string[] preferred; 
-		foreach(link; links) foreach(a; helpProviders) if(link.startsWith(a)) preferred.addIfCan(link); 
-		
-		return preferred; 
-	} 
-	
-	
-	string[] scrapeLinks_dpldocs(string query)
-	{
-		prepareHelpQuery(query); if(query=="") return []; 
-		
-		auto queryUrl = `https://search.dpldocs.info/?q=`~urlEncode(query); 
-		auto bloatml = httpGet(queryUrl, query~".dpldocs"); 
-		
-		string[] links; 
-		{
-			auto s = bloatml; 
-			while(s.isWild(`*<dt class="search-result" *<a href="//*"*</dt><dd>*</dd>*`))
-			{
-				const 	url 	= wild[2],
-					undocumented 	= wild[4].canFind(`<span class="undocumented-note">`); 
-				enum paths = [
-					"phobos.dpldocs.info/", 
-					"druntime.dpldocs.info/"
-				]; 
-				if(!undocumented && paths.any!((p)=>(url.startsWith(p))))
-				links ~= "https://"~url; 
+			/+
+				Todo: Fix these shitty help providers:
 				
-				s = wild[5]; 
-			}
-		}
-		
-		static if((常!(bool)(0)))	{ return links; }
-		else	{ if(links.length<=1) return links.take(1).array; else return [queryUrl]; }
-	} 
-	
-	string[] scrapeLinks_mslearn(string query)
-	{
-		prepareHelpQuery(query); if(query=="") return []; 
-		
-		auto queryUrl = `https://learn.microsoft.com/api/search?locale=en-us&scoringprofile=semantic-captions&%24top=1&search=`~urlEncode(query); 
-		auto 	bloatml = httpGet(queryUrl, query~".mslearn"); 
-		
-		enum prefix = "https://learn.microsoft.com/en-us/windows/win32/"; 
-		if(bloatml.isWild(`*"url":"`~prefix~`*"*`))
-		{ return [prefix~wild[1]]; }
-		else
-		return []; 
-	} 
-	
-	string[] scrapeLinks_deepseek(string query)
-	{
-		prepareHelpQuery(query); if(query=="") return []; 
-		
-		AiModel model()
-		{
-			__gshared AiModel model; 
-			if(!model)
-			{
-				model = new AiModel
-				(
-					"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
-					"The user will give a search string, you must reply with a documentation link. 
-	The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
-	Reply only the link, no talking! I need a working link!"
-				); 
-				model.apiKey = File(appPath, "a.a").readStr; 
-			}
-			return model; 
-		} 
-		
-		string doit()
-		{
-			auto res = model.ask(query); 
-			enforce(res.startsWith("https://"), "Unknown deepsearch response: "~res); 
-			return res; 
-		} 
-		
-		auto res = cachedQuery(query~".deepsearch", &doit); 
-		
-		return [res]; 
-	} 
-	
-	string scrapeLinks_combined(string w)
-	{
-		//Opt: Make these web accesses in parallel and do it in the background.
-		string[] list = scrapeLinks_dpldocs(w); 
-		if(list.length) return list[0]; 
-		else {
-			list = scrapeLinks_bing(w) ~ scrapeLinks_mslearn(w); 
-			auto important = list.filter!((a)=>(a.canFind("khronos"))).array; 
-			if(important.length)	return important[0]; 
-			else if(list.length)	return list[0]; 
-			else {
-				list = scrapeLinks_deepseek(w); 
-				if(list.length) return list[0]; 
-				else { return ""; }
-			}
-		}
-	} 
-	
-	void startChrome(string url, string keyword="")
-	{
-		if(url==``) return; 
-		try {
-			prepareHelpQuery(keyword); 
+				win32	: https://learn.microsoft.com/api/search?locale=en-us&scoringprofile=semantic-captions&%24top=3&search=RegisterClass
+				vulkan	: https://registry.khronos.org/vulkan/specs/latest/man/html/   (no search...)
+				D	: A forrasban benne van a dokumentacio. Fel kell dolgoznom (nem most).
+				GLSL	: Manualisan hasznalom a web browsert...
+				bing	: fuck that. -> deepseek
+				google	: fuck that too. -> deepseek
+			+/
 			
-			mainWindow.setForegroundWindow; //just to make sure
-			executeShell(joinCommandLine(["start", "chrome", url])); 
-			auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
-			
-			if(keyword!="")
+			static void removeSearchContext(ref string s)
 			{
-				const 	clipboardHadText = clipboard.hasText,
-					savedClipboardText = clipboardHadText ? clipboard.text : ""; 
-				scope(exit) if(clipboardHadText) clipboard.text = savedClipboardText; 
-				
-				clipboard.text = keyword; 	
-				
-				int bail = 10; 
-				foreach(i; 0..100) {
-					const title = getWindowInfo(wi.handle).title; 
-					if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
-					sleep(100); 
+				const i = s.lastIndexOf(" +"); 
+				if(i>=0)
+				{
+					const left = s[0 .. i], right = s[i+2 .. $]; 
+					if(
+						left.isDLangIdentifier/+the context identifier+/ &&
+						right!="" && !right.front.isDLangWhitespace && !right.front.isDLangNewLine
+					)
+					{ s = right; }
 				}
-				inputs.pressCombo("Ctrl+F"); 	sleep(50); 
-				inputs.pressCombo("Ctrl+V"); 	sleep(50); 
+			} 
+			
+			void prepareHelpQuery(ref string s, Flag!"keywordOnly" keywordOnly = No.keywordOnly)
+			{ if(keywordOnly) removeSearchContext(s); } 
+			
+			static Path cachePath() => Path(appPath, "WebCache"); 
+			
+			static string cachedQuery(string cacheId, string delegate() executeQuery)
+			{
+				const useCache = cacheId!=""; 
+				File cacheFile; 
 				
-				const needEnter = [`https://registry.khronos.org/vulkan/specs/`].any!((a)=>(url.startsWith(a))); 
-				if(needEnter /+Note: This skips to the second match.+/)
-				{ inputs.pressCombo("Enter"); 	sleep(50); }
+				if(useCache) {
+					cacheFile = File(cachePath, cacheId.encodeFileName); 
+					try return cacheFile.readStr(true); catch(Exception e) {}
+				}
+				string res = executeQuery(); 
+				if(useCache && res.strip!="") cacheFile.write(res); 
+				return res; 
+			} 
+			
+			static string httpGet(string url, string cacheId="")
+			=> cachedQuery(
+				cacheId, ((){
+					LOG("HelpManager accessing: ", url); 
+					string res; 
+					try { import het.http; res = het.http.curlGet(url); }
+					catch(Exception e) { ERR(e.simpleMsg); }
+					return res; 
+				})
+			); 
+			
+			string[] scrapeLinks_bing(string query)
+			{
+				prepareHelpQuery(query); if(query=="") return []; 
+				
+				auto 	bloatml 	= httpGet(`https://bing.com/search?q=`~urlEncode(query), query~".bing"),
+					links 	= bloatml	.splitter(`href="`).drop(1)
+							.map!(s=>s.splitter(`"`).frontOr("")).filter!"a!=``".array; 
+				links = links.filter!((a)=>(a.startsWith("https://") && !a.canFind(".bing.com"))).array; 
+				
+				immutable helpProviders = [
+					`https://registry.khronos.org/vulkan/specs/`,
+					`https://registry.khronos.org/OpenGL-Refpages/`,
+					`https://www.khronos.org/opengl/wiki/`,
+					`https://learn.microsoft.com/en-us/windows/win32/`,
+					`https://en.ids-imaging.com/manuals/ids-software-suite/ueye-manual/`
+				]; 
+				
+				string[] preferred; 
+				foreach(link; links) {
+					foreach(a; helpProviders)
+					if(link.startsWith(a)) preferred.addIfCan(link); 
+				}
+				
+				if(enableDebug) {
+					print("bing links:"); 
+					links.each!((a){ print("  \33"~((preferred.canFind(a))?('\12'):('\7'))~a~"\33\7"); }); 
+					print; 
+				}
+				
+				return preferred; 
+			} 
+			
+			
+			string[] scrapeLinks_dpldocs(string query, Flag!"searchPage" searchPage = Yes.searchPage)
+			{
+				prepareHelpQuery(query, Yes.keywordOnly); if(query=="") return []; 
+				
+				auto queryUrl = `https://search.dpldocs.info/?q=`~urlEncode(query); 
+				auto bloatml = httpGet(queryUrl, query~".dpldocs"); 
+				
+				string[] links; 
+				{
+					auto s = bloatml; 
+					while(s.isWild(`*<dt class="search-result" *<a href="//*"*</dt><dd>*</dd>*`))
+					{
+						const 	url 	= wild[2],
+							undocumented 	= wild[4].map!toLower.canFind(`undocumented`); 
+						enum paths = [
+							"phobos.dpldocs.info/", 
+							"druntime.dpldocs.info/"
+						]; 
+						const valid = !undocumented && paths.any!((p)=>(url.startsWith(p))); 
+						
+						if(valid) links ~= "https://"~url; 
+						
+						if(enableDebug) {
+							print("dpldocs links:"); 
+							links.each!((a){ print("  \33"~((valid)?('\12'):('\7'))~"https://"~a~"\33\7"); }); 
+							print; 
+						}
+						
+						s = wild[5]; 
+					}
+				}
+				
+				if(searchPage && links.length>1) links = [queryUrl]; 
+				
+				return links; 
+			} 
+			
+			string[] scrapeLinks_mslearn(string query)
+			{
+				prepareHelpQuery(query, Yes.keywordOnly); if(query=="") return []; 
+				
+				auto queryUrl = 
+					`https://learn.microsoft.com/api/search?locale=en-us&scoringprofile=semantic-captions&%24top=1&search=`
+					~urlEncode(query); 
+				auto 	bloatml = httpGet(queryUrl, query~".mslearn"); 
+				
+				enum prefix = "https://learn.microsoft.com/en-us/windows/win32/"; 
+				if(bloatml.isWild(`*"url":"`~prefix~`*"*`))
+				{
+					const link = prefix~wild[1]; 
+					if(enableDebug) {
+						print("mslearn links:"); /+Todo: this is not a proper link collection operation.+/
+						link.only.each!((a){ print("  \33"~((true)?('\12'):('\7'))~a~"\33\7"); }); 
+						print; 
+					}
+					return [link]; 
+				}
+				else
+				return []; 
+			} 
+			
+			string[] scrapeLinks_deepseek(string query)
+			{
+				prepareHelpQuery(query); if(query=="") return []; 
+				
+				AiModel model()
+				{
+					__gshared AiModel model; 
+					if(!model)
+					{
+						model = new AiModel
+						(
+							"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
+							"The user will give a search string, you must reply with a documentation link. 
+			The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
+			Reply only the link, no talking! I need a working link! If you can't find a link, just reply `null`."
+						); 
+						model.temperature = 0.25; 
+						model.apiKey = File(appPath, "a.a").readStr; 
+					}
+					return model; 
+				} 
+				
+				string doit()
+				{
+					auto res = model.ask(query, debugPrint : enableDebug); 
+					enforce(res==`null` || res.startsWith("https://"), "Unknown deepsearch response: "~res); 
+					return res; 
+				} 
+				
+				auto res = cachedQuery(query~".deepsearch", &doit); 
+				return res==`null` ? [] : [res]; 
+			} 
+			
+			string[] scrapeLinks_combined(string w, Flag!"context" context = Yes.context)
+			{
+				if(!context) removeSearchContext(w); 
+				
+				//Opt: Make these web accesses in parallel and do it in the background.
+				string[] list = scrapeLinks_dpldocs(w, No.searchPage); 
+				if(list.length) return list; 
+				else {
+					list = scrapeLinks_bing(w) ~ scrapeLinks_mslearn(w); 
+					auto important = list.filter!((a)=>(a.canFind("khronos"))).array; 
+					if(important.length)	return important; 
+					else if(list.length)	return list; 
+					else {
+						list = scrapeLinks_deepseek(w); 
+						if(list.length) return list; 
+						else { return []; }
+					}
+				}
+			} 
+			
+			void startChromeUrl(string url, string keyword="")
+			{
+				if(url==``) return; 
+				try {
+					prepareHelpQuery(keyword); 
+					
+					mainWindow.setForegroundWindow; //just to make sure
+					executeShell(joinCommandLine(["start", "chrome", url])); 
+					auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
+					
+					if(keyword!="")
+					{
+						const 	clipboardHadText = clipboard.hasText,
+							savedClipboardText = clipboardHadText ? clipboard.text : ""; 
+						scope(exit) if(clipboardHadText) clipboard.text = savedClipboardText; 
+						
+						clipboard.text = keyword; 	
+						
+						int bail = 10; 
+						foreach(i; 0..100) {
+							const title = getWindowInfo(wi.handle).title; 
+							if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
+							sleep(100); 
+						}
+						inputs.pressCombo("Ctrl+F"); 	sleep(50); 
+						inputs.pressCombo("Ctrl+V"); 	sleep(50); 
+						
+						const needEnter = [`https://registry.khronos.org/vulkan/specs/`].any!((a)=>(url.startsWith(a))); 
+						if(needEnter /+Note: This skips to the second match.+/)
+						{ inputs.pressCombo("Enter"); 	sleep(50); }
+					}
+				}
+				catch(Exception e) {}
+			} 
+			
+			bool startChrome(alias linkScraper, A...)(A args)
+			{
+				auto links = linkScraper(actHelpQuery, args); 
+				if(links.empty) return false; 
+				startChromeUrl(links[0], actSearchKeyword); 
+				return true; 
+			} 
+			
+			
+			
+			
+			try
+			{
+				/+
+					Todo: stringMixin niceexpressions should be processed inside case labels. 
+					/+Code: case mixin(舉!((HelpProvider),q{combined})): +/
+				+/
+				final switch(provider)
+				{
+					case HelpProvider.bing: 	startChrome!scrapeLinks_bing; 	break; 
+					case HelpProvider.msdn: 	startChrome!scrapeLinks_mslearn; 	break; 
+					case HelpProvider.dpldocs: 	startChrome!scrapeLinks_dpldocs(No.searchPage); 	break; 
+					case HelpProvider.dpldocs_searchPage: 	startChrome!scrapeLinks_dpldocs(Yes.searchPage); 	break; 
+					case HelpProvider.deepseek: 	startChrome!scrapeLinks_deepseek; 	break; 
+					case HelpProvider.combined: 	startChrome!scrapeLinks_combined(Yes.context); 	break; 
+					case HelpProvider.combined_noContext: 	startChrome!scrapeLinks_combined(No.context); 	break; 
+				}
 			}
-		}
-		catch(Exception e) {}
+			catch(Exception e)
+			{ ERR(e.simpleMsg); }
+		} 
+		string primarySelectionText; 
+		bool primarySelectionText_accessed; 
+		string prepare(string s)
+		{
+			if(s.canFind("$DIDE_PRIMARY_SELECTION$"))
+			{
+				if(primarySelectionText_accessed.chkSet)
+				primarySelectionText = textSelections.primary.sourceText.replace("\n", " "); 
+				s = s.replace("$DIDE_PRIMARY_SELECTION$", primarySelectionText); 
+			}
+			return s; 
+		} 
+		
+		spawn(&doLaunch, provider, prepare(actHelpQuery), prepare(actSearchKeyword), enableDebug); 
+		//doLaunch(provider, prepare(actHelpQuery), prepare(actSearchKeyword), enableDebug); 
 	} 
-	
-	
-	
-	bool startChrome(alias linkScraper)()
-	{
-		auto links = linkScraper(actHelpQuery); 
-		if(links.empty) return false; 
-		startChrome(links[0], actSearchKeyword); 
-		return true; 
-	}  bool combinedSearch()
-	{
-		auto link = scrapeLinks_combined(actHelpQuery); 
-		if(link=="") return false; 
-		startChrome(link, actSearchKeyword); 
-		return true; 
-	} 
-	
-	bool bing()
-	=> startChrome!scrapeLinks_bing;  bool dpldocs()
-	=> startChrome!scrapeLinks_dpldocs; 	bool deepsearch()
-	=> startChrome!scrapeLinks_deepseek; 		
-	
 	
 	
 } 

@@ -250,6 +250,7 @@ Reply only the link, no talking! I need a working link!"
 		return true; 
 	} 
 	
+	
 } 
 
 class FrmHelp : GLWindow

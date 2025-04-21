@@ -11,7 +11,7 @@ import didetextselectionmanager : TextSelectionManager;
 import dideeditor : Editor; 
 import didenavigator : Navigator; 
 import dideinsight : ModuleDeclarations, DDB, Insight; 
-import didehelp : HelpManager; 
+import didehelp : HelpManager, HelpProvider; 
 import dideai : AiManager; 
 import didesearch : SearchBox; 
 import dideoutline : Outline; 
@@ -1043,10 +1043,14 @@ class Workspace : Container, IWorkspace
 						[q{//@VERB("F11") void stepInto() { NOTIMPL; }
 						}],
 						[],
-						[q{"F1"},q{help_combined},q{help.combinedSearch; }],
-						[q{"Shift+F1"},q{help_bing},q{help.bing; }],
-						[q{"Ctrl+F1"},q{help_dlang},q{help.dpldocs; }],
-						[q{"Alt+F1"},q{help_deepsearch},q{help.deepsearch; }],
+						[q{"F1"},q{help_combined},q{help.launch(HelpProvider.combined); }],
+						[q{"Shift+F1"},q{help_combined_noContext},q{help.launch(HelpProvider.combined_noContext); }],
+						[q{"Ctrl+F1"},q{help_dlang},q{help.launch(HelpProvider.dpldocs_searchPage); }],
+						[q{"Alt+F1"},q{help_deepsearch},q{help.launch(HelpProvider.deepseek); }],
+						[q{"Ctrl+Alt+Shift+F1"},q{help_toggleDebug},q{
+							help.enableDebug.toggle; 
+							im.flashInfo("HelpManager.debug = ", ((help.enableDebug)?("ON"):("OFF"))); 
+						}],
 						[q{"Alt+A"},q{initiateAi},q{aiManager.initiate; }],
 						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch; }],
 						[],
