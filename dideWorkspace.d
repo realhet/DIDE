@@ -94,6 +94,7 @@ class Workspace : Container, IWorkspace
 			aiManager.pasteText = &editor.pasteText; 
 			aiManager.insertNode = &editor.insertNode; 
 			
+			help.initialize; 
 			help.textSelections = textSelections; 
 			
 			flags.targetSurface = 0; 
@@ -463,6 +464,8 @@ class Workspace : Container, IWorkspace
 				buildMessages.updateMessageConnectionArrows; 
 				
 				aiManager.update; 
+				
+				help.update; 
 			}
 			catch(Exception e)
 			{ im.flashError(e.simpleMsg); }
@@ -1046,7 +1049,7 @@ class Workspace : Container, IWorkspace
 						[q{"F1"},q{help_combined},q{help.launch(HelpProvider.combined); }],
 						[q{"Shift+F1"},q{help_combined_noContext},q{help.launch(HelpProvider.combined_noContext); }],
 						[q{"Ctrl+F1"},q{help_dlang},q{help.launch(HelpProvider.dpldocs_searchPage); }],
-						[q{"Alt+F1"},q{help_deepsearch},q{help.launch(HelpProvider.deepseek); }],
+						[q{"Alt+F1"},q{help_deepseek},q{help.launch(HelpProvider.deepseek); }],
 						[q{"Ctrl+Alt+Shift+F1"},q{help_toggleDebug},q{
 							help.enableDebug.toggle; 
 							im.flashInfo("HelpManager.debug = ", ((help.enableDebug)?("ON"):("OFF"))); 

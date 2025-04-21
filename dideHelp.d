@@ -168,6 +168,19 @@ struct HelpManager
 			actContainer.append(mouseOverHintCntr); 
 		}
 	} 
+	
+	__gshared MSQueue!string infoQueue, errorQueue; 
+	void initialize()
+	{
+		if(!infoQueue) infoQueue = new typeof(infoQueue); 
+		if(!errorQueue) errorQueue = new typeof(errorQueue); 
+	} 
+	
+	void update()
+	{
+		foreach(s; infoQueue.fetchAll) im.flashInfo("Help: ", s); 
+		foreach(s; errorQueue.fetchAll) im.flashError("Help Error: "~s); 
+	} 
 	
 	void launch(HelpProvider provider)
 	{
@@ -220,10 +233,10 @@ struct HelpManager
 			static string httpGet(string url, string cacheId="")
 			=> cachedQuery(
 				cacheId, ((){
-					LOG("HelpManager accessing: ", url); 
+					HelpManager.infoQueue.put("accessing: "~url.withoutStarting("https://").splitter('/').take(1).join); 
 					string res; 
 					try { import het.http; res = het.http.curlGet(url); }
-					catch(Exception e) { ERR(e.simpleMsg); }
+					catch(Exception e) { HelpManager.errorQueue.put(e.simpleMsg); }
 					return res; 
 				})
 			); 
@@ -335,8 +348,8 @@ struct HelpManager
 						(
 							"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
 							"The user will give a search string, you must reply with a documentation link. 
-			The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
-			Reply only the link, no talking! I need a working link! If you can't find a link, just reply `null`."
+The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
+Reply only the link, no talking! I need a working link! If you can't find a link, just reply `null`."
 						); 
 						model.temperature = 0.25; 
 						model.apiKey = File(appPath, "a.a").readStr; 
@@ -346,7 +359,16 @@ struct HelpManager
 				
 				string doit()
 				{
-					auto res = model.ask(query, debugPrint : enableDebug); 
+					HelpManager.infoQueue.put("accessing: deepseek.com"); 
+					string actRes; 
+					void onToken(AiChat.Event e, string s)
+					{
+						if(e==AiChat.Event.text)
+						{ actRes ~= s; HelpManager.infoQueue.put("accessing: deepseek.com:\n"~actRes); }
+					} 
+					
+					auto res = model.ask(query, debugPrint : enableDebug, userEvent : enableDebug ? null : &onToken); 
+					
 					enforce(res==`null` || res.startsWith("https://"), "Unknown deepsearch response: "~res); 
 					return res; 
 				} 
@@ -379,6 +401,8 @@ struct HelpManager
 			{
 				if(url==``) return; 
 				try {
+					HelpManager.infoQueue.put("launching Chrome"); 
+					
 					prepareHelpQuery(keyword); 
 					
 					mainWindow.setForegroundWindow; //just to make sure
@@ -439,7 +463,7 @@ struct HelpManager
 				}
 			}
 			catch(Exception e)
-			{ ERR(e.simpleMsg); }
+			{ HelpManager.errorQueue.put(e.simpleMsg); }
 		} 
 		string primarySelectionText; 
 		bool primarySelectionText_accessed; 
@@ -455,7 +479,6 @@ struct HelpManager
 		} 
 		
 		spawn(&doLaunch, provider, prepare(actHelpQuery), prepare(actSearchKeyword), enableDebug); 
-		//doLaunch(provider, prepare(actHelpQuery), prepare(actSearchKeyword), enableDebug); 
 	} 
 	
 	
