@@ -718,11 +718,13 @@ version(/+$DIDE_REGION+/all) {
 		],
 			customCommentSyntaxes	= [
 			skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skException,    skWarning,   skDeprecation,   skConsole,   skComment, 
-			skInteract, skInteract, skInteract, skInteract
+			/+AI+/ skInteract, skInteract, skInteract, skInteract,
+			/+text format+/skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit
 		],
 			customCommentPrefixes 	= [
 			"Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:", 
-			"AI:", "System:", "User:", "Assistant:"
+			"AI:", "System:", "User:", "Assistant:",
+			"Bold:", "Italic:", "Bullet:", "Para:", "H1:", "H2:", "H3:", "H4:", "H5:", "H6:"
 		]
 			//() => customSyntaxKinds.map!(a => a.text.capitalize ~ ':').array ();
 			; 
@@ -770,7 +772,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			return idx; 
 		} 
-		
+		
 		/+protected+/
 		void promoteCustomDirective()
 		{
@@ -809,7 +811,7 @@ version(/+$DIDE_REGION+/all) {
 					row.needMeasure; 
 				}
 			}
-		} 
+		} 
 		
 		const
 		{
@@ -833,14 +835,30 @@ version(/+$DIDE_REGION+/all) {
 			bool isHidden()
 			{ return customPrefix == "Hidden:"; } 
 			
-			bool isAi()
-			=> customPrefix=="AI:"; bool isSystem()
+			bool isAi() const
+			=> customPrefix=="AI:"; 	bool isSystem() const
 			=> customPrefix=="System:"; 
-			bool isUser()
-			=> customPrefix=="User:"; bool isAssistant()
+			bool isUser() const
+			=> customPrefix=="User:"; 	bool isAssistant() const
 			=> customPrefix=="Assistant:"; 
-			bool isAiRelated()
+			bool isAiRelated() const
 			=> isAi || isSystem || isUser || isAssistant; 
+			
+			bool isFormatBold() const
+			=> customPrefix=="Bold:"; 	bool isFormatItalic() const
+			=> customPrefix=="Italic:"; 
+			bool isFormatBullet() const
+			=> customPrefix=="Bullet:"; 	bool isFormatPara() const
+			=> customPrefix=="Para:"; 
+			int isFormatHeading() const
+			=> ((
+				customPrefix.length==3 && 
+				customPrefix[0]=='H' &&
+				customPrefix[1].inRange('1', '6') && 
+				customPrefix[2]==':'
+			)?(customPrefix[1]-'0'):(0)); 
+			bool isFormatRelated() const
+			=> isFormatBold || isFormatItalic || isFormatBullet || isFormatPara || isFormatHeading; 
 			
 			
 			/+Todo: refactor this with an enum+/
@@ -948,6 +966,12 @@ version(/+$DIDE_REGION+/all) {
 							{
 								customPrefix = customCommentPrefixes[idx]; 
 								customSyntax = customCommentSyntaxes[idx]; 
+								
+								if(customSyntax==skInherit)
+								{
+									customSyntax = 	this.allParents!CodeContainer
+										.map!((a)=>(a.syntax)).filter!((s)=>(s!=skInherit)).frontOr(skComment); 
+								}
 							}
 						}
 						
@@ -1150,7 +1174,7 @@ version(/+$DIDE_REGION+/all) {
 			{
 				if(isCustom)
 				{
-					with(nodeBuilder(syntax, isDirective ? NodeStyle.bright : NodeStyle.dim))
+					with(nodeBuilder(syntax, ((isDirective)?(NodeStyle.bright) :(NodeStyle.dim))))
 					{
 						content.bkColor = darkColor; 
 						
@@ -1166,10 +1190,44 @@ version(/+$DIDE_REGION+/all) {
 							//Remove underlined style
 							const origUnderline = style.underline; style.underline = false; 
 							
-							if(!isCode && !isNote)
+							if(!isCode && !isNote && !isFormatRelated)
 							put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
 							
 							style.underline = origUnderline; 
+							
+							void reformat(alias fun=void)()
+							{
+								content.fillSyntax(syntax/+This is inherited syntax.+/); 
+								static if(!is(fun==void))
+								{ foreach(g; content.byGlyph) { fun(g); }}
+								
+								void removeBorder(Container a)
+								{
+									a.border 	= Border.init, 
+									a.margin 	= Margin.init, 
+									a.padding 	= Padding.init; 
+								} 
+								removeBorder(this); removeBorder(content); 
+							} 
+							
+							if(isFormatBold)	reformat!((g){ g.fontFlags |= 1; }); 
+							else if(isFormatItalic)	reformat!((g){ g.fontFlags |= 2; }); 
+							else if(
+								isFormatPara ||
+								isFormatBullet
+							)	{
+								style.bkColor = bkColor = syntax.syntaxBkColor; 
+								if(isFormatBullet) put(` • `); 
+								reformat; 
+								padding.top = padding.bottom = 3; 
+							}
+							else if(auto level = isFormatHeading)
+							{
+								static immutable float[] headingScale = 
+								[1, 2, 1.5, 1.17, 1, 0.83, 0.67]; 
+								const sc = headingScale[level]; 
+								reformat!((g){ g.outerSize *= sc; g.fontFlags |= 1; }); 
+							}
 							
 							put(content); 
 							
@@ -1183,9 +1241,10 @@ version(/+$DIDE_REGION+/all) {
 				else
 				super.rearrange; 
 				
+				if(!isFormatRelated)
 				verify!true; 
 			} 
-			
+			
 			
 			if(isSpecialComment)
 			{

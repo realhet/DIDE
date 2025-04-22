@@ -474,6 +474,9 @@ version(/+$DIDE_REGION+/all) {
 		auto byCell()
 		{ return rows.map!(r => r.subCells).joiner(only(null)); } 
 		
+		auto byGlyph()
+		=> rows.map!((r)=>(r.byGlyph)).joiner; 
+		
 		auto byNode(T : CodeNode = CodeNode)()
 		{ return byCell.map!(a=>cast(T)a).filter!"a"; } 
 		

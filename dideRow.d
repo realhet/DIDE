@@ -300,6 +300,9 @@ version(/+$DIDE_REGION+/all) {
 		auto byCell()
 		{ return subCells.map!"a"; } 
 		
+		auto byGlyph()
+		=> glyphs.filter!"a".cache; //can't return nulls
+		
 		auto byNode(T : CodeNode = CodeNode)()
 		{ return byCell.map!(a=>cast(T)a).filter!"a".cache; } 
 		
