@@ -355,9 +355,10 @@ version(/+$DIDE_REGION+/all) {
 						else
 						{ appendHighlighted_internal(sr.src); }
 						break; 
+						
 						default: 
-							syntax = skError; //Todo: don't insert error text as code
-							appendStr(sr.src); //Todo: it should optionally raise an exception. Example: when a structural scan fails, it should revert to highlighted.
+						syntax = skError; //Todo: don't insert error text as code
+						appendStr(sr.src); //Todo: it should optionally raise an exception. Example: when a structural scan fails, it should revert to highlighted.
 					}
 					
 					scanner.popFront; 

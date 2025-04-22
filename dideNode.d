@@ -1013,6 +1013,12 @@ version(/+$DIDE_REGION+/all) {
 			
 			content.convertSpacesToTabs(Yes.outdent); 
 			needMeasure; 
+			
+			if(isCode && content.rowCount>1)
+			{
+				try { content = new CodeColumn(this, content.sourceText, TextFormat.managed_optionalBlock, content.rows[0].lineIdx); }
+				catch(Exception e) {}
+			}
 		} 
 		
 		bool isSpecialComment()
@@ -1046,18 +1052,37 @@ version(/+$DIDE_REGION+/all) {
 				
 				if(isCode)
 				{
-					content.resyntax; 
-					/+
-						Todo: this can change the width of the chars.
-						All width changing syntax operations should be 
-						handled properly in the resyntaxer.
-					+/
-					content.needMeasure; /+
-						Note: 	This is just a workaround.
-						<- 	Calling measure() won't work, because it only 
-							works at that level and beyond.
-							needMeasure() is recursive through all parents
-					+/
+					void doHighlighted()
+					{
+						//just highlighted
+						content.resyntax; 
+						/+
+							Todo: this can change the width of the chars.
+							All width changing syntax operations should be 
+							handled properly in the resyntaxer.
+						+/
+						content.needMeasure; /+
+							Note: 	This is just a workaround.
+							<- 	Calling measure() won't work, because it only 
+								works at that level and beyond.
+								needMeasure() is recursive through all parents
+						+/
+					} 
+					
+					void doManaged()
+					{
+						try {
+							content = new CodeColumn(
+								this, content.sourceText, 
+								TextFormat.managed_optionalBlock, content.rows[0].lineIdx
+							); 
+						}
+						catch(Exception e) { doHighlighted; }
+					} 
+					
+					
+					if(false && content.rowCount>1)	doManaged; 
+					else	doHighlighted; 
 				}
 				else
 				content.fillSyntax(syntax); 

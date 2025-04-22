@@ -247,55 +247,7 @@ For newly generated code use TAB to indent.
 For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
 Use higher level DLang functional constructs when possible: ranges, etc.
 Use GLSL-like vector/matrix operations, the user's framework supports that.
-Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.
-
-When communicating in expressions or one line code, use this form: /+Code: code+/
-When inserting multiline code, use form:
-/+Code:
-	multiline
-	source code goes here
-+/
-
-Put yout paragraphs into /+Note: text goes here+/ blocks!
-You can do multiline paragrphs like this:
-/+Note:
-	line1
-	line2
-+/
-
-Put bullet paragraphs into /+Bullet: text goes here+/ blocks!
-It has a multiline variant too:
-/+Bullet:
-	line1
-	line2
-+/
-Use one bullet paragraph for each bullet item!
-
-Word wrap every paragraphs and bullet paragraphs to around 100 characters!
-
-Put bold text inside /+Bold: text goes here+/ blocks! 
-
-Put italic text inside /+Italic: text goes here+/ blocks! 
-
-Put heading text inside /+Hn: text goes here+/ blocks, where n is in range 1 to 6! 
-
-Sometimes I will give or ask the results in a "table", this is my table format, please preserve this exact format and whitespaces when you are communicating with it: `
-				~"\n/+Code:\n"
-				~q{
-					(表([
-						[q{/+Note: Header+/},q{/+Note: 2nd column+/},q{/+Note: 3rd column+/}],
-						[q{normal cell},q{"string cell"},q{/+comment cell+/}],
-						[q{/+If the whole row is a comment, it's ignored+/}],
-						[],
-						[q{/+also empty rows are ignored, they are just there for formatting+/}],
-						[q{
-							another cell 1+1=2
-							/+anything D syntax can go here.+/
-						},q{`Another string.
-This one is multiline and without escapes.`}],
-					]))
-				}.splitLines[1..$-1].join('\n').outdent
-				~"\n+/\n"
+Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.`
 			); 
 			aiModel.apiKey = File(appPath, "a.a").readStr; 
 			NOTIMPL("Ini file for settings!"); 
