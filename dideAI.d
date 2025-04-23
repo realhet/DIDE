@@ -41,7 +41,17 @@ static struct AiManager
 							(
 								{
 									textSelections.items = node.content.endSelection(true); 
+									void p(string type) { print("\34\1", type, "\34\0", s); } 
+									if(s.canFind("**")) p("bold"); 
+									if(s.canFind("__")) p("italic"); 
+									if(s.canFind("```")) p("large code"); 
+									else if(s.canFind("`")) p("small code"); 
+									if(s.canFind(" * ")) p("bullet"); 
 									pasteText(s); 
+									/+
+										Todo: should not focus at this editing, 
+										the user cant pan elswhere.
+									+/
 								}
 							); 	break; 
 							case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
@@ -143,7 +153,7 @@ static struct AiManager
 		
 	} 
 	
-	void launch()
+	void launch(bool refreshCache=false)
 	{
 		{
 			auto n = getSurroundingAiNode; 
@@ -243,13 +253,16 @@ static struct AiManager
 				"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
 				`You are a helpful assistant.
 I don't want you to reformat my code, keep all whitespace as is.
-For newly generated code use TAB to indent.
+Use tab for indentation!
 For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
 Use higher level DLang functional constructs when possible: ranges, etc.
 Use GLSL-like vector/matrix operations, the user's framework supports that.
 Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.`
 			); 
-			aiModel.apiKey = File(appPath, "a.a").readStr; 
+			with(aiModel)
+			apiKey 	= File(appPath, "a.a").readStr,
+			cachePath 	= Path(appPath, "WebCache"),
+			cached 	= true; 
 			NOTIMPL("Ini file for settings!"); 
 		}
 		
@@ -264,7 +277,7 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 			}
 			
 			auto chat = aiModel.newChat; 
-			chat.ask(messages); 
+			chat.ask(messages, refreshCache: refreshCache); 
 			pendingAiChatByAiAssistantNode[assistantNode] = chat; 
 			
 			im.flashInfo("AiChat launched: "~chat.identityStr); 

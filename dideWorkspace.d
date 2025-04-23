@@ -1055,7 +1055,8 @@ class Workspace : Container, IWorkspace
 							im.flashInfo("HelpManager.debug = ", ((help.enableDebug)?("ON"):("OFF"))); 
 						}],
 						[q{"Alt+A"},q{initiateAi},q{aiManager.initiate; }],
-						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch; }],
+						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch(refreshCache: false); }],
+						[q{"Ctrl+Shift+Enter"},q{launchAi_refresh},q{aiManager.launch(refreshCache: true); }],
 						[],
 						[q{//Experimental
 						}],
