@@ -258,6 +258,25 @@ version(/+$DIDE_REGION+/all) {
 			return n; 
 			return null; 
 		} 
+		
+		TextCursor nodeCursor()
+		{
+			if(auto row = (cast(CodeRow)(parent)))
+			if(auto col = (cast(CodeColumn)(row.parent)))
+			return col.cursorOf(this); 
+			return TextCursor.init; 
+		} 
+		
+		TextSelection nodeSelection(bool primary=false)
+		{
+			if(auto c1 = nodeCursor)
+			{
+				auto c2 = c1; c2.pos.x++; 
+				return TextSelection(c1, c2, primary); 
+			}
+			return TextSelection.init; 
+		} 
+		
 		
 		CodeNode namedParentNode()
 		{
@@ -717,12 +736,15 @@ version(/+$DIDE_REGION+/all) {
 			"include", "define", "ifdef", "ifndef", "if", "endif", "undef", "elif", "else" 	//Link: Arduino directives
 		],
 			customCommentSyntaxes	= [
-			skTodo,    skOpt,   skBug,   skNote,   skLink,    skCode,  skError,   skException,    skWarning,   skDeprecation,   skConsole,   skComment, 
+			skTodo,    skOpt,   skBug,   skNote,   skLink,   skCode, skCode, skCode,  skError,   skException,    skWarning,   skDeprecation,   skConsole,   skComment, 
 			/+AI+/ skInteract, skInteract, skInteract, skInteract,
-			/+text format+/skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit
+			
+			/+text format+//+skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit+/
+			/+Todo: skInherit does not works with insertNode+/
+			/+text format+/skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract
 		],
 			customCommentPrefixes 	= [
-			"Todo:", "Opt:", "Bug:", "Note:", "Link:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:", 
+			"Todo:", "Opt:", "Bug:", "Note:", "Link:", "Highlighted:", "Structured:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:", 
 			"AI:", "System:", "User:", "Assistant:",
 			"Bold:", "Italic:", "Bullet:", "Para:", "H1:", "H2:", "H3:", "H4:", "H5:", "H6:"
 		]
@@ -828,8 +850,18 @@ version(/+$DIDE_REGION+/all) {
 			{ return customPrefix != ""; } 
 			bool isLink()
 			{ return customPrefix == "Link:"; } 
-			bool isCode()
-			{ return customPrefix == "Code:"; } 
+			
+			bool isHighlighted()
+			=> customPrefix == "Highlighted:"; 
+			bool isStructured()
+			=> customPrefix == "Structured:"; 
+			bool isCode() const
+			=> customPrefix == "Code:"; 
+			
+			bool isCodeRelated() const
+			=> isCode || isStructured || isHighlighted; 
+			
+			
 			bool isNote()
 			{ return customPrefix == "Note:"; } 
 			bool isHidden()
@@ -1014,7 +1046,7 @@ version(/+$DIDE_REGION+/all) {
 			content.convertSpacesToTabs(Yes.outdent); 
 			needMeasure; 
 			
-			if(isCode && content.rowCount>1)
+			if(isStructured || isCode && content.rowCount>1)
 			{
 				try { content = new CodeColumn(this, content.sourceText, TextFormat.managed_optionalBlock, content.rows[0].lineIdx); }
 				catch(Exception e) {}
@@ -1050,39 +1082,21 @@ version(/+$DIDE_REGION+/all) {
 			{
 				//Opt: this is only needed when the syntax or the error state has changed.
 				
-				if(isCode)
+				if(isCodeRelated)
 				{
-					void doHighlighted()
-					{
-						//just highlighted
-						content.resyntax; 
-						/+
-							Todo: this can change the width of the chars.
-							All width changing syntax operations should be 
-							handled properly in the resyntaxer.
-						+/
-						content.needMeasure; /+
-							Note: 	This is just a workaround.
-							<- 	Calling measure() won't work, because it only 
-								works at that level and beyond.
-								needMeasure() is recursive through all parents
-						+/
-					} 
-					
-					void doManaged()
-					{
-						try {
-							content = new CodeColumn(
-								this, content.sourceText, 
-								TextFormat.managed_optionalBlock, content.rows[0].lineIdx
-							); 
-						}
-						catch(Exception e) { doHighlighted; }
-					} 
-					
-					
-					if(false && content.rowCount>1)	doManaged; 
-					else	doHighlighted; 
+					//just highlighted
+					content.resyntax; 
+					/+
+						Todo: this can change the width of the chars.
+						All width changing syntax operations should be 
+						handled properly in the resyntaxer.
+					+/
+					content.needMeasure; /+
+						Note: 	This is just a workaround.
+						<- 	Calling measure() won't work, because it only 
+							works at that level and beyond.
+							needMeasure() is recursive through all parents
+					+/
 				}
 				else
 				content.fillSyntax(syntax); 
@@ -1185,7 +1199,7 @@ version(/+$DIDE_REGION+/all) {
 			}
 			
 			
-			if(anyErrors && markErrors)
+			if(anyErrors && markErrors && !isHighlighted/+highlighted comment can be is partially filled by AI Chat.+/)
 			{ fillSyntax(skError); }
 			
 			return true; //Todo: This test is temporarily disable, so the Stickers can be edited.
@@ -1215,7 +1229,7 @@ version(/+$DIDE_REGION+/all) {
 							//Remove underlined style
 							const origUnderline = style.underline; style.underline = false; 
 							
-							if(!isCode && !isNote && !isFormatRelated)
+							if(!isCodeRelated && !isNote && !isFormatRelated)
 							put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
 							
 							style.underline = origUnderline; 
@@ -1250,8 +1264,11 @@ version(/+$DIDE_REGION+/all) {
 							{
 								static immutable float[] headingScale = 
 								[1, 2, 1.5, 1.17, 1, 0.83, 0.67]; 
-								const sc = headingScale[level]; 
-								reformat!((g){ g.outerSize *= sc; g.fontFlags |= 1; }); 
+								const newHeight = headingScale[level] * DefaultFontHeight; 
+								reformat!((g){
+									g.outerSize = vec2(((g.outerWidth)/(g.outerHeight))*newHeight, newHeight); 
+									g.fontFlags |= 1; 
+								}); 
 							}
 							
 							put(content); 

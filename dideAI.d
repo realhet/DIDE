@@ -3,6 +3,7 @@ module dideai;
 import het.ai; 
 import didebase; 
 import didenode: CodeComment; 
+import didedecl: extractThisLevelDString; 
 import didetextselectionmanager : TextSelectionManager; 
 static struct AiManager
 {
@@ -32,35 +33,209 @@ static struct AiManager
 			
 			with(chat)
 			{
-				update(
-					(Event event, string s)
-					{
-						final switch(event)
+				static if((常!(bool)(0)))
+				{
+					update
+					(
+						(Event event, string s)
 						{
-							case Event.text: 	textSelections.preserve
-							(
-								{
-									textSelections.items = node.content.endSelection(true); 
-									void p(string type) { print("\34\1", type, "\34\0", s); } 
-									if(s.canFind("**")) p("bold"); 
-									if(s.canFind("__")) p("italic"); 
-									if(s.canFind("```")) p("large code"); 
-									else if(s.canFind("`")) p("small code"); 
-									if(s.canFind(" * ")) p("bullet"); 
-									pasteText(s); 
-									/+
-										Todo: should not focus at this editing, 
-										the user cant pan elswhere.
-									+/
-								}
-							); 	break; 
-							case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
-							case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
-							case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
+							final switch(event)
+							{
+								case Event.text: 	textSelections.preserve
+								(
+									{
+										textSelections.items = node.content.endSelection(true); 
+										pasteText(s); 
+										/+
+											Todo: should not focus at this editing, 
+											the user cant pan elswhere.
+										+/
+									}
+								); 	break; 
+								case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
+								case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
+								case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
+							}
 						}
+					); 
+				}
+				else
+				{
+					version(/+$DIDE_REGION RGNSave/restore textSelections+/all)
+					{
+						Nullable!(string[]) savedTS; 
+						void saveTS() { if(savedTS.isNull) savedTS = textSelections.saveTextSelections; } 
+						scope(exit) if(!savedTS.isNull) textSelections.restoreTextSelections(savedTS.get); 
 					}
-				); 
-				if(!running) toRemove ~= node; 
+					
+					
+					void seekToEnd()
+					{ saveTS; textSelections.items = node.content.endSelection(true); } 
+					
+					auto st() => markdownProcessor; 
+					auto cr() => textSelections.primary.cursors[0]; 
+					void stepIn(string prefix)
+					{
+						auto cmt = cr.codeColumn.lastCell!CodeComment; 
+						if(cmt && cmt.customPrefix==prefix)
+						textSelections.items = cmt.content.endSelection(true); 
+						else insertNode("/+"~prefix~"\0+/",0); 
+					} 
+					
+					update_markDown
+					(
+						((ch){
+							seekToEnd; 
+							
+							if(st.backtickLevel)	stepIn("Highlighted:"); 
+							else if(st.asteriskLevel==2)	stepIn("Bold:"); 
+							else if(st.asteriskLevel==1)	stepIn("Italic:"); 
+							else {
+								if(ch=='\n')
+								{
+									auto row = cr.codeColumn.rows[cr.pos.y]; 
+									
+									int checkHeadingLevel()
+									{
+										const hashCount = row.chars.countUntil!q{a!='#'}.to!int; 
+										return ((
+											hashCount.inRange(1, 6) && 
+											row.getChar(hashCount)==' '
+										)?(hashCount):(0)); 
+									} 
+									
+									int checkBulletLevel()
+									{
+										bool chk(int i) => row.getChar(i)=='-' && row.getChar(i+1)==' '; 
+										{
+											const spaceCount = row.chars.countUntil!q{a!=' '}.to!int.max(0); 
+											if(chk(spaceCount)) return (spaceCount+1)/2 + 1; 
+										}
+										{
+											const tabCount = row.chars.countUntil!q{a!='\t'}.to!int.max(0); 
+											if(chk(tabCount)) return tabCount+1; 
+										}
+										return 0; 
+									} 
+									
+									string tableCode; 
+									int checkTableHeight()
+									{
+										bool isTableRow(CodeRow row)
+										=> row.length>=2 && row.chars.front=='|' && row.chars.back=='|'; 
+										
+										if(auto col = (cast(CodeColumn)(row.parent)))
+										{
+											const bottom = col.subCellIndex(row); 
+											if(bottom>=0)
+											{
+												int top = -1; 
+												foreach_reverse(i; 0..bottom)
+												if(isTableRow(col.rows[i])) top = i; else break; 
+												if(mixin(界3(q{0},q{top},q{bottom})))
+												{
+													auto cells = iota(top, bottom+1)
+													.map!((y)=>(
+														col.rows[y].sourceText
+														.withoutStarting('|')
+														.withoutEnding('|')
+														.splitter('|')
+														.map!strip
+														.map!((s)=>(s.replace("&124;", "|")))
+														.array
+													)).array; 
+													if(cells.length>=3)
+													{
+														const res = cells.length.to!int; 
+														
+														//remove header gridline
+														if(cells[1].length && cells[1][0].canFind("---"))
+														cells = cells.remove(1); 
+														
+														tableCode = "/+Structured:(表(["~
+														cells.enumerate.map!((r)=>(
+															"["~
+															r.value.map!((c)=>(
+																"q{"~
+																((r.index)?(""):("/+Note:"))~
+																c/+Todo: valid chars check!+/~
+																((r.index)?(""):("+/"))~
+																"}"
+															)).join(',')~
+															"]"
+														)).join(',')~
+														"]))+/"; 
+														print(tableCode); 
+														return res; 
+													}
+												}
+											}
+										}
+										
+										return 0; 
+									} 
+									
+									if(const headingLevel = checkHeadingLevel)
+									{
+										textSelections.items = row.rowSelection; 
+										insertNode("/+H"~headingLevel.text~":"~row.sourceText[headingLevel+1..$]~"+/"); 
+									}
+									else if(const bulletLevel = checkBulletLevel)
+									{
+										const s = row.sourceText.stripLeft.withoutStarting("- "); 
+										textSelections.items = row.rowSelection; 
+										pasteText("\t".replicate(bulletLevel)); 
+										insertNode("/+Bullet:"~s~"+/"); 
+									}
+									else if(const h = checkTableHeight)
+									{
+										//select whole table
+										auto ts = row.rowSelection; ts.cursors[0].pos.y -= h-1; 
+										textSelections.items = ts; 
+										
+										//replace with nice table
+										insertNode(tableCode); 
+										
+										//reacquire last row;
+										row = cr.codeColumn.rows[cr.pos.y]; 
+									}
+									
+									//remove changed markers from row and subContainers
+									row.clearChanged; 
+								}
+							}
+							
+							pasteText(ch.text); 
+						}),
+						((){
+							seekToEnd; 
+							if(auto cmt = cr.codeColumn.lastCell!CodeComment)
+							if(auto col = cmt.content)
+							if(cmt.isHighlighted && col.rowCount>2 && col.lastRow.empty)
+							{
+								//strip off language spec and the last empty row
+								const language = col.firstRow.extractThisLevelDString.text; 
+								col.subCells = col.subCells[1..$-1]; 
+								col.needMeasure; 
+								
+								if(language.among("", "d", "c", "cpp", "glsl"))
+								{
+									//promote to structured modular code
+									cmt.customPrefix = "Structured:"; 
+									textSelections.items = cmt.nodeSelection; 
+									insertNode(cmt.sourceText); 
+								}
+							}
+							
+						})
+					); 
+				}
+				
+				if(!running)
+				{
+					node.content.clearChanged; 
+					toRemove ~= node; 
+				}
 			}
 		}
 		

@@ -84,12 +84,18 @@ class TextSelectionManager
 		} 
 	}
 	
+	
+	string[] saveTextSelections()
+	=> items.map!((a)=>(a.toReference.text)).array; 
+	void restoreTextSelections(in string[] a)
+	{ items = a.map!((a)=>(TextSelection(a, &modules.findModule))).array; } 
+	
+	
 	void preserve(void delegate() fun)
 	{
 		//Todo: preserve module selections too
-		const savedTextSelections = items.map!((a)=>(a.toReference.text)).array; 
-		scope(exit)
-		{ items = savedTextSelections.map!((a)=>(TextSelection(a, &modules.findModule))).array; }
+		const savedTextSelections = saveTextSelections; 
+		scope(exit) restoreTextSelections(savedTextSelections); 
 		if(fun) fun(); 
 	} 
 	
@@ -122,7 +128,7 @@ class TextSelectionManager
 	
 	bool shrink()
 	{
-		if(((0xC2E5AE8A3C6).檢 (extendSelectionStack.length>=2)))
+		if(((0xCB85AE8A3C6).檢 (extendSelectionStack.length>=2)))
 		{
 			const 	act = extendSelectionStack[$-1],
 				prev = extendSelectionStack[$-2]; 

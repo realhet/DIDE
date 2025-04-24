@@ -319,6 +319,12 @@ version(/+$DIDE_REGION+/all) {
 		auto chars(dchar objectChar=compoundObjectChar)()
 		{ return glyphs.map!(a => a ? a.ch : objectChar); } 
 		
+		dchar getChar(dchar objectChar=compoundObjectChar)(size_t idx)
+		{
+			if(idx>=subCells.length) return '\0'; 
+			return chars!objectChar[idx]; 
+		} 
+		
 		string shallowText(dchar objectChar=compoundObjectChar)()
 		{ return chars!objectChar.to!string; } 
 		//Todo: combine this with extractThisLevelDString
@@ -327,7 +333,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		private static bool isIndentableSyntax(T)(T sk)
 		{
-			return !!sk.among(skWhitespace, skComment); 
+			return !!sk.among(skWhitespace, skComment, skInteract); 
 			/+don't count string literals, their indent must be preserved!+/
 		} 
 		
@@ -468,6 +474,31 @@ version(/+$DIDE_REGION+/all) {
 		
 		vec2 newLinePos()
 		{ return vec2(cellCount ? subCells.back.outerRight : 0, (innerHeight-DefaultFontHeight)*.5f); } 
+		
+		TextCursor rowCursor_home()
+		{
+			if(auto col = (cast(CodeColumn)(parent)))
+			{
+				const idx = col.subCellIndex(this); 
+				if(idx>=0) return TextCursor(col, ivec2(0, idx.to!int)); 
+			}
+			return TextCursor.init; 
+		} 
+		
+		TextCursor rowCursor_end()
+		{
+			auto c = rowCursor_home; 
+			if(c) c.pos.x = cellCount; 
+			return c; 
+		} 
+		
+		TextSelection rowSelection(bool primary=false)
+		{
+			auto c2 = rowCursor_end; 
+			auto c1 = c2; c1.pos.x = 0; 
+			return TextSelection(c1, c2, primary); 
+		} 
+		
 		
 		/// Returns inserted count
 		int insertSomething(int at, void delegate() appendFun)
