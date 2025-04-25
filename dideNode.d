@@ -1072,6 +1072,8 @@ version(/+$DIDE_REGION+/all) {
 		
 		bool verify(bool markErrors = false)()
 		{
+			//Todo: fix this whole verification concept!
+			
 			bool anyErrors; 
 			
 			RGB errorBkColor, errorFontColor; 
@@ -1117,8 +1119,12 @@ version(/+$DIDE_REGION+/all) {
 						errorFontColor = syntaxFontColor(skError); 
 					}
 					
-					g.bkColor = errorBkColor; 
-					g.fontColor = errorFontColor; 
+					//Todo: this red shit is fucking annoying!!!
+					version(/+$DIDE_REGION RGN+/none)
+					{
+						g.bkColor = errorBkColor; 
+						g.fontColor = errorFontColor; 
+					}
 				}
 				
 				anyErrors = true; 
@@ -1198,9 +1204,15 @@ version(/+$DIDE_REGION+/all) {
 				+/; 	break; 
 			}
 			
-			
-			if(anyErrors && markErrors && !isHighlighted/+highlighted comment can be is partially filled by AI Chat.+/)
-			{ fillSyntax(skError); }
+			//Todo: this red shit is fucking annoying!
+			version(/+$DIDE_REGION RGN+/none)
+			{
+				if(anyErrors && markErrors && !isHighlighted/+highlighted comment can be is partially filled by AI Chat.+/)
+				{
+					if(!isAiRelated && !isFormatRelated)
+					fillSyntax(skError); 
+				}
+			}
 			
 			return true; //Todo: This test is temporarily disable, so the Stickers can be edited.
 			

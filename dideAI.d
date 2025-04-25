@@ -23,236 +23,14 @@ static struct AiManager
 	
 	AiChat[CodeComment] pendingAiChatByAiAssistantNode; 
 	
-	void update()
-	{
-		//Todo: check if activeAiNode was deleted...
-		CodeComment[] toRemove; 
-		foreach(node, chat; pendingAiChatByAiAssistantNode)
-		{
-			//Todo: check if the node was deleted...
-			
-			with(chat)
-			{
-				static if((常!(bool)(0)))
-				{
-					update
-					(
-						(Event event, string s)
-						{
-							final switch(event)
-							{
-								case Event.text: 	textSelections.preserve
-								(
-									{
-										textSelections.items = node.content.endSelection(true); 
-										pasteText(s); 
-										/+
-											Todo: should not focus at this editing, 
-											the user cant pan elswhere.
-										+/
-									}
-								); 	break; 
-								case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
-								case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
-								case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
-							}
-						}
-					); 
-				}
-				else
-				{
-					version(/+$DIDE_REGION RGNSave/restore textSelections+/all)
-					{
-						Nullable!(string[]) savedTS; 
-						void saveTS() { if(savedTS.isNull) savedTS = textSelections.saveTextSelections; } 
-						scope(exit) if(!savedTS.isNull) textSelections.restoreTextSelections(savedTS.get); 
-					}
-					
-					
-					void seekToEnd()
-					{ saveTS; textSelections.items = node.content.endSelection(true); } 
-					
-					auto st() => markdownProcessor; 
-					auto cr() => textSelections.primary.cursors[0]; 
-					void stepIn(string prefix)
-					{
-						auto cmt = cr.codeColumn.lastCell!CodeComment; 
-						if(cmt && cmt.customPrefix==prefix)
-						textSelections.items = cmt.content.endSelection(true); 
-						else insertNode("/+"~prefix~"\0+/",0); 
-					} 
-					
-					update_markDown
-					(
-						((ch){
-							seekToEnd; 
-							
-							if(st.backtickLevel)	stepIn("Highlighted:"); 
-							else if(st.asteriskLevel==2)	stepIn("Bold:"); 
-							else if(st.asteriskLevel==1)	stepIn("Italic:"); 
-							else {
-								if(ch=='\n')
-								{
-									auto row = cr.codeColumn.rows[cr.pos.y]; 
-									
-									int checkHeadingLevel()
-									{
-										const hashCount = row.chars.countUntil!q{a!='#'}.to!int; 
-										return ((
-											hashCount.inRange(1, 6) && 
-											row.getChar(hashCount)==' '
-										)?(hashCount):(0)); 
-									} 
-									
-									int checkBulletLevel()
-									{
-										bool chk(int i) => row.getChar(i)=='-' && row.getChar(i+1)==' '; 
-										{
-											const spaceCount = row.chars.countUntil!q{a!=' '}.to!int.max(0); 
-											if(chk(spaceCount)) return (spaceCount+1)/2 + 1; 
-										}
-										{
-											const tabCount = row.chars.countUntil!q{a!='\t'}.to!int.max(0); 
-											if(chk(tabCount)) return tabCount+1; 
-										}
-										return 0; 
-									} 
-									
-									string tableCode; 
-									int checkTableHeight()
-									{
-										bool isTableRow(CodeRow row)
-										=> row.length>=2 && row.chars.front=='|' && row.chars.back=='|'; 
-										
-										if(auto col = (cast(CodeColumn)(row.parent)))
-										{
-											const bottom = col.subCellIndex(row); 
-											if(bottom>=0)
-											{
-												int top = -1; 
-												foreach_reverse(i; 0..bottom)
-												if(isTableRow(col.rows[i])) top = i; else break; 
-												if(mixin(界3(q{0},q{top},q{bottom})))
-												{
-													auto cells = iota(top, bottom+1)
-													.map!((y)=>(
-														col.rows[y].sourceText
-														.withoutStarting('|')
-														.withoutEnding('|')
-														.splitter('|')
-														.map!strip
-														.map!((s)=>(s.replace("&124;", "|")))
-														.array
-													)).array; 
-													if(cells.length>=3)
-													{
-														const res = cells.length.to!int; 
-														
-														//remove header gridline
-														if(cells[1].length && cells[1][0].canFind("---"))
-														cells = cells.remove(1); 
-														
-														tableCode = "/+Structured:(表(["~
-														cells.enumerate.map!((r)=>(
-															"["~
-															r.value.map!((c)=>(
-																"q{"~
-																((r.index)?(""):("/+Note:"))~
-																c/+Todo: valid chars check!+/~
-																((r.index)?(""):("+/"))~
-																"}"
-															)).join(',')~
-															"]"
-														)).join(',')~
-														"]))+/"; 
-														print(tableCode); 
-														return res; 
-													}
-												}
-											}
-										}
-										
-										return 0; 
-									} 
-									
-									if(const headingLevel = checkHeadingLevel)
-									{
-										textSelections.items = row.rowSelection; 
-										insertNode("/+H"~headingLevel.text~":"~row.sourceText[headingLevel+1..$]~"+/"); 
-									}
-									else if(const bulletLevel = checkBulletLevel)
-									{
-										const s = row.sourceText.stripLeft.withoutStarting("- "); 
-										textSelections.items = row.rowSelection; 
-										pasteText("\t".replicate(bulletLevel)); 
-										insertNode("/+Bullet:"~s~"+/"); 
-									}
-									else if(const h = checkTableHeight)
-									{
-										//select whole table
-										auto ts = row.rowSelection; ts.cursors[0].pos.y -= h-1; 
-										textSelections.items = ts; 
-										
-										//replace with nice table
-										insertNode(tableCode); 
-										
-										//reacquire last row;
-										row = cr.codeColumn.rows[cr.pos.y]; 
-									}
-									
-									//remove changed markers from row and subContainers
-									row.clearChanged; 
-								}
-							}
-							
-							pasteText(ch.text); 
-						}),
-						((){
-							seekToEnd; 
-							if(auto cmt = cr.codeColumn.lastCell!CodeComment)
-							if(auto col = cmt.content)
-							if(cmt.isHighlighted && col.rowCount>2 && col.lastRow.empty)
-							{
-								//strip off language spec and the last empty row
-								const language = col.firstRow.extractThisLevelDString.text; 
-								col.subCells = col.subCells[1..$-1]; 
-								col.needMeasure; 
-								
-								if(language.among("", "d", "c", "cpp", "glsl"))
-								{
-									//promote to structured modular code
-									cmt.customPrefix = "Structured:"; 
-									textSelections.items = cmt.nodeSelection; 
-									insertNode(cmt.sourceText); 
-								}
-							}
-							
-						})
-					); 
-				}
-				
-				if(!running)
-				{
-					node.content.clearChanged; 
-					toRemove ~= node; 
-				}
-			}
-		}
-		
-		foreach(node; toRemove)
-		{
-			auto chat = pendingAiChatByAiAssistantNode[node]; 
-			pendingAiChatByAiAssistantNode.remove(node); 
-			im.flashInfo("AiChat removed: "~chat.identityStr); 
-		}
-	} 
+	
 	
 	CodeComment getSurroundingAiNode()
 	{
 		auto s = textSelections.primary; 
 		return ((s)?(s.codeColumn.allParents!CodeComment.filter!((a)=>(a.isAi)).frontOrNull):(null)); 
 	} 
-	
+	
 	void initiate()
 	{
 		//Todo: activeAiNode must be validated in update()
@@ -455,7 +233,337 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 			chat.ask(messages, refreshCache: refreshCache); 
 			pendingAiChatByAiAssistantNode[assistantNode] = chat; 
 			
-			im.flashInfo("AiChat launched: "~chat.identityStr); 
+			im.flashInfo("Ai: ", "launched ("~chat.identityStr[0..3]~")"); 
+		}
+	} 
+	void update()
+	{
+		//Todo: check if activeAiNode was deleted...
+		CodeComment[] toRemove; 
+		foreach(node, chat; pendingAiChatByAiAssistantNode)
+		{
+			//Todo: check if the node was deleted...
+			
+			with(chat)
+			{
+				static if((常!(bool)(0))) {
+					update
+					(
+						(Event event, string s)
+						{
+							final switch(event)
+							{
+								case Event.text: 	textSelections.preserve
+								(
+									{
+										textSelections.items = node.content.endSelection(true); 
+										pasteText(s); 
+										/+
+											Todo: should not focus at this editing, 
+											the user cant pan elswhere.
+										+/
+									}
+								); 	break; 
+								case Event.error: 	print(EgaColor.ltRed("\nError: "~s)); 	break; 
+								case Event.warning: 	print(EgaColor.yellow("\nWarning: "~s)); 	break; 
+								case Event.done: 	print(EgaColor.ltGreen("\nDone: "~s)); 	break; 
+							}
+						}
+					); 
+				}else {
+					version(/+$DIDE_REGION RGNSave/restore textSelections+/all)
+					{
+						Nullable!(string[]) savedTS; 
+						void saveTS() { if(savedTS.isNull) savedTS = textSelections.saveTextSelections; } 
+						scope(exit) if(!savedTS.isNull) textSelections.restoreTextSelections(savedTS.get); 
+					}
+					
+					
+					void seekToEnd()
+					{ saveTS; textSelections.items = node.content.endSelection(true); } 
+					
+					auto st() => markdownProcessor; 
+					auto cr() => textSelections.primary.cursors[0]; 
+					void stepIn(string prefix)
+					{
+						auto cmt = cr.codeColumn.lastCell!CodeComment; 
+						if(cmt && cmt.customPrefix==prefix)
+						textSelections.items = cmt.content.endSelection(true); 
+						else insertNode("/+"~prefix~"\0+/",0); 
+					} 
+					
+					bool applyWordWrap()
+					{
+						bool res/+changed or not+/; 
+						
+						void wrap(CodeRow row, bool createPara, float extraSize = 0)
+						{
+							auto originalRow = row; 
+							const maxWidth = 600/+Todo: move it outside+/ - extraSize
+							; 
+							int[] splitPoints; float acc=0; 
+							foreach(x; 0..row.cellCount-1)
+							{
+								if(row.chars[x]==' ' && row.chars[x+1]!=' ')
+								{
+									const w = row.subCells[x+1].outerLeft-acc; 
+									if(w > maxWidth)
+									{
+										acc += w; 
+										splitPoints ~= x; 
+									}
+								}
+							}
+							
+							if(splitPoints.empty) return; 
+							
+							res = true; 
+							
+							if(createPara)
+							{
+								textSelections.items = row.rowSelection; 
+								insertNode("/+Para:"~row.sourceText~"+/"); 
+								row = (cast(CodeComment)(row.subCells[0])).enforce.content.rows[0]; 
+							}
+							
+							//create newLines
+							auto col = row.parent.enforce; enforce(col.rowCount==1); 
+							textSelections.items = 
+								splitPoints.map!((x)=>(
+								TextSelection(
+									TextCursor(col, ivec2(x  , 0)), 
+									TextCursor(col, ivec2(x+1, 0)), false
+								)
+							)).array; 
+							insertNewLine(); 
+							
+							originalRow.clearChanged; 
+						} 
+						
+						auto col = node.content; 
+						foreach(y; 0..col.rowCount)
+						{
+							auto row = col.rows[y]; 
+							if(!row.empty)
+							{
+								if(auto cmt = (cast(CodeComment)(row.subCells.back)))
+								{
+									if(
+										(cmt.isFormatBullet || cmt.isFormatPara) && 
+										cmt.content.rowCount==1
+									)
+									{ wrap(cmt.content.rows[0], false, cmt.outerLeft); continue; }
+								}
+								wrap(row, true); 
+							}
+						}
+						
+						return res; 
+					} 
+					
+					bool makeTables()
+					{
+						//Opt: this is totally unoptimal, it just barely works
+						bool res/+if changed or not+/; 
+						string tableCode; 
+						
+						int checkTableHeight(CodeRow row)
+						{
+							bool isTableRow(CodeRow row)
+							=> row.length>=2 && row.chars.front=='|' && row.chars.back=='|'; 
+							
+							if(!isTableRow(row)) return 0; 
+							
+							if(auto col = (cast(CodeColumn)(row.parent)))
+							{
+								const bottom = col.subCellIndex(row)/+Todo: slowwww, already known+/; 
+								if(bottom>=0)
+								{
+									int top = -1; 
+									foreach_reverse(i; 0..bottom)
+									if(isTableRow(col.rows[i])) top = i; else break; 
+									if(mixin(界3(q{0},q{top},q{bottom})))
+									{
+										auto cells = iota(top, bottom+1)
+										.map!((y)=>(
+											col.rows[y].sourceText
+											.withoutStarting('|')
+											.withoutEnding('|')
+											.splitter('|')
+											.map!strip
+											.map!((s)=>(s.replace("&124;", "|")))
+											.array
+										)).array; 
+										if(cells.length>=3)
+										{
+											const res = cells.length.to!int; 
+											
+											//remove header gridline
+											if(cells[1].length && cells[1][0].canFind("---"))
+											cells = cells.remove(1); 
+											
+											tableCode = "/+Structured:(表(["~
+											cells.enumerate.map!((r)=>(
+												"["~
+												r.value.map!((c)=>(
+													"q{"~
+													((r.index)?(""):("/+Note:"))~
+													c/+Todo: valid chars check!+/~
+													((r.index)?(""):("+/"))~
+													"}"
+												)).join(',')~
+												"]"
+											)).join(',')~
+											"]))+/"; 
+											return res; 
+										}
+									}
+								}
+							}
+							
+							return 0; 
+						} 
+						
+						again: 
+						foreach_reverse(y; 0..node.content.rowCount)
+						{
+							auto row = node.content.rows[y]; 
+							if(const h = checkTableHeight(row))
+							{
+								//select whole table
+								auto ts = row.rowSelection; ts.cursors[0].pos.y -= h-1; 
+								textSelections.items = ts; res = true; 
+								
+								//replace with nice table
+								insertNode(tableCode); 
+								
+								goto again; 
+							}
+						}
+						
+						return res; 
+					} 
+					update_markDown
+					(
+						((ch){
+							version(/+$DIDE_REGION Easy access to last row+/all)
+							{
+								CodeRow row; void accessLastRow()
+								{ seekToEnd; row = cr.codeColumn.rows[cr.pos.y]; } accessLastRow; 
+							}
+							
+							
+							if(st.backtickLevel)	stepIn("Highlighted:"); 
+							else if(st.asteriskLevel==2)	stepIn("Bold:"); 
+							else if(st.asteriskLevel==1)	stepIn("Italic:"); 
+							else {
+								if(ch=='\n')
+								{
+									int checkHeadingLevel()
+									{
+										const hashCount = row.chars.countUntil!q{a!='#'}.to!int; 
+										return ((
+											hashCount.inRange(1, 6) && 
+											row.getChar(hashCount)==' '
+										)?(hashCount):(0)); 
+									} 
+									
+									int checkBulletLevel()
+									{
+										bool chk(int i) => row.getChar(i)=='-' && row.getChar(i+1)==' '; 
+										{
+											const spaceCount = row.chars.countUntil!q{a!=' '}.to!int.max(0); 
+											if(chk(spaceCount)) return (spaceCount+1)/2 + 1; 
+										}
+										{
+											const tabCount = row.chars.countUntil!q{a!='\t'}.to!int.max(0); 
+											if(chk(tabCount)) return tabCount+1; 
+										}
+										return 0; 
+									} 
+									if(const headingLevel = checkHeadingLevel)
+									{
+										//process headings
+										textSelections.items = row.rowSelection; 
+										insertNode("/+H"~headingLevel.text~":"~row.sourceText[headingLevel+1..$]~"+/"); 
+									}
+									else if(const bulletLevel = checkBulletLevel)
+									{
+										//process bullet text
+										const s = row.sourceText.stripLeft.withoutStarting("- "); 
+										textSelections.items = row.rowSelection; 
+										pasteText("\t".replicate(bulletLevel)); 
+										insertNode("/+Bullet:"~s~"+/"); 
+									}
+									else if(row.empty)
+									{
+										//normally there are empty rows after tables, so use thiss trigger to detect them.
+										if(
+											makeTables + 
+											applyWordWrap
+										) accessLastRow; 
+									}
+									else if(row.cellCount>=4 && row.chars.startsWith("/+") && row.chars.endsWith("+/"))
+									{
+										//detect and insert comments
+										textSelections.items = row.rowSelection; 
+										insertNode(row.sourceText); 
+									}
+									
+									//remove changed markers from row and subContainers
+									row.clearChanged; 
+								}
+							}
+							
+							pasteText(ch.text); 
+						}),
+						((){
+							/+onFinalizeCode+/seekToEnd; 
+							if(auto cmt = cr.codeColumn.lastCell!CodeComment)
+							if(auto col = cmt.content)
+							if(cmt.isHighlighted && col.rowCount>2 && col.lastRow.empty)
+							{
+								//strip off language spec and the last empty row
+								const language = col.firstRow.extractThisLevelDString.text; 
+								col.subCells = col.subCells[1..$-1]; 
+								col.needMeasure; 
+								
+								if(language.among("", "d", "c", "cpp", "glsl"))
+								{
+									//promote to structured modular code
+									cmt.customPrefix = "Structured:"; 
+									textSelections.items = cmt.nodeSelection; 
+									insertNode(cmt.sourceText); 
+								}
+							}
+						}),
+						((){
+							/+onFinish+/
+							makeTables; applyWordWrap; 
+							
+							if(node.content.rowCount>1 && node.content.lastRow.empty)
+							{
+								//remove last empty row
+								node.content.subCells = node.content.subCells[0..$-1]; 
+								node.content.needMeasure; 
+							}
+						})
+					); 
+				}
+				
+				if(!running)
+				{
+					node.content.clearChanged; 
+					toRemove ~= node; 
+				}
+			}
+		}
+		
+		foreach(node; toRemove)
+		{
+			auto chat = pendingAiChatByAiAssistantNode[node]; 
+			pendingAiChatByAiAssistantNode.remove(node); 
+			im.flashInfo("Ai: ", "finished ("~chat.identityStr[0..3]~")"); 
 		}
 	} 
 } 
