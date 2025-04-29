@@ -36,8 +36,7 @@ void main() {
 			
 			import projectedfslib; 
 			
-			PrjInit(true); 
-			PrjDoesNameContainWildCards("a.bat".toPWChar).print; 
+			auto pvd = new DynamicFileProvider(Path(`z:\temp2\ExtSrc`)); 
 		}
 	); 
 } 

@@ -2,6 +2,8 @@ module projectedfslib;
 import het; 
 
 
+import core.sys.windows.windows : HRESULT_FROM_WIN32, CoCreateGuid; 
+
 private alias PCWSTR = const wchar*, LPCWSTR = const wchar*, 
 INT32 = int, UINT32 = uint, UINT8 = ubyte, BOOLEAN = bool, 
 INT64 = long, LARGE_INTEGER = long; 
@@ -36,52 +38,50 @@ private
 } 
 
 bool PrjInit(bool required=false)
-{
-	auto res = loader.success; 
-	if(required) res.enforce("Unable to load projectedfslib.dll."); 
-	return res; 
-} 
+{ auto res = loader.success; if(required) res.enforce("Unable to load projectedfslib.dll."); return res; } 
 
 version(/+$DIDE_REGION Common structures+/all)
 {
-	enum PRJ_NOTIFY_TYPES
+	enum PRJ_NOTIFY_
 	{
-		PRJ_NOTIFY_NONE	= 0x00000000,
-		PRJ_NOTIFY_SUPPRESS_NOTIFICATIONS	= 0x00000001,
-		PRJ_NOTIFY_FILE_OPENED	= 0x00000002,
-		PRJ_NOTIFY_NEW_FILE_CREATED	= 0x00000004,
-		PRJ_NOTIFY_FILE_OVERWRITTEN	= 0x00000008,
-		PRJ_NOTIFY_PRE_DELETE	= 0x00000010,
-		PRJ_NOTIFY_PRE_RENAME	= 0x00000020,
-		PRJ_NOTIFY_PRE_SET_HARDLINK	= 0x00000040,
-		PRJ_NOTIFY_FILE_RENAMED	= 0x00000080,
-		PRJ_NOTIFY_HARDLINK_CREATED	= 0x00000100,
-		PRJ_NOTIFY_FILE_HANDLE_CLOSED_NO_MODIFICATION 	= 0x00000200,
-		PRJ_NOTIFY_FILE_HANDLE_CLOSED_FILE_MODIFIED	= 0x00000400,
-		PRJ_NOTIFY_FILE_HANDLE_CLOSED_FILE_DELETED	= 0x00000800,
-		PRJ_NOTIFY_FILE_PRE_CONVERT_TO_FULL	= 0x00001000,
-		PRJ_NOTIFY_USE_EXISTING_MASK	= 0xFFFFFFFF
+		NONE	= 0x00000000,
+		SUPPRESS_NOTIFICATIONS	= 0x00000001,
+		FILE_OPENED	= 0x00000002,
+		NEW_FILE_CREATED	= 0x00000004,
+		FILE_OVERWRITTEN	= 0x00000008,
+		PRE_DELETE	= 0x00000010,
+		PRE_RENAME	= 0x00000020,
+		PRE_SET_HARDLINK	= 0x00000040,
+		FILE_RENAMED	= 0x00000080,
+		HARDLINK_CREATED	= 0x00000100,
+		FILE_HANDLE_CLOSED_NO_MODIFICATION 	= 0x00000200,
+		FILE_HANDLE_CLOSED_FILE_MODIFIED	= 0x00000400,
+		FILE_HANDLE_CLOSED_FILE_DELETED	= 0x00000800,
+		FILE_PRE_CONVERT_TO_FULL	= 0x00001000,
+		USE_EXISTING_MASK	= 0xFFFFFFFF
 	} 
+	alias PRJ_NOTIFY_TYPES = BitFlags!(PRJ_NOTIFY_, Yes.unsafe); 
 	
 	//DEFINE_ENUM_FLAG_OPERATORS(PRJ_NOTIFY_TYPES); 
 	
 	// This enum shares the same value space as PRJ_NOTIFY_TYPES, but
 	// these values are not bit flags.
-	enum PRJ_NOTIFICATION
+	enum PRJ_NOTIFICATION_
 	{
-		PRJ_NOTIFICATION_FILE_OPENED	= 0x00000002,
-		PRJ_NOTIFICATION_NEW_FILE_CREATED	= 0x00000004,
-		PRJ_NOTIFICATION_FILE_OVERWRITTEN	= 0x00000008,
-		PRJ_NOTIFICATION_PRE_DELETE	= 0x00000010,
-		PRJ_NOTIFICATION_PRE_RENAME	= 0x00000020,
-		PRJ_NOTIFICATION_PRE_SET_HARDLINK	= 0x00000040,
-		PRJ_NOTIFICATION_FILE_RENAMED	= 0x00000080,
-		PRJ_NOTIFICATION_HARDLINK_CREATED	= 0x00000100,
-		PRJ_NOTIFICATION_FILE_HANDLE_CLOSED_NO_MODIFICATION 	= 0x00000200,
-		PRJ_NOTIFICATION_FILE_HANDLE_CLOSED_FILE_MODIFIED	= 0x00000400,
-		PRJ_NOTIFICATION_FILE_HANDLE_CLOSED_FILE_DELETED	= 0x00000800,
-		PRJ_NOTIFICATION_FILE_PRE_CONVERT_TO_FULL	= 0x00001000,
+		FILE_OPENED	= 0x00000002,
+		NEW_FILE_CREATED	= 0x00000004,
+		FILE_OVERWRITTEN	= 0x00000008,
+		PRE_DELETE	= 0x00000010,
+		PRE_RENAME	= 0x00000020,
+		PRE_SET_HARDLINK	= 0x00000040,
+		FILE_RENAMED	= 0x00000080,
+		HARDLINK_CREATED	= 0x00000100,
+		FILE_HANDLE_CLOSED_NO_MODIFICATION 	= 0x00000200,
+		FILE_HANDLE_CLOSED_FILE_MODIFIED	= 0x00000400,
+		FILE_HANDLE_CLOSED_FILE_DELETED	= 0x00000800,
+		FILE_PRE_CONVERT_TO_FULL	= 0x00001000,
 	} 
+	alias PRJ_NOTIFICATION = BitFlags!PRJ_NOTIFICATION_; 
 	
 	alias PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT = HANDLE; 
 	alias PRJ_DIR_ENTRY_BUFFER_HANDLE = HANDLE; 
@@ -91,18 +91,21 @@ version(/+$DIDE_REGION Virtualization instance APIs+/all)
 {
 	struct PRJ_NOTIFICATION_MAPPING
 	{
+		align(8): 
 		PRJ_NOTIFY_TYPES NotificationBitMask; 
 		PCWSTR NotificationRoot; 
 	} 
 	
-	enum PRJ_STARTVIRTUALIZING_FLAGS
+	enum PRJ_FLAG_
 	{
-		PRJ_FLAG_NONE	= 0x00000000,
-		PRJ_FLAG_USE_NEGATIVE_PATH_CACHE 	= 0x00000001
+		NONE	= 0x00000000,
+		USE_NEGATIVE_PATH_CACHE 	= 0x00000001
 	} 
+	alias PRJ_STARTVIRTUALIZING_FLAGS = BitFlags!PRJ_FLAG_; 
 	
 	struct PRJ_STARTVIRTUALIZING_OPTIONS
 	{
+		align(8): 
 		PRJ_STARTVIRTUALIZING_FLAGS Flags; 
 		UINT32 PoolThreadCount; 
 		UINT32 ConcurrentThreadCount; 
@@ -130,6 +133,7 @@ version(/+$DIDE_REGION Virtualization instance APIs+/all)
 	
 	struct PRJ_VIRTUALIZATION_INSTANCE_INFO
 	{
+		align(8): 
 		GUID InstanceID; 
 		UINT32 WriteAlignment; 
 	} 
@@ -147,6 +151,7 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_PLACEHOLDER_VERSION_INFO
 	{
+		align(8): 
 		UINT8[PRJ_PLACEHOLDER_ID_LENGTH] ProviderID; 
 		UINT8[PRJ_PLACEHOLDER_ID_LENGTH] ContentID; 
 	} 
@@ -161,6 +166,7 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_FILE_BASIC_INFO
 	{
+		align(8): 
 		BOOLEAN IsDirectory; 
 		INT64 FileSize; 
 		LARGE_INTEGER CreationTime; 
@@ -172,28 +178,32 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_PLACEHOLDER_INFO
 	{
+		align(8): 
 		PRJ_FILE_BASIC_INFO FileBasicInfo; 
 		
 		struct TEaInformation
 		{
+			align(8): 
 			UINT32 EaBufferSize; 
 			UINT32 OffsetToFirstEa; 
 		} TEaInformation EaInformation; 
 		
 		struct TSecurityInformation
 		{
+			align(8): 
 			UINT32 SecurityBufferSize; 
 			UINT32 OffsetToSecurityDescriptor; 
 		} TSecurityInformation SecurityInformation; 
 		
 		struct TStreamsInformation
 		{
+			align(8): 
 			UINT32 StreamsInfoBufferSize; 
 			UINT32 OffsetToFirstStreamInfo; 
 		} TStreamsInformation StreamsInformation; 
 		
 		PRJ_PLACEHOLDER_VERSION_INFO VersionInfo; 
-		UINT8[1] VariableData; 
+		UINT8[0] VariableData; 
 	} 
 	
 	__gshared extern(Windows) HRESULT function
@@ -204,26 +214,28 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 		const UINT32 placeholderInfoSize
 	) PrjWritePlaceholderInfo; 
 	
-	enum PRJ_UPDATE_TYPES
+	enum PRJ_UPDATE_
 	{
-		PRJ_UPDATE_NONE	= 0x00000000,
-		PRJ_UPDATE_ALLOW_DIRTY_METADATA	= 0x00000001,
-		PRJ_UPDATE_ALLOW_DIRTY_DATA	= 0x00000002,
-		PRJ_UPDATE_ALLOW_TOMBSTONE	= 0x00000004,
-		PRJ_UPDATE_RESERVED1	= 0x00000008,
-		PRJ_UPDATE_RESERVED2	= 0x00000010,
-		PRJ_UPDATE_ALLOW_READ_ONLY	= 0x00000020,
-		PRJ_UPDATE_MAX_VAL = (PRJ_UPDATE_ALLOW_READ_ONLY << 1)
+		NONE	= 0x00000000,
+		ALLOW_DIRTY_METADATA	= 0x00000001,
+		ALLOW_DIRTY_DATA	= 0x00000002,
+		ALLOW_TOMBSTONE	= 0x00000004,
+		RESERVED1	= 0x00000008,
+		RESERVED2	= 0x00000010,
+		ALLOW_READ_ONLY	= 0x00000020,
+		MAX_VAL = (ALLOW_READ_ONLY << 1)
 	} 
+	alias PRJ_UPDATE_TYPES = BitFlags!PRJ_UPDATE_; 
 	
-	enum PRJ_UPDATE_FAILURE_CAUSES
+	enum PRJ_UPDATE_FAILURE_CAUSE_
 	{
-		PRJ_UPDATE_FAILURE_CAUSE_NONE	= 0x00000000,
-		PRJ_UPDATE_FAILURE_CAUSE_DIRTY_METADATA	= 0x00000001,
-		PRJ_UPDATE_FAILURE_CAUSE_DIRTY_DATA	= 0x00000002,
-		PRJ_UPDATE_FAILURE_CAUSE_TOMBSTONE	= 0x00000004,
-		PRJ_UPDATE_FAILURE_CAUSE_READ_ONLY	= 0x00000008,
+		NONE	= 0x00000000,
+		DIRTY_METADATA	= 0x00000001,
+		DIRTY_DATA	= 0x00000002,
+		TOMBSTONE	= 0x00000004,
+		READ_ONLY	= 0x00000008,
 	} 
+	alias PRJ_UPDATE_FAILURE_CAUSES = BitFlags!PRJ_UPDATE_FAILURE_CAUSE_; 
 	
 	__gshared extern(Windows) HRESULT function
 		(
@@ -252,14 +264,15 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 		const UINT32 length
 	) PrjWriteFileData; 
 	
-	enum PRJ_FILE_STATE
+	enum PRJ_FILE_STATE_
 	{
-		PRJ_FILE_STATE_PLACEHOLDER	= 0x00000001,
-		PRJ_FILE_STATE_HYDRATED_PLACEHOLDER	= 0x00000002,
-		PRJ_FILE_STATE_DIRTY_PLACEHOLDER	= 0x00000004,
-		PRJ_FILE_STATE_FULL	= 0x00000008,
-		PRJ_FILE_STATE_TOMBSTONE	= 0x00000010,
+		PLACEHOLDER	= 0x00000001,
+		HYDRATED_PLACEHOLDER	= 0x00000002,
+		DIRTY_PLACEHOLDER	= 0x00000004,
+		FULL	= 0x00000008,
+		TOMBSTONE	= 0x00000010,
 	} 
+	alias PRJ_FILE_STATE = BitFlags!PRJ_FILE_STATE_; 
 	
 	__gshared extern(Windows) HRESULT function
 		(
@@ -287,6 +300,7 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	struct PRJ_CALLBACK_DATA
 	{
+		align(8): 
 		UINT32 Size; 
 		PRJ_CALLBACK_DATA_FLAGS Flags; 
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT NamespaceVirtualizationContext; 
@@ -335,13 +349,14 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	union PRJ_NOTIFICATION_PARAMETERS
 	{
-		struct TPostCreate { PRJ_NOTIFY_TYPES NotificationMask; } 
+		align(8): 
+		struct TPostCreate { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
 		TPostCreate PostCreate; 
 		
-		struct TFileRenamed { PRJ_NOTIFY_TYPES NotificationMask; } 
+		struct TFileRenamed { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
 		TFileRenamed FileRenamed; 
 		
-		struct TFileDeletedOnHandleClose { BOOLEAN IsFileModified; } 
+		struct TFileDeletedOnHandleClose { align(8): BOOLEAN IsFileModified; } 
 		TFileDeletedOnHandleClose FileDeletedOnHandleClose; 
 	} 
 	
@@ -359,6 +374,7 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	struct PRJ_CALLBACKS 
 	{
+		align(8): 
 		PRJ_START_DIRECTORY_ENUMERATION_CB* StartDirectoryEnumerationCallback; 
 		PRJ_END_DIRECTORY_ENUMERATION_CB* EndDirectoryEnumerationCallback; 
 		PRJ_GET_DIRECTORY_ENUMERATION_CB* GetDirectoryEnumerationCallback; 
@@ -370,21 +386,22 @@ version(/+$DIDE_REGION Callback support+/all)
 		PRJ_CANCEL_COMMAND_CB* CancelCommandCallback; 
 	} 
 	
-	enum PRJ_COMPLETE_COMMAND_TYPE
+	enum PRJ_COMPLETE_COMMAND_TYPE_
 	{
-		PRJ_COMPLETE_COMMAND_TYPE_NOTIFICATION = 1,
-		PRJ_COMPLETE_COMMAND_TYPE_ENUMERATION = 2
+		NOTIFICATION = 1,
+		ENUMERATION = 2
 	} 
 	
 	struct PRJ_COMPLETE_COMMAND_EXTENDED_PARAMETERS
 	{
-		PRJ_COMPLETE_COMMAND_TYPE CommandType; 
+		align(8): 
+		PRJ_COMPLETE_COMMAND_TYPE_ CommandType; 
 		
 		union  {
-			struct TNotification { PRJ_NOTIFY_TYPES NotificationMask; } 
+			struct TNotification { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
 			TNotification Notification; 
 			
-			struct TEnumeration { PRJ_DIR_ENTRY_BUFFER_HANDLE DirEntryBufferHandle; } 
+			struct TEnumeration { align(8): PRJ_DIR_ENTRY_BUFFER_HANDLE DirEntryBufferHandle; } 
 			TEnumeration Enumeration; 
 		} 
 	} 
@@ -421,4 +438,79 @@ version(/+$DIDE_REGION Enumeration APIs+/all)
 	
 	__gshared extern(Windows) BOOLEAN function
 		(const LPCWSTR fileName)PrjDoesNameContainWildCards; 
+}
+version(/+$DIDE_REGION High level interface+/all)
+{
+	class DynamicFileProvider
+	{
+		const Path rootPath; 
+		
+		GUID instanceId; 
+		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT context; 
+		
+		this(Path rootPath_)
+		{
+			PrjInit(true); 
+			
+			version(/+$DIDE_REGION Create virtualization root+/all)
+			{
+				version(/+$DIDE_REGION 1. Create a directory to serve as the virtualization root.+/all)
+				{
+					rootPath = rootPath_; 
+					rootPath.enforce("Root path can't be null."); 
+					rootPath.make(true); 
+				}
+				
+				version(/+$DIDE_REGION 2. Create a virtualization instance ID.+/all)
+				{ hrChk!CoCreateGuid(&instanceId); }
+				
+				version(/+$DIDE_REGION 3. Mark the new directory as the virtualization root+/all)
+				{
+					hrChk!PrjMarkDirectoryAsPlaceholder(
+						rootPath.fullPath.toUTF16z, 
+						null, null, &instanceId
+					); 
+				}
+			}
+			
+			version(/+$DIDE_REGION Start virtualization instance+/all)
+			{
+				version(/+$DIDE_REGION 1. Set up the callback table.+/all)
+				{
+					auto callbackTable = 
+					mixin(體!((PRJ_CALLBACKS),q{
+						// Supply required callbacks.
+						StartDirectoryEnumerationCallback 	: &MyStartEnumCallback,
+						EndDirectoryEnumerationCallback	: &MyEndEnumCallback,
+						GetDirectoryEnumerationCallback	: &MyGetEnumCallback,
+						GetPlaceholderInfoCallback	: &MyGetPlaceholderInfoCallback,
+						GetFileDataCallback	: &MyGetFileDataCallback,
+						
+						// The rest of the callbacks are optional.
+						QueryFileNameCallback	= null,
+						NotificationCallback	= null,
+						CancelCommandCallback 	= null,
+					})); 
+				}
+				
+				version(/+$DIDE_REGION 2. Start the instance.+/all)
+				{
+					hrChk!PrjStartVirtualizing(
+						rootPath.fullPath.toUTF16z,
+						&callbackTable, null, null, &context
+					); 
+				}
+			}
+			
+		} 
+		
+		//Link: file:///C:/dl/windows-win32-projfs.pdf
+		
+		~this()
+		{
+			version(/+$DIDE_REGION Shutting down virtualization instance+/all)
+			{ PrjStopVirtualizing(&context); }
+		} 
+		
+	} 
 }

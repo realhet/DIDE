@@ -2048,6 +2048,7 @@ version(/+$DIDE_REGION+/all) {
 							[q{"ai"},q{
 								/+AI:+/	/+System:+/
 								/+User:+/	/+Assistant:+/
+								/+Todo: textFormatting+/
 							}],
 						]))
 					}
