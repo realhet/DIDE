@@ -2,7 +2,17 @@ module projectedfslib;
 import het; 
 
 
-import core.sys.windows.windows : HRESULT_FROM_WIN32, CoCreateGuid; 
+import core.sys.windows.windows : CoCreateGuid, 
+	HRESULT_FROM_WIN32, S_OK, E_OUTOFMEMORY, 	ERROR_IO_PENDING, ERROR_INSUFFICIENT_BUFFER, 
+	ERROR_FILE_NOT_FOUND, ERROR_INVALID_PARAMETER, ERROR_ACCESS_DENIED; 
+
+enum HR_OK	= S_OK,
+HR_OUTOFMEMORY	= E_OUTOFMEMORY,
+HR_IO_PENDING	= HRESULT_FROM_WIN32(ERROR_IO_PENDING),
+HR_INSUFFICIENT_BUFFER 	= HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER),
+HR_FILE_NOT_FOUND	= HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND),
+HR_INVALID_PARAMETER	= HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER),
+HR_ACCESS_DENIED	= HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED); 
 
 private alias PCWSTR = const wchar*, LPCWSTR = const wchar*, 
 INT32 = int, UINT32 = uint, UINT8 = ubyte, BOOLEAN = bool, 
@@ -91,7 +101,6 @@ version(/+$DIDE_REGION Virtualization instance APIs+/all)
 {
 	struct PRJ_NOTIFICATION_MAPPING
 	{
-		align(8): 
 		PRJ_NOTIFY_TYPES NotificationBitMask; 
 		PCWSTR NotificationRoot; 
 	} 
@@ -105,7 +114,6 @@ version(/+$DIDE_REGION Virtualization instance APIs+/all)
 	
 	struct PRJ_STARTVIRTUALIZING_OPTIONS
 	{
-		align(8): 
 		PRJ_STARTVIRTUALIZING_FLAGS Flags; 
 		UINT32 PoolThreadCount; 
 		UINT32 ConcurrentThreadCount; 
@@ -133,7 +141,6 @@ version(/+$DIDE_REGION Virtualization instance APIs+/all)
 	
 	struct PRJ_VIRTUALIZATION_INSTANCE_INFO
 	{
-		align(8): 
 		GUID InstanceID; 
 		UINT32 WriteAlignment; 
 	} 
@@ -151,7 +158,6 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_PLACEHOLDER_VERSION_INFO
 	{
-		align(8): 
 		UINT8[PRJ_PLACEHOLDER_ID_LENGTH] ProviderID; 
 		UINT8[PRJ_PLACEHOLDER_ID_LENGTH] ContentID; 
 	} 
@@ -166,7 +172,6 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_FILE_BASIC_INFO
 	{
-		align(8): 
 		BOOLEAN IsDirectory; 
 		INT64 FileSize; 
 		LARGE_INTEGER CreationTime; 
@@ -178,26 +183,22 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	
 	struct PRJ_PLACEHOLDER_INFO
 	{
-		align(8): 
 		PRJ_FILE_BASIC_INFO FileBasicInfo; 
 		
 		struct TEaInformation
 		{
-			align(8): 
 			UINT32 EaBufferSize; 
 			UINT32 OffsetToFirstEa; 
 		} TEaInformation EaInformation; 
 		
 		struct TSecurityInformation
 		{
-			align(8): 
 			UINT32 SecurityBufferSize; 
 			UINT32 OffsetToSecurityDescriptor; 
 		} TSecurityInformation SecurityInformation; 
 		
 		struct TStreamsInformation
 		{
-			align(8): 
 			UINT32 StreamsInfoBufferSize; 
 			UINT32 OffsetToFirstStreamInfo; 
 		} TStreamsInformation StreamsInformation; 
@@ -267,7 +268,7 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 	enum PRJ_FILE_STATE_
 	{
 		PLACEHOLDER	= 0x00000001,
-		HYDRATED_PLACEHOLDER	= 0x00000002,
+		HYDRATED_PLACEHOLDER 	= 0x00000002,
 		DIRTY_PLACEHOLDER	= 0x00000004,
 		FULL	= 0x00000008,
 		TOMBSTONE	= 0x00000010,
@@ -292,15 +293,15 @@ version(/+$DIDE_REGION Placeholder and File APIs+/all)
 
 version(/+$DIDE_REGION Callback support+/all)
 {
-	enum PRJ_CALLBACK_DATA_FLAGS
+	enum PRJ_CB_DATA_FLAG_
 	{
-		PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN	= 0x00000001,
-		PRJ_CB_DATA_FLAG_ENUM_RETURN_SINGLE_ENTRY 	= 0x00000002
+		ENUM_RESTART_SCAN	= 0x00000001,
+		ENUM_RETURN_SINGLE_ENTRY 	= 0x00000002
 	} 
+	alias PRJ_CALLBACK_DATA_FLAGS = BitFlags!PRJ_CB_DATA_FLAG_; 
 	
 	struct PRJ_CALLBACK_DATA
 	{
-		align(8): 
 		UINT32 Size; 
 		PRJ_CALLBACK_DATA_FLAGS Flags; 
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT NamespaceVirtualizationContext; 
@@ -349,14 +350,13 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	union PRJ_NOTIFICATION_PARAMETERS
 	{
-		align(8): 
-		struct TPostCreate { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
+		struct TPostCreate { PRJ_NOTIFY_TYPES NotificationMask; } 
 		TPostCreate PostCreate; 
 		
-		struct TFileRenamed { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
+		struct TFileRenamed { PRJ_NOTIFY_TYPES NotificationMask; } 
 		TFileRenamed FileRenamed; 
 		
-		struct TFileDeletedOnHandleClose { align(8): BOOLEAN IsFileModified; } 
+		struct TFileDeletedOnHandleClose { BOOLEAN IsFileModified; } 
 		TFileDeletedOnHandleClose FileDeletedOnHandleClose; 
 	} 
 	
@@ -374,16 +374,15 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	struct PRJ_CALLBACKS 
 	{
-		align(8): 
-		PRJ_START_DIRECTORY_ENUMERATION_CB* StartDirectoryEnumerationCallback; 
-		PRJ_END_DIRECTORY_ENUMERATION_CB* EndDirectoryEnumerationCallback; 
-		PRJ_GET_DIRECTORY_ENUMERATION_CB* GetDirectoryEnumerationCallback; 
-		PRJ_GET_PLACEHOLDER_INFO_CB* GetPlaceholderInfoCallback; 
-		PRJ_GET_FILE_DATA_CB* GetFileDataCallback; 
+		PRJ_START_DIRECTORY_ENUMERATION_CB StartDirectoryEnumerationCallback; 
+		PRJ_END_DIRECTORY_ENUMERATION_CB EndDirectoryEnumerationCallback; 
+		PRJ_GET_DIRECTORY_ENUMERATION_CB GetDirectoryEnumerationCallback; 
+		PRJ_GET_PLACEHOLDER_INFO_CB GetPlaceholderInfoCallback; 
+		PRJ_GET_FILE_DATA_CB GetFileDataCallback; 
 		
-		PRJ_QUERY_FILE_NAME_CB* QueryFileNameCallback; 
-		PRJ_NOTIFICATION_CB* NotificationCallback; 
-		PRJ_CANCEL_COMMAND_CB* CancelCommandCallback; 
+		PRJ_QUERY_FILE_NAME_CB QueryFileNameCallback; 
+		PRJ_NOTIFICATION_CB NotificationCallback; 
+		PRJ_CANCEL_COMMAND_CB CancelCommandCallback; 
 	} 
 	
 	enum PRJ_COMPLETE_COMMAND_TYPE_
@@ -394,14 +393,13 @@ version(/+$DIDE_REGION Callback support+/all)
 	
 	struct PRJ_COMPLETE_COMMAND_EXTENDED_PARAMETERS
 	{
-		align(8): 
 		PRJ_COMPLETE_COMMAND_TYPE_ CommandType; 
 		
 		union  {
-			struct TNotification { align(8): PRJ_NOTIFY_TYPES NotificationMask; } 
+			struct TNotification { PRJ_NOTIFY_TYPES NotificationMask; } 
 			TNotification Notification; 
 			
-			struct TEnumeration { align(8): PRJ_DIR_ENTRY_BUFFER_HANDLE DirEntryBufferHandle; } 
+			struct TEnumeration { PRJ_DIR_ENTRY_BUFFER_HANDLE DirEntryBufferHandle; } 
 			TEnumeration Enumeration; 
 		} 
 	} 
@@ -448,6 +446,134 @@ version(/+$DIDE_REGION High level interface+/all)
 		GUID instanceId; 
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT context; 
 		
+		struct EnumEntry
+		{
+			string Name; 
+			size_t FileSize; 
+			bool IsDirectory; 
+		} 
+		
+		struct EnumSession
+		{
+			GUID EnumerationId; 
+			EnumEntry[] Entries; 
+			int index; 
+			wstring SearchExpression; 
+			bool SearchExpressionCaptured; 
+		} 
+		
+		EnumSession[GUID] enumSessions; 
+		
+		auto getEnumSession(in GUID Id)
+		{
+			synchronized(this)
+			{ return &enumSessions.require(Id, EnumSession(Id)); } 
+		} 
+		
+		void removeEnumSession(GUID Id)
+		{
+			synchronized(this)
+			{ enumSessions.remove(Id); } 
+		} 
+		
+		
+		protected static extern(Windows)
+		{
+			HRESULT MyStartEnumCallback
+				(
+				const PRJ_CALLBACK_DATA* callbackData,
+				const GUID* enumerationId
+			) 
+			{
+				with((cast(DynamicFileProvider)(callbackData.InstanceContext)))
+				{
+					auto session = getEnumSession(*enumerationId); /+just allocate+/
+					
+					session.Entries = [
+						EnumEntry("testfile2.txt"), 
+						EnumEntry("testfile1.txt")
+					]
+						.sort!((a,b)=>(
+						PrjFileNameCompare(a.Name.toUTF16z, b.Name.toUTF16z)<0
+						/+Opt: original method is perfect, but a bit slow because of conversions...+/
+					)).array; 
+					
+					session.Entries.print; 
+					
+					return S_OK; 
+				}
+			} 
+			
+			HRESULT MyGetEnumCallback
+				(
+				const PRJ_CALLBACK_DATA* callbackData,
+				const GUID* enumerationId,
+				const PCWSTR searchExpression,
+				const PRJ_DIR_ENTRY_BUFFER_HANDLE dirEntryBufferHandle
+			) 
+			{
+				with((cast(DynamicFileProvider)(callbackData.InstanceContext)))
+				{
+					auto session = getEnumSession(*enumerationId); 
+					
+					const mustRestart = !!(callbackData.Flags & PRJ_CB_DATA_FLAG_.ENUM_RESTART_SCAN); 
+					
+					if(!session.SearchExpressionCaptured || mustRestart)
+					{
+						session.SearchExpression = ((searchExpression)?(searchExpression.to!wstring):("*"w))~'\0'; 
+						//Todo: just duplicate the C string
+					}
+					if(mustRestart) session.index = 0; 
+					
+					while(session.index < session.Entries.length)
+					{
+						auto entry = &session.Entries[session.index++]; 
+						PCWSTR name = entry.Name.toUTF16z; 
+						if(!PrjFileNameMatch(name, session.SearchExpression.ptr)) continue; 
+						auto basicInfo = mixin(體!((PRJ_FILE_BASIC_INFO),q{
+							IsDirectory 	: entry.IsDirectory,
+							FileSize	: entry.FileSize
+						})); 
+						auto hr = PrjFillDirEntryBuffer(name, &basicInfo, dirEntryBufferHandle); 
+						if(hr == S_OK)	continue; 
+						else if(hr == HR_INSUFFICIENT_BUFFER)	break; 
+						else	return hr; 
+					}
+					return S_OK; 
+				}
+			} 
+			
+			HRESULT MyEndEnumCallback
+				(
+				const PRJ_CALLBACK_DATA* callbackData,
+				const GUID* enumerationId
+			) 
+			{
+				with((cast(DynamicFileProvider)(callbackData.InstanceContext)))
+				{
+					removeEnumSession(*enumerationId); 
+					return S_OK; 
+				}
+			} 
+			
+			HRESULT MyGetPlaceholderInfoCallback
+				(const PRJ_CALLBACK_DATA* callbackData) 
+			{
+				((0x3D4FA65269FC).檢(callbackData.NamespaceVirtualizationContext)); 
+				return HR_ACCESS_DENIED; 
+			} 
+			HRESULT MyGetFileDataCallback
+				(
+				const PRJ_CALLBACK_DATA* callbackData,
+				const UINT64 byteOffset,
+				const UINT32 length
+			) 
+			{
+				((0x3E59A65269FC).檢(callbackData.NamespaceVirtualizationContext)); 
+				return HR_ACCESS_DENIED; 
+			} 
+		} 
+		
 		this(Path rootPath_)
 		{
 			PrjInit(true); 
@@ -481,25 +607,28 @@ version(/+$DIDE_REGION High level interface+/all)
 					mixin(體!((PRJ_CALLBACKS),q{
 						// Supply required callbacks.
 						StartDirectoryEnumerationCallback 	: &MyStartEnumCallback,
-						EndDirectoryEnumerationCallback	: &MyEndEnumCallback,
 						GetDirectoryEnumerationCallback	: &MyGetEnumCallback,
+						EndDirectoryEnumerationCallback	: &MyEndEnumCallback,
 						GetPlaceholderInfoCallback	: &MyGetPlaceholderInfoCallback,
 						GetFileDataCallback	: &MyGetFileDataCallback,
 						
 						// The rest of the callbacks are optional.
-						QueryFileNameCallback	= null,
-						NotificationCallback	= null,
-						CancelCommandCallback 	= null,
+						QueryFileNameCallback	: null,
+						NotificationCallback	: null,
+						CancelCommandCallback 	: null,
 					})); 
 				}
 				
 				version(/+$DIDE_REGION 2. Start the instance.+/all)
 				{
-					hrChk!PrjStartVirtualizing(
+					PrjStartVirtualizing(
 						rootPath.fullPath.toUTF16z,
-						&callbackTable, null, null, &context
+						&callbackTable, (cast(void*)(this)), null, context
 					); 
 				}
+				
+				
+				((0x454BA65269FC).檢(context)); 
 			}
 			
 		} 
@@ -509,7 +638,7 @@ version(/+$DIDE_REGION High level interface+/all)
 		~this()
 		{
 			version(/+$DIDE_REGION Shutting down virtualization instance+/all)
-			{ PrjStopVirtualizing(&context); }
+			{ PrjStopVirtualizing(context); context = null; }
 		} 
 		
 	} 

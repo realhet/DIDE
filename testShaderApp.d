@@ -36,7 +36,18 @@ void main() {
 			
 			import projectedfslib; 
 			
-			auto pvd = new DynamicFileProvider(Path(`z:\temp2\ExtSrc`)); 
+			const rootPath = Path(`z:\temp2\DIDE_projFS_`~now.raw.to!string(26)); 
+			auto _間=init間; 
+			auto pvd = new DynamicFileProvider(rootPath); 
+			foreach(i; 0..60) sleep(1000); 
+			pvd.free; 
+			((0x3220D266E3E).檢((update間(_間)))); 
+			
+			
+			
+			
+			
+			
 		}
 	); 
 } 
