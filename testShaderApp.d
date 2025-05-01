@@ -4,7 +4,7 @@
 
 //Note: This is a test application for the automated, DIDE integrated shader compiler thing
 
-import het, testShaderSys; 
+import het, het.projectedfslib, testShaderSys; 
 
 class Detector
 {
@@ -29,25 +29,4 @@ class Detector
 	} 
 } 
 
-void main() {
-	console(
-		{
-			new Detector; 
-			
-			import projectedfslib; 
-			
-			const rootPath = Path(`z:\temp2\DIDE_projFS_`~now.raw.to!string(26)); 
-			auto _間=init間; 
-			auto pvd = new DynamicFileProvider(rootPath); 
-			foreach(i; 0..60) sleep(1000); 
-			pvd.free; 
-			((0x3220D266E3E).檢((update間(_間)))); 
-			
-			
-			
-			
-			
-			
-		}
-	); 
-} 
+void main() { console({ new Detector; }); } 
