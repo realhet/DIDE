@@ -521,19 +521,21 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 							/+onFinalizeCode+/seekToEnd; 
 							if(auto cmt = cr.codeColumn.lastCell!CodeComment)
 							if(auto col = cmt.content)
-							if(cmt.isHighlighted && col.rowCount>2 && col.lastRow.empty)
 							{
-								//strip off language spec and the last empty row
-								const language = col.firstRow.extractThisLevelDString.text; 
-								col.subCells = col.subCells[1..$-1]; 
-								col.needMeasure; 
-								
-								if(language.among("", "d", "c", "cpp", "glsl"))
+								if(cmt.isHighlighted && col.rowCount>2 && col.lastRow.extractThisLevelDString.text.strip=="")
 								{
-									//promote to structured modular code
-									cmt.customPrefix = "Structured:"; 
-									textSelections.items = cmt.nodeSelection; 
-									insertNode(cmt.sourceText); 
+									//strip off language spec and the last empty row
+									const language = col.firstRow.extractThisLevelDString.text.strip; 
+									col.subCells = col.subCells[1..$-1]; 
+									col.needMeasure; 
+									
+									if(language.among("", "d", "c", "cpp", "glsl", "hlsl"))
+									{
+										//promote to structured modular code
+										cmt.customPrefix = "Structured:"; 
+										textSelections.items = cmt.nodeSelection; 
+										insertNode(cmt.sourceText); 
+									}
 								}
 							}
 						}),
