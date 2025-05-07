@@ -950,7 +950,7 @@ struct BuildSystem
 			modules.resolveModuleImportDependencies; 
 			const compilerSalt = joinCommandLine(settings.compileArgs); 
 			
-			LOG(settings.compileArgs); 
+			//LOG(settings.compileArgs); 
 			modules.calculateObjHashes(compilerSalt); //Note: Compiler specific hash generation.
 			
 			//ensure that no std or core files are going to be recompiled

@@ -429,13 +429,17 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 				version(/+$DIDE_REGION Process GLSL errors messages+/all)
 				{
 					const 	escapedFileName 	= srcFile.fullName.quoted[1..$-1],
-						mask_noLine 	= escapedFileName~": ?*: *",
-						mask	= escapedFileName[1..$-1]~":?*: ?*: *"; 
-					auto lastRawLineIdx = long.min; 
+						mask_noLine 	= escapedFileName~": *: *",
+						mask	= escapedFileName~":*: *: *"; 
 					foreach(i, line; st.output.splitLines)
 					if(line.strip!="")
 					{
-						if(line.endsWith(" error generated.")) continue; 
+						if(
+							line.endsWith(
+								" error generated.", 
+								" errors generated."
+							)
+						) continue; 
 						
 						void reformat(int lineIdx, string err, string msg)
 						{
@@ -446,17 +450,21 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 							line = i"$(bf)($(lineIdx),1): $(err): $(msg)".text; 
 						} 
 						
+						bool validMsgType(string s)
+						=> !!s.among(
+							"error", "warning", "note"
+							/+Todo: 'note' can be the supplemental msg+/
+						); 
+						
 						enum defaultLineIdx = 1; 
-						if(line.isWild(mask))
-						reformat(wild.ints(0, 1), wild[1], wild[2]); 
-						else if(line.isWild(mask_noLine))
+						
+						if(line.isWild(mask) && validMsgType(wild[1]))
+						reformat(wild.ints(0), wild[1], wild[2]); 
+						else if(line.isWild(mask_noLine) && validMsgType(wild[0]))
 						reformat(defaultLineIdx, wild[0], wild[1]); 
-						else {
-							if(lastRawLineIdx+1 != i)
-							reformat(defaultLineIdx, "Error", line); 
-							else line = "       "~line/+supplemental line+/; 
-							lastRawLineIdx = i; 
-						}
+						else if(line.isWild("glslc: error: *"))
+						reformat(defaultLineIdx, "error", "GLSLC: "~wild[0]); 
+						else { reformat(defaultLineIdx, "Console", line); }
 						
 						finalOutput ~= line; 
 					}
@@ -466,14 +474,15 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 			}
 		}
 		
-		enforce(zip.totalEntries, "No binaries generated."); 
+		//enforce(finalStatus==0, "Compilation failed"); 
+		if(finalStatus==0) enforce(zip.totalEntries, "No binaries generated."); 
 		
 		finalBinary = (cast (immutable(ubyte)[])(((finalStatus==0)?(zip.build):("ERROR:"~finalStatus.text)))); 
 	}
 	catch(Exception e)
 	{
 		finalStatus = 9999; finalBinary = []; 
-		finalOutput ~= i"$(baseFile)($(baseLine),1) Error: compileGlslShader() exception: $(e.simpleMsg.splitLines.enumerate.map!((a)=>(((a.index)?("       "):(""))~a.value)).join('\n'))".text; 
+		finalOutput ~= i"$(baseFile)($(baseLine),1): Error: GLSLC: $(e.simpleMsg.splitLines.enumerate.map!((a)=>(((a.index)?("       "):(""))~a.value)).join('\n'))".text; 
 	}
 	static struct CompilationResult {
 		int status = int.min; 
