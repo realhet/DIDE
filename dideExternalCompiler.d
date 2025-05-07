@@ -70,9 +70,9 @@ class ExternalCompiler
 		console
 		(
 			{
-				const rootPath = Path(`z:\temp2\DIDE_projFS_`/+~now.raw.to!string(26)+/); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x82135AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath); 	((0x87C35AA4136).檢((update間(_間)))); 
+				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
+				rootPath.wipe(false); 	((0x80735AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x87435AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
@@ -80,16 +80,16 @@ class ExternalCompiler
 					void main() {} 
 				},
 					hash	= src.hashOf(args.hashOf).to!string(26); 	
-				ec.addInput(args, src, "testShader.comp", 1); 	((0x98135AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0x9D535AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA3335AA4136).檢((update間(_間)))); 
+				ec.addInput(args, src, "testShader.comp", 1); 	((0x97935AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0x9CD35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA2B35AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xAA835AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xAE235AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xAA035AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xADA35AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 
-	const Path rootPath; 
+	const Path rootPath, workPath; 
 	
 	static calcHash(string args, string src)
 	=> src.hashOf(args.hashOf).to!string(26); 
@@ -224,15 +224,16 @@ class ExternalCompiler
 		} 
 	} 
 	
-	this(Path rootPath_)
+	this(Path rootPath_/+used by projfs+/, Path workPath_/+used by compilers+/)
 	{
+		rootPath 	= rootPath_,
+		workPath 	= workPath_; 
 		PrjInit(true); 
 		
 		version(/+$DIDE_REGION Create virtualization root+/all)
 		{
 			version(/+$DIDE_REGION 1. Create a directory to serve as the virtualization root.+/all)
 			{
-				rootPath = rootPath_; 
 				enforce(rootPath, "Root path can't be null."); 
 				enforce(!rootPath.exists, "Root path can't be an existing path.  It will be wiped after exit."); 
 				rootPath.make(true); 

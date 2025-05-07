@@ -10,10 +10,11 @@ import buildsys : 	BuildResult, buildsys_spawnProcessMultiSettings,
 import didemodulemanager : ModuleManager; 
 import didebuildmessagemanager : BuildMessageManager; 
 
-
-
 import dideexpr : NiceExpression; 
-import didemodule : addInspectorParticle; 
+import didemodule : addInspectorParticle; 
+
+import dideexternalcompiler: ExternalCompiler; 
+
 class Builder : IBuildServices
 {
 	/+Note:  ⚠ Only a single builder is allowed because buildSystemWorkerState is global and singlular.+/
@@ -30,6 +31,8 @@ class Builder : IBuildServices
 	
 	Bitmap[File] debugImageBlobs; 
 	
+	ExternalCompiler externalCompiler; 
+	
 	@STORED
 	{
 		@property {
@@ -42,6 +45,13 @@ class Builder : IBuildServices
 	
 	void _construct()
 	{
+		version(/+$DIDE_REGION Initialize external compiler services+/all)
+		{
+			const rootPath = Path(workPath, "DIDE_projfs_"~now.raw.only.hashOf.to!string(26)); 
+			rootPath.wipe(false); 
+			externalCompiler = new ExternalCompiler(rootPath, workPath); 
+		}
+		
 		buildResult = new BuildResult; 
 		buildSystemWorkerTid = spawn(&buildSystemWorker); 
 	} 
@@ -55,6 +65,8 @@ class Builder : IBuildServices
 			LOG("Waiting for buildsystem to shut down."); 
 			while(building) { write('.'); sleep(100); }
 		}
+		
+		externalCompiler.free; 
 	} 
 	
 	@property stateText()
@@ -172,7 +184,11 @@ class Builder : IBuildServices
 			workPath	: this.workPath.fullPath,
 			collectTodos	: false,
 			generateMap 	: true,
-			compileArgs	: ["-wi"], /+"-v" <- not good: it also lists all imports+/
+			compileArgs	: [
+				"-wi", 
+				"-J", externalCompiler.rootPath.fullPath,
+				/+"-v" <- not good: it also lists all imports+/
+			],
 			dideDbgEnv	: dbgsrv.getDataFileName,
 			xJson	: true
 		}; 
@@ -195,8 +211,31 @@ class Builder : IBuildServices
 		
 		{
 			buildResult.receiveBuildMessages; 
-			auto msgs = buildResult.incomingMessages.fetchAll; 
-			buildMessages.process(msgs); 
+			foreach(msg; buildResult.incomingMessages.fetchAll)
+			{
+				if(
+					msg.type==DMDMessage.Type.unknown
+					&& msg.content.isWild("$DIDE_EXTERNAL_COMPILATION_REQUEST:*")
+				)
+				{
+					string[] params; params.fromJson(wild[0]); 
+					if(params.length==2)
+					{
+						externalCompiler.addInput(
+							params[0], params[1], 
+							msg.location.file.fullName, msg.location.lineIdx
+						); 
+						continue; 
+					}
+				}
+				else if(
+					msg.type==DMDMessage.Type.error
+					&& msg.content.isWild(`static assert:  "$DIDE_EXTERNAL_COMPILATION_ERROR:*"`)
+				)
+				{ continue; }
+				
+				buildMessages.process(msg); 
+			}
 		}
 		
 		{
@@ -476,7 +515,18 @@ class Builder : IBuildServices
 	} 
 	
 	void UI_Settings()
-	{ buildsys_spawnProcessMultiSettings.stdUI; } 
+	{
+		buildsys_spawnProcessMultiSettings.stdUI; 
+		with(im) {
+			Grp(
+				"External compiler service",
+				{
+					Row("ProjFS root: \t", { Static(externalCompiler.rootPath.fullPath, { width = fh*12; }); }); 
+					Row("Work path: \t", { Static(externalCompiler.workPath.fullPath, { width = fh*12; }); }); 
+				}
+			); 
+		}
+	} 
 	
 	void UI()
 	{
