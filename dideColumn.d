@@ -512,7 +512,7 @@ version(/+$DIDE_REGION+/all) {
 			{ return StructureLevel.plain; }
 			else if(auto str = cast(CodeString) parent)
 			{
-				if(str.type != CodeString.Type.tokenString)
+				if(!str.isSomeTokenString)
 				return StructureLevel.plain; 
 			}
 			else if(auto niceExpr = cast(NiceExpression) parent)

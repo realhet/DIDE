@@ -878,7 +878,7 @@ version(/+$DIDE_REGION+/all) {
 			override void draw(Drawing dr)
 			{
 				
-				enum enableCodeLigatures = true; 
+				enum enableCodeLigatures = (常!(bool)(1)); 
 				
 				void drawLowDetail()
 				{

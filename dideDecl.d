@@ -759,15 +759,17 @@ version(/+$DIDE_REGION+/all) {
 								Bug: This bug fucks up line indexing, it add 2 exra to it.
 								Test code in a .d file:
 								/+
-									Code: if(1) if(1)
-										a; 
+									Code: if(1)
+									if(1)
+									a; 
+									
 									//This should be line 3, but it's line 5!
 								+/
 								After copying it becomes:
 								/+
-									Code: if(1) 
-										if(1)
-										a; 
+									Code: if(1)
+									if(1)
+									a; 
 									
 									//This should be line 3, but it's line 5!
 								+/
@@ -1077,9 +1079,9 @@ version(/+$DIDE_REGION+/all) {
 		
 		/+
 			Todo: /+
-				Code: static if(a) {a;}
-				else static if(b) {b;}
-				else {c;}
+				Code: static if(a) { a; }
+				else static if(b) { b; }
+				else { c; }
 			+/
 			The statements can be aligned with the TAB.
 			But the expressions can't.
@@ -1774,7 +1776,7 @@ version(/+$DIDE_REGION+/all) {
 		//debug line idx: print("PHLPB:", "lineIdx="~col_.rows[0].lineIdx.text); 
 		
 		
-		promoteMacroExpressions(col_); //it must be issued for the whole column BEFORE the block processor. It will eliminate string mixin()s, so the block processor can handle the remaining mixin statements.
+		processHighLevelPatterns_macroExpressions(col_); //it must be issued for the whole column BEFORE the block processor. It will eliminate string mixin()s, so the block processor can handle the remaining mixin statements.
 		
 		//generate Token enum from sentence detection rules.
 		mixin(format!"enum DeclToken{ none, %s }"(sentenceDetectionRules.map!"a[0].split".join.map!toSymbolEnum.join(", "))); 
@@ -2178,10 +2180,9 @@ version(/+$DIDE_REGION+/all) {
 	void promoteMacroExpression(CodeRow row, ref int cellIdx, CodeBlock blk/+redundant but faster+/)
 	{
 		foreach(
-			const kw; ["mixin", "__traits", "pragma"]
+			const kw; ["import", "mixin", "__traits", "pragma", "typeof", "typeid"]
 			/+Todo: extract this array to macroExpressionKeywords+/
 			/+Todo: implement 'isExpression' too!+/
-			//Todo: typeof()
 		)
 		{
 			const kwLen = (cast(int)(kw.length)); 
@@ -2206,7 +2207,7 @@ version(/+$DIDE_REGION+/all) {
 					/+Code: a =mixin(x);+/ <- here, the extra space is NOT required for example.
 				+/
 				
-				/+remove 'mixin' keyword+/
+				/+remove keyword+/
 				const 	st = kwIdx-extraSpaceAtStart, 
 					en = cellIdx; 
 				row.subCells = row.subCells.remove(tuple(st, en)); 
@@ -2215,27 +2216,39 @@ version(/+$DIDE_REGION+/all) {
 				
 				/+promote () to a special block+/
 				blk.type = kw.predSwitch(
+					"import"	, CodeBlock.Type.stringImport, 
 					"mixin"	, CodeBlock.Type.stringMixin, 
 					"__traits"	, CodeBlock.Type.traits,
-					"pragma"	, CodeBlock.Type.pragmaExpr
+					"pragma"	, CodeBlock.Type.pragmaExpr,
+					"typeof"	, CodeBlock.Type.typeofExpr,
+					"typeid"	, CodeBlock.Type.typeidExpr,
 				); 
 				blk.needMeasure; 
+				
 				return; 
 			}
 		}
 	} 
 	
-	void promoteMacroExpressions(CodeColumn col)
-	{
-		foreach(int rowIdx, row; col.rows)
+	/+
+		void promoteMacroExpressions(CodeColumn col)
 		{
-			for(int cellIdx=0; cellIdx<row.subCells.length; cellIdx++)
+			foreach(int rowIdx, row; col.rows)
 			{
-				if(auto blk = (cast(CodeBlock)(row.subCells[cellIdx])))
-				{ if(blk.type==CodeBlock.Type.list) promoteMacroExpression(row, cellIdx, blk); }
+				for(int cellIdx=0; cellIdx<row.cellCount; cellIdx++)
+				{
+					auto cell = row.subCells[cellIdx]; 
+					if(auto blk = (cast(CodeBlock)(cell)))
+					{ if(blk.type==CodeBlock.Type.list) promoteMacroExpression(row, cellIdx, blk); }
+					else if(auto str = (cast(CodeString)(cell)))
+					{
+						/+Note: i"str".text -> ti"str"+/
+						str.promoteToInterpolatedText(row, cellIdx); 
+					}
+				}
 			}
-		}
-	} 
+		} 
+	+/
 	
 	void processHighLevelPatterns_statement(CodeColumn col)
 	{
@@ -2253,13 +2266,29 @@ version(/+$DIDE_REGION+/all) {
 		if(col.rowCount==1) processNiceStatementRow(col.rows[0]); 
 	} 
 	
-	void processHighLevelPatterns_expr(CodeColumn col)
+	alias processHighLevelPatterns_macroExpressions = processHighLevelPatterns_expr!(Yes.macroExpressionsOnly); 
+	
+	void processHighLevelPatterns_expr(Flag!"macroExpressionsOnly" macroExpressionsOnly = No.macroExpressionsOnly)(CodeColumn col)
 	{
 		foreach(int rowIdx, row; col.rows)
 		{
-			for(int cellIdx=0; cellIdx<row.subCells.length; cellIdx++)
+			for(int cellIdx=0; cellIdx<row.cellCount; cellIdx++)
 			{
 				ref cell() => row.subCells[cellIdx]/+Note: this must be a reference, because niceExpression can replace its content.+/; 
+				
+				version(/+$DIDE_REGION Do the macro expression promotions first+/all)
+				{
+					if(auto blk = (cast(CodeBlock)(cell)))
+					{ if(blk.type==CodeBlock.Type.list) promoteMacroExpression(row, cellIdx, blk); }
+					else if(auto str = (cast(CodeString)(cell)))
+					{ str.promoteToInterpolatedText(row, cellIdx); /+Note: i"str".text -> ti"str"+/}
+				}
+				
+				static if(macroExpressionsOnly)
+				if(auto blk = (cast(CodeBlock)(cell)))
+				if(blk.type.among(CodeBlock.Type.block, CodeBlock.Type.list)) continue; 
+				
+				
 				if(auto blk = (cast(CodeBlock)(cell)))
 				{
 					final switch(blk.type)
@@ -2273,15 +2302,15 @@ version(/+$DIDE_REGION+/all) {
 							}
 						}	break; 
 						case CodeBlock.Type.index /+Note: []+/: 	{ blk.content.processHighLevelPatterns_expr; }	break; 
-						case 	CodeBlock.Type.list /+Note: ()+/,
-							CodeBlock.Type.interpolation, /+Note: $()+/
+						case 	CodeBlock.Type.list 	/+Note: ()+/,
+							CodeBlock.Type.interpolation	/+Note: $()+/,
 							/+Note: macroExpressions from here:+/
-							CodeBlock.Type.stringMixin, /+Note: mixin()+/
-							CodeBlock.Type.traits, /+Note: __traits()+/
-							CodeBlock.Type.pragmaExpr /+Note: pragma()+/: 	{
-							if(blk.type==CodeBlock.Type.list)
-							{ promoteMacroExpression(row, cellIdx, blk); }
-							
+							CodeBlock.Type.stringImport	/+Note: import()+/,
+							CodeBlock.Type.stringMixin 	/+Note: mixin()+/,
+							CodeBlock.Type.traits 	/+Note: __traits()+/,
+							CodeBlock.Type.pragmaExpr 	/+Note: pragma()+/,
+							CodeBlock.Type.typeofExpr 	/+Note: typeof()+/,
+							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/: 	{
 							blk.content.processHighLevelPatterns_expr; 
 							processNiceExpressionBlock(cell); /+Note: depth first recursion+/
 						}	break; 
@@ -2292,9 +2321,12 @@ version(/+$DIDE_REGION+/all) {
 					switch(str.type)
 					{
 						case 	CodeString.Type.tokenString /+Note: q{}+/,
-							CodeString.Type.interpolated_tokenString /+Note: iq{}+/: 	{ str.content.processHighLevelPatterns_optionalBlock; }	break; 
+							CodeString.Type.interpolated_tokenString /+Note: iq{}+/,
+							CodeString.Type.interpolated_tokenString_text /+Note: tiq{}+/: 	{ str.content.processHighLevelPatterns_optionalBlock; }	break; 
 						case 	CodeString.Type.interpolated_cString /+Note: i""+/, 
-							CodeString.Type.interpolated_dString /+Note: i``+/: 	{
+							CodeString.Type.interpolated_dString /+Note: i``+/,
+							CodeString.Type.interpolated_cString_text /+Note: ti""+/, 
+							CodeString.Type.interpolated_dString_text /+Note: ti``+/: 	{
 							str.content.processHighLevelPatterns_expr; 
 							/+this will process the $() string interpolations+/
 						}	break; 
@@ -2303,6 +2335,8 @@ version(/+$DIDE_REGION+/all) {
 				}
 			}
 		}
+		
+		if(auto str = (cast(CodeString)(col.singleCellOrNull))) str.promoteInterpolatedTokenStringTextMixin(col); 
 	} 
 	
 	void processHighLevelPatterns_optionalBlock(CodeColumn col_)

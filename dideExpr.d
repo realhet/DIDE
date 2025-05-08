@@ -1133,7 +1133,6 @@ version(/+$DIDE_REGION+/all) {
 }
 version(/+$DIDE_REGION+/all) {
 	version(/+$DIDE_REGION+/all) {
-		
 		static class SigmaOp : NiceExpression
 		{
 			dchar symbol; 
@@ -1775,13 +1774,15 @@ version(/+$DIDE_REGION+/all) {
 					@node: arrangeSubscript; 
 				}],
 				[q{tupleAssign},q{mixin(配(q{x,y},q{=},q{y,x}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"配"},q{normal},q{Identifier1},q{NiceExpression},q{
-					@text: 	{
+					@text: 
+					{
 						put(operator); put("("); 
 							foreach(i, o; operands[0..3])
 						{ if(i) put(','); put("q{", o, "}"); }
 						put(")"); 
-					}
-					@node: 	{
+					}
+					@node: 
+					{
 						operands[1].fillColor(syntaxFontColor(skSymbol), bkColor); 
 						operands[1].border.width=0; 
 						operands[1].padding = Padding.init; 
@@ -1808,9 +1809,9 @@ version(/+$DIDE_REGION+/all) {
 						subCells[0].outerPos.x = 0; 
 					}
 				}],
-				[q{mixinStruct},q{(mixin(體!((Type),q{field: value, ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"體!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("struct"), "{", "}"); }],
-				[q{mixinEnum},q{(mixin(舉!((Enum),q{member})))},q{/+Code: mixin(op((expr),q{}))+/},q{"舉!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), ".", ""); }],
-				[q{mixinFlags},q{(mixin(幟!((Enum),q{member1 | ...})))},q{/+Code: mixin(op((expr),q{}))+/},q{"幟!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), "(", ")"); }],
+				[q{mixinStruct},q{mixin(體!((Type),q{field: value, ...}))},q{/+Code: mixin(op((expr),q{}))+/},q{"體!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("struct"), "{", "}"); }],
+				[q{mixinEnum},q{mixin(舉!((Enum),q{member}))},q{/+Code: mixin(op((expr),q{}))+/},q{"舉!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), ".", ""); }],
+				[q{mixinFlags},q{mixin(幟!((Enum),q{member1 | ...}))},q{/+Code: mixin(op((expr),q{}))+/},q{"幟!"},q{bright},q{Identifier1},q{MixinNode},q{@node: customRearrange(builder, structuredColor("enum"), "(", ")"); }],
 				[q{mixinTable1},q{
 					(表([
 						[q{/+Note: Hdr+/}],
@@ -1855,8 +1856,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0xF7DC3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0xF85F3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0xF7DE3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0xF8613617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -1868,8 +1869,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0xFAAC3617740F)))(互!((bool),(1),(0xFACF3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0xFAF23617740F)))
-					(互!((float/+w=6+/),(1.000),(0xFB3D3617740F)))
+					(互!((bool),(0),(0xFAAF3617740F)))(互!((bool),(1),(0xFAD23617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0xFAF53617740F)))
+					(互!((float/+w=6+/),(1.000),(0xFB403617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1879,9 +1880,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0xFD333617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0xFD713617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0xFDE23617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0xFE603617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0xFD363617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0xFD743617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0xFDE53617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0xFE633617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -1916,10 +1917,12 @@ version(/+$DIDE_REGION+/all) {
 						(表([
 							[q{"expression blocks"},q{
 								lbl: 	st; 	{blk}	(ex)	[idx] 
-								"s"	`s`	q{s}	r"s"	'\0'
+								"s"	`s`	q{s}	r"s"	'c'
 								i"s"	i`s`	iq{s}	$(a)	x"00"
-								mixin() __traits() pragma()
+								i"s".text	i`s`.text	iq{s}.text	mixin(a)
 								
+								__traits()	pragma()	mixin(iq{a}.text)
+								typeof()	typeid()	impor(a)
 							}],
 							[q{"spec. statements"},q{
 								return; 	return x; 
@@ -1954,6 +1957,7 @@ version(/+$DIDE_REGION+/all) {
 							[q{"color literals"},q{(RGB()) (RGBA())}],
 						]))
 					}
+					.replace("impor(a)", "import(a)")
 				},
 				{
 					"Expressions", "(1)", 
@@ -1974,13 +1978,13 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x10D473617740F).檢(expr)) ((0x10D653617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x10DB53617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x10DD03617740F).檢(expr)) ((0x10DEE3617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x10E3E3617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x10E593617740F))) (互!((bool),(1),(0x10E7E3617740F))) (互!((float/+w=6+/),(1.000),(0x10EA33617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10EE23617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10F223617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10F8E3617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x110113617740F}))
+								(互!((bool),(0),(0x10EE23617740F))) (互!((bool),(1),(0x10F073617740F))) (互!((float/+w=6+/),(1.000),(0x10F2C3617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10F6B3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10FAB3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x110173617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1109A3617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))

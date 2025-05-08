@@ -620,7 +620,6 @@ version(/+$DIDE_REGION+/all) {
 	
 	class CodeContainer : CodeNode
 	{
-		//CodeContainer /////////////////////////////
 		CodeColumn content; 
 		
 		bool 	noBorder, //omits the texts on the surface of the Node and uses square edges.
@@ -634,7 +633,7 @@ version(/+$DIDE_REGION+/all) {
 		=> NodeStyle.normal; 
 		
 		override @property RGB avgColor()
-		{ return mix(bkColor, content.avgColor, .25f); } 
+		=> mix(bkColor, content.avgColor, .25f); 
 		
 		//optional overloaded properties for rare cases, defaults to base properties
 		/+SyntaxKind innerSyntax() const { return syntax; }+/
@@ -1431,6 +1430,13 @@ version(/+$DIDE_REGION+/all) {
 				[q{interpolated_cString},q{`i"`},q{`"`}],
 				[q{interpolated_dString},q{"i`"},q{"`"}],
 				[q{interpolated_tokenString},q{`iq{`},q{`}`}],
+				[],
+				[q{/+_text variants are converted from: /+Code: i"".text+/+/}],
+				[q{interpolated_cString_text},q{`ti"`},q{`"`}],
+				[q{interpolated_dString_text},q{"ti`"},q{"`"}],
+				[q{interpolated_tokenString_text},q{`tiq{`},q{`}`}],
+				[q{interpolated_tokenString_text_mixin},q{`mixin${`},q{`}`}],
+				[],
 				[q{//Todo: qString_id
 				}],
 			]))
@@ -1448,6 +1454,7 @@ version(/+$DIDE_REGION+/all) {
 		override SyntaxKind syntax() const
 		{
 			if(isTableCell && type==Type.tokenString) return skIdentifier1; 
+			if(type==Type.interpolated_tokenString_text_mixin) return skSymbol; 
 			return skString; 
 			/+
 				Note: For tokenStrings this must be skString too. So all string's border be the same color.
@@ -1459,8 +1466,13 @@ version(/+$DIDE_REGION+/all) {
 		override string postfix() const
 		{ return typePostfix[type]~sizePostfix; } 
 		
-		@property isTokenString() const
-		{ return type==Type.tokenString; } 
+		@property isSomeTokenString() const
+		=> !!type.among(
+			Type.tokenString, 
+			Type.interpolated_tokenString, 
+			Type.interpolated_tokenString_text,
+			Type.interpolated_tokenString_text_mixin
+		); 
 		
 		this(CodeRow parent) { super(parent); } 
 		
@@ -1472,7 +1484,7 @@ version(/+$DIDE_REGION+/all) {
 			//get content
 			auto rebuilder = CodeColumnBuilder!true(content); 
 			
-			if(type.among(Type.tokenString, Type.interpolated_tokenString))
+			if(isSomeTokenString)
 			{
 				content.bkColor = mix(syntaxBkColor(skString), clCodeBackground, .75f); 
 				//Todo: clCodeBackground should be inherited to all the inner backgrounds.
@@ -1599,10 +1611,11 @@ version(/+$DIDE_REGION+/all) {
 			with(Type)
 			final switch(type)
 			{
-				case cString, cChar, interpolated_cString: 	checkInvalid_escape(typePrefix[type].back, '\\'); 	break; 
-				case dString, rString, interpolated_dString, hexString: 	checkInvalid(typePrefix[type].back); 	break; 
+				case cString, cChar, interpolated_cString, interpolated_cString_text: 	checkInvalid_escape(typePrefix[type].back, '\\'); 	break; 
+				case dString, rString, interpolated_dString, interpolated_dString_text, hexString: 	checkInvalid(typePrefix[type].back); 	break; 
 				case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(typePrefix[type].back, typePostfix[type].front); 	break; 
-				case tokenString, interpolated_tokenString: 		break; 
+				case tokenString, interpolated_tokenString, interpolated_tokenString_text, 
+					interpolated_tokenString_text_mixin: 		break; 
 				/+Todo: Any symbol can be used, not just slash '/'. The symbol in the qString must be a parameter.+/
 				//Todo: Identifier delimited qString.
 				//Todo: interpolated string verification.
@@ -1634,26 +1647,105 @@ version(/+$DIDE_REGION+/all) {
 		override void buildSourceText(ref SourceTextBuilder builder)
 		{
 			enforce(verify, "Invalid string literal format"); 
-			super.buildSourceText(builder); 
+			switch(type)
+			{
+				case	Type.interpolated_cString_text,
+					Type.interpolated_dString_text,
+					Type.interpolated_tokenString_text: 	{
+					builder.putSeparatorSpace; 
+					builder.put(prefix.withoutStarting('t'), content, postfix~".text"); 
+				}	break; 
+				case Type.interpolated_tokenString_text_mixin: 	{
+					builder.putSeparatorSpace; 
+					builder.put("mixin(iq{", content, postfix~".text)"); 
+				}	break; 
+				default: 	{ super.buildSourceText(builder); }
+			}
 		} 
 		
 		/+Bug: Multiline interpolated string: It can't save the last empty(!) line.+/
+		
+		void promoteToInterpolatedText(CodeRow row, int cellIdx)
+		{
+			if(
+				const tid = type.among(
+					Type.interpolated_cString,
+					Type.interpolated_dString,
+					Type.interpolated_tokenString
+				)
+			)
+			{
+				assert(parent is row); 
+				assert(cellIdx==row.subCellIndex(this)); 
+				
+				enum kw = ".text"; 
+				auto chars = row.chars[cellIdx+1..$]; 
+				if(
+					chars.startsWith(kw) &&
+					!isDLangIdentifierCont(chars.drop(kw.length).frontOr(dchar(' ')))
+				)
+				{
+					type = tid.predSwitch(
+						1, Type.interpolated_cString_text,
+						2, Type.interpolated_dString_text,
+						3, Type.interpolated_tokenString_text
+					); 
+					row.subCells = row.subCells.remove(tuple(cellIdx+1, cellIdx+1+kw.length)); 
+					row.refreshTabIdx; 
+					row.needMeasure; 
+				}
+			}
+		} 
+		
+		
+		void promoteInterpolatedTokenStringTextMixin(CodeColumn parentCol)
+		{
+			if(type==CodeString.Type.interpolated_tokenString_text)
+			if(auto blk = (cast(CodeBlock)(parentCol.parent)))
+			if(blk.type==CodeBlock.Type.stringMixin)
+			if(auto blkRow = blk.parent)
+			{
+				const blkIdx = blkRow.subCellIndex(blk); 
+				if(blkIdx>=0)
+				{
+					blkRow.subCells[blkIdx] = this; 
+					this.setParent(blkRow); 
+					this.type = CodeString.Type.interpolated_tokenString_text_mixin; 
+					this.needMeasure; 
+				}
+			}
+		} 
 	} 
 	class CodeBlock : CodeContainer
 	{
-		
-		enum Type 		 { block	, list	, index	, interpolation, stringMixin, traits, pragmaExpr} 
-		enum TypePrefix 	= 	["{"	, "("	, `[`, `$(`, `mixin(`, `__traits(`, `pragma(`]; 
-		enum TypePostfix 	= 	["}"	, ")"	, `]`, `)`, `)`, `)`, `)`]; 
+		mixin((
+			(表([
+				[q{/+Note: Type+/},q{/+Note: Prefix+/},q{/+Note: Postfix+/}],
+				[q{block},q{"{"},q{"}"}],
+				[q{list},q{"("},q{")"}],
+				[q{index},q{"["},q{"]"}],
+				[q{interpolation},q{"$("},q{")"}],
+				[q{stringMixin},q{"mixin("},q{")"}],
+				[q{stringImport},q{"import("},q{")"}],
+				[q{traits},q{"__traits("},q{")"}],
+				[q{pragmaExpr},q{"pragma("},q{")"}],
+				[q{typeofExpr},q{"typeof("},q{")"}],
+				[q{typeidExpr},q{"typeid("},q{")"}],
+			]))
+		).調!(GEN_enumTable)); 
 		
 		Type type; 
 		
 		override SyntaxKind syntax	() const
-		{ return type<=Type.stringMixin ? skSymbol : skAttribute; } 
+		{
+			return type<=Type.stringMixin ? skSymbol : 
+			type==Type.stringImport ? skIdentifier4 : 
+			skAttribute; 
+		} 
 		override string prefix() const
-		{ return TypePrefix[type]; } 
+		{ return typePrefix[type]; } 
 		override string postfix() const
-		{ return TypePostfix[type]; } 
+		{ return typePostfix[type]; } 
 		override @property NodeStyle nodeStyle() const
 		=> ((type<=Type.index) ?(NodeStyle.dim):(((type<=Type.stringMixin) ?(NodeStyle.normal):(NodeStyle.bright)))); 
 		
@@ -1662,7 +1754,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		void rebuild(R)(R scanner) if(isScannerRange!R)
 		{
-			type = parseBlockPrefix!(Type, TypePrefix)(scanner); 
+			type = parseBlockPrefix!(Type, typePrefix)(scanner); 
 			auto rebuilder = CodeColumnBuilder!true(content); 
 			rebuilder.appendStructured(scanner); //this will stop at the closing token
 			if(!scanner.empty && scanner.front.op==ScanOp.pop && scanner.front.src==postfix)

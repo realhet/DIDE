@@ -32,7 +32,7 @@ import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNice
 /+
 	Todo: Make regions out of attribute blocks: /+
 		Code: private /+$DIDE_REGION Comment+/
-		{ }
+		{ } 
 	+/
 +/
 //Todo: .inRange with .. operator	in the parameter list, and || &&	for nice looking parsers
@@ -266,7 +266,7 @@ version(/+$DIDE_REGION Breadcrumbs+/all)
 		}
 		else if(auto m = cast(Module) cell)
 		n = m; 
-		else if(auto s = cast(CodeString) cell) n = s.isTokenString ? s : null; 
+		else if(auto s = cast(CodeString) cell) n = s.isSomeTokenString ? s : null; 
 		
 		return Breadcrumb(n); 
 	} 
@@ -287,12 +287,24 @@ version(/+$DIDE_REGION Breadcrumbs+/all)
 	{
 		foreach_reverse(a; arr)
 		static foreach(T; AliasSeq!(CodeNode, CodeRow, CodeColumn))
-		if(auto b = (cast(T)(a.cell))) return b.toBreadcrumbs; return []; 
+		if(auto b = (cast(T)(a.cell))) return b.toBreadcrumbs; 
+		return []; 
 	} 
 	
 	
-	bool isTokenString(Cell cell)
-	{ if(auto s = cast(CodeString) cell) return s.isTokenString; return false; } 
+	bool isSomeTokenString(Cell cell)
+	{
+		if(auto s = cast(CodeString) cell)
+		{
+			static assert(
+				is(typeof(CodeString.isSomeTokenString))
+				/+This prevents calling the same name UFCS+/
+			); 
+			return s.isSomeTokenString; 
+		}
+		return false; 
+	} 
+	
 	bool isModule(Cell cell)
 	{ return !!(cast(Module) cell); } 
 	bool isDeclaration(Cell cell)
@@ -315,7 +327,6 @@ version(/+$DIDE_REGION Breadcrumbs+/all)
 		}
 		else if(cast(Module) cell)
 		return true; 
-		
 		return false; 
 	} 
 	
