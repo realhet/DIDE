@@ -38,10 +38,28 @@ version(/+$DIDE_REGION+/all) {
 			niceExpressionTemplateIdxByTypeOperator[tuple(t.blockType, t.pattern, t.operator)] = idx.to!int; 
 		}
 		
-		auto a = tuple(cast(immutable)bt, cast(immutable)ptn, operator) in niceExpressionTemplateIdxByTypeOperator; 
+		auto a = tuple((cast(immutable)(bt)), (cast(immutable)(ptn)), operator) in niceExpressionTemplateIdxByTypeOperator; 
 		return a ? *a : 0; 
 		
 		//Todo: This should be an enum.
+	} 
+	
+	NiceExpression createNiceExpression(
+		Container parent, int templateIdx_, CodeColumn col0 = null, 
+		CodeColumn col1 = null, CodeColumn col2 = null
+	)
+	{
+		//this constructor will create the appropriate class.
+		enforce(templateIdx_.inRange(niceExpressionTemplates)); 
+		
+		final switch(niceExpressionTemplates[templateIdx_].customClass)
+		{
+			static foreach(n; EnumMemberNames!NEC)
+			mixin(iq{
+				case NEC.$(n): 
+				return new $(n)(__traits(parameters)); 
+			}.text); 
+		}
 	} 
 	
 	
@@ -581,28 +599,7 @@ version(/+$DIDE_REGION+/all) {
 		
 	} 
 	
-	NiceExpression createNiceExpression(
-		Container parent, int templateIdx_, 
-		CodeColumn col0=null, CodeColumn col1 = null, 
-		CodeColumn col2 = null
-	)
-	{
-		//this constructor will create the appropriate class.
-		enforce(templateIdx_.inRange(niceExpressionTemplates)); 
-		
-		final switch(niceExpressionTemplates[templateIdx_].customClass)
-		{
-			static foreach(n; EnumMemberNames!NEC)
-			mixin(
-				iq{
-					case NEC.$(n): 
-					return new $(n)(__traits(parameters)); 
-				}.text
-			); 
-		}
-	} 
-	
-	static class ColorNode : NiceExpression
+	class ColorNode : NiceExpression
 	{
 		this(
 			Container parent, int templateIdx_, 
@@ -653,7 +650,7 @@ version(/+$DIDE_REGION+/all) {
 		} 
 	} 
 	
-	static class MixinNode : NiceExpression
+	class MixinNode : NiceExpression
 	{
 		this(
 			Container parent, int templateIdx_, 
@@ -698,7 +695,7 @@ version(/+$DIDE_REGION+/all) {
 		} 
 	} 
 	
-	static class MixinGenerator : NiceExpression
+	class MixinGenerator : NiceExpression
 	{
 		bool 	isMultiLine, 
 			isFunctionCall,
@@ -779,7 +776,7 @@ version(/+$DIDE_REGION+/all) {
 		} 
 	} 
 	
-	static class MixinTable : NiceExpression
+	class MixinTable : NiceExpression
 	{
 		int doubleGridStyle, gridStyle; 
 		
@@ -1129,7 +1126,57 @@ version(/+$DIDE_REGION+/all) {
 				{ operands[0].bkColor = mix(style.fontColor, bkColor, .33f); }
 			}
 		} 
-	} 
+	} 
+	/+
+		class MixinShader : NiceExpression
+		{
+			/+
+			static assert(0, "Itt tartok!"); 
+			//Link: https://www.shadertoy.com/view/3ftGR4
+		+/
+			this(
+				Container parent, int templateIdx_, 
+				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+			)
+			{ super(__traits(parameters)); } 
+			
+			override void doBuildSourceText(ref SourceTextBuilder builder)
+			{
+				with(builder)
+				{
+					put(operator); 
+					put('('); 
+						put("(", operands[0], ")"); put(','); put("q{", operands[1], "}"); 
+					put(')'); 
+				}
+			} 
+			
+			void customRearrange(ref CodeNodeBuilder builder, RGB targetColor, string prefix, string postfix)
+			{
+				with(builder)
+				{
+					//Note: Instead of overloading, it calls this member from script with extra parameters.
+					const sk = skIdentifier1; 
+					style.fontColor = sk.syntaxBkColor; 
+					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
+					
+					if(
+						operands[0].isDLangIdentifier
+						/+
+			operands[0].rowCount==1 &&
+			operands[0].rows[0].subCells.all!((c)=>((cast(Glyph)(c)) !is null))
+		+/
+					)
+					with(operands[0]) {
+						fillColor(style.fontColor, style.bkColor); 
+						applyHalfSize; 
+					}
+					
+					put(operands[0]); putNL; put(prefix); put(operands[1]); put(postfix); 
+				}
+			} 
+		} 
+	+/
 }
 version(/+$DIDE_REGION+/all) {
 	version(/+$DIDE_REGION+/all) {
@@ -1856,8 +1903,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0xF7DE3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0xF8613617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0xFD023617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0xFD853617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -1869,8 +1916,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0xFAAF3617740F)))(互!((bool),(1),(0xFAD23617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0xFAF53617740F)))
-					(互!((float/+w=6+/),(1.000),(0xFB403617740F)))
+					(互!((bool),(0),(0xFFD33617740F)))(互!((bool),(1),(0xFFF63617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x100193617740F)))
+					(互!((float/+w=6+/),(1.000),(0x100653617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1880,9 +1927,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0xFD363617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0xFD743617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0xFDE53617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0xFE633617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1025C3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x1029B3617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1030D3617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1038C3617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -1898,12 +1945,10 @@ version(/+$DIDE_REGION+/all) {
 				mixin(iq{enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} }.text); 
 				static immutable niceExpressionTemplates = _data.rows.map!(NiceExpressionTemplate.make).array; /+Note: <- ✔ This is the preferable way!+/
 			}else {
-				mixin(
-					iq{
-						enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} 
-						static immutable niceExpressionTemplates = $(_data.text/+Note: <- ❌ Extremely slow text conversion.+/).rows.map!(NiceExpressionTemplate.make).array; 
-					}.text
-				); 
+				mixin(iq{
+					enum NiceExpressionTemplateEnum : ubyte {$(_data.rows.map!"a[0]".join(','))} 
+					static immutable niceExpressionTemplates = $(_data.text/+Note: <- ❌ Extremely slow text conversion.+/).rows.map!(NiceExpressionTemplate.make).array; 
+				}.text); 
 			}
 		}); 
 		static assert(niceExpressionTemplates[0].name=="null_"); /+Todo: Enum legyen a templateIdx!+/
@@ -1919,10 +1964,11 @@ version(/+$DIDE_REGION+/all) {
 								lbl: 	st; 	{blk}	(ex)	[idx] 
 								"s"	`s`	q{s}	r"s"	'c'
 								i"s"	i`s`	iq{s}	$(a)	x"00"
-								i"s".text	i`s`.text	iq{s}.text	mixin(a)
+								i"s".text	i`s`.text	iq{s}.text	
 								
-								__traits()	pragma()	mixin(iq{a}.text)
-								typeof()	typeid()	impor(a)
+								mixin(a)	mixin(iq{a}.text)	impor(a)
+								__traits(a)	pragma(a)	__rvalue(a)
+								typeof(a)	typeid(a)
 							}],
 							[q{"spec. statements"},q{
 								return; 	return x; 
@@ -1978,13 +2024,13 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x10DD03617740F).檢(expr)) ((0x10DEE3617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x10E3E3617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x113043617740F).檢(expr)) ((0x113223617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x113723617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x10EE23617740F))) (互!((bool),(1),(0x10F073617740F))) (互!((float/+w=6+/),(1.000),(0x10F2C3617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10F6B3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10FAB3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x110173617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1109A3617740F}))
+								(互!((bool),(0),(0x114163617740F))) (互!((bool),(1),(0x1143B3617740F))) (互!((float/+w=6+/),(1.000),(0x114603617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1149F3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x114DF3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1154B3617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x115CE3617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))

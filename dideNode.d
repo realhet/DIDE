@@ -1728,6 +1728,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{stringMixin},q{"mixin("},q{")"}],
 				[q{stringImport},q{"import("},q{")"}],
 				[q{traits},q{"__traits("},q{")"}],
+				[q{rvalue},q{"__rvalue("},q{")"}],
 				[q{pragmaExpr},q{"pragma("},q{")"}],
 				[q{typeofExpr},q{"typeof("},q{")"}],
 				[q{typeidExpr},q{"typeid("},q{")"}],

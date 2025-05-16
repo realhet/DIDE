@@ -76,7 +76,7 @@ version(/+$DIDE_REGION+/all) {
 			"extern", "align", "deprecated",
 			"private", "package", "package", "protected", "public", "export",
 			"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
-			"const", "immutable", "inout", "shared", "__gshared", 
+			"const", "immutable", "inout", "shared", "__gshared", "__rvalue",
 			"nothrow", "pure", "ref", "return"
 		]; 
 	}
@@ -451,6 +451,11 @@ version(/+$DIDE_REGION+/all) {
 					}
 					else
 					{ return false; }
+					
+					/+
+						Todo: mixin template with name, and assignmend syntax: 
+						/+Link: https://dlang.org/changelog/2.111.0.html#dmd.mixin-assign+/
+					+/
 				} 
 				
 				bool kw_only(string kw)
@@ -1851,7 +1856,6 @@ version(/+$DIDE_REGION+/all) {
 					
 					Declaration findSrcPreposition(in string[] validKeywords)
 					{
-						
 						Declaration recursiveSearch(Declaration decl)
 						{
 							Declaration res; 
@@ -1881,7 +1885,7 @@ version(/+$DIDE_REGION+/all) {
 							}
 							
 							return res; 
-						} 
+						} 
 						
 						backTrackCount = 1; //first is the dstPreposition, it's always dropped
 						//precedingComments = [];
@@ -1930,8 +1934,7 @@ version(/+$DIDE_REGION+/all) {
 						
 						//dstPrepositionRootDecl = rootDecl; //return this on the side
 						return recursiveSearch(rootDecl); 
-					} 
-					
+					} 
 					if(auto row = dst.backOrNull)
 					if(auto dstPreposition = cast(Declaration) row.subCells.backOrNull)
 					if(dstPreposition.isPreposition)
@@ -2117,15 +2120,12 @@ version(/+$DIDE_REGION+/all) {
 			Inside () it is a parameter list
 		+/
 		version(none)
-		{ A a={ a: { b: c}}; }
-		
-		version(none)
+		{ A a={ a: { b: c}}; }version(none)
 		{ A a={ a: c}; /+this one is ok+/}
 		/+
 			Todo: if there is a comment at the end of a one liner block, 
 			then there will be an an extra space at the start of the block /sigh
 		+/
-		
 		
 		//first start with easy decisions at the end of the block
 		if(p=="") return CurlyBlockKind.empty; 
@@ -2134,32 +2134,7 @@ version(/+$DIDE_REGION+/all) {
 		if(p.canFind("{,") || p.canFind(",{")) return CurlyBlockKind.list; 
 		if(p.canFind(';')||p.canFind('{')) return CurlyBlockKind.declarationsOrStatements; 
 		
-		//Note: no need to discover keywords. A {} alone is enough.
-		/+
-			if(p.endsWith('{') && p.length>0){ //{ while(f()){} }
-						
-						/*string word;
-						version(/+$DIDE_REGION take the last word and an optional '(' before '{' +/all)
-						{
-							sizediff_t i = p.length-2;
-							void acc(){ word = p[i--] ~ word; }
-							if(i>=0 && p[i]=='(') acc;
-							while(i>=0 && p[i].isAlpha) acc;
-						}
-						
-						if(word.endsWith('(') || statementDetecionEndings.assumeSorted.contains(word))
-							return CurlyBlockKind.declarationsOrStatements; //actually this is a statement for sure
-							
-						print("!!!", word, "$$$", p);*/
-						return CurlyBlockKind.declarationsOrStatements;
-					}
-		+/
-		
-		//do more complicated searches invlonving the entire block
-		
-		//give it up: it's not a declaration, neither a statement block
 		return CurlyBlockKind.list; 
-		
 		
 		//Todo: Can't detect structure initializer here: VkClearValue clearColor = { color: { float32: [ 0.8f, 0.2f, 0.6f, 1.0f ]}}; 
 	} 
@@ -2180,9 +2155,10 @@ version(/+$DIDE_REGION+/all) {
 	void promoteMacroExpression(CodeRow row, ref int cellIdx, CodeBlock blk/+redundant but faster+/)
 	{
 		foreach(
-			const kw; ["import", "mixin", "__traits", "pragma", "typeof", "typeid"]
+			const kw; ["import", "mixin", "__traits", "__rvalue", "pragma", "typeof", "typeid"]
 			/+Todo: extract this array to macroExpressionKeywords+/
 			/+Todo: implement 'isExpression' too!+/
+			//Opt: speed this up
 		)
 		{
 			const kwLen = (cast(int)(kw.length)); 
@@ -2219,6 +2195,7 @@ version(/+$DIDE_REGION+/all) {
 					"import"	, CodeBlock.Type.stringImport, 
 					"mixin"	, CodeBlock.Type.stringMixin, 
 					"__traits"	, CodeBlock.Type.traits,
+					"__rvalue"	, CodeBlock.Type.rvalue,
 					"pragma"	, CodeBlock.Type.pragmaExpr,
 					"typeof"	, CodeBlock.Type.typeofExpr,
 					"typeid"	, CodeBlock.Type.typeidExpr,
@@ -2228,28 +2205,7 @@ version(/+$DIDE_REGION+/all) {
 				return; 
 			}
 		}
-	} 
-	
-	/+
-		void promoteMacroExpressions(CodeColumn col)
-		{
-			foreach(int rowIdx, row; col.rows)
-			{
-				for(int cellIdx=0; cellIdx<row.cellCount; cellIdx++)
-				{
-					auto cell = row.subCells[cellIdx]; 
-					if(auto blk = (cast(CodeBlock)(cell)))
-					{ if(blk.type==CodeBlock.Type.list) promoteMacroExpression(row, cellIdx, blk); }
-					else if(auto str = (cast(CodeString)(cell)))
-					{
-						/+Note: i"str".text -> ti"str"+/
-						str.promoteToInterpolatedText(row, cellIdx); 
-					}
-				}
-			}
-		} 
-	+/
-	
+	} 
 	void processHighLevelPatterns_statement(CodeColumn col)
 	{
 		//Note: it's called from Declaration.this() for every highlevel statement
@@ -2308,9 +2264,15 @@ version(/+$DIDE_REGION+/all) {
 							CodeBlock.Type.stringImport	/+Note: import()+/,
 							CodeBlock.Type.stringMixin 	/+Note: mixin()+/,
 							CodeBlock.Type.traits 	/+Note: __traits()+/,
+							CodeBlock.Type.rvalue 	/+Note: __rvalue()+/,
 							CodeBlock.Type.pragmaExpr 	/+Note: pragma()+/,
 							CodeBlock.Type.typeofExpr 	/+Note: typeof()+/,
-							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/: 	{
+							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/
+						/+
+							Todo: These were opened by 
+							promoteMacroExpression, 
+							maybe it's bad to list them all here
+						+/: 	{
 							blk.content.processHighLevelPatterns_expr; 
 							processNiceExpressionBlock(cell); /+Note: depth first recursion+/
 						}	break; 

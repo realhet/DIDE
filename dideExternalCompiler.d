@@ -464,7 +464,14 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 						reformat(defaultLineIdx, wild[0], wild[1]); 
 						else if(line.isWild("glslc: error: *"))
 						reformat(defaultLineIdx, "error", "GLSLC: "~wild[0]); 
-						else { reformat(defaultLineIdx, "Console", line); }
+						else {
+							reformat(defaultLineIdx, "Console", line); 
+							/+
+								Todo: do this but with supplemental messages:
+								file(5,1): Console: blablabla
+								file(5,1):         line2
+							+/
+						}
 						
 						finalOutput ~= line; 
 					}
