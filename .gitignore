@@ -15,4 +15,5 @@
 #included subdirectories
 !assets/
 !assets/icons/
+!assets/icons/*
 
