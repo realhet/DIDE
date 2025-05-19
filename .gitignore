@@ -13,6 +13,5 @@
 !deploy.bat
 
 #included subdirectories
-!assets/
-!assets/*.webp
+!assets/icons/
 
