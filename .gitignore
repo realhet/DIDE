@@ -13,5 +13,5 @@
 !deploy.bat
 
 #included subdirectories
-#!Directory/
+!assets/
 

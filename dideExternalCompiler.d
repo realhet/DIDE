@@ -424,7 +424,10 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 					}
 					
 					if(st.status) finalStatus = st.status; 
-				}
+				}
+				
+				//Todo: vertical tab support in q{} iq{ } /++/ /**/
+				
 				
 				version(/+$DIDE_REGION Process GLSL errors messages+/all)
 				{

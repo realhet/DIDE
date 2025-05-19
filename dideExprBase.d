@@ -30,6 +30,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{threeParamEQEOp},q{3},q{/+Code: op((expr),q{},(expr))+/},q{/+Note:+/}],
 				[q{mixinTableInjectorOp},q{2},q{/+Code: (){with(op(expr)){expr}}()+/},q{/+Note: 表 new MixinTable+/}],
 				[q{anonymMethod},q{2},q{/+Code: (expr)op{code}+/},q{/+Note: anonym method (without attrs)+/}],
+				[q{binaryInterpolatedTokenStringTextOp},q{2},q{/+Code: op(iq{}.text,iq{}.text)+/},q{/+Note: 碼! ExternalCode+/}],
 				[],
 				[q{/+Note: special statement: any single row statement where the last char must is a unicode special char+/}],
 				[q{specialStatementOp},q{0},q{/+Code: specialStatement+/},q{/+Note: auto 間T=now間+/}],
@@ -55,7 +56,8 @@ version(/+$DIDE_REGION+/all) {
 			MixinTable, 
 			SigmaOp, 
 			Inspector, 
-			InteractiveValue 
+			InteractiveValue, 
+			ShaderNode
 		} 
 		
 		string name; 
@@ -215,19 +217,26 @@ version(/+$DIDE_REGION+/all) {
 				{
 					if(iota(1, cc, 2).all!((i)=>(row.chars[i]==','))/+must be separated by commas+/)
 					{
+						//Todo: too much redundancy
 						static if(what=="q{}")
 						{
 							auto params = iota(0, cc, 2).map!((i)=>((cast(CodeString)(row.subCells[i])))).array; 
 							if(params.all!((s)=>(s && s.type==CodeString.Type.tokenString)))
 							{ return params.map!((p)=>(p.content)).array; }
 						}
-						else if(what=="()")
+						else static if(what=="tiq{}")
+						{
+							auto params = iota(0, cc, 2).map!((i)=>((cast(CodeString)(row.subCells[i])))).array; 
+							if(params.all!((s)=>(s && s.type==CodeString.Type.interpolated_tokenString_text)))
+							{ return params.map!((p)=>(p.content)).array; }
+						}
+						else static if(what=="()")
 						{
 							auto params = iota(0, cc, 2).map!((i)=>((cast(CodeBlock)(row.subCells[i])))).array; 
 							if(params.all!((b)=>(b && b.type==CodeBlock.Type.list)))
 							{ return params.map!((p)=>(p.content)).array; }
 						}
-						else if(what=="()q{}"/+the 2nd param is a tokenString, rest are brackets+/)
+						else static if(what=="()q{}"/+the 2nd param is a tokenString, rest are brackets+/)
 						{
 							auto params = iota(0, cc, 2).map!
 							((i){
@@ -252,6 +261,7 @@ version(/+$DIDE_REGION+/all) {
 		} 
 		
 		alias extractTokenStringParams 	= extractCodeColumnParams!"q{}",
+		extractInterpolatedTokenStringTextParams 	= extractCodeColumnParams!"tiq{}",
 		extractListParams 	= extractCodeColumnParams!"()",
 		extractListTokenStringParams 	= extractCodeColumnParams!"()q{}"; 
 		

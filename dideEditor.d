@@ -816,7 +816,13 @@ class Editor
 				
 				static bool[string] simpleValids; 
 				if(simpleValids.empty)
-				["{}", "q{}", "[]", "()", "``", "''", `""`].each!((s){ simpleValids[s]=true; }); 
+				[
+					"{}", "q{}", "[]", "()", "``", "''", `""`
+					/+
+						Opt: There are a lot more simple valids.
+						Only call LDC2 if necessary!
+					+/
+				].each!((s){ simpleValids[s]=true; }); 
 				
 				if(source in simpleValids) return; 
 			}

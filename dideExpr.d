@@ -110,6 +110,12 @@ version(/+$DIDE_REGION+/all) {
 			if(doit!(NEP.threeParamOp      , extractListParams          , 3 /+Note: op(expr,expr,expr)+/)) return; 
 			if(doit!(NEP.twoParamEQOp     , extractListTokenStringParams, 2 /+Note: op(expr,q{})+/     )) return; 
 			if(doit!(NEP.threeParamEQEOp   , extractListTokenStringParams, 3 /+Note: op(expr,q{},expr)+/ )) return; 
+			if(
+				doit!(
+					NEP.binaryInterpolatedTokenStringTextOp , 
+					extractInterpolatedTokenStringTextParams, 2 /+Note: op(tiq{},tiq{})+/ 
+				)
+			) return; 
 		} 
 		
 		void processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
@@ -1127,56 +1133,97 @@ version(/+$DIDE_REGION+/all) {
 			}
 		} 
 	} 
-	/+
-		class MixinShader : NiceExpression
+	class ShaderNode : NiceExpression
+	{
+		mixin((
+			(表([
+				[q{/+Note: Language+/},q{/+Note: Keyword+/},q{/+Note: BkColor+/},q{/+Note: FontColor+/}],
+				[q{unknown},q{""},q{clGray},q{clWhite}],
+				[q{GLSL},q{"glslc"},q{(RGB(85,135,166))},q{(RGB(247,247,247))}],
+				[q{Arduino},q{"arduino-cli"},q{(RGB(17,156,162))},q{(RGB(247,247,247))}],
+			]))
+		).調!(GEN_enumTable)); 
+		
+		Language language; 
+		
+		this(
+			Container parent, int templateIdx_, 
+			CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+		)
 		{
-			/+
-			static assert(0, "Itt tartok!"); 
-			//Link: https://www.shadertoy.com/view/3ftGR4
-		+/
-			this(
-				Container parent, int templateIdx_, 
-				CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
-			)
-			{ super(__traits(parameters)); } 
-			
-			override void doBuildSourceText(ref SourceTextBuilder builder)
+			super(__traits(parameters)); 
+			detectLanguage; 
+		} 
+		
+		void detectLanguage()
+		{
+			language = Language.unknown; 
+			if(operands[0] && operands[0].rowCount>0)
 			{
-				with(builder)
-				{
-					put(operator); 
-					put('('); 
-						put("(", operands[0], ")"); put(','); put("q{", operands[1], "}"); 
-					put(')'); 
+				const keyword = operands[0].rows[0].chars.until!(
+					not!((a)=>(
+						a.isDLangIdentifierCont
+						|| a=='-'
+					))
+				).text; 
+				if(keyword!="" && keyword.front.isDLangIdentifierStart)
+				foreach(lang; EnumMembers!Language)
+				if(sameText(languageKeyword[lang], keyword)) { language = lang; break; }
+			}
+		} 
+		
+		override void doRearrange(ref CodeNodeBuilder builder)
+		{
+			with(builder)
+			{
+				detectLanguage; 
+				
+				bkColor = border.color = languageBkColor[language]; 
+				with(style) {
+					fontColor 	= languageFontColor[language],
+					bkColor 	= this.bkColor; 
 				}
-			} 
-			
-			void customRearrange(ref CodeNodeBuilder builder, RGB targetColor, string prefix, string postfix)
-			{
-				with(builder)
+				
 				{
-					//Note: Instead of overloading, it calls this member from script with extra parameters.
-					const sk = skIdentifier1; 
-					style.fontColor = sk.syntaxBkColor; 
-					style.bkColor = bkColor = mix(sk.syntaxFontColor, targetColor, .38f); 
+					style.bold = false; put(" 📄"); 
 					
-					if(
-						operands[0].isDLangIdentifier
-						/+
-			operands[0].rowCount==1 &&
-			operands[0].rows[0].subCells.all!((c)=>((cast(Glyph)(c)) !is null))
-		+/
-					)
-					with(operands[0]) {
-						fillColor(style.fontColor, style.bkColor); 
-						applyHalfSize; 
+					if(language)
+					{
+						auto iconFile = File(appPath, `assets\icons\`~language.text~`.webp`); 
+						const 	stIdx 	= textures[iconFile], 
+							info 	= textures.accessInfo(stIdx); 
+						if(info.height>1)
+						if(auto g = (cast(Glyph)(node.subCells.back)))
+						{
+							g.stIdx = stIdx; 
+							g.outerWidth *= (((float(info.width)))/(info.height)) / ((g.outerWidth)/(g.outerHeight)); 
+							g.fontFlags = (cast(ubyte)(g.fontFlags & ~32 | 16 | 1)); 
+							g.bkColor = g.fontColor = bkColor; 
+						}
 					}
 					
-					put(operands[0]); putNL; put(prefix); put(operands[1]); put(postfix); 
+					put(' '); style.bold = true; 
 				}
-			} 
+				
+				put("external code "); put(operands[0]); putNL; 
+				
+				put(" {"); put(operands[1]); put("} "); 
+				
+				/+//Link: https://www.shadertoy.com/view/3ftGR4+/
+			}
 		} 
-	+/
+		
+		override void doBuildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder)
+			{
+				put(operator); put('('); 
+					put("iq{", operands[0], "}.text"); put(','); 
+					put("iq{", operands[1], "}.text"); 
+				put(')'); 
+			}
+		} 
+	} 
 }
 version(/+$DIDE_REGION+/all) {
 	version(/+$DIDE_REGION+/all) {
@@ -1903,8 +1950,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0xFD023617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0xFD853617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x101E93617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x1026D3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.300))
@@ -1916,8 +1963,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0xFFD33617740F)))(互!((bool),(1),(0xFFF63617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x100193617740F)))
-					(互!((float/+w=6+/),(1.000),(0x100653617740F)))
+					(互!((bool),(0),(0x104BC3617740F)))(互!((bool),(1),(0x104E03617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x105043617740F)))
+					(互!((float/+w=6+/),(1.000),(0x105503617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1927,9 +1974,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1025C3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x1029B3617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1030D3617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1038C3617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x107473617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x107863617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x107F83617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x108773617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -1939,6 +1986,8 @@ version(/+$DIDE_REGION+/all) {
 					@node: 	customRearrange(builder, true); 
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
+				[],
+				[q{externalCode},q{(碼!(iq{glslc -D=define1}.text,iq{}.text))},q{/+Code: (op(iq{}.text,iq{}.text))+/},q{"碼!"},q{bright},q{Identifier1},q{ShaderNode},q{@text: put(operator); op(0); @node: put('|'); op(0); put('|'); }],
 			]))
 		),q{
 			static if((常!(bool)(1))/+Note: fast way+/) {
@@ -2024,13 +2073,13 @@ version(/+$DIDE_REGION+/all) {
 							[q{"enum member 
 	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x113043617740F).檢(expr)) ((0x113223617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x113723617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x118DA3617740F).檢(expr)) ((0x118F83617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x119483617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x114163617740F))) (互!((bool),(1),(0x1143B3617740F))) (互!((float/+w=6+/),(1.000),(0x114603617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1149F3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x114DF3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1154B3617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x115CE3617740F}))
+								(互!((bool),(0),(0x119EC3617740F))) (互!((bool),(1),(0x11A113617740F))) (互!((float/+w=6+/),(1.000),(0x11A363617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11A753617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AB53617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B213617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BA43617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
