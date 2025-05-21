@@ -5,10 +5,11 @@
 
 import het; void main() { console({ new Detector; }); } 
 
+
 class Detector
 {
 	static immutable shader = 
-	(碼!(iq{glslc -D="define1"}.text,iq{
+	(碼!(iq{glslc -D="define1_"}.text,iq{
 		#version 430
 		
 		@vert: 
@@ -37,5 +38,11 @@ class Detector
 	}.text)); 
 	
 	this()
-	{ shader.hexDump; } 
+	{
+		shader.hexDump; 
+		foreach(name, data; shader.unzipAA) {
+			print(name~":"); 
+			data.hexDump;  
+		}
+	} 
 } 

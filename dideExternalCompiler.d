@@ -2,6 +2,9 @@ module dideexternalcompiler;
 
 import het, het.projectedfslib; 
 
+void log(A...)(A a)
+{ print("\34\1"~a.text~"\34\0"); beep; } 
+
 class ExternalCompiler
 {
 	/+
@@ -71,8 +74,8 @@ class ExternalCompiler
 		(
 			{
 				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x80735AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x87435AA4136).檢((update間(_間)))); 
+				rootPath.wipe(false); 	((0x84935AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x8B635AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
@@ -80,12 +83,12 @@ class ExternalCompiler
 					void main() {} 
 				},
 					hash	= src.hashOf(args.hashOf).to!string(26); 	
-				ec.addInput(args, src, "testShader.comp", 1); 	((0x97935AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0x9CD35AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA2B35AA4136).檢((update間(_間)))); 
+				ec.addInput(args, src, "testShader.comp", 1); 	((0x9BB35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0xA0F35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA6D35AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xAA035AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xADA35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xAE235AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xB1C35AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 
@@ -217,8 +220,9 @@ class ExternalCompiler
 				buff[0..size] = (cast(ubyte[])(res.effectiveBinary)); 
 				auto hr = PrjWriteFileData(ctx, &callbackData.DataStreamId, buff, 0, size); 
 				
-				PrjFreeAlignedBuffer(buff); 
+				log(i"Projected file written. Length: $(size) bytes."); 
 				
+				PrjFreeAlignedBuffer(buff); 
 				return hr; 
 			}
 		} 
@@ -288,6 +292,8 @@ class ExternalCompiler
 		const 	hash 	= calcHash(args, src),
 			input 	= CompilationInput(args, src, file, line); 
 		synchronized(this) { inputs[hash] = input; } 
+		
+		log(i"External code input added. Length: $(src.length) bytes."); 
 	} 
 	
 	void reset()
@@ -314,15 +320,19 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 	try {
 		enum GlslSection
 		{
-			common,
+			common,	//reserved for hetlib / unified shader code
+			
+			comp,	//Compute Shader
+			
 			vert,	//Vertex Shader
-			frag,	//Fragment Shader
 			tesc,	//Tessellation Control (Hull) Shader
 			tese,	//Tessellation Evaluation (Domain) Shader
 			geom,	//Geometry Shader
-			comp,	//Compute Shader
-			mesh,	//Mesh Shader (Vulkan)
+			frag,	//Fragment Shader
+			
 			task,	//Task Shader (Vulkan)
+			mesh,	//Mesh Shader (Vulkan)
+			
 			rgen,	//Ray Generation Shader (Ray Tracing)
 			rint,	//Ray Intersection Shader (Ray Tracing)
 			rahit,	//Ray Any-Hit Shader (Ray Tracing)
@@ -393,6 +403,8 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 			import std.zip; 
 			ZipArchive zip = new ZipArchive; 
 			
+			log(i"Started compiling external code. Source length: $(src.length) bytes."); 
+			
 			const baseName = "shdr_"~src.hashOf(args.hashOf).to!string(26); 
 			auto fn(string ext) => File(workPath, baseName~"."~ext); 
 			foreach(sect; sections)
@@ -408,6 +420,7 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 						args~" "~srcFile.quoted~" -o "~dstFile.quoted, null, 
 						Config.suppressConsole, size_t.max, workPath.fullPath
 					); 
+					log(i"External compiler finished. Status =  $(st.status)."); 
 					auto resultData = dstFile.read(false); 
 					srcFile.remove(false); dstFile.remove(false); 
 				}
@@ -417,7 +430,7 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 					if(st.status==0 && resultData.length)
 					{
 						ArchiveMember am = new ArchiveMember; 
-						am.name = "a."~sect.section.text~".spv"; 
+						am.name = sect.section.text~".spv"; 
 						am.expandedData = resultData; 
 						am.compressionMethod = CompressionMethod.deflate; 
 						zip.addMember(am); 
@@ -488,6 +501,8 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 		if(finalStatus==0) enforce(zip.totalEntries, "No binaries generated."); 
 		
 		finalBinary = (cast (immutable(ubyte)[])(((finalStatus==0)?(zip.build):("ERROR:"~finalStatus.text)))); 
+		
+		log(i"External code generated: $(finalBinary.length) bytes."); 
 	}
 	catch(Exception e)
 	{
