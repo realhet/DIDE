@@ -417,6 +417,13 @@ struct DMDMessageDecoder
 			processDMDOutput(lines); 
 			lines = prevLines[lines.length..$]; 
 		}
+		
+		/+
+			Todo: These message ending detections are error prone with 
+			DIDE_EXTERNAL_COMPILATION_REQUEST 
+			messages.  Those haveproper  message endings. 
+			And also out of memory exceptions should be processed.
+		+/
 	} 
 	
 	DMDMessage[] fetchUpdatedMessages()

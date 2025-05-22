@@ -475,13 +475,15 @@ struct BuildSystem
 	{
 		//make commandline args
 		auto args = [
-			"ldc2", "--vcolumns", "--verrors-context", 
+			"ldc2", "--vcolumns", "--verrors-context",
 			
-			"--verrors=0", "--verror-supplements=0" 
+			"--verrors=0", "--verror-supplements=0",
 			/+
 				240813: 	LDC bugfix: Supplemental messages are always displayed, 
 					even when their main messages are filtered out.
 			+/
+			
+			"--enable-color=0" //Colorful console output is terribly slow, DIDE can't see it.
 			
 			/+"-v"+//+, /+It's quitr bogus in LDC.+/+/
 		]; 

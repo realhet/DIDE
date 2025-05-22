@@ -1,24 +1,26 @@
-import std;
+import std; 
 
-string transform(string a)
+template 碼/+ExternalCode+/(string args, string src, string FILE=__FILE__, int LINE=__LINE__)
 {
-	auto b = cast(ubyte[])a.dup;
-	foreach(ref ch; b) if(ch=='x') ch = 'y';
-	return cast(string)b;
-}
-
-string doit(string data)()
-{
-	static foreach(i; 0..1)
+	pragma(msg, FILE, "(", LINE, ",1): $DIDE_EXTERNAL_COMPILATION_REQUEST: ", args.only.format!"%(%s%)"); 
+	pragma(msg, src /+Must not use transformation functions, because the CTFE interpreter is slow.+/); 
+	enum hash = src.hashOf(args.hashOf).to!string(26) /+hashOf CTFE performance: 1.2ms / 1KB+/; 
+	pragma(msg, FILE, "(", LINE, ",1): $DIDE_EXTERNAL_COMPILATION_REQUEST: END(", hash, ")"); 
+	enum 碼 = (cast(immutable(ubyte)[])(import(hash))); 
+	static if(碼.startsWith(cast(ubyte[])("ERROR:")))
 	{
-		//enum data2 = data.transform;
-		pragma(msg, "Here goes lots of data: ", data);
+		pragma(msg, (cast(string)(碼)).splitter('\n').drop(1).join('\n')); 
+		static assert(false, "$DIDE_EXTERNAL_COMPILATION_"~(cast(string)(碼)).splitter('\n').front); 
 	}
-	return "dummy";
-}
+} 
 
-static immutable storedData = doit!("x".replicate(256*256*256));
+enum N = 600_000/7; 
+enum a = 碼!("commandline", "program".replicate(N)); 
+enum b = 碼!("commandline", "progra2".replicate(N)); 
 
-void main(){ writeln(storedData.length, storedData.all!"a=='x'"); }
+void main() {
+	writeln(a); 
+	writeln((cast(string)(b))~".2"); 
+} 
 
 //ldc2 testPragma.d > a.txt 2>&1
