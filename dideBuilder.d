@@ -215,37 +215,32 @@ class Builder : IBuildServices
 			{
 				if(
 					msg.type==DMDMessage.Type.unknown
-					&& msg.content.isWild("$DIDE_EXTERNAL_COMPILATION_REQUEST:*")
+					&& msg.content.isWild("$DIDE_EXTERNAL_COMPILATION_REQUEST: *")
 				)
 				{
 					try
 					{
-						//Try to decode the 2 string parameters
+						//Try to decode the 3 string parameters
+						string[] params; params.fromJson("["~wild[0]~"]"); 
+						enforce(params.length==3, "Expected 2 params."); 
+						const 	args 	= params[0], 
+							incomingHash 	= params[1], 
+							src 	= params[2]; 
 						
-						string[] params; 
-						const paramsSrc = wild[0].strip; 
-						if(paramsSrc.startsWith(`["`) /+Note: ["param1", "param2"]+/)
-						{ params.fromJson(paramsSrc); }
-						else if(paramsSrc.isWild(`[[*],[*]]` /+Note: [[65, 69, 42], [112, 96]]+/))
-						params = iota(2).map!((i)=>(
-							wild[i]	.splitter(',')
-								.map!((a)=>(a.strip.to!ubyte))
-								.array.safeUTF8
-						)).array; 
-						
-						enforce(params.length==2, "Expected 2 params."); 
-						
-						externalCompiler.addInput(
-							params[0], params[1], 
-							msg.location.file.fullName, msg.location.lineIdx
+						const calculatedHash = src.hashOf(args.hashOf).to!string(26); 
+						enforce(
+							incomingHash==calculatedHash, 
+							i"Wrong hash $(incomingHash)!=$(calculatedHash)".text
 						); 
+						
+						externalCompiler.addInput(args, src, msg.location.file.fullName, msg.location.lineIdx); 
 						continue; 
 					}
 					catch(Exception e) {
 						ERR(
 							"Invalid External Code pragma message exception: "
 							~e.simpleMsg~"\n"
-							~msg.content.quoted
+							~msg.content
 						); 
 					}
 				}

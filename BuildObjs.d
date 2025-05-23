@@ -162,6 +162,8 @@ a new compiler instance."}],
 				stdErrGrouper; string[] 	pendingOutLines, 
 				pendingErrLines; 
 			
+			bool insideTextBlock, textBlockReady; string[] textBlock; 
+			
 			//output data
 			int result; 
 			bool ended; 
@@ -281,8 +283,32 @@ a new compiler instance."}],
 					errThread = new Thread
 					(
 						{
-							foreach(a; pipes.stderr.byLineCopy.map!((a)=>(a.withoutEnding('\r'))))
-							{ synchronized(this) stdErrGrouper.put(a); }
+							foreach(
+								a; pipes.stderr.byLineCopy.map!
+								((a){
+									if(a.endsWith('\r')) { a = a[0..$-1]; 	if(a.endsWith('\r'))	{ a = a[0..$-1]; }}
+									/+This fix is because pragma(msg, "A\r\nB") emits "A\r\r\nB"+/return a; 
+								})
+							)
+							{
+								enum textBlockSignature = "$DIDE_TEXTBLOCK_"; 
+								if(a.startsWith(textBlockSignature))
+								{
+									/+Collect textblock and attach it to the next message right after+/
+									if(a.endsWith("_BEGIN$"))	{ insideTextBlock = true; textBlock=[]; }
+									else if(a.endsWith("_END$"))	{ insideTextBlock = false; textBlockReady = true; }
+									else WARN("Invalid textblock command: "~a.quoted); 
+								}
+								else
+								{
+									if(insideTextBlock)	{ textBlock ~= a; }
+									else	{
+										if(textBlockReady.chkClear)
+										{ a ~= ","; a ~= textBlock.join("\r\n").quoted; textBlock = []; }
+										synchronized(this) stdErrGrouper.put(a); 
+									}
+								}
+							}
 						}
 					); 
 					
@@ -292,7 +318,7 @@ a new compiler instance."}],
 				
 				if(pid) globalPidList.add(pid); 
 			} 
-			
+			
 			void update()
 			{
 				//checks if the running process ended.
@@ -378,7 +404,15 @@ a new compiler instance."}],
 		
 		//it was developed for running multiple compiler instances.
 		
-		Executor[] executors = (mixin(求map(q{a},q{cmdLines.enumerate},q{new Executor(false, a.value.filter!"a.endsWith(`.d`)".join(';'), a.value, env, workPath)}))).array; 
+		Executor[] executors = 
+			(
+			mixin(求map(q{a},q{cmdLines.enumerate},q{
+				new Executor(
+					false, a.value.filter!"a.endsWith(`.d`)".join(';'), 
+					a.value, env, workPath
+				)
+			}))
+		).array; 
 		
 		DateTime lastLaunchTime; 
 		bool cancelled; 

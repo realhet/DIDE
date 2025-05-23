@@ -474,13 +474,34 @@ struct DMDMessageDecoder
 				return null; 
 			} 
 			
+			static bool checkColumnIndices(int markerCol, string prevLine, int msgCol)
+			{
+				/+
+					In rare cases, /+Code: markerCol+/ is lower, because it counts multibyte UTF-8 chars as 1,
+					while /+Code: msgCol+/ counts all UTF-8 bytes.
+				+/
+				
+				if(msgCol<=0 || markerCol<=0) return false; 
+				
+				size_t markerBytes, len = prevLine.length; 
+				foreach(k; 0..markerCol-1)
+				{
+					if(markerBytes<len) prevLine.decode!(Yes.useReplacementDchar)(markerBytes); 
+					else return false; 
+				}
+				
+				return markerBytes==msgCol-1; 
+			} 
 			auto msg = decodeDMDMessage(lines.front); 
 			if(msg)
 			{
 				int endIdx; 
 				foreach(i; 1 .. lines.length.to!int)
 				{
-					if(decodeColumnMarker(lines[i])==msg.col)
+					if(
+						i>=2 &&
+						checkColumnIndices(decodeColumnMarker(lines[i]), lines[i-1], msg.col)
+					)
 					{ endIdx = i; break; }
 					if(decodeDMDMessage(lines[i])) break; 
 					if(decodeFileMarker(lines[i], fileNameFixer)) break; 

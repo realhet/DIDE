@@ -2,8 +2,7 @@ module dideexternalcompiler;
 
 import het, het.projectedfslib; 
 
-void log(A...)(A a)
-{ print("\34\1"~a.text~"\34\0"); beep; } 
+void log(A...)(A a) { print("\34\1"~a.text~"\34\0"); } 
 
 class ExternalCompiler
 {
@@ -74,8 +73,8 @@ class ExternalCompiler
 		(
 			{
 				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x84935AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x8B635AA4136).檢((update間(_間)))); 
+				rootPath.wipe(false); 	((0x84235AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x8AF35AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
@@ -83,12 +82,12 @@ class ExternalCompiler
 					void main() {} 
 				},
 					hash	= src.hashOf(args.hashOf).to!string(26); 	
-				ec.addInput(args, src, "testShader.comp", 1); 	((0x9BB35AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0xA0F35AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA6D35AA4136).檢((update間(_間)))); 
+				ec.addInput(args, src, "testShader.comp", 1); 	((0x9B435AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0xA0835AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA6635AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xAE235AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xB1C35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xADB35AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xB1535AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 
