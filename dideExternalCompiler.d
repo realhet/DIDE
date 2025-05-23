@@ -65,6 +65,8 @@ class ExternalCompiler
 		
 			/+Code: glslc+/: 	Outputs compiled SPIR-V binaries packaged in a .zip archive.
 				The resulting .zip archive contains individual shader files: /+Code: a.vert, a.frag, ...+/
+		
+		/+Link: https://forum.dlang.org/post/vxmpvpilwvgybppmkcgv@forum.dlang.org+/
 	+/
 	
 	static void test()
@@ -73,8 +75,8 @@ class ExternalCompiler
 		(
 			{
 				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x84235AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x8AF35AA4136).檢((update間(_間)))); 
+				rootPath.wipe(false); 	((0x89535AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x90235AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
@@ -82,12 +84,12 @@ class ExternalCompiler
 					void main() {} 
 				},
 					hash	= src.hashOf(args.hashOf).to!string(26); 	
-				ec.addInput(args, src, "testShader.comp", 1); 	((0x9B435AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0xA0835AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xA6635AA4136).檢((update間(_間)))); 
+				ec.addInput(args, src, "testShader.comp", 1); 	((0xA0735AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0xA5B35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xAB935AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xADB35AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xB1535AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xB2E35AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xB6835AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 

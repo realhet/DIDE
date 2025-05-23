@@ -1954,7 +1954,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{inspect2},q{((0x1026D3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
-					(常!(float/+w=6+/)(0.300))
+					(常!(float/+w=6+/)(0.359))
 				},q{/+Code: (op(expr)(expr))+/},q{"常!"},q{dim},q{Identifier1},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText; 
@@ -2031,9 +2031,9 @@ version(/+$DIDE_REGION+/all) {
 							[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 							[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 							[q{"floor, 
-	ceil, 
-	round, 
-	trunc"},q{
+ceil, 
+round, 
+trunc"},q{
 								(floor(x)) (ifloor(x)) (lfloor(x))
 								(ceil(x)) (iceil(x)) (lceil(x))
 								(round(x)) (iround(x)) (lround(x))
@@ -2041,9 +2041,9 @@ version(/+$DIDE_REGION+/all) {
 							}],
 							[q{"abs, normalize"},q{(magnitude(a)) (normalize(a))}],
 							[q{"multiply,
-	dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
+dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
 							[q{"divide, sqrt, root, 
-	power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
+power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
 							[q{"tenary relation"},q{
 								mixin(等(q{a},q{b},q{c}))
 								mixin(界0(q{a},q{b},q{c})) mixin(界1(q{a},q{b},q{c}))
@@ -2063,23 +2063,23 @@ version(/+$DIDE_REGION+/all) {
 								((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
 							}],
 							[q{"lambda, 
-	anonym method"},q{
+anonym method"},q{
 								((a)=>(a+1)) 	((a){ f; })
 								((a) =>(a+1))	((a) { f; })
 							}],
 							[q{"tuple operation"},q{mixin(配(q{x,y},q{=},q{y,x}))}],
 							[q{"named param, 
-	struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
+struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
 							[q{"enum member 
-	blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
+blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x118DA3617740F).檢(expr)) ((0x118F83617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x119483617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x118D23617740F).檢(expr)) ((0x118F03617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x119403617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x119EC3617740F))) (互!((bool),(1),(0x11A113617740F))) (互!((float/+w=6+/),(1.000),(0x11A363617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11A753617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AB53617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B213617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BA43617740F}))
+								(互!((bool),(0),(0x119E43617740F))) (互!((bool),(1),(0x11A093617740F))) (互!((float/+w=6+/),(1.000),(0x11A2E3617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11A6D3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AAD3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B193617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11B9C3617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 						]))
@@ -2305,7 +2305,7 @@ version(/+$DIDE_REGION+/all) {
 								else	{ g; }
 							}],
 							[q{"debug blocks
-		with condition"},q{
+with condition"},q{
 								debug(d) { f; }
 								debug(d) { f; }else { g; }
 								debug(d)
