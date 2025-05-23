@@ -2155,7 +2155,10 @@ version(/+$DIDE_REGION+/all) {
 	void promoteMacroExpression(CodeRow row, ref int cellIdx, CodeBlock blk/+redundant but faster+/)
 	{
 		foreach(
-			const kw; ["import", "mixin", "__traits", "__rvalue", "pragma", "typeof", "typeid"]
+			const kw; [
+				"import", "mixin", "__traits", "__rvalue", "__ctfeWrite", "pragma", 
+				"typeof", "typeid"
+			]
 			/+Todo: extract this array to macroExpressionKeywords+/
 			/+Todo: implement 'isExpression' too!+/
 			//Opt: speed this up
@@ -2196,6 +2199,7 @@ version(/+$DIDE_REGION+/all) {
 					"mixin"	, CodeBlock.Type.stringMixin, 
 					"__traits"	, CodeBlock.Type.traits,
 					"__rvalue"	, CodeBlock.Type.rvalue,
+					"__ctfeWrite"	, CodeBlock.Type.ctfeWrite,
 					"pragma"	, CodeBlock.Type.pragmaExpr,
 					"typeof"	, CodeBlock.Type.typeofExpr,
 					"typeid"	, CodeBlock.Type.typeidExpr,
@@ -2265,6 +2269,7 @@ version(/+$DIDE_REGION+/all) {
 							CodeBlock.Type.stringMixin 	/+Note: mixin()+/,
 							CodeBlock.Type.traits 	/+Note: __traits()+/,
 							CodeBlock.Type.rvalue 	/+Note: __rvalue()+/,
+							CodeBlock.Type.ctfeWrite 	/+Note: __ctfeWrite()+/,
 							CodeBlock.Type.pragmaExpr 	/+Note: pragma()+/,
 							CodeBlock.Type.typeofExpr 	/+Note: typeof()+/,
 							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/

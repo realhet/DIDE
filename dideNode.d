@@ -1729,6 +1729,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{stringImport},q{"import("},q{")"}],
 				[q{traits},q{"__traits("},q{")"}],
 				[q{rvalue},q{"__rvalue("},q{")"}],
+				[q{ctfeWrite},q{"__ctfeWrite("},q{")"}],
 				[q{pragmaExpr},q{"pragma("},q{")"}],
 				[q{typeofExpr},q{"typeof("},q{")"}],
 				[q{typeidExpr},q{"typeid("},q{")"}],
