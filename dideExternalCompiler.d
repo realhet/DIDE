@@ -126,7 +126,7 @@ class ExternalCompiler
 			synchronized(this) { if(auto a = hash in results) return *a; } 
 			
 			CompilationInput input; 
-			enum maxInputWaitTime = 2*second; 
+			enum maxInputWaitTime = 30*second; 
 			const tMax = now + maxInputWaitTime; auto timeout = false; 
 			while(1) {
 				synchronized(this) { input = inputs.get(hash, CompilationInput.init); } 
@@ -153,7 +153,30 @@ class ExternalCompiler
 							input.args, input.src, Path(`z:\temp2`), 
 							input.file, input.line
 						); 
-						res.status = r.status,  res.output = r.output,  res.binary = r.binary; 
+						with(res) { status = r.status, output = r.output,  binary = r.binary; }
+						
+						//Bug: If there is heavy cpu load, the fucking executeShell never completes.
+						version(/+$DIDE_REGION+/none) {
+							static void worker(in CompilationInput input, shared CompilationResult* res, shared bool* done)
+							{
+								ignoreExceptions
+								(
+									{
+										auto r = compileGlslShader(
+											input.args, input.src, Path(`z:\temp2`), 
+											input.file, input.line
+										); 
+										with(cast()res) { status = r.status, output = r.output,  binary = r.binary; }
+									}
+								); 
+								*(cast()done) = true; 
+							} 
+							bool done=false; 
+							spawn(&worker, input, cast(shared)&res, cast(shared)&done); 
+							//log("Waiting for glslc thread..."); 
+							while(!done) { sleep(16); }
+							//log("Done waiting."); 
+						}
 					},
 					
 					{ setErr(9998, "Error: Unknown external compiler: "~input.args.quoted('`')); }
@@ -221,7 +244,7 @@ class ExternalCompiler
 				buff[0..size] = (cast(ubyte[])(res.effectiveBinary)); 
 				auto hr = PrjWriteFileData(ctx, &callbackData.DataStreamId, buff, 0, size); 
 				
-				log(i"Projected file written. Length: $(size) bytes."); 
+				log(i"Projected file written.  Hash: $(name)  Length: $(size) bytes."); 
 				
 				PrjFreeAlignedBuffer(buff); 
 				return hr; 
@@ -292,15 +315,26 @@ class ExternalCompiler
 	{
 		const 	hash 	= calcHash(args, src),
 			input 	= CompilationInput(args, src, file, line); 
-		synchronized(this) { inputs[hash] = input; } 
-		
-		log(i"External code input added. Length: $(src.length) bytes."); 
+		auto inCache = false; 
+		synchronized(this)
+		{
+			inputs.update(
+				hash, (() =>(input)), ((ref CompilationInput existing) {
+					enforce(existing==input, "Hash collision"); 
+					inCache = true; 
+				})
+			); 
+		} 
+		log(
+			i"External code input added. Hash: $(hash) 
+  Length: $(src.length) bytes.  Found in cache: $(inCache)."
+		); 
 	} 
 	
 	void reset()
 	{
 		synchronized(this) {
-			foreach(key; results.byKey) PrjDeleteFile(context, key.toUTF16z); 
+			foreach(key; chain(inputs.keys, results.keys)) PrjDeleteFile(context, key.toUTF16z); 
 			results.clear; inputs.clear; 
 		} 
 	} 
@@ -315,6 +349,35 @@ class ExternalCompiler
 		}
 	} 
 } 
+private auto myExecuteShell(string commandLine, string workDir = "")
+	@trusted //Todo: @safe
+{
+	import std.process; 
+	auto p = pipeShell(
+		commandLine, mixin(幟!((Redirect),q{stdout | stderrToStdout})), 
+		null, mixin(幟!((Config),q{suppressConsole})), workDir
+	); 
+	
+	version(/+$DIDE_REGION Start listening to stdOut and stdErr+/all)
+	{
+		auto lines = new SSQueue!string; 
+		auto outThread = new Thread(
+			{
+				foreach(
+					a; 	p.stdout.byLineCopy
+						.map!((a)=>(a.withoutEnding('\r')))
+				)
+				{ lines.put(a); }
+			}
+		); 
+		outThread.start; scope(exit) outThread.join; 
+	}
+	
+	auto status = wait(p.pid); 
+	
+	return Tuple!(int, "status", string[], "outputLines")(status, lines.fetchAll); 
+} 
+
 auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path workPath, string baseFile="", int baseLine=1)
 {
 	string[] finalOutput; int finalStatus = 0; immutable(ubyte)[] finalBinary; 
@@ -416,14 +479,14 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 						srcFile 	= fn(sect.section.text),
 						dstFile 	= fn(sect.section.text~".out"); 
 					srcFile.write(sectionrSrc); 
-					import std.process: Config; 
-					auto st = executeShell(
-						args~" "~srcFile.quoted~" -o "~dstFile.quoted, null, 
-						Config.suppressConsole, size_t.max, workPath.fullPath
-					); 
-					log(i"External compiler finished. Status =  $(st.status)."); 
+					
+					const cmdLine = i`$(args) $(srcFile.cmdArg) -o $(dstFile.cmdArg)`.text; 
+					log("executeShell() starting: "~cmdLine); 
+					scope exit() { dstFile.remove(false); srcFile.remove(false); } 
+					auto st = myExecuteShell(cmdLine, workDir: workPath.fullPath); 
+					log(i"executeShell() finished. Status =  $(st.status)."); 
+					
 					auto resultData = dstFile.read(false); 
-					srcFile.remove(false); dstFile.remove(false); 
 				}
 				
 				version(/+$DIDE_REGION Store compiler status and binary+/all)
@@ -445,10 +508,10 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 				
 				version(/+$DIDE_REGION Process GLSL errors messages+/all)
 				{
-					const 	escapedFileName 	= srcFile.fullName.quoted[1..$-1],
-						mask_noLine 	= escapedFileName~": *: *",
-						mask	= escapedFileName~":*: *: *"; 
-					foreach(i, line; st.output.splitLines)
+					const 	mask_noLine 	= srcFile.fullName~": *: *",
+						mask	= srcFile.fullName~":*: *: *"; 
+					size_t lastConsoleIdx; 
+					foreach(i, line; st.outputLines)
 					if(line.strip!="")
 					{
 						if(
@@ -464,7 +527,7 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 							err = err.capitalize; 
 							msg = msg.replace('\'', '`'); 
 							auto bf = baseFile=="" ? srcFile.fullName : baseFile; 
-							line = i"$(bf)($(lineIdx),1): $(err): $(msg)".text; 
+							line = i"$(bf)($(lineIdx),1): $(err) $(msg)".text; 
 						} 
 						
 						bool validMsgType(string s)
@@ -476,18 +539,14 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 						enum defaultLineIdx = 1; 
 						
 						if(line.isWild(mask) && validMsgType(wild[1]))
-						reformat(wild.ints(0), wild[1], wild[2]); 
+						reformat(wild.ints(0), wild[1]~':', wild[2]); 
 						else if(line.isWild(mask_noLine) && validMsgType(wild[0]))
-						reformat(defaultLineIdx, wild[0], wild[1]); 
+						reformat(defaultLineIdx, wild[0]~':', wild[1]); 
 						else if(line.isWild("glslc: error: *"))
-						reformat(defaultLineIdx, "error", "GLSLC: "~wild[0]); 
+						reformat(defaultLineIdx, "Error:", "GLSLC: "~wild[0]); 
 						else {
-							reformat(defaultLineIdx, "Console", line); 
-							/+
-								Todo: do this but with supplemental messages:
-								file(5,1): Console: blablabla
-								file(5,1):         line2
-							+/
+							reformat(defaultLineIdx, ((lastConsoleIdx+1==i) ?("       "):("Console:")), line); 
+							lastConsoleIdx = i; 
 						}
 						
 						finalOutput ~= line; 
@@ -501,22 +560,25 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 		//enforce(finalStatus==0, "Compilation failed"); 
 		if(finalStatus==0) enforce(zip.totalEntries, "No binaries generated."); 
 		
-		finalBinary = (cast (immutable(ubyte)[])(((finalStatus==0)?(zip.build):("ERROR:"~finalStatus.text)))); 
+		finalBinary = (cast(immutable(ubyte)[])(((finalStatus==0)?(zip.build) :("ERROR:"~finalStatus.text)))); 
 		
-		log(i"External code generated: $(finalBinary.length) bytes."); 
+		log(i"External code generated: Source length: $(src.length), binary length: $(finalBinary.length) bytes."); 
 	}
 	catch(Exception e)
 	{
-		finalStatus = 9999; finalBinary = []; 
-		finalOutput ~= i"$(baseFile)($(baseLine),1): Error: GLSLC: $(e.simpleMsg.splitLines.enumerate.map!((a)=>(((a.index)?("       "):(""))~a.value)).join('\n'))".text; 
+		log(i"External code exception: Source length: $(src.length), \34\4 exc: $(e.simpleMsg.quoted)\34\0"); 
+		finalStatus = 9999; finalBinary = (cast(immutable(ubyte)[])("ERROR:"~finalStatus.text)); 
+		foreach(i, s; e.simpleMsg.splitLines)
+		{ finalOutput ~= i"$(baseFile)($(baseLine),1): $(((i==0)?("Error: GLSLC: "):("       ")))$(s)".text; }
 	}
+	
 	static struct CompilationResult {
 		int status = int.min; 
 		string output; 
 		immutable(ubyte)[] binary; 
 	} return CompilationResult(
 		finalStatus, 
-		finalOutput.join('\n'), 
+		finalOutput.map!q{a~'\n'}.join, 
 		finalBinary
 	); 
 } 

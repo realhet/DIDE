@@ -110,6 +110,7 @@ class Builder : IBuildServices
 	{
 		if(!running) killRunningConsole; 
 		resetBuildState; 
+		externalCompiler.reset; 
 		launchBuildSystem!"rebuild"; 
 	} 
 	
