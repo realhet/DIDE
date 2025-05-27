@@ -223,19 +223,41 @@ class Builder : IBuildServices
 					{
 						//Try to decode the 3 string parameters
 						string[] params; params.fromJson("["~wild[0]~"]"); 
-						enforce(params.length==3, "Expected 2 params."); 
-						const 	args 	= params[0], 
-							incomingHash 	= params[1], 
-							src 	= params[2]; 
 						
-						const calculatedHash = src.hashOf(args.hashOf).to!string(26); 
-						enforce(
-							incomingHash==calculatedHash, 
-							i"Wrong hash $(incomingHash)!=$(calculatedHash)".text
-						); 
+						if(params.length==3 /+old version+/)
+						{
+							const 	args 	= params[0], 
+								incomingHash 	= params[1], 
+								src 	= params[2]; 
+							
+							const calculatedHash = src.hashOf(args.hashOf).to!string(26); 
+							enforce(
+								incomingHash==calculatedHash, 
+								i"Wrong hash $(incomingHash)!=$(calculatedHash)".text
+							); 
+							
+							externalCompiler.addInput(
+								args, src, calculatedHash, 
+								msg.location.file.fullName, msg.location.lineIdx
+							); 
+							continue; 
+						}
 						
-						externalCompiler.addInput(args, src, msg.location.file.fullName, msg.location.lineIdx); 
-						continue; 
+						if(params.length==2 /+new version+/)
+						{
+							const 	incomingHash 	= params[0], 
+								srcParts 	= deserializeIES(params[1], incomingHash); 
+							enforce(srcParts.length==2, i"Invalid srcParts count: $(srcParts.length)".text); 
+							const 	args 	= srcParts[0], 
+								src 	= srcParts[1]; 
+							externalCompiler.addInput(
+								args, src, incomingHash,
+								msg.location.file.fullName, msg.location.lineIdx
+							); 
+							continue; 
+						}
+						
+						enforce(0, i"Uknown paramCount: $(params.length)".text); 
 					}
 					catch(Exception e) {
 						ERR(

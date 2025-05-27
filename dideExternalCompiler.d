@@ -17,22 +17,21 @@ class ExternalCompiler
 		
 		2. Add an input compilation task.
 			/+
-			Code: ec.addInput(
+			Code: const hash = ExternalCompiler.calcHash(args, src); 
+			ec.addInput(
 				"glslc -S", 	//Note: specify the commandline
 				q{
 					@comp: 
 					#version 430
 					void main() {} 
 				}, 	//Note: source code
+				hash, 	/+Note: This will be used as fileName and AA.key+/
 				"testShader.comp", 1 	//Note: source file and line for error reports
 			); 
 		+/
 		
 		3. Open and read the result file. This operation will trigger the compilation.
-			/+
-			Code: const hash = ExternalCompiler.calcHash(args, src); 
-			immutable(ubyte)[] data = File(`x:\temp\`~hash).read; 
-		+/
+			/+Code: immutable(ubyte)[] data = File(`x:\temp\`~hash).read; +/
 			The input task (step 2) can be added later. It will wait up to 2 seconds when accessing the file.
 		
 		4. Check if there was an error.
@@ -75,21 +74,21 @@ class ExternalCompiler
 		(
 			{
 				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x89535AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x90235AA4136).檢((update間(_間)))); 
+				rootPath.wipe(false); 	((0x8CB35AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x93835AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
 					#version 430
 					void main() {} 
 				},
-					hash	= src.hashOf(args.hashOf).to!string(26); 	
-				ec.addInput(args, src, "testShader.comp", 1); 	((0xA0735AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0xA5B35AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xAB935AA4136).檢((update間(_間)))); 
+					hash	= ExternalCompiler.calcHash(args, src); 	
+				ec.addInput(args, src, hash, "testShader.comp", 1); 	((0xA4235AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0xA9635AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xAF435AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xB2E35AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xB6835AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xB6935AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xBA335AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 
@@ -104,7 +103,7 @@ class ExternalCompiler
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT context; 
 		
 		struct CompilationInput
-		{ string args, src, file; int line; } 
+		{ string args, src, hash, file; int line; } 
 		
 		struct CompilationResult
 		{
@@ -150,33 +149,10 @@ class ExternalCompiler
 					"glslc", 
 					{
 						auto r = compileGlslShader(
-							input.args, input.src, Path(`z:\temp2`), 
-							input.file, input.line
+							input.args, input.src, input.hash, 
+							Path(`z:\temp2`), input.file, input.line
 						); 
 						with(res) { status = r.status, output = r.output,  binary = r.binary; }
-						
-						//Bug: If there is heavy cpu load, the fucking executeShell never completes.
-						version(/+$DIDE_REGION+/none) {
-							static void worker(in CompilationInput input, shared CompilationResult* res, shared bool* done)
-							{
-								ignoreExceptions
-								(
-									{
-										auto r = compileGlslShader(
-											input.args, input.src, Path(`z:\temp2`), 
-											input.file, input.line
-										); 
-										with(cast()res) { status = r.status, output = r.output,  binary = r.binary; }
-									}
-								); 
-								*(cast()done) = true; 
-							} 
-							bool done=false; 
-							spawn(&worker, input, cast(shared)&res, cast(shared)&done); 
-							//log("Waiting for glslc thread..."); 
-							while(!done) { sleep(16); }
-							//log("Done waiting."); 
-						}
 					},
 					
 					{ setErr(9998, "Error: Unknown external compiler: "~input.args.quoted('`')); }
@@ -311,10 +287,9 @@ class ExternalCompiler
 	
 	//Link: file:///C:/dl/windows-win32-projfs.pdf
 	
-	void addInput(string args, string src, string file, int line)
+	void addInput(string args, string src, string hash, string file, int line)
 	{
-		const 	hash 	= calcHash(args, src),
-			input 	= CompilationInput(args, src, file, line); 
+		const input = CompilationInput(args, src, hash, file, line); 
 		auto inCache = false; 
 		synchronized(this)
 		{
@@ -378,7 +353,7 @@ private auto myExecuteShell(string commandLine, string workDir = "")
 	return Tuple!(int, "status", string[], "outputLines")(status, lines.fetchAll); 
 } 
 
-auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path workPath, string baseFile="", int baseLine=1)
+auto compileGlslShader(string args /+Example: glslc -O0+/, string src, string hash, Path workPath, string baseFile="", int baseLine=1)
 {
 	string[] finalOutput; int finalStatus = 0; immutable(ubyte)[] finalBinary; 
 	try {
@@ -469,7 +444,7 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, Path work
 			
 			log(i"Started compiling external code. Source length: $(src.length) bytes."); 
 			
-			const baseName = "shdr_"~src.hashOf(args.hashOf).to!string(26); 
+			const baseName = "shdr_"~hash; 
 			auto fn(string ext) => File(workPath, baseName~"."~ext); 
 			foreach(sect; sections)
 			{

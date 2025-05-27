@@ -363,7 +363,12 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 					
 					bool makeTables()
 					{
-						//Opt: this is totally unoptimal, it just barely works
+						//Note: This is totally unoptimal, but AI is slow, so it's OK for now.
+						/+
+							Todo: Detect AI links: [RFC 4122](https://tools.ietf.org/html/rfc4122)
+							- upgrade the /+Link: link+/ comment too
+						+/
+						
 						bool res/+if changed or not+/; 
 						string tableCode; 
 						

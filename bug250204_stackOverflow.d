@@ -75,7 +75,7 @@ static processSnapshot(
 				RGBA avgColor = invalidColor; 
 				RGBA thresholds; 
 				
-				enum karcDetectEnabled = true; ((0x733FE420B7F).檢((update間(_間)))); 
+				enum karcDetectEnabled = true; ((0x733D5D6D6D7).檢((update間(_間)))); 
 				if(karcDetectEnabled && cam.name.among("C1", "C2"))
 				{
 					karcDetect_vulkan
@@ -101,7 +101,7 @@ static processSnapshot(
 							onSetThresholdMeasurements(cam.index, ac); 
 						}
 					); 
-				}((0x9C2FE420B7F).檢((update間(_間)))); 
+				}((0x9C2D5D6D6D7).檢((update間(_間)))); 
 				
 				enum ocrEnabled = true; 
 				if(ocrEnabled && cam.name=="C3")
@@ -122,7 +122,7 @@ static processSnapshot(
 						avgColor = ((imLod6.asArray.map!from_unorm.sum)/(imLod6.asArray.length)).to_unorm; 
 					}
 					LOG("Karc OCR finished", now-t0, res.ocrResult.detectedText); 
-				}((0xD50FE420B7F).檢((update間(_間)))); 
+				}((0xD50D5D6D6D7).檢((update間(_間)))); 
 				
 				
 				{
@@ -138,15 +138,15 @@ static processSnapshot(
 						bitmaps.set(encodeKarcPhotoFile(cam.index, res.key, 6), res.key, imLod6); 
 						
 						cam.fProcessed = encodeKarcPhotoFile(cam.index, res.key, ((cam.index==3)?(0):(3))); 
-					}((0xFD8FE420B7F).檢((update間(_間)))); 
+					}((0xFD8D5D6D6D7).檢((update間(_間)))); 
 					
-					onPaintJob({ onEarlyAcceptProcessedShanpsot(res); }); ((0x1046FE420B7F).檢((update間(_間)))); 
+					onPaintJob({ onEarlyAcceptProcessedShanpsot(res); }); ((0x1046D5D6D6D7).檢((update間(_間)))); 
 					
 					//Do the serializing
 					static immutable fmt = (((常!(bool)(0)))?("webp quality=101") :("png")); 
-					res.lod0 = imLod0.serialize(fmt); ((0x110DFE420B7F).檢((update間(_間)))); 
-					res.lod3 = imLod3.serialize(fmt); ((0x1161FE420B7F).檢((update間(_間)))); 
-					res.lod6 = imLod6.serialize(fmt); ((0x11B5FE420B7F).檢((update間(_間)))); 
+					res.lod0 = imLod0.serialize(fmt); ((0x110DD5D6D6D7).檢((update間(_間)))); 
+					res.lod3 = imLod3.serialize(fmt); ((0x1161D5D6D6D7).檢((update間(_間)))); 
+					res.lod6 = imLod6.serialize(fmt); ((0x11B5D5D6D6D7).檢((update間(_間)))); 
 					
 					//When quality was 0:99, 3:98, 6:95, Lod3 was a lot brighter.
 				}
@@ -171,7 +171,7 @@ private void finalizeProcessedSnapshot(ref ProcessedSnapshot res)
 				lod0 = res.lod0,
 				lod3 = res.lod3,
 				lod6 = res.lod6; 
-			}((0x1410FE420B7F).檢((update間(_間)))); 
+			}((0x1410D5D6D6D7).檢((update間(_間)))); 
 			
 			LOG(i"C$(res.cam.index) Images compressed.  Elapsed time: $(now-res.key)"); 
 		}
