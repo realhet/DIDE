@@ -3,65 +3,49 @@
 
 import het; 
 
-const content = `$DIDE_EXTERNAL_COMPILATION_REQUEST: "5J9751C","\x01\x03glslc -O\x02\x01\x03\r\n\t\t\t\t\t#version 430\r\n\t\t\t\t\t@comp: \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(local_size_x = \x04groupSize\x051024\x03) in; \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(binding = 0) uniform UBO {\x04UBO_fields.replace(\"\\r\\n\", \" \").replace(\"\\n\", \" \")\x05 \t\tuint \tparam0,  \t\t\tparam1;  \t\x03}; \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(std430, binding = 1) buffer BUF { uint values[]; }; \r\n\t\t\t\t\t\r\n\t\t\t\t\t/*\r\n\t\t\t\t\t\tint fuck = off; \r\n\t\t\t\t\t\tint fuck1 = off1; \r\n\t\t\t\t\t\tint fuck2 = off2; \r\n\t\t\t\t\t\tint fuck3 = off3; \r\n\t\t\t\t\t*/\r\n\t\t\t\t\t\r\n\t\t\t\t\tvoid main() {\r\n\t\t\t\t\t\tconst uint id = gl_GlobalInvocationID.x; \r\n\t\t\t\t\t\tvalues[id] = values[id] * param0 + param1 + 1333; \r\n\t\t\t\t\t} \r\n\t\t\t\t\t\r\n\t\t\t\t\t\r\n\t\t\t\t\x02"`; 
-/+$DIDE_EXTERNAL_COMPILATION_REQUEST: "5J9751C","\x01\x03glslc -O\x02\x01\x03\r\n\t\t\t\t\t#version 430\r\n\t\t\t\t\t@comp: \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(local_size_x = \x04groupSize\x051024\x03) in; \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(binding = 0) uniform UBO {\x04UBO_fields.replace(\"\\r\\n\", \" \").replace(\"\\n\", \" \")\x05 \t\tuint \tparam0,  \t\t\tparam1;  \t\x03}; \r\n\t\t\t\t\t\r\n\t\t\t\t\tlayout(std430, binding = 1) buffer BUF { uint values[]; }; \r\n\t\t\t\t\t\r\n\t\t\t\t\t/*\r\n\t\t\t\t\t\tint fuck = off; \r\n\t\t\t\t\t\tint fuck1 = off1; \r\n\t\t\t\t\t\tint fuck2 = off2; \r\n\t\t\t\t\t\tint fuck3 = off3; \r\n\t\t\t\t\t*/\r\n\t\t\t\t\t\r\n\t\t\t\t\tvoid main() {\r\n\t\t\t\t\t\tconst uint id = gl_GlobalInvocationID.x; \r\n\t\t\t\t\t\tvalues[id] = values[id] * param0 + param1 + 1333; \r\n\t\t\t\t\t} \r\n\t\t\t\t\t\r\n\t\t\t\t\t\r\n\t\t\t\t\x02" /+$DIDE_LOC c:\D\helloVulkanCompute_highlevel.d(25,1)+/+/
+template T2(string FILE=__FILE__, size_t LINE=__LINE__) { template T2(A...) { alias T2=T1!(FILE,LINE,A); } } 
+template T1(string FILE=__FILE__, size_t LINE=__LINE__,A...) { enum T1 = FILE ~ LINE.text ~ A.text; } 
+alias t2=T2!(); 
+pragma(msg, t2!(i"Hello $(__LINE__) $("World") $("World") $("World")")); 
+pragma(msg, t2!(i"Hello $(__LINE__) $("World") $("World")")); 
 
-void main() {
-	console(
-		{
-			if(content.isWild("$DIDE_EXTERNAL_COMPILATION_REQUEST: *"))
-			{
-				try
-				{
-					//Try to decode the 3 string parameters
-					string[] params; params.fromJson("["~wild[0]~"]"); 
-					
-					((0x830C763BD99).檢 (params)); 
-					((0x857C763BD99).檢(params.length)); 
-					
-					if(params.length==3 /+old version+/)
-					{
-						const 	args 	= params[0], 
-							incomingHash 	= params[1], 
-							src 	= params[2]; 
-						
-						const calculatedHash = src.hashOf(args.hashOf).to!string(26); 
-						enforce(
-							incomingHash==calculatedHash, 
-							i"Wrong hash $(incomingHash)!=$(calculatedHash)".text
-						); 
-						
-						((0x9F6C763BD99).檢(args, "\n\n\n", src)); 
-						goto done; 
-					}
-					
-					if(params.length==2 /+new version+/)
-					{
-						const 	incomingHash 	= params[0], 
-							srcParts 	= deserializeIES(params[1], ((0xAD0C763BD99).檢(incomingHash))); 
-						enforce(srcParts.length==2, i"Invalid srcParts count: $(srcParts.length)".text); 
-						const 	args 	= srcParts[0], 
-							src 	= srcParts[1]; 
-						((0xB98C763BD99).檢(args, "\n\n\n", src)); 
-						goto done; 
-					}
-					
-					enforce(0, i"Uknown paramCount: $(params.length)".text); 
-				}
-				catch(Exception e) {
-					ERR(
-						"Invalid External Code pragma message exception: "
-						~e.simpleMsg~"\n"
-						~content
-					); 
-				}
-			}
-			else if(false)
-			{}
-			
-			done: 
-		}
-	); 
+
+//template t2 captures the line of the alias, not the pragma.
+
+/*
+	import std;
+	void main(){
+		foreach(i;0..8){
+			"alias a".write;
+			i.write;
+			"=void,".write;
+	}}
+*/
+template T3(alias a0=void,alias a1=void,alias a2=void,alias a3=void,alias a4=void,alias a5=void,alias a6=void,alias a7=void,string FILE=__FILE__, size_t LINE=__LINE__)
+{
+	alias A=AliasSeq!(); 
+	static foreach(int I;0..8) {
+		alias B(int J:I)=mixin("a"~I.stringof); 
+		static if(! is(B!I==void)) { A=AliasSeq!(A,B!I); }
+	}
+	alias T3=T1!(FILE,LINE,A); 
 } 
 
-//ldc2 testPragma.d --enable-color=0 > a.txt 2>&1
+pragma(msg, T3!(i"goodbye $("World") $(__LINE__)")); 
+pragma(msg, T3!(i"goodbye $("World") $(__LINE__)")); 
+
+//T3 goodbye: The 8 slots are ony enough for 2 $() injections.
+
+
+template pack(A...) { alias unpack=A; } 
+alias T4(alias A,string FILE=__FILE__, size_t LINE=__LINE__)=T1!(FILE,LINE,A.unpack); 
+pragma(msg, T4!(pack!(i"farwell $("World")"))); 
+pragma(msg, T4!(pack!(i"farwell $("World"~__LINE__.text) $("World")"))); 
+pragma(msg, T4!(pack!(i"farwell $("World"~__LINE__.text) $("World") $("World")"))); 
+pragma(msg, T4!(pack!(i"farwell $("World"~__LINE__.text) $("World") $("World") $("World")"))); 
+pragma(msg, T4!(pack!(i"farwell $("World"~__LINE__.text) $("World") $("World") $("World") $("World")"))); 
+pragma(msg, T4!(pack!(i"farwell $("World"~__LINE__.text) $("World") $("World") $("World") $("World") $("World") $("World") $("World") $("World") $("World") $("World")"))); 
+
+void test()
+{} 
+void main() { noconsole({ test; }); } 

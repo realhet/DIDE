@@ -31,6 +31,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{mixinTableInjectorOp},q{2},q{/+Code: (){with(op(expr)){expr}}()+/},q{/+Note: 表 new MixinTable+/}],
 				[q{anonymMethod},q{2},q{/+Code: (expr)op{code}+/},q{/+Note: anonym method (without attrs)+/}],
 				[q{binaryInterpolatedTokenStringTextOp},q{2},q{/+Code: op(iq{}.text,iq{}.text)+/},q{/+Note: 碼! ExternalCode+/}],
+				[q{binaryInterpolatedTokenStringOp2},q{3},q{/+Code: op((),iq{},iq{})+/},q{/+Note: 碼! ExternalCode2 first param is _LOCATION_!()+/}],
 				[],
 				[q{/+Note: special statement: any single row statement where the last char must is a unicode special char+/}],
 				[q{specialStatementOp},q{0},q{/+Code: specialStatement+/},q{/+Note: auto 間T=now間+/}],
@@ -57,7 +58,8 @@ version(/+$DIDE_REGION+/all) {
 			SigmaOp, 
 			Inspector, 
 			InteractiveValue, 
-			ShaderNode
+			ShaderNode1,
+			ShaderNode2
 		} 
 		
 		string name; 
@@ -236,7 +238,25 @@ version(/+$DIDE_REGION+/all) {
 							if(params.all!((b)=>(b && b.type==CodeBlock.Type.list)))
 							{ return params.map!((p)=>(p.content)).array; }
 						}
-						else static if(what=="()q{}"/+the 2nd param is a tokenString, rest are brackets+/)
+						else static if(what=="()iq{}iq{}"/+first is block, rest are interpolated tokenStrings+/)
+						{
+							auto params = iota(0, cc, 2).map!
+							((i){
+								auto c = (cast(CodeContainer)(row.subCells[i])); 
+								if(i==0)	{
+									if(auto b=(cast(CodeBlock)(c)))
+									if(b.type==CodeBlock.Type.list) return c; 
+								}
+								else	{
+									if(auto s=(cast(CodeString)(c)))
+									if(s.type==CodeString.Type.interpolated_tokenString) return c; 
+								}
+								return null; 
+							}).array; 
+							if(params.all)
+							{ return params.map!((p)=>(p.content)).array; }
+						}
+						else static if(what=="()q{}()"/+the 2nd param is a tokenString, rest are brackets+/)
 						{
 							auto params = iota(0, cc, 2).map!
 							((i){
@@ -254,6 +274,7 @@ version(/+$DIDE_REGION+/all) {
 							if(params.all)
 							{ return params.map!((p)=>(p.content)).array; }
 						}
+						else static assert(0, "Unknown `what`: "~what.quoted); 
 					}
 				}
 			}
@@ -263,7 +284,8 @@ version(/+$DIDE_REGION+/all) {
 		alias extractTokenStringParams 	= extractCodeColumnParams!"q{}",
 		extractInterpolatedTokenStringTextParams 	= extractCodeColumnParams!"tiq{}",
 		extractListParams 	= extractCodeColumnParams!"()",
-		extractListTokenStringParams 	= extractCodeColumnParams!"()q{}"; 
+		extractListTokenStringParams 	= extractCodeColumnParams!"()q{}()",
+		extractInterpolatedTokenStringParams2	= extractCodeColumnParams!"()iq{}iq{}"/+Todo: It's a fucking abomination!+/; 
 		
 	}
 	

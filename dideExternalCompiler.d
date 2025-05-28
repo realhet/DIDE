@@ -103,7 +103,7 @@ class ExternalCompiler
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT context; 
 		
 		struct CompilationInput
-		{ string args, src, hash, file; int line; } 
+		{ string args, src, hash, file; int line; immutable(int)[] lineIdxMap; } 
 		
 		struct CompilationResult
 		{
@@ -144,13 +144,14 @@ class ExternalCompiler
 			if(timeout)
 			{ setErr(9997, "Error: External compiler input timeout: "~hash.quoted('`')); }
 			else {
-				input.args.wordAt(0).predSwitch
+				const args = input.args.replace("\r\n", " ").strip; 
+				args.wordAt(0).predSwitch
 				(
 					"glslc", 
 					{
 						auto r = compileGlslShader(
-							input.args, input.src, input.hash, 
-							Path(`z:\temp2`), input.file, input.line
+							args, input.src, input.hash, Path(`z:\temp2`), 
+							input.file, input.line, input.lineIdxMap
 						); 
 						with(res) { status = r.status, output = r.output,  binary = r.binary; }
 					},
@@ -287,9 +288,12 @@ class ExternalCompiler
 	
 	//Link: file:///C:/dl/windows-win32-projfs.pdf
 	
-	void addInput(string args, string src, string hash, string file, int line)
+	void addInput(
+		string args, string src, string hash, 
+		string file, int line, immutable(int)[] lineIdxMap = []
+	)
 	{
-		const input = CompilationInput(args, src, hash, file, line); 
+		const input = CompilationInput(args, src, hash, file, line, lineIdxMap); 
 		auto inCache = false; 
 		synchronized(this)
 		{
@@ -353,7 +357,7 @@ private auto myExecuteShell(string commandLine, string workDir = "")
 	return Tuple!(int, "status", string[], "outputLines")(status, lines.fetchAll); 
 } 
 
-auto compileGlslShader(string args /+Example: glslc -O0+/, string src, string hash, Path workPath, string baseFile="", int baseLine=1)
+auto compileGlslShader(string args /+Example: glslc -O0+/, string src, string hash, Path workPath, string baseFile="", int baseLine=1, in int[] lineIdxMap=[])
 {
 	string[] finalOutput; int finalStatus = 0; immutable(ubyte)[] finalBinary; 
 	try {
@@ -498,7 +502,9 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, string ha
 						
 						void reformat(int lineIdx, string err, string msg)
 						{
-							lineIdx += baseLine-1; 
+							lineIdx = max(lineIdx-1, 1); /+remove first extra newLine+/
+							if(lineIdx.inRange(lineIdxMap))	lineIdx = lineIdxMap[lineIdx]; 
+							else	lineIdx += baseLine/+fallback+/; 
 							err = err.capitalize; 
 							msg = msg.replace('\'', '`'); 
 							auto bf = baseFile=="" ? srcFile.fullName : baseFile; 

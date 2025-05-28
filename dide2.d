@@ -2,7 +2,7 @@
 //@compile --d-version=stringId
 
 //@debug
-//@release
+///@release
 import core.thread, std.concurrency; 
 
 import didebase, syntaxExamples; 

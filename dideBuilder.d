@@ -247,12 +247,20 @@ class Builder : IBuildServices
 						{
 							const 	incomingHash 	= params[0], 
 								srcParts 	= deserializeIES(params[1], incomingHash); 
+							
+							writeln(" -= ExternalCodeIES =- "); 
+							auto 	ec = ExternalCodeIES(params[1], incomingHash),
+								lineIdxMap = ec.getLineIdxMap(msg.location.lineIdx, partIdx: 1); 
+							lineIdxMap.enumerate.drop(1)
+								.each!((a){ print(format!"%3d -> %3d"(a.index, a.value)); }); 
+							
 							enforce(srcParts.length==2, i"Invalid srcParts count: $(srcParts.length)".text); 
 							const 	args 	= srcParts[0], 
 								src 	= srcParts[1]; 
 							externalCompiler.addInput(
 								args, src, incomingHash,
-								msg.location.file.fullName, msg.location.lineIdx
+								msg.location.file.fullName, msg.location.lineIdx, 
+								lineIdxMap
 							); 
 							continue; 
 						}
