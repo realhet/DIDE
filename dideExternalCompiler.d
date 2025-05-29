@@ -103,7 +103,12 @@ class ExternalCompiler
 		PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT context; 
 		
 		struct CompilationInput
-		{ string args, src, hash, file; int line; immutable(int)[] lineIdxMap; } 
+		{
+			string args, src, hash, file; int line; immutable(int)[] lineIdxMap; 
+			
+			bool opEquals(in CompilationInput b)const 
+			=> args==b.args && src==b.src && equal(lineIdxMap, b.lineIdxMap); 
+		} 
 		
 		struct CompilationResult
 		{
@@ -119,6 +124,7 @@ class ExternalCompiler
 		
 		CompilationInput[string] inputs; 
 		CompilationResult[string] results; 
+		//Todo: monitor the memory usage of these caches. Maybe too many versuons are stored of the same shaders...
 		
 		CompilationResult doCompile(string hash)
 		{
@@ -297,9 +303,18 @@ class ExternalCompiler
 		auto inCache = false; 
 		synchronized(this)
 		{
-			inputs.update(
-				hash, (() =>(input)), ((ref CompilationInput existing) {
-					enforce(existing==input, "Hash collision"); 
+			inputs.update
+			(
+				hash, (() =>(input)), 
+				((ref CompilationInput existing) {
+					enforce(
+						existing.args==input.args && existing.src==input.src, 
+						/+compiler args and sources must be identical at least!!!+/
+						i"Hash collision (possible mismatched external code): 
+	existing:$(existing.toJson)
+	!= input:$(input.toJson)".text
+					); 
+					existing = input; //overwrite it.  Maybe just the source line was changed.
 					inCache = true; 
 				})
 			); 
@@ -312,21 +327,23 @@ class ExternalCompiler
 	
 	void reset()
 	{
-		synchronized(this) {
-			foreach(key; chain(inputs.keys, results.keys)) PrjDeleteFile(context, key.toUTF16z); 
+		synchronized(this)
+		{
+			foreach(key; chain(inputs.keys, results.keys))
+			PrjDeleteFile(context, key.toUTF16z); 
 			results.clear; inputs.clear; 
 		} 
 	} 
 	
-	~this()
+	void shutDown()
 	{
-		version(/+$DIDE_REGION Shutting down virtualization instance+/all)
-		{
-			reset; 
-			PrjStopVirtualizing(context); context = null; 
-			rootPath.wipe(false); 
-		}
+		reset; 
+		PrjStopVirtualizing(context); context = null; 
+		rootPath.wipe(false); 
 	} 
+	
+	~this()
+	{ shutDown; } 
 } 
 private auto myExecuteShell(string commandLine, string workDir = "")
 	@trusted //Todo: @safe

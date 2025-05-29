@@ -14,6 +14,133 @@ import dideexpr : NiceExpression;
 import didemodule : addInspectorParticle; 
 
 import dideexternalcompiler: ExternalCompiler; 
+
+private struct ExternalCodeIES
+{
+	struct NewLineBlock
+	{ int literalNewLines, expressionNewLines, valueNewLines; } 
+	struct Part
+	{
+		string sourceText; 
+		NewLineBlock[] newLineBlocks; 
+		int[] lineIdxMap; 
+	} 
+	
+	Part[] parts; 
+	
+	this(string data, string hash="")
+	{
+		auto src = (cast(immutable(ubyte)[])(data)); const hashEnabled = hash!=""; 
+		size_t h = "DIDE_EXTERNAL_CODE".hashOf; Part act; 
+		
+		enum MaxMarker = 5; 
+		
+		ubyte fetch() {
+			if(!src.length) return 0; 
+			ubyte x = src.front; src.popFront; return x; 
+		} 
+		
+		string fetchString(ubyte mode, bool doHash)
+		{
+			int newLineCount, i; while(i<src.length && src[i]>MaxMarker) { if(src[i]=='\n') newLineCount++; i++; }
+			const x = (cast(string)(src[0..i])); src = src[i..$]; 
+			if(doHash) { h = x.hashOf(h); }
+			
+			if(mode==3)	act.newLineBlocks ~= NewLineBlock(newLineCount); 
+			else if(mode==4)	act.newLineBlocks ~= NewLineBlock(0, newLineCount); 
+			else if(mode==5)	{
+				if(act.newLineBlocks.empty || act.newLineBlocks.back.literalNewLines)
+				act.newLineBlocks ~= NewLineBlock(); 
+				act.newLineBlocks.back.valueNewLines += newLineCount; 
+			}
+			
+			return x; 
+		} 
+		
+		void finalize() /+Remives the first and last extra newLines, that are added automaticalli in DIDE+/
+		{
+			void dec(ref int i) { if(i>0) i--; } 
+			if(act.newLineBlocks.length) {
+				dec(act.newLineBlocks.front.literalNewLines); 
+				dec(act.newLineBlocks.back.literalNewLines); 
+			}
+		} 
+		
+		void hashByte(ubyte b) {
+			ubyte[1] ba; ba[0] = b; 
+			h = ba.hashOf(h); 
+			/+
+				ubyte(1).only.hashOf is different!!!
+				It does NOT encode the length!!!
+			+/
+		} 
+		
+		while(src.length)
+		{
+			enforce(fetch==1, "Start marker expected"); 
+			if(hashEnabled) hashByte(1); 
+			while(1)
+			{
+				const b = fetch; 
+				if(hashEnabled) hashByte(b); 
+				if(b==0 /+eof+/)	{ enforce(0, "Unexpected end"); }
+				else if(b==1 /+block start+/)	{ enforce(0, "Recursion not supported"); }
+				else if(b==2 /+block end+/)	{ finalize; parts ~= act; act = Part.init; break; }
+				else if(b==3 /+literal+/)	{ act.sourceText ~= fetchString(b, hashEnabled); }
+				else if(b==4 /+expression+/)	{/+just fetch  +/fetchString(b, hashEnabled); }
+				else if(b==5 /+value+/)	{ act.sourceText ~= fetchString(b, hashEnabled); }
+				else	enforce(0, "Unhandled char: "~b.text); 
+			}
+		}
+		
+		const calculatedHash = h.to!string(26); 
+		enforce(
+			!hashEnabled || hash==calculatedHash, 
+			i"Hash error: expected: $(hash) != calculated: $(calculatedHash)".text
+		); 
+	} 
+	
+	immutable(int)[] getLineIdxMap(int baseIdx, int partIdx)
+	{
+		//result array is indexed by 1 based line index.
+		
+		if(!partIdx.inRange(parts)) return [baseIdx]; 
+		
+		static auto generateLineIdxMap(in NewLineBlock[] input)
+		{
+			enum log = (常!(bool)(0)); auto lineA = 1, lineB = 1, delta = 0; int[] res = [1/+extra 1 at index 0+/]; 
+			void emit() {
+				res ~= lineA; 
+				static if(log) print(format!"%3d %3d     (%3d)"(lineA, lineB, lineB-lineA)); 
+			} 
+			emit; /+There is always a first line. -> map[1]==1+/
+			foreach(block; input)
+			{
+				static if(log) print(block); /+
+					Note: Sometimes there are (0,0,0) blocks. Those are not redundant.
+					Those are there to represent the IES structure accurately.
+				+/
+				
+				/+Note: ⚠ The order of these operations are super-important!+/
+				if(block.literalNewLines) foreach(i; 0..block.literalNewLines) { lineA++; lineB++; emit; }
+				if(block.valueNewLines) foreach(i; 0..block.valueNewLines) { lineB ++; emit; }
+				if(block.expressionNewLines) lineA += block.expressionNewLines/+ + 2+/; 
+			}
+			static if(log) print; return res; 
+		} 
+		
+		foreach(ref part; parts[0..partIdx+1])
+		if(part.lineIdxMap.empty)
+		part.lineIdxMap = generateLineIdxMap(part.newLineBlocks); 
+		
+		const offset = baseIdx + parts[0..partIdx].map!((a){
+			auto x = a.lineIdxMap.backOr(1)-1; 
+			if(x>0) x+=2; /+extra DIDE newLines+/
+			return x; 
+		}).sum; 
+		return parts[partIdx].lineIdxMap.map!((a)=>(a+offset)).array.assumeUnique; 
+	} 
+} 
 
 class Builder : IBuildServices
 {
@@ -66,7 +193,7 @@ class Builder : IBuildServices
 			while(building) { write('.'); sleep(100); }
 		}
 		
-		externalCompiler.free; 
+		externalCompiler.shutDown; //Sometimes it drops an exception: externalCompiler.free; 
 	} 
 	
 	@property stateText()
@@ -223,40 +350,23 @@ class Builder : IBuildServices
 					{
 						//Try to decode the 3 string parameters
 						string[] params; params.fromJson("["~wild[0]~"]"); 
-						
-						if(params.length==3 /+old version+/)
+						if(params.length==2)
 						{
-							const 	args 	= params[0], 
-								incomingHash 	= params[1], 
-								src 	= params[2]; 
+							const incomingHash = params[0]; 
+							auto extCode = ExternalCodeIES(params[1], incomingHash); 
+							const partCnt = extCode.parts.length; 
+							enforce(partCnt==2, i"Invalid srcParts count: $(partCnt)".text); 
+							const lineIdxMap = extCode.getLineIdxMap(msg.location.lineIdx, partIdx: 1); 
 							
-							const calculatedHash = src.hashOf(args.hashOf).to!string(26); 
-							enforce(
-								incomingHash==calculatedHash, 
-								i"Wrong hash $(incomingHash)!=$(calculatedHash)".text
-							); 
+							static if((常!(bool)(0))/+debug+/)
+							{
+								writeln(" -= ExternalCodeIES =- "); 
+								lineIdxMap.enumerate.drop(1)
+									.each!((a){ print(format!"%3d -> %3d"(a.index, a.value)); }); 
+							}
 							
-							externalCompiler.addInput(
-								args, src, calculatedHash, 
-								msg.location.file.fullName, msg.location.lineIdx
-							); 
-							continue; 
-						}
-						
-						if(params.length==2 /+new version+/)
-						{
-							const 	incomingHash 	= params[0], 
-								srcParts 	= deserializeIES(params[1], incomingHash); 
-							
-							writeln(" -= ExternalCodeIES =- "); 
-							auto 	ec = ExternalCodeIES(params[1], incomingHash),
-								lineIdxMap = ec.getLineIdxMap(msg.location.lineIdx, partIdx: 1); 
-							lineIdxMap.enumerate.drop(1)
-								.each!((a){ print(format!"%3d -> %3d"(a.index, a.value)); }); 
-							
-							enforce(srcParts.length==2, i"Invalid srcParts count: $(srcParts.length)".text); 
-							const 	args 	= srcParts[0], 
-								src 	= srcParts[1]; 
+							const 	args 	= extCode.parts[0].sourceText, 
+								src 	= extCode.parts[1].sourceText; 
 							externalCompiler.addInput(
 								args, src, incomingHash,
 								msg.location.file.fullName, msg.location.lineIdx, 
