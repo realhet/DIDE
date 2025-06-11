@@ -270,7 +270,7 @@ class MainForm : GLWindow
 			`c:\d\projects\karc\karcocr.d`,
 		]
 		.map!File.array; 
-		const karcArgs = ["--d-version=VulkanHeadless"]; 
+		const string[] karcArgs = []; 
 	}
 	
 	DDB ddb; 
