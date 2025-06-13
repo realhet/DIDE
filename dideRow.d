@@ -907,6 +907,13 @@ version(/+$DIDE_REGION+/all) {
 							//dr.hLine(g.outerLeft+1, y, g.outerRight-1);
 						}
 					}
+					/+
+						Todo: Vertical tabs could be improved:
+						- it should be only a bit in each row.
+						- Shift+Enter: it sets the bit
+						- Ctrl+Shift+Enter: It set's the second level bit too.
+						- Deletion removes the bits completely (difficult part)
+					+/
 				} 
 				
 				void visualizeSpaces()
