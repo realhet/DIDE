@@ -946,7 +946,7 @@ version(/+$DIDE_REGION+/all) {
 								put("", header, ending.text); 
 							}
 							else
-							put(ending); 
+							{ put(ending); }
 						}
 					}
 					else
@@ -1387,7 +1387,7 @@ version(/+$DIDE_REGION+/all) {
 			enum Operation
 			{ skip, transfer, fetch} 
 			
-			void processSrc(Operation op, bool whitespaceAndCommentOnly = false)(int targetIdx)
+			void processSrc(Operation op, bool whitespaceAndCommentAndInterpolationBlockOnly = false)(int targetIdx)
 			{
 				assert(srcIdx <= targetIdx); 
 				assert(srcPos.y.inRange(col.rows)); 
@@ -1403,12 +1403,13 @@ version(/+$DIDE_REGION+/all) {
 						//Cell
 						auto cell = srcRow.subCells[srcPos.x]; 
 						
-						static if(whitespaceAndCommentOnly)
+						static if(whitespaceAndCommentAndInterpolationBlockOnly)
 						{
 							bool isComment()
 							{
 								if(cast(CodeComment)cell) return true; 
 								if(auto g = cast(Glyph)cell) if(g.ch.isDLangWhitespace) return true; 
+								if(auto b = cast(CodeBlock)cell) if(b.type==CodeBlock.Type.interpolation) return true; 
 								return false; 
 							} 
 							if(!isComment) break; 
@@ -1438,7 +1439,7 @@ version(/+$DIDE_REGION+/all) {
 			auto fetchUntil(int targetIdx)
 			{ processSrc!(Operation.fetch)(targetIdx); return resultCells; } 
 			
-			bool transferWhitespaceAndComments()
+			bool transferWhitespaceAndCommentsAndInterpolationBlocks()
 			{
 				const lastIdx = srcIdx; 
 				processSrc!(Operation.transfer, true)(srcDStr.length.to!int); 
@@ -1493,12 +1494,12 @@ version(/+$DIDE_REGION+/all) {
 				tokens.popFront; 
 			} 
 			
-			void transferWhitespaceAndCommentsAndDirectives()
+			void transferWhitespaceAndCommentsAndInterpolationBlocksAndDirectives()
 			{
 				//Directives are specialized CodeComments.
 				//They are detected and processed here.
 				//Preprocessor support is limited The low level parser
-				transferWhitespaceAndComments; 
+				transferWhitespaceAndCommentsAndInterpolationBlocks; 
 				
 				again: 
 				if(peekChar=='#' /+Todo: This must be the FIRST # on a line!!!+/)
@@ -1593,7 +1594,7 @@ version(/+$DIDE_REGION+/all) {
 					dropOutpacedTokens; 
 					
 					//clean up the remaining NewLine and retry
-					if(transferWhitespaceAndComments)
+					if(transferWhitespaceAndCommentsAndInterpolationBlocks)
 					goto again; 
 				}
 			} 
@@ -1976,7 +1977,7 @@ version(/+$DIDE_REGION+/all) {
 			{
 				while(tokens.length)
 				{
-					transferWhitespaceAndCommentsAndDirectives; 
+					transferWhitespaceAndCommentsAndInterpolationBlocksAndDirectives; 
 					//these comments are going into the body of the block
 					
 					const main = tokens.front; 
