@@ -193,7 +193,11 @@ class Builder : IBuildServices
 			while(building) { write('.'); sleep(100); }
 		}
 		
-		externalCompiler.shutDown; //Sometimes it drops an exception: externalCompiler.free; 
+		externalCompiler.shutDown; /+
+			Bug: Sometimes it drops an exception: externalCompiler.free; 
+			250617: 	tried to fix by acoiding synchronized()
+				if it's OK, here can use .free instead shutDown.
+		+/
 	} 
 	
 	@property stateText()

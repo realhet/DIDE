@@ -324,22 +324,26 @@ class ExternalCompiler
   Length: $(src.length) bytes.  Found in cache: $(inCache)."
 		); 
 	} 
+	
+	protected void _reset_noSynch()
+	{
+		foreach(key; chain(inputs.keys, results.keys))
+		PrjDeleteFile(context, key.toUTF16z); 
+		results.clear; inputs.clear; 
+	} 
 	
 	void reset()
-	{
-		synchronized(this)
-		{
-			foreach(key; chain(inputs.keys, results.keys))
-			PrjDeleteFile(context, key.toUTF16z); 
-			results.clear; inputs.clear; 
-		} 
-	} 
+	{ synchronized(this) _reset_noSynch; } 
 	
 	void shutDown()
 	{
-		reset; 
-		PrjStopVirtualizing(context); context = null; 
-		rootPath.wipe(false); 
+		if(context)
+		{
+			scope(exit) context = null; 
+			_reset_noSynch; 
+			PrjStopVirtualizing(context); 
+			rootPath.wipe(false); 
+		}
 	} 
 	
 	~this()
