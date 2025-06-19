@@ -106,10 +106,15 @@ class Workspace : Container, IWorkspace
 		
 		~this()
 		{
+			ShutdownLog(200); 
 			editor.free; 
+			ShutdownLog(201); 
 			textSelections.free; 
+			ShutdownLog(202); 
 			buildMessages.free; 
+			ShutdownLog(203); 
 			modules.free; 
+			ShutdownLog(204); 
 		} 
 		
 		override void rearrange()

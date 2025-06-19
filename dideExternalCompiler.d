@@ -344,7 +344,20 @@ class ExternalCompiler
 		{
 			scope(exit) context = null; 
 			ShutdownLog(12); 
-			_reset_noSynch; 
+			version(all/++/)
+			{
+				reset; 
+				/+
+					Bug: the random crash is here:
+					didebase.d(18,1): ShutdownLog 1
+					didebase.d(18,1): ShutdownLog 2
+					didebase.d(18,1): ShutdownLog 3
+					didebase.d(18,1): ShutdownLog 11
+					didebase.d(18,1): ShutdownLog 12
+					An exception was thrown while finalizing an instance of didebuilder.Builder
+					Press Enter to continue...
+				+/
+			}
 			ShutdownLog(13); 
 			PrjStopVirtualizing(context); 
 			ShutdownLog(14); 

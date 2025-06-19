@@ -185,6 +185,14 @@ class Builder : IBuildServices
 	
 	void _destruct()
 	{
+		/+
+			Nothing's here in this destructor.
+			Instead -> shutdown() must be called externally, while the system is still fully operational!
+		+/
+	} 
+	
+	void shutdown()
+	{
 		ShutdownLog(1); 
 		buildSystemWorkerTid.send(MsgBuildCommand.shutDown); 
 		ShutdownLog(2); 
@@ -200,6 +208,31 @@ class Builder : IBuildServices
 				if it's OK, here can use .free instead shutDown.
 		+/
 		ShutdownLog(4); 
+		
+		/+
+			A normal shutdown looks like this: 250619
+			
+			
+			c:\d\projects\dide\dide2.d(227): ShutdownLog 100
+			c:\d\projects\dide\dide2.d(231): ShutdownLog 101
+			c:\d\projects\dide\didebuilder.d(191): ShutdownLog 1
+			c:\d\projects\dide\didebuilder.d(193): ShutdownLog 2
+			c:\d\projects\dide\didebuilder.d(199): ShutdownLog 3
+			c:\d\projects\dide\dideexternalcompiler.d(342): ShutdownLog 11
+			c:\d\projects\dide\dideexternalcompiler.d(346): ShutdownLog 12
+			c:\d\projects\dide\dideexternalcompiler.d(361): ShutdownLog 13
+			c:\d\projects\dide\dideexternalcompiler.d(363): ShutdownLog 14
+			c:\d\projects\dide\dideexternalcompiler.d(365): ShutdownLog 15
+			c:\d\projects\dide\didebuilder.d(205): ShutdownLog 4
+			c:\d\projects\dide\dide2.d(233): ShutdownLog 102
+			c:\d\projects\dide\dide2.d(235): ShutdownLog 103
+			c:\d\projects\dide\dideworkspace.d(109): ShutdownLog 200
+			c:\d\projects\dide\dideworkspace.d(111): ShutdownLog 201
+			c:\d\projects\dide\dideworkspace.d(113): ShutdownLog 202
+			c:\d\projects\dide\dideworkspace.d(115): ShutdownLog 203
+			c:\d\projects\dide\dideworkspace.d(117): ShutdownLog 204
+			c:\d\projects\dide\dide2.d(237): ShutdownLog 104
+		+/
 	} 
 	
 	@property stateText()

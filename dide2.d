@@ -224,11 +224,17 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onDestroy()
 		{
+			ShutdownLog(100); 
 			ini.write("settings", this.toJson); 
 			if(initialized) workspace.saveWorkspace(workspaceFile); 
 			
+			ShutdownLog(101); 
+			builder.shutdown; 
+			ShutdownLog(102); 
 			builder.free; //builder is the first, because it uses modules, and buildMessages.
+			ShutdownLog(103); 
 			workspace.free; 
+			ShutdownLog(104); 
 		} 
 		
 		@VERB("Alt+F4") void closeApp()
