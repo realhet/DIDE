@@ -335,19 +335,30 @@ class ExternalCompiler
 	void reset()
 	{ synchronized(this) _reset_noSynch; } 
 	
+	import didebase : ShutdownLog; 
+	
 	void shutDown()
 	{
+		ShutdownLog(11); 
 		if(context)
 		{
 			scope(exit) context = null; 
+			ShutdownLog(12); 
 			_reset_noSynch; 
+			ShutdownLog(13); 
 			PrjStopVirtualizing(context); 
+			ShutdownLog(14); 
 			rootPath.wipe(false); 
+			ShutdownLog(15); 
 		}
 	} 
 	
 	~this()
-	{ shutDown; } 
+	{
+		ShutdownLog(16); 
+		shutDown; 
+		ShutdownLog(17); 
+	} 
 } 
 private auto myExecuteShell(string commandLine, string workDir = "")
 	@trusted //Todo: @safe

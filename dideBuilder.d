@@ -185,19 +185,21 @@ class Builder : IBuildServices
 	
 	void _destruct()
 	{
+		ShutdownLog(1); 
 		buildSystemWorkerTid.send(MsgBuildCommand.shutDown); 
-		
+		ShutdownLog(2); 
 		if(building)
 		{
 			LOG("Waiting for buildsystem to shut down."); 
 			while(building) { write('.'); sleep(100); }
 		}
-		
+		ShutdownLog(3); 
 		externalCompiler.shutDown; /+
 			Bug: Sometimes it drops an exception: externalCompiler.free; 
 			250617: 	tried to fix by acoiding synchronized()
 				if it's OK, here can use .free instead shutDown.
 		+/
+		ShutdownLog(4); 
 	} 
 	
 	@property stateText()

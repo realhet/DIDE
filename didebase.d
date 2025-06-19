@@ -15,6 +15,14 @@ public import didenode : CodeNode;
 public import didemodule : Module; 
 public import buildmessages: ModuleBuildState, DMDMessage; 
 
+void ShutdownLog(A)(A a, string loc = _LOCATION_!().text)
+{
+	auto s = loc~": ShutdownLog "~a.text; 
+	console.show; 
+	print(s); 
+	File(`c:\dl\dide shutdown.log`).append(now.text~": "~s~"\r\n"); 
+} 
+
 
 alias SearchResult = Container.SearchResult,
 SearchOptions = Container.SearchOptions; 
