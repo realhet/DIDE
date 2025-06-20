@@ -205,11 +205,11 @@ static struct AiManager
 			(
 				"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
 				`You are a helpful assistant.
-I don't want you to reformat my code, keep all whitespace as is.
-Use tab for indentation!
+When working on my code, use strict whitespace preservation!
+When generating code, use tab character for indentation!
 For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
 Use higher level DLang functional constructs when possible: ranges, etc.
-Use GLSL-like vector/matrix operations, the user's framework supports that.
+Use GLSL-like vector/matrix operations, the my DLang framework supports those.
 Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.`
 			); 
 			with(aiModel)

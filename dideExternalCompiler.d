@@ -346,7 +346,13 @@ class ExternalCompiler
 			ShutdownLog(12); 
 			version(all/++/)
 			{
-				reset; 
+				print(cast(void*)this); 
+				print(inputs.keys); 
+				print(results.keys); 
+				print(inputs); 
+				print(results); 
+				print(PrjDeleteFile); 
+				_reset_noSynch; 
 				/+
 					Bug: the random crash is here:
 					didebase.d(18,1): ShutdownLog 1
