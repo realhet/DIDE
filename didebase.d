@@ -151,7 +151,7 @@ version(/+$DIDE_REGION+/all) {
 			case "alias": 	return clPiko.G231; 
 			case "if", "switch", "final switch", "else": 	return clPiko.G119.brighter(.25f); 
 			case 	"for", "do", "while", "foreach", 
-				"foreach_reverse": 	return mix(clOrange, RGB(221, 11, 47), .66f).brighter(.25f); 
+				"foreach_reverse": 	return mix(clOrange, (RGB(221, 11, 47)), .66f).brighter(.25f); 
 			case 	"version", "debug", "static if", 
 				"static foreach", "static foreach_reverse", 
 				"static assert": 	return mix(clPiko.G115, clPiko.G119, .5f).brighter(.25f); 
@@ -171,9 +171,10 @@ version(/+$DIDE_REGION+/all) {
 			case "statement": 	return clGray; 
 			case "function", "invariant": 	return clSilver; 
 			case "__region": 	return clGray; 
+			case "layout": 	return (RGB( 85, 135, 166)); 
 				
-			case "try": 	return RGB(200, 250, 189); 
-			case "scope": 	return RGB(50, 250, 189); 
+			case "try": 	return (RGB(200, 250, 189)); 
+			case "scope": 	return (RGB( 50, 250, 189)); 
 			case 	"assert", "break", "continue", "goto", 
 				"goto case", "return"	, "enforce": 	return mix(RGB(0x5C00F6/+skKeyword+/), clWhite, .5); 
 			

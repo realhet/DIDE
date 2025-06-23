@@ -352,7 +352,10 @@ class ExternalCompiler
 				print(inputs); 
 				print(results); 
 				print(PrjDeleteFile); 
-				_reset_noSynch; 
+				try
+				{ _reset_noSynch; }
+				catch(Throwable t)
+				{ ERR(t.simpleMsg); }
 				/+
 					Bug: the random crash is here:
 					didebase.d(18,1): ShutdownLog 1

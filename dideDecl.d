@@ -35,13 +35,14 @@ version(/+$DIDE_REGION+/all) {
 			"with (",
 			"for (", 	"foreach (", 	"foreach_reverse (", 	"static foreach (", 	"static foreach_reverse (",
 			"while (", 	"do",			
-			"version (", 	"debug (",  	"debug", 	"scope (",
+			"version (", 	"debug (",  	"debug", 	"scope (",	
 			"if (", 	"static if (", 	"else if (", 	"else static if (",
 			"else", 	"else version (", 	"else debug (", 	"else debug", 
 			"switch (", 	"final switch (",		
 			"try", 	"catch (", 	"finally",	
 			"debug =",	"else debug =", //special case: debug = is a statement, not a preposition!.
 			"__region", //decoded from: version(/+$D*DE_REGION title+/all)
+			"layout (", //GLSL
 			
 			/+
 				Note: mixins: String mixins are processed later, at every "()" list blocks.  
