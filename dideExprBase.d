@@ -117,7 +117,7 @@ version(/+$DIDE_REGION+/all) {
 			.join(',')~"],\n"; 
 		} 
 		
-		static make(string[] a...)
+		static make(in string[] a...)
 		{
 			NiceExpressionTemplate res; 
 			with(res)
