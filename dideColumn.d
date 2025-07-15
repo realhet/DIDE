@@ -1192,6 +1192,17 @@ version(/+$DIDE_REGION+/all) {
 		override Row[][] getPageRowRanges()
 		{ return cachedPageRowRanges; } 
 		
+		bool canHaveMultiPages()
+		{
+			if(getStructureLevel >= StructureLevel.structured) return true; 
+			
+			if(auto cmt = (cast(CodeComment)(parent)))
+			with(CodeComment.Type)
+			if(cmt.type.among(cComment, dComment)) return true; 
+			
+			return false; 
+		} 
+		
 		override void rearrange()
 		{
 			cachedPageRowRanges = []; 
@@ -1238,7 +1249,7 @@ version(/+$DIDE_REGION+/all) {
 				enum enableColumnBreaks = true; 
 				static if(enableColumnBreaks)
 				{
-					if(getStructureLevel >= StructureLevel.structured)
+					if(canHaveMultiPages)
 					{ cachedPageRowRanges = rearrangePages_byLastRows!isBreakRow(MultiPageGapWidth); }
 					/+
 						Todo: Must revisit MultiPage support in Columns!!!
