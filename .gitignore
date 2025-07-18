@@ -10,6 +10,7 @@
 !*.drawio
 !Dlang grammar official.txt
 !DLang grammar extra data.txt
+!g.bat
 !deploy.bat
 
 #included subdirectories
