@@ -5,7 +5,7 @@
 //@release
 import core.thread, std.concurrency; 
 
-import didebase, syntaxExamples; 
+import didebase, dideSyntaxExamples; 
 
 import didenode : CodeComment, CodeContainer, CodeString, CodeBlock; 
 import didedecl : Declaration; 
