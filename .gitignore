@@ -14,6 +14,8 @@
 !deploy.bat
 !build_dide.bat
 !*.ico
+!*.lnk
+!*.task.xml
 
 #included subdirectories
 !assets/
