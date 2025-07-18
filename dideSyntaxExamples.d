@@ -1,4 +1,4 @@
-module syntaxExamples; 
+module dideSyntaxExamples; 
 
 version(none) : 
 struct TestCodeStruct

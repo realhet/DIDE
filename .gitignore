@@ -12,6 +12,8 @@
 !DLang grammar extra data.txt
 !g.bat
 !deploy.bat
+!build_dide.bat
+!*.ico
 
 #included subdirectories
 !assets/

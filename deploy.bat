@@ -17,19 +17,19 @@ set TIMESTAMP=%YY%%MM%%DD%T%HH%%NN%
 
 echo Deploying at %date% on %time%
 
-SET RARFILE=dide2_%TIMESTAMP%.rar
+SET RARFILE=dide_%TIMESTAMP%.rar
 SET RAREXE="%ProgramFiles%\WinRAR\Rar.exe"
 
 echo Creating backup: RARFILE
 
-%RAREXE% a %RARFILE% dide2.exe dide2.map dide2.d dideModule.d BuildSys.d
+%RAREXE% a %RARFILE% dide.exe dide.map dide.d dideModule.d BuildSys.d
 
-copy dide2.exe dide2_dev.exe
-copy dide2.map dide2_dev.map
-copy dide2.pdb dide2_dev.pdb
-copy dide2.exe dide2_2.exe
-copy dide2.map dide2_2.map
-copy dide2.pdb dide2_2.pdb
+copy dide.exe dide_dev.exe
+copy dide.map dide_dev.map
+copy dide.pdb dide_dev.pdb
+copy dide.exe dide_2.exe
+copy dide.map dide_2.map
+copy dide.pdb dide_2.pdb
 
-rem Cant delete dide2.pdb bugfix
-del dide2.pdb
+rem Cant delete dide.pdb bugfix
+del dide.pdb
