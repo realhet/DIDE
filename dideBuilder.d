@@ -6,14 +6,18 @@ import buildobjs : BuildSettings, globalPidList;
 import buildmessages : decodeDMDMessages; 
 import buildsys : 	BuildResult, buildsys_spawnProcessMultiSettings, 
 	buildSystemWorkerState, buildSystemWorker, MsgBuildCommand, MsgBuildRequest; 
+import dideexternalcompiler: ExternalCompiler; 
+
+/+
+	Todo: Isolate a standalone exe from this. 
+	Building DIDE from source will be imposible as soon it will rely on the ExternalCompiler service.
++/
 
 import didemodulemanager : ModuleManager; 
 import didebuildmessagemanager : BuildMessageManager; 
 
 import dideexpr : NiceExpression; 
 import didemodule : addInspectorParticle; 
-
-import dideexternalcompiler: ExternalCompiler; 
 
 private struct ExternalCodeIES
 {

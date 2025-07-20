@@ -517,7 +517,13 @@ struct BuildSystem
 		
 		//defaul mcpu if not present
 		if(!settings.compileArgs.map!(a => a.startsWith("-mcpu=")).any)
-		args ~= ["-mcpu=athlon64-sse3", "-mattr=+ssse3"]; 
+		{
+			/+args ~= ["-mcpu=athlon64-sse3", "-mattr=+ssse3"]; +/
+			args ~= ["-mcpu=sandybridge"]/+
+				Note: 250719: the lowest SSE4.2 I've found. 
+				It has AVX too. My FX8350 has that too.
+			+/; 
+		}
 		
 		args ~= format!`-I=%s`(DPaths.getImportPathList); 
 		
