@@ -397,17 +397,32 @@ Reply only the link, no talking! I need a working link! If you can't find a link
 				}
 			} 
 			
-			void startChromeUrl(string url, string keyword="")
+			mixin((
+				(表([
+					[q{/+Note: Browser+/},q{/+Note: Name+/},q{/+Note: cmd+/},q{/+Note: wndClass+/},q{/+Note: wndTitleMask+/},q{/+Note: wndLoadingTitle+/}],
+					[q{chrome},q{"Chrome"},q{"chrome"},q{"Chrome_WidgetWin_1"},q{"* - Google Chrome"},q{"Untitled - Google Chrome"}],
+					[q{edge},q{"Edge"},q{"msedge"},q{"Chrome_WidgetWin_1"},q{"* - Microsoft\u200B Edge"},q{"Untitled * - Microsoft\u200B Edge"}],
+					[],
+					[q{/+
+						wndTitleMask	: Used to locate chrome windows, to detect if it is loaded.
+						wndLoadingTitle 	: Used to detect the page loading state.
+					+/}],
+				]))
+			) .GEN!q{GEN_enumTable}); 
+			
+			const browser = Browser.edge; 
+			
+			void startBrowserUrl(string url, string keyword="")
 			{
 				if(url==``) return; 
 				try {
-					HelpManager.infoQueue.put("launching Chrome"); 
+					HelpManager.infoQueue.put("launching"~browserName[browser]); 
 					
 					prepareHelpQuery(keyword); 
 					
 					mainWindow.setForegroundWindow; //just to make sure
-					executeShell(joinCommandLine(["start", "chrome", url])); 
-					auto wi = waitWindow("Chrome_WidgetWin_1", "* - Google Chrome", 2*second); 
+					executeShell(joinCommandLine(["start", browserCmd[browser], url])); 
+					auto wi = waitWindow(browserWndClass[browser], browserWndTitleMask[browser], 2*second); 
 					
 					if(keyword!="")
 					{
@@ -417,12 +432,14 @@ Reply only the link, no talking! I need a working link! If you can't find a link
 						
 						clipboard.text = keyword; 	
 						
-						int bail = 10; 
+						int extraWait = 3; 
 						foreach(i; 0..100) {
 							const title = getWindowInfo(wi.handle).title; 
-							if(title!=`Untitled - Google Chrome` && (--bail<=0)) break; 
+							const isLoading = title.isWild(browserWndLoadingTitle[browser]); 
+							if(!isLoading) if(--extraWait<=0) break; 
 							sleep(100); 
 						}
+						
 						inputs.pressCombo("Ctrl+F"); 	sleep(50); 
 						inputs.pressCombo("Ctrl+V"); 	sleep(50); 
 						
@@ -431,15 +448,13 @@ Reply only the link, no talking! I need a working link! If you can't find a link
 						{ inputs.pressCombo("Enter"); 	sleep(50); }
 					}
 				}
-				catch(Exception e) {}
+				catch(Exception e) { LOG(e.simpleMsg); }
 			} 
 			
-			bool startChrome(alias linkScraper, A...)(A args)
+			bool startBrowser(alias linkScraper, A...)(A args)
 			{
-				auto links = linkScraper(actHelpQuery, args); 
-				if(links.empty) return false; 
-				startChromeUrl(links[0], actSearchKeyword); 
-				return true; 
+				auto links = linkScraper(actHelpQuery, args); if(links.empty) return false; 
+				startBrowserUrl(links[0], actSearchKeyword); return true; 
 			} 
 			
 			
@@ -453,13 +468,13 @@ Reply only the link, no talking! I need a working link! If you can't find a link
 				+/
 				final switch(provider)
 				{
-					case HelpProvider.bing: 	startChrome!scrapeLinks_bing; 	break; 
-					case HelpProvider.msdn: 	startChrome!scrapeLinks_mslearn; 	break; 
-					case HelpProvider.dpldocs: 	startChrome!scrapeLinks_dpldocs(No.searchPage); 	break; 
-					case HelpProvider.dpldocs_searchPage: 	startChrome!scrapeLinks_dpldocs(Yes.searchPage); 	break; 
-					case HelpProvider.deepseek: 	startChrome!scrapeLinks_deepseek; 	break; 
-					case HelpProvider.combined: 	startChrome!scrapeLinks_combined(Yes.context); 	break; 
-					case HelpProvider.combined_noContext: 	startChrome!scrapeLinks_combined(No.context); 	break; 
+					case HelpProvider.bing: 	startBrowser!scrapeLinks_bing; 	break; 
+					case HelpProvider.msdn: 	startBrowser!scrapeLinks_mslearn; 	break; 
+					case HelpProvider.dpldocs: 	startBrowser!scrapeLinks_dpldocs(No.searchPage); 	break; 
+					case HelpProvider.dpldocs_searchPage: 	startBrowser!scrapeLinks_dpldocs(Yes.searchPage); 	break; 
+					case HelpProvider.deepseek: 	startBrowser!scrapeLinks_deepseek; 	break; 
+					case HelpProvider.combined: 	startBrowser!scrapeLinks_combined(Yes.context); 	break; 
+					case HelpProvider.combined_noContext: 	startBrowser!scrapeLinks_combined(No.context); 	break; 
 				}
 			}
 			catch(Exception e)
