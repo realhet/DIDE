@@ -483,14 +483,30 @@ struct DMDMessageDecoder
 				
 				if(msgCol<=0 || markerCol<=0) return false; 
 				
-				size_t markerBytes, len = prevLine.length; 
-				foreach(k; 0..markerCol-1)
-				{
-					if(markerBytes<len) prevLine.decode!(Yes.useReplacementDchar)(markerBytes); 
-					else return false; 
-				}
+				//return markerCol>0 && msgCol>0; 
 				
-				return markerBytes==msgCol-1; 
+				version(all)
+				{
+					size_t markerBytes, len = prevLine.length; 
+					foreach(k; 0..markerCol-1)
+					{
+						if(markerBytes<len) prevLine.decode!(Yes.useReplacementDchar)(markerBytes); 
+						else return false; 
+					}
+					
+					/+
+						print("--------------- marker column suck 2-------------"); 
+						print("markerBytes:", markerBytes); 
+						print("markerCol:", markerCol, "  prevLine: ", prevLine.quoted, "  msgCol:", msgCol); 
+					+/
+					
+					enum LDC141 = true; 
+					static if(LDC141)
+					return /+Fix because some new deprecation warnings has bad indices.+/
+					markerBytes>=msgCol-1; 
+					else
+					return markerBytes==msgCol-1; 
+				}
 			} 
 			auto msg = decodeDMDMessage(lines.front); 
 			if(msg)

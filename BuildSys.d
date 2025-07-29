@@ -655,10 +655,20 @@ struct BuildSystem
 			
 			if(onCompileProgress)
 			onCompileProgress(
-				mixin(體!((CompilationResult),q{
+				/+
+					Bug: This is broken in LDC 1.41:
+					/+
+						Code: mixin(體!((CompilationResult),q{
+							srcFile, 0/+success+/, output, jsonCache[objHash],
+							DateTime.init, DateTime.init /+because cached+/
+						}))
+					+/
+				+/
+				CompilationResult
+				(
 					srcFile, 0/+success+/, output, jsonCache[objHash],
 					DateTime.init, DateTime.init /+because cached+/
-				}))
+				)
 			); 
 			
 			accumulateOutput(output, srcFile); 
@@ -703,7 +713,14 @@ struct BuildSystem
 				}
 				
 				if(onCompileProgress)
-				onCompileProgress(mixin(體!((CompilationResult),q{srcFiles[idx], result, output, xJson, t0, t1}))); 
+				onCompileProgress(
+					/+
+						Bug: This is broken in LDC 1.41:
+						/+Structured: mixin(體!((CompilationResult),q{srcFiles[idx], result, output, xJson, t0, t1}))+/
+					+/
+					CompilationResult
+					(srcFiles[idx], result, output, xJson, t0, t1)
+				); 
 				
 				static if(0)
 				{

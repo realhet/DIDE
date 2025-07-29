@@ -2206,6 +2206,7 @@ version(/+$DIDE_REGION+/all) {
 					"typeof"	, CodeBlock.Type.typeofExpr,
 					"typeid"	, CodeBlock.Type.typeidExpr,
 				); 
+				//Todo: align() RGB() RGBA()
 				blk.needMeasure; 
 				
 				return; 
