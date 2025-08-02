@@ -2,6 +2,19 @@ module buildmessages;
 
 import het, het.parser; 
 
+/+
+	Todo: process error messages like this:
+	/+Code: undefined identifier /+Code: numSreens+/, did you mean variable /+Code: numScreens+/? /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(425,19)+/+/
+	
+	/+
+		Highlighted: undefined identifier	/+Code: numSreens+/,	
+		did you mean variable 	/+Code: numScreens+/	❓ [YES]	
+	+/ ---(click)---> /+
+		Highlighted: undefined identifier 	/+Code: numSreens+/,
+		did you mean variable 	/+Code: numScreens+/ ? ✔
+	+/
++/
+
 class DMDMessage
 {
 	mixin((
@@ -589,12 +602,11 @@ struct DMDMessageDecoder
 		}
 		
 	} 
-} 
+} 
 
 DMDMessage[] decodeDMDMessages(string err, File file = File.init)
 {
-	DMDMessageDecoder dec; 
-	dec.actSourceFile = file; 
+	DMDMessageDecoder dec; dec.actSourceFile = file; 
 	dec.processDMDOutput(err.splitLines); 
 	return dec.fetchUpdatedMessages; 
 } 
@@ -614,4 +626,7 @@ mixin((
 ) .GEN!q{GEN_enumTable}); 
 
 bool buildStateIsCompleted(ModuleBuildState a)
-{ with(ModuleBuildState) return !!a.among(hasWarnings, hasDeprecations, flawless); } 
+{
+	with(ModuleBuildState)
+	return !!a.among(hasWarnings, hasDeprecations, flawless); 
+} 
