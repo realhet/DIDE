@@ -346,7 +346,9 @@ struct HelpManager
 					{
 						model = new AiModel
 						(
-							"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
+							//"https://api.deepseek.com/v1/chat/completions"
+							"https://api.deepseek.com/chat/completions"
+							, "deepseek-chat", 
 							"The user will give a search string, you must reply with a documentation link. 
 The search will fit into one of these categories: Win32, Vulkan, OpenGL, GLSL, DLang, Arduino Language.
 Reply only the link, no talking! I need a working link! If you can't find a link, just reply `null`."

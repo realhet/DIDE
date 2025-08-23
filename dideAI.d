@@ -203,7 +203,9 @@ static struct AiManager
 		{
 			aiModel = new AiModel
 			(
-				"https://api.deepseek.com/v1/chat/completions", "deepseek-chat", 
+				//"https://api.deepseek.com/v1/chat/completions",
+				"https://api.deepseek.com/chat/completions", 
+				"deepseek-chat", 
 				`You are a helpful assistant.
 When working on my code, use strict whitespace preservation!
 When generating code, use tab character for indentation!
