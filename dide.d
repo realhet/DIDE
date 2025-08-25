@@ -13,7 +13,6 @@ import dideexpr : ToolPalette;
 import didebuilder : Builder; 
 import dideworkspace : Workspace; 
 
-
 version(/+$DIDE_REGION+/all)
 {
 	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
