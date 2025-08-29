@@ -1139,6 +1139,7 @@ class Workspace : Container, IWorkspace
 						[q{/+"Alt+I+`"q{insertInterpolatedDString}q{editor.insertNode("i`\0`", 0); }+/}],
 						[q{"Shift+Alt+4"},q{insertStringExpression},q{editor.insertNode("$(\0)", 0); }],
 						[q{"Alt+/"},q{insertDComment},q{editor.insertNode("/+\0+/", 0); }],
+						[q{"Shift+Alt+8"},q{insertCComment},q{editor.insertNode("/*\0*/", 0); }],
 						[q{"Shift+Alt+/"},q{insertTenary},q{
 							editor.insertNode("((\0)?():())", 0); 
 							//Todo: must be inserted as an expression!!!
