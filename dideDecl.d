@@ -2159,10 +2159,9 @@ version(/+$DIDE_REGION+/all) {
 		foreach(
 			const kw; [
 				"import", "mixin", "__traits", "__rvalue", "__ctfeWrite", "pragma", 
-				"typeof", "typeid"
+				"typeof", "typeid", "is"
 			]
 			/+Todo: extract this array to macroExpressionKeywords+/
-			/+Todo: implement 'isExpression' too!+/
 			//Opt: speed this up
 		)
 		{
@@ -2205,6 +2204,7 @@ version(/+$DIDE_REGION+/all) {
 					"pragma"	, CodeBlock.Type.pragmaExpr,
 					"typeof"	, CodeBlock.Type.typeofExpr,
 					"typeid"	, CodeBlock.Type.typeidExpr,
+					"is"	, CodeBlock.Type.isExpr
 				); 
 				//Todo: align() RGB() RGBA()
 				blk.needMeasure; 
@@ -2275,7 +2275,8 @@ version(/+$DIDE_REGION+/all) {
 							CodeBlock.Type.ctfeWrite 	/+Note: __ctfeWrite()+/,
 							CodeBlock.Type.pragmaExpr 	/+Note: pragma()+/,
 							CodeBlock.Type.typeofExpr 	/+Note: typeof()+/,
-							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/
+							CodeBlock.Type.typeidExpr 	/+Note: typeid()+/,
+							CodeBlock.Type.isExpr 	/+Note: is()+/,
 						/+
 							Todo: These were opened by 
 							promoteMacroExpression, 

@@ -1733,6 +1733,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{pragmaExpr},q{"pragma("},q{")"}],
 				[q{typeofExpr},q{"typeof("},q{")"}],
 				[q{typeidExpr},q{"typeid("},q{")"}],
+				[q{isExpr},q{"is("},q{")"}],
 			]))
 		).調!(GEN_enumTable)); 
 		
