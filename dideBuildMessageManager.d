@@ -1,7 +1,7 @@
 module didebuildmessagemanager; 
 
 import didebase; 
-import didenode : CodeComment; 
+import didenode : CodeComment, specialCommentMarker; 
 import didemodulemanager : ModuleManager; 
 
 class BuildMessageManager
@@ -23,7 +23,7 @@ class BuildMessageManager
 	void process(DMDMessage[] messages)
 	{ mixin(求each(q{m},q{messages},q{process(m)})); } 
 	
-	static CodeNode createNode(DMDMessage msg)
+	static CodeNode createNode(DMDMessage msg, bool hideLocation)
 	{
 		/+
 			Todo: An option to not render all codeLocations.
@@ -31,7 +31,21 @@ class BuildMessageManager
 			- When the message is at it's designated location.
 		+/
 		
-		auto 	msgCol	= new CodeColumn(null, msg.sourceText, TextFormat.managed_block),
+		auto src = msg.sourceText; 
+		
+		if(hideLocation)
+		{
+			/+
+				Todo: Maybe not the best solution. 
+				A minimized codelocation node would be better with a mouse over hint.
+			+/
+			enum locMarker = specialCommentMarker~"LOC",
+			locPattern = "*/+"~locMarker~" *+/*"; 
+			if(src.isWild(locPattern))
+			src = i"$(wild[0])/+hidden:/+$(locMarker) $(wild[1])+/+/$(wild[2])".text; 
+		}
+		
+		auto 	msgCol	= new CodeColumn(null, src, TextFormat.managed_block),
 			msgRow	= msgCol.rows.frontOrNull.enforce("Can't get builMessageRow."),
 			msgNode 	= (cast(CodeNode)(msgRow.subCells.frontOrNull)).enforce("Can't get buildMessageNode."); 
 		msgNode.buildMessageHash = msg.hash; 
@@ -52,9 +66,6 @@ class BuildMessageManager
 		
 		try
 		{
-			auto 	msgNode 	= createNode(msg),
-				layer 	= &layers[msg.type]; 
-			
 			Container.SearchResult[] searchResults; 
 			
 			CodeNode getContainerNode(lazy CodeNode fallbackNode=null)
@@ -84,10 +95,10 @@ class BuildMessageManager
 			auto containerModule = modules.findModule(msg.location.file).ifNull(modules.mainModule); 
 			if(auto containerNode = getContainerNode(containerModule))
 			{
-				void addMessageToModule(bool isNew)
+				void addMessageToModule(CodeNode msgNode, bool isNew)
 				{
 					auto mm = containerModule.addModuleMessage(isNew, msg, msgNode, searchResults); 
-					
+					auto layer = &layers[msg.type]; 
 					if(layer.visible && isNew) incomingVisibleModuleMessageQueue ~= mm; 
 				} 
 				
@@ -141,22 +152,25 @@ class BuildMessageManager
 						return null; 
 					} 
 					
+					CodeNode msgNode; 
 					if(auto cmt = locateActualComment)
 					{
 						//only a single searchResult remains, and with the actual persistent message
 						msgNode = cmt; 
 						searchResults = [nodeToSearchResult(cmt, null)]; 
 					}
+					else
+					{ msgNode = createNode(msg, hideLocation: false); }
 					
-					addMessageToModule(true); 
-					//Todo: firework effect
+					addMessageToModule(msgNode, true); 
 				}
 				else
 				{
 					//This buildMessage is injected at the bottom of a node.
+					auto msgNode = createNode(msg, hideLocation: true); 
 					const isNewMessage = containerNode.addBuildMessage(msgNode); 
 					searchResults = searchResults ~ nodeToSearchResult(msgNode, null); 
-					addMessageToModule(isNewMessage); 
+					addMessageToModule(msgNode, isNewMessage); 
 				}
 			}
 			else

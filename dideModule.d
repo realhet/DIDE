@@ -1436,7 +1436,23 @@ version(/+$DIDE_REGION+/all)
 			} 
 		}
 		
-		
+		version(/+$DIDE_REGION ButtonComment nodes+/all)
+		{
+			CodeComment[] visibleButtonComments; 
+			
+			void UI_buttonComments(bool en, int targetSurface_=0)
+			{
+				foreach(cmt; visibleButtonComments)
+				cmt.generateUI(en, targetSurface_); 
+			} 
+			
+			/+
+				Note: 1. If a special Button CodeComment is drawn, it's added to /+Code: Module.visibleButtonComments+/
+				2. From main loop, all /+Code: Module.UI_buttonComments()+/ are called 
+					and those call each /+Code: CodeComment.generateUI()+/
+				3. If a Btn is pressed, then /+Code: Module.Parent.IWorkspace.handleButtonCommentClick+/ is called.
+			+/
+		}
 	} 
 }
 version(/+$DIDE_REGION SCRUM+/all)

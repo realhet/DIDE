@@ -108,7 +108,10 @@ interface IBuildServices
 } 
 
 interface IWorkspace
-{ @property bool isReadOnly(); } 
+{
+	@property bool isReadOnly(); 
+	void handleButtonCommentClick(Object cmt, string params); 
+} 
 
 
 

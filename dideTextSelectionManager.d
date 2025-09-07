@@ -128,7 +128,7 @@ class TextSelectionManager
 	
 	bool shrink()
 	{
-		if(((0xCB85AE8A3C6).檢 (extendSelectionStack.length>=2)))
+		if(extendSelectionStack.length>=2)
 		{
 			const 	act = extendSelectionStack[$-1],
 				prev = extendSelectionStack[$-2]; 

@@ -1068,6 +1068,7 @@ version(/+$DIDE_REGION+/all) {
 		{ return extractSpecialComment.wordAt(0)==keyword; } 
 		
 		@property isCodeLocationComment() => isSpecialComment("LOC"); 
+		@property isButtonComment() => isSpecialComment("BTN"); 
 		
 		bool verify(bool markErrors = false)()
 		{
@@ -1218,8 +1219,12 @@ version(/+$DIDE_REGION+/all) {
 			//return !anyErrors; 
 		} 
 		
+		private bool cached_isButtonCommand; 
+		
 		override void rearrange()
 		{
+			cached_isButtonCommand = false; 
+			
 			void defaultRearrange()
 			{
 				if(isCustom)
@@ -1401,6 +1406,20 @@ version(/+$DIDE_REGION+/all) {
 						}
 					}
 						break; 
+					case "BTN": 
+						{
+						cached_isButtonCommand = true; 
+						with(nodeBuilder(skIdentifier1, NodeStyle.normal))
+						{
+							with(style) italic = false, bold = false; 
+							const params = scmt[keyword.length..$].stripLeft.CommandLine; 
+							put("  "~params.names.get(0)~"  "); 
+							
+							rearrangeNode; 
+						}
+					}
+						break; 
+					
 					default: 
 					//nothing. process it normally like a comment
 					defaultRearrange; 
@@ -1411,6 +1430,44 @@ version(/+$DIDE_REGION+/all) {
 			
 			rearrange_appendBuildMessages; 
 		} 
+		
+		version(/+$DIDE_REGION UI Interaction+/all)
+		{
+			override void draw(Drawing dr)
+			{
+				super.draw(dr); 
+				if(cached_isButtonCommand) if(auto m = moduleOf(this)) m.visibleButtonComments ~= this; 
+			} 
+			
+			void generateUI(bool en, int targetSurface_=0)
+			{
+				if(isSpecialComment)
+				{
+					auto scmt = extractSpecialComment; 
+					const keyword = scmt.wordAt(0); 
+					if(keyword=="BTN")
+					{
+						const 	params = scmt[keyword.length..$].stripLeft,
+							cmd = params.CommandLine/+Opt: this is slow to get only the first name+/; 
+						with(im)
+						if(
+							Btn(
+								cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).genericArg!q{id}),
+								{
+									flags.targetSurface = targetSurface_; margin = "0"; 
+									outerPos = worldOuterPos(this)-2; outerSize = this.outerSize+4; 
+								}
+							)
+						)
+						{
+							if(auto m = moduleOf(this))
+							if(auto ws = (cast(IWorkspace)(m.parent)))
+							ws.handleButtonCommentClick(this, params); 
+						}
+					}
+				}
+			} 
+		}
 	} class CodeString : CodeContainer
 	{
 		mixin((

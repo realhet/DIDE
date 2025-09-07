@@ -251,6 +251,7 @@ version(/+$DIDE_REGION+/all)
 			gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); 
 			
 			toolPalette.visibleConstantNodes.clear; 
+			toolPalette.visibleButtonComments.clear; 
 		} 
 		
 		void drawOverlay(Drawing dr)
@@ -692,6 +693,7 @@ version(/+$DIDE_REGION+/all)
 							mixin(求each(q{m},q{workspace.modules.modules},q{
 								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
 								m.UI_constantNodes(moduleIsEnabled, 0); 
+								m.UI_buttonComments(!m.isReadOnly, 0); 
 							})); 
 						}
 					); 

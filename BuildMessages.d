@@ -13,7 +13,82 @@ import het, het.parser;
 		Highlighted: undefined identifier 	/+Code: numSreens+/,
 		did you mean variable 	/+Code: numScreens+/ ? ✔
 	+/
+	
+	/+
+		Todo: Make this nicer!
+		/+Error: template instance /+Code: isImputRange!A+/ template /+Code: isImputRange+/ is not defined, did you mean isInputRange(R)? /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(1047,16)+/+/
+	+/
+	
+	/+Todo: Remove the address if it is located at the address. Put inside a hidden comment.+/
 +/
+
+static struct DMDMessageFilter
+{
+	static immutable string[] rejectedPatterns = ["token string requires valid D tokens, not*"]; 
+	/+
+		Todo: Put these filters in the main DIDE/settings!
+		Counters would be usefull for every hits in the recent build.
+	+/
+	
+	///Transforms, reformats message. Can return false to remove the message.
+	private static bool transformMessage(DMDMessage m)
+	{
+		alias MT = DMDMessage.Type; 
+		
+		foreach(ptn; rejectedPatterns) if(m.content.isWild(ptn)) return false/+reject+/; 
+		//Todo: rejected messages could be kept for debuggind purposes.
+		
+		static if((常!(bool)(0))) { print("=".replicate(80)); print(m.type.text~": "~m.content); print("-".replicate(80)); }
+		
+		///custom wordAt variant. Includes '.'
+		string wordAt(string s, size_t pos) @safe
+		{
+			bool isWordChar(dchar ch) @safe { return isLetter(ch) || isDigit(ch) || ch=='_' || ch=='.'; } 
+			if(!isWordChar(s.get(pos))) return ""; 
+			auto st = pos; 	while(isWordChar(s.get(st-1))) st--; 
+			auto en = pos+1; 	while(isWordChar(s.get(en))) en++; 
+			return s[st..en]; 
+		} 
+		
+		enum defaultFixitCaption = "YES!🔨"; 
+		static BTN_replace(string bad, string good, string caption = defaultFixitCaption)
+		=> i"/+$DIDE_BTN $(caption.quoted) op=replace bad=$(bad.quoted) good=$(good.quoted)+/".text; 
+		
+		static struct Op { MT msgType; string ptn; string delegate() fun; } 
+		static immutable Op[] ops = /+WildCard chars: '*' -> '\1',  '?' -> '\2'+/
+		[
+			{
+				MT.error, "template instance `\1` template `\1` is not defined, did you mean \1?",
+				{
+					return i"Template instance 	`$(wild[0])`
+template	`$(wild[1])` is not defined,
+did you mean	`$(wild[2])`? $(BTN_replace(wordAt(wild[1], 0),
+wordAt(wild[2], 0)))".text; 
+				} 
+			},
+			{
+				MT.error, "undefined identifier `\1`, did you mean \1 `\1`?",
+				{
+					return i"Undefined identifier	`$(wild[0])`,
+did you mean $(wild[1]) 	`$(wild[2])`? $(BTN_replace(wordAt(wild[0], 0),
+wordAt(wild[2], 0)))".text; 
+				} 
+			},
+		]; 
+		
+		foreach(op; ops)
+		if(
+			(op.msgType==MT.unknown || m.type==op.msgType) 
+			&& m.content.isWild!(
+				/+ignoreCase+/true, 
+				/+chAny+/'\1', /+chOne+/'\2'
+			)(op.ptn)
+		)
+		{ m.content = op.fun(); return true/+keep+/; }
+		
+		return true/+was no transformation. -> keep+/; 
+	} 
+} 
 
 class DMDMessage
 {
@@ -272,14 +347,6 @@ struct DMDMessageDecoder
 	
 	//message filtering
 	
-	__gshared string[] messageFilters = [
-		//"Warning: C preprocessor directive ", 
-		"Deprecation: token string requires valid D tokens, not"
-	]; 
-	/+
-		Todo: Put these filters in the main DIDE/settings!
-		Counters would be usefull for every hits in the recent build.
-	+/
 	
 	//internal state
 	private
@@ -322,15 +389,6 @@ struct DMDMessageDecoder
 	
 	string sourceText() const
 	{ return messages.map!"a.sourceText".join("\n"); } 
-	
-	private static bool keepMessage(in DMDMessage m)
-	{
-		foreach(f; messageFilters)
-		if(joiner(only(m.typePrefix, m.content)).startsWith(f))
-		return false; 
-		
-		return true; 
-	} 
 	
 	void addConsoleMessage(string[] lines)
 	{
@@ -577,7 +635,7 @@ struct DMDMessageDecoder
 					if(msg.isSupplemental)
 					WARN("No parent message for supplemental message:", msg); 
 					
-					if(keepMessage(msg))
+					if(DMDMessageFilter.transformMessage(msg))
 					{
 						const hash = msg.hash; 
 						if(auto m = hash in messageMap)

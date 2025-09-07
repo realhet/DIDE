@@ -609,6 +609,69 @@ class Workspace : Container, IWorkspace
 			}
 			else im.flashWarning("Nothing to select."); 
 		} 
+		
+		void handleButtonCommentClick(Object cmtNode_, string params)
+		{
+			auto buttonComment = (cast(CodeComment)(cmtNode_)); 
+			
+			//discover the parents of the button comment node
+			auto 	errorComment 	= buttonComment	.allParents!CodeComment	.frontOrNull.enforce,
+				errorCol 	= errorComment	.allParents!CodeColumn	.frontOrNull.enforce,
+				targetNode 	= errorCol	.allParents!CodeNode	.frontOrNull.enforce; 
+			
+			auto cmd = params.CommandLine; 
+			
+			Container.SearchResult[] findWord(string s)
+			{
+				SearchOptions opts; with(opts) {
+					caseSensitive 	= true,
+					wholeWords 	= true; 
+				}
+				return targetNode.search(s, opts, targetNode.worldInnerPos)
+				.filter!((a)=>(
+					!a.container.allParents!CodeColumn.canFind(errorCol)
+					/+Do not include the results found in error messages!+/
+				)).array; 
+			} 
+			
+			void replaceWord(string badText, string goodText)
+			{
+				if(badText=="" || goodText=="")
+				{ WARN("Invalid empty params! ", badText.quoted, goodText.quoted); return; }
+				
+				auto srs = findWord(badText); 
+				if(srs.length>=1)
+				{
+					textSelections.select(srs); 
+					if(textSelections[].length)
+					{
+						textSelections.items = editor.paste_impl(textSelections[], goodText); 
+						
+						//extend the selections to cover the replaced words
+						{
+							const len = goodText.walkLength.to!int; 
+							auto adjust(TextSelection ts)
+							{ ts.cursors[0].pos.x -= len; return ts; } 
+							textSelections.items = 	textSelections[].map!adjust.array; 
+						}
+						
+						//highlight modofied locations
+						foreach(bnd; textSelections[].map!((a)=>(a.worldBounds)))
+						addInspectorParticle(bnd, clLime, bnd); 
+					}
+				}
+				else
+				{ im.flashWarning("FixMe: Can't find text: "~badText.quoted); }
+			} 
+			
+			if(cmd.option("op")=="replace")
+			{
+				//Todo: Put the DMDMessage translator right next to this script!
+				replaceWord(cmd.option("bad"), cmd.option("good")); 
+			}
+			else
+			{ im.flashWarning("buttonCommentClickHandler invalid op: "~cmd.option("op").quoted); }
+		} 
 		
 		void makeModuleDependencyGraph()
 		{
@@ -1227,7 +1290,10 @@ class Workspace : Container, IWorkspace
 			globalVisualizeSpacesAndTabs = !textSelections.empty; 
 			
 			globalChangeindicatorsAppender.clear; 
-			mixin(求each(q{m},q{modules.modules},q{m.visibleConstantNodes.clear})); 
+			mixin(求each(q{m},q{modules.modules},q{
+				m.visibleConstantNodes.clear; 
+				m.visibleButtonComments.clear; 
+			})); 
 			
 			structureMap.beginCollect; 
 			super.draw(dr); 

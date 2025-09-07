@@ -134,7 +134,7 @@ struct HelpManager
 					if(!mouseOverHintCntr)
 					if(auto mm = (cast(Module.Message)(buildMessages.nearestSearchResult.reference)))
 					{
-						auto msgNode = buildMessages.createNode(mm.message); 
+						auto msgNode = buildMessages.createNode(mm.message, hideLocation: false); 
 						with(msgNode) {
 							outerWidth 	= min(outerWidth, max(workspaceOuterWidth-50, 50)),
 							outerHeight 	= min(outerHeight, DefaultFontHeight * 3); 
