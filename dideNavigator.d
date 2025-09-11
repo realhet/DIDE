@@ -37,7 +37,7 @@ class Navigator : INavigator
 		//if(bnd) jumpTo(bnd.center); 
 		if(bnd)
 		{
-			view.scale = 1; 
+			if(view.scale<1) view.scale = 1; 
 			view.smartScrollTo(bnd); 
 		}
 	} 

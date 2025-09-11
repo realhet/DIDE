@@ -684,17 +684,16 @@ version(/+$DIDE_REGION+/all)
 						{
 							version(/+$DIDE_REGION Temporarily switch to 'view' surface. Slider needs the correct mousePos.+/all)
 							{ selectTargetSurface(0); scope(exit) selectTargetSurface(1); }
-							
-							//	flags.targetSurface = 0; 
-							
 							auto enabledModule = workspace.modules.primaryModule; 
 							const oldStyle = style; scope(exit) style = oldStyle; 
 							
 							mixin(求each(q{m},q{workspace.modules.modules},q{
 								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
 								m.UI_constantNodes(moduleIsEnabled, 0); 
-								m.UI_buttonComments(!m.isReadOnly, 0); 
 							})); 
+							
+							const oldTheme = theme; scope(exit) style = oldStyle; 
+							theme = "tool"; mixin(求each(q{m},q{workspace.modules.modules},q{m.UI_buttonComments(!m.isReadOnly, 0); })); 
 						}
 					); 
 					

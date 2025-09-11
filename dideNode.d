@@ -1450,19 +1450,22 @@ version(/+$DIDE_REGION+/all) {
 						const 	params = scmt[keyword.length..$].stripLeft,
 							cmd = params.CommandLine/+Opt: this is slow to get only the first name+/; 
 						with(im)
-						if(
-							Btn(
-								cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).genericArg!q{id}),
-								{
-									flags.targetSurface = targetSurface_; margin = "0"; 
-									outerPos = worldOuterPos(this)-2; outerSize = this.outerSize+4; 
-								}
-							)
-						)
 						{
-							if(auto m = moduleOf(this))
-							if(auto ws = (cast(IWorkspace)(m.parent)))
-							ws.handleButtonCommentClick(this, params); 
+							theme="tool"; 
+							if(
+								Btn(
+									cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).genericArg!q{id}),
+									{
+										flags.targetSurface = targetSurface_; margin = "0"; 
+										outerPos = worldOuterPos(this); outerSize = this.outerSize; 
+									}
+								)
+							)
+							{
+								if(auto m = moduleOf(this))
+								if(auto ws = (cast(IWorkspace)(m.parent)))
+								ws.handleButtonCommentClick(this, params); 
+							}
 						}
 					}
 				}

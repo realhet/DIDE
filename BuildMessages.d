@@ -53,6 +53,8 @@ static struct DMDMessageFilter
 		enum defaultFixitCaption = "YES!🔨"; 
 		static BTN_replace(string bad, string good, string caption = defaultFixitCaption)
 		=> i"/+$DIDE_BTN $(caption.quoted) op=replace bad=$(bad.quoted) good=$(good.quoted)+/".text; 
+		static BTN_select(string str, string caption = "👆")
+		=> i"/+$DIDE_BTN $(caption.quoted) op=select str=$(str.quoted)+/".text; 
 		
 		static struct Op { MT msgType; string ptn; string delegate() fun; } 
 		static immutable Op[] ops = /+WildCard chars: '*' -> '\1',  '?' -> '\2'+/
@@ -73,6 +75,19 @@ wordAt(wild[2], 0)))".text;
 did you mean $(wild[1]) 	`$(wild[2])`? $(BTN_replace(wordAt(wild[0], 0),
 wordAt(wild[2], 0)))".text; 
 				} 
+			},
+			{
+				MT.error, "no property `\1` for `\1` of type `\1`",
+				{
+					return i"No property `$(wild[0])`$(BTN_select
+(wild[0])) for `$(wild[1])`$(BTN_select
+(wild[1]))
+of type `$(wild[2])`".text; 
+				} 
+			},
+			{
+				MT.error, "undefined identifier `\1`",
+				{ return i"Undefined identifier `$(wild[0])`$(BTN_select(wild[0]))".text; } 
 			},
 		]; 
 		

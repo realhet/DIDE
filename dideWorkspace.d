@@ -609,7 +609,7 @@ class Workspace : Container, IWorkspace
 			}
 			else im.flashWarning("Nothing to select."); 
 		} 
-		
+		
 		void handleButtonCommentClick(Object cmtNode_, string params)
 		{
 			auto buttonComment = (cast(CodeComment)(cmtNode_)); 
@@ -634,43 +634,72 @@ class Workspace : Container, IWorkspace
 				)).array; 
 			} 
 			
+			void highlightTextSelections(RGB color)
+			{
+				struct CachedExpr(alias _expr)
+				{
+					auto _eval() => _expr(); 
+					Nullable!(ReturnType!_eval) _val; 
+					auto _get() { if(_val.isNull) _val = _eval(); return _val.get; } 
+					alias this = _get; 
+				} 
+				
+				CachedExpr!(()=>((cast(CodeComment)(cmtNode_)).worldOuterBounds)) srcBnd; 
+				foreach(bnd; textSelections[].map!((a)=>(a.worldBounds)))
+				addInspectorParticle(bnd, color, srcBnd); 
+			} 
+			
+			bool findAndSelectWord(string str)
+			{
+				auto srs = findWord(str); 
+				if(srs.length>=1)
+				{
+					textSelections.select(srs); 
+					if(textSelections[].length)
+					{ navig.jumpTo(srs); return true; }
+				}
+				
+				im.flashWarning("FixMe: Can't find text: "~str.quoted); return false; 
+			} 
+			
 			void replaceWord(string badText, string goodText)
 			{
 				if(badText=="" || goodText=="")
 				{ WARN("Invalid empty params! ", badText.quoted, goodText.quoted); return; }
 				
-				auto srs = findWord(badText); 
-				if(srs.length>=1)
+				if(findAndSelectWord(badText))
 				{
-					textSelections.select(srs); 
-					if(textSelections[].length)
+					textSelections.items = editor.paste_impl(textSelections[], goodText); 
+					
+					//extend the selections to cover the replaced words
 					{
-						textSelections.items = editor.paste_impl(textSelections[], goodText); 
-						
-						//extend the selections to cover the replaced words
-						{
-							const len = goodText.walkLength.to!int; 
-							auto adjust(TextSelection ts)
-							{ ts.cursors[0].pos.x -= len; return ts; } 
-							textSelections.items = 	textSelections[].map!adjust.array; 
-						}
-						
-						//highlight modofied locations
-						foreach(bnd; textSelections[].map!((a)=>(a.worldBounds)))
-						addInspectorParticle(bnd, clLime, bnd); 
+						const len = goodText.walkLength.to!int; 
+						auto adjust(TextSelection ts)
+						{ ts.cursors[0].pos.x -= len; return ts; } 
+						textSelections.items = 	textSelections[].map!adjust.array; 
 					}
+					
+					//highlight modofied locations
+					highlightTextSelections(clLime); 
 				}
-				else
-				{ im.flashWarning("FixMe: Can't find text: "~badText.quoted); }
 			} 
 			
-			if(cmd.option("op")=="replace")
+			void selectWord(string str)
 			{
-				//Todo: Put the DMDMessage translator right next to this script!
-				replaceWord(cmd.option("bad"), cmd.option("good")); 
+				if(findAndSelectWord(str))
+				highlightTextSelections(clSilver); 
+			} 
+			
+			//Todo: Put the DMDMessage translator right next to this script!
+			switch(cmd.option("op"))
+			{
+				case "replace": 	replaceWord(cmd.option("bad"), cmd.option("good")); 	break; 
+				case "select": 	selectWord(cmd.option("str")); 	break; 
+				default: im.flashWarning(
+					"buttonCommentClickHandler invalid op: "
+					~cmd.option("op").quoted
+				); 
 			}
-			else
-			{ im.flashWarning("buttonCommentClickHandler invalid op: "~cmd.option("op").quoted); }
 		} 
 		
 		void makeModuleDependencyGraph()
