@@ -1451,13 +1451,13 @@ version(/+$DIDE_REGION+/all) {
 							cmd = params.CommandLine/+Opt: this is slow to get only the first name+/; 
 						with(im)
 						{
-							theme="tool"; 
 							if(
 								Btn(
 									cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).genericArg!q{id}),
 									{
-										flags.targetSurface = targetSurface_; margin = "0"; 
-										outerPos = worldOuterPos(this); outerSize = this.outerSize; 
+										flags.targetSurface = targetSurface_; 
+										margin = "0"; padding = "1.5 8.5"; //the exact size of a CodeComment parring
+										outerPos = worldOuterPos(this); //outerSize = this.outerSize; 
 									}
 								)
 							)
