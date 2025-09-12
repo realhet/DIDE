@@ -62,7 +62,7 @@ static struct DMDMessageFilter
 			{
 				MT.error, "template instance `\1` template `\1` is not defined, did you mean \1?",
 				{
-					return i"Template instance 	`$(wild[0])`
+					return i"template instance 	`$(wild[0])`
 template	`$(wild[1])` is not defined,
 did you mean	`$(wild[2])`? $(BTN_replace(wordAt(wild[1], 0),
 wordAt(wild[2], 0)))".text; 
@@ -71,7 +71,7 @@ wordAt(wild[2], 0)))".text;
 			{
 				MT.error, "undefined identifier `\1`, did you mean \1 `\1`?",
 				{
-					return i"Undefined identifier	`$(wild[0])`,
+					return i"undefined identifier	`$(wild[0])`,
 did you mean $(wild[1]) 	`$(wild[2])`? $(BTN_replace(wordAt(wild[0], 0),
 wordAt(wild[2], 0)))".text; 
 				} 
@@ -79,7 +79,7 @@ wordAt(wild[2], 0)))".text;
 			{
 				MT.error, "no property `\1` for `\1` of type `\1`",
 				{
-					return i"No property `$(wild[0])`$(BTN_select
+					return i"no property `$(wild[0])`$(BTN_select
 (wild[0])) for `$(wild[1])`$(BTN_select
 (wild[1]))
 of type `$(wild[2])`".text; 
@@ -87,7 +87,14 @@ of type `$(wild[2])`".text;
 			},
 			{
 				MT.error, "undefined identifier `\1`",
-				{ return i"Undefined identifier `$(wild[0])`$(BTN_select(wild[0]))".text; } 
+				{ return i"undefined identifier `$(wild[0])`$(BTN_select(wild[0]))".text; } 
+			},
+			{
+				MT.error, "function `\1` is not callable using argument types `\1`",
+				{
+					return i"function `$(wild[0])`
+is not callable using argument types `$(wild[1])`".text; 
+				} 
 			},
 		]; 
 		
@@ -347,7 +354,12 @@ class DMDMessage
 	} 
 	
 	string oneLineText() const
-	{ return typePrefix~content.firstLine; } 
+	{
+		string removeCommentButton(string s)
+		{ while(s.isWild("*/+$DIDE_BTN *+/*")) s = wild[0]~wild[2]; return s; } 
+		
+		return typePrefix ~ removeCommentButton(content.firstLine); 
+	} 
 } 
 
 
