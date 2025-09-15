@@ -63,7 +63,7 @@ static struct DMDMessageFilter
 				MT.error, "template instance `\1` template `\1` is not defined, did you mean \1?",
 				{
 					return i"template instance 	`$(wild[0])`
-template	`$(wild[1])` is not defined,
+template	`$(wild[1])`$(BTN_select(wild[1])) is not defined,
 did you mean	`$(wild[2])`? $(BTN_replace(wordAt(wild[1], 0),
 wordAt(wild[2], 0)))".text; 
 				} 
@@ -71,7 +71,7 @@ wordAt(wild[2], 0)))".text;
 			{
 				MT.error, "undefined identifier `\1`, did you mean \1 `\1`?",
 				{
-					return i"undefined identifier	`$(wild[0])`,
+					return i"undefined identifier	`$(wild[0])`$(BTN_select(wild[0])),
 did you mean $(wild[1]) 	`$(wild[2])`? $(BTN_replace(wordAt(wild[0], 0),
 wordAt(wild[2], 0)))".text; 
 				} 
