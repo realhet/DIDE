@@ -491,6 +491,9 @@ version(/+$DIDE_REGION+/all) {
 		Cell singleCellOrNull()
 		{ return rows.length==1 ? rows[0].singleCellOrNull : null; } 
 		
+		CodeRow singleRowOrNull()
+		{ return rows.length==1 ? rows[0] : null; } 
+		
 		auto rebuilder()
 		{ return CodeColumnBuilder!true	(this); } 
 		auto resyntaxer()

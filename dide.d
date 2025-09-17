@@ -597,12 +597,12 @@ version(/+$DIDE_REGION+/all)
 										if(Btn("ErrorList")) workspace.showErrorList.toggle; 
 										if(Btn("Calc size")) print(workspace.allocatedSize); 
 									}
-									Text(now.text); NL; 
 									Text(
-										i"FPS=$(FPS
-	.format!"%.0f")  Z=$(log2(lod.pixelSize)
-	.format!"%.2f")  A=$(view.animSpeed
-	.format!"%.2f")".text
+										i"$(now)
+FPS=$(FPS
+.format!"%.0f")  Z=$(log2(lod.pixelSize)
+.format!"%.2f")  A=$(view.animSpeed
+.format!"%.2f")".text
 									); 
 								}
 							); 

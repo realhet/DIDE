@@ -2301,13 +2301,36 @@ version(/+$DIDE_REGION+/all) {
 							str.content.processHighLevelPatterns_expr; 
 							/+this will process the $() string interpolations+/
 						}	break; 
-						default: 
+						default: /+promoted types doesn't need this, because it was done before the promotion.+/
 					}
 				}
 			}
 		}
 		
-		if(auto str = (cast(CodeString)(col.singleCellOrNull))) str.promoteInterpolatedTokenStringTextMixin(col); 
+		//Do promotions on the column based on its contents.
+		//The colum may be removed and its parent node may be replaced with a string node inside the column.
+		if(auto row = col.singleRowOrNull)
+		{
+			if(auto str = (cast(CodeString)(col.singleCellOrNull)))
+			if(str.promoteInterpolatedTokenStringTextMixin(col)) return; 
+			
+			
+			{
+				enum pattern = `msg,￼.注`d; 
+				if(row.cellCount==pattern.walkLength)
+				{
+					if(auto str = (cast(CodeString)(row.subCells[pattern.countUntil('￼')])))
+					{
+						bool matching = true; 
+						foreach_reverse(i, ch; pattern)
+						{ if(row.chars[i] != ch) { matching = false; break; }}
+						
+						if(matching)
+						{ if(str.promoteInterpolatedCStringTextPragmaMsg(col)) return; }
+					}
+				}
+			}
+		}
 	} 
 	
 	void processHighLevelPatterns_optionalBlock(CodeColumn col_)

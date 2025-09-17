@@ -31,6 +31,13 @@ class BuildMessageManager
 			- When the message is at it's designated location.
 		+/
 		
+		/+
+			Todo: For console messages in pragma$:
+			- hide the console title.
+			- remove the location completely.
+			- try to combine all into one textblock!
+		+/
+		
 		auto src = msg.sourceText; 
 		
 		if(hideLocation)

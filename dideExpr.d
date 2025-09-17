@@ -2029,9 +2029,11 @@ version(/+$DIDE_REGION+/all) {
 								i"s".text	i`s`.text	iq{s}.text	impor(a)
 								
 								mixin(a)	mixin(iq{a}.text)
-								__traits(a)	pragma(a)
-								__rvalue(a)	__ctfeWrite(a)
+								pragma(a)	pragma(msg,i"a".text.注)
 								typeof(a)	typeid(a)
+								__traits(a)	__rvalue(a)
+								__ctfeWrite(a)
+								
 							}],
 							[q{"spec. statements"},q{
 								return; 	return x; 
@@ -2087,13 +2089,13 @@ struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: va
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x1198E3617740F).檢(expr)) ((0x119AC3617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x119FC3617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x119BB3617740F).檢(expr)) ((0x119D93617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x11A293617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x11AA03617740F))) (互!((bool),(1),(0x11AC53617740F))) (互!((float/+w=6+/),(1.000),(0x11AEA3617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11B293617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11B693617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11BD53617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11C583617740F}))
+								(互!((bool),(0),(0x11ACD3617740F))) (互!((bool),(1),(0x11AF23617740F))) (互!((float/+w=6+/),(1.000),(0x11B173617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11B563617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11B963617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11C023617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11C853617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{

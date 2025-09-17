@@ -1496,6 +1496,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{interpolated_dString_text},q{"ti`"},q{"`"}],
 				[q{interpolated_tokenString_text},q{`tiq{`},q{`}`}],
 				[q{interpolated_tokenString_text_mixin},q{`mixin${`},q{`}`}],
+				[q{interpolated_cString_text_pragma_msg},q{`pragma$"`},q{`"`}],
 				[],
 				[q{//Todo: qString_id
 				}],
@@ -1511,10 +1512,19 @@ version(/+$DIDE_REGION+/all) {
 		string sizePostfix() const
 		{ return charSize!=CharSize.default_ ? charSize.text : ""; } 
 		
+		override @property NodeStyle nodeStyle() const
+		=> ((
+			type.among(
+				Type.interpolated_tokenString_text_mixin,
+				Type.interpolated_cString_text_pragma_msg
+			)
+		) ?(NodeStyle.bright):(NodeStyle.normal)); 
+		
 		override SyntaxKind syntax() const
 		{
 			if(isTableCell && type==Type.tokenString) return skIdentifier1; 
 			if(type==Type.interpolated_tokenString_text_mixin) return skSymbol; 
+			if(type==Type.interpolated_cString_text_pragma_msg) return skAttribute; 
 			return skString; 
 			/+
 				Note: For tokenStrings this must be skString too. So all string's border be the same color.
@@ -1671,7 +1681,8 @@ version(/+$DIDE_REGION+/all) {
 			with(Type)
 			final switch(type)
 			{
-				case cString, cChar, interpolated_cString, interpolated_cString_text: 	checkInvalid_escape(typePrefix[type].back, '\\'); 	break; 
+				case cString, cChar, interpolated_cString, interpolated_cString_text, 
+					interpolated_cString_text_pragma_msg: 	checkInvalid_escape(typePrefix[type].back, '\\'); 	break; 
 				case dString, rString, interpolated_dString, interpolated_dString_text, hexString: 	checkInvalid(typePrefix[type].back); 	break; 
 				case qString_round, qString_square, qString_curly, qString_angle, qString_slash: 	checkNesting(typePrefix[type].back, typePostfix[type].front); 	break; 
 				case tokenString, interpolated_tokenString, interpolated_tokenString_text, 
@@ -1717,7 +1728,11 @@ version(/+$DIDE_REGION+/all) {
 				}	break; 
 				case Type.interpolated_tokenString_text_mixin: 	{
 					builder.putSeparatorSpace; 
-					builder.put("mixin(iq{", content, postfix~".text)"); 
+					builder.put("mixin(iq{", content, "}.text)"); 
+				}	break; 
+				case Type.interpolated_cString_text_pragma_msg: 	{
+					builder.putSeparatorSpace; 
+					builder.put(`pragma(msg,i"`, content, `".text.注)`); 
 				}	break; 
 				default: 	{ super.buildSourceText(builder); }
 			}
@@ -1758,7 +1773,7 @@ version(/+$DIDE_REGION+/all) {
 		} 
 		
 		
-		void promoteInterpolatedTokenStringTextMixin(CodeColumn parentCol)
+		bool promoteInterpolatedTokenStringTextMixin(CodeColumn parentCol)
 		{
 			if(type==CodeString.Type.interpolated_tokenString_text)
 			if(auto blk = (cast(CodeBlock)(parentCol.parent)))
@@ -1772,8 +1787,30 @@ version(/+$DIDE_REGION+/all) {
 					this.setParent(blkRow); 
 					this.type = CodeString.Type.interpolated_tokenString_text_mixin; 
 					this.needMeasure; 
+					return true; 
 				}
 			}
+			return false; 
+		} 
+		
+		bool promoteInterpolatedCStringTextPragmaMsg(CodeColumn parentCol)
+		{
+			if(type==CodeString.Type.interpolated_cString_text)
+			if(auto blk = (cast(CodeBlock)(parentCol.parent)))
+			if(blk.type==CodeBlock.Type.pragmaExpr)
+			if(auto blkRow = blk.parent)
+			{
+				const blkIdx = blkRow.subCellIndex(blk); 
+				if(blkIdx>=0)
+				{
+					blkRow.subCells[blkIdx] = this; 
+					this.setParent(blkRow); 
+					this.type = CodeString.Type.interpolated_cString_text_pragma_msg; 
+					this.needMeasure; 
+					return true; 
+				}
+			}
+			return false; 
 		} 
 	} 
 	class CodeBlock : CodeContainer
@@ -1799,18 +1836,23 @@ version(/+$DIDE_REGION+/all) {
 		
 		Type type; 
 		
+		
 		override SyntaxKind syntax	() const
 		{
-			return type<=Type.stringMixin ? skSymbol : 
-			type==Type.stringImport ? skIdentifier4 : 
-			skAttribute; 
+			return type<=Type.stringMixin 	? skSymbol : 
+			type==Type.stringImport 	? skIdentifier4 : 
+				skAttribute; 
 		} 
 		override string prefix() const
 		{ return typePrefix[type]; } 
 		override string postfix() const
 		{ return typePostfix[type]; } 
 		override @property NodeStyle nodeStyle() const
-		=> ((type<=Type.index) ?(NodeStyle.dim):(((type<=Type.stringMixin) ?(NodeStyle.normal):(NodeStyle.bright)))); 
+		=> (
+			type<=Type.index 	? NodeStyle.dim :
+			type<=Type.index/+stringMixin+/ 	? NodeStyle.normal :
+				NodeStyle.bright
+		); 
 		
 		this(Container parent)
 		{ super(parent); } 

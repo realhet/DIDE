@@ -3,23 +3,8 @@ module buildmessages;
 import het, het.parser; 
 
 /+
-	Todo: process error messages like this:
-	/+Code: undefined identifier /+Code: numSreens+/, did you mean variable /+Code: numScreens+/? /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(425,19)+/+/
-	
-	/+
-		Highlighted: undefined identifier	/+Code: numSreens+/,	
-		did you mean variable 	/+Code: numScreens+/	❓ [YES]	
-	+/ ---(click)---> /+
-		Highlighted: undefined identifier 	/+Code: numSreens+/,
-		did you mean variable 	/+Code: numScreens+/ ? ✔
-	+/
-	
-	/+
-		Todo: Make this nicer!
-		/+Error: template instance /+Code: isImputRange!A+/ template /+Code: isImputRange+/ is not defined, did you mean isInputRange(R)? /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(1047,16)+/+/
-	+/
-	
-	/+Todo: Remove the address if it is located at the address. Put inside a hidden comment.+/
+	Todo: /+Error: no property /+Code: bits+//+$DIDE_BTN "👆" op=select str="bits"+/ for /+Code: st.fgbkColors()+//+$DIDE_BTN "👆" op=select str="st.fgbkColors()"+/+/
+	The second select_BTN should search for "st.fgbkColors" after the search for "st.fgbkColors()" had failed.
 +/
 
 static struct DMDMessageFilter
