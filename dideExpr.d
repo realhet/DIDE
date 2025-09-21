@@ -2079,17 +2079,17 @@ anonym method"},q{
 							}],
 							[q{"tuple operation"},q{mixin(配(q{x,y},q{=},q{y,x}))}],
 							[q{"named param, 
-struct initializer"},q{((value).genericArg!q{name}) mixin(體!((Type),q{name: val, ...}))}],
+struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}))}],
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x119223617740F).檢(expr)) ((0x119403617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x119903617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x1191B3617740F).檢(expr)) ((0x119393617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x119893617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x11A343617740F))) (互!((bool),(1),(0x11A593617740F))) (互!((float/+w=6+/),(1.000),(0x11A7E3617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11ABD3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AFD3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B693617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BEC3617740F}))
+								(互!((bool),(0),(0x11A2D3617740F))) (互!((bool),(1),(0x11A523617740F))) (互!((float/+w=6+/),(1.000),(0x11A773617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11AB63617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AF63617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B623617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BE53617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{
