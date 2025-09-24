@@ -151,6 +151,9 @@ version(/+$DIDE_REGION+/all) {
 		
 		Declaration nextJoinedPreposition; 
 		
+		bool headerWasNonEmpty; 
+		//if removing return's parameter, the input column will not be lost with the cursor.
+		
 		@property isBlock() const
 		=> ending=='}'; @property isStatement() const
 		=> ending==';'; 
@@ -941,10 +944,14 @@ version(/+$DIDE_REGION+/all) {
 						{ put("(", header, ")"~ending.text); }
 						else
 						{
-							if(!header.empty || !onlyShowHeaderWhenNotEmpty)
+							if(
+								!header.empty || !onlyShowHeaderWhenNotEmpty 
+								|| headerWasNonEmpty
+							)
 							{
 								if(keyword!="" && !header.empty) put(' '); 
 								put("", header, ending.text); 
+								headerWasNonEmpty = true; 
 							}
 							else
 							{ put(ending); }
