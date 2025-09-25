@@ -94,6 +94,40 @@ version(/+$DIDE_REGION+/all)
 		Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
 		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
 	+/
+	
+	/+
+		Todo: Better debug/unittesting/code coverage
+		-d-debug=...
+		-unittest
+		-cov
+		-release
+		/+
+			Code: auto UT(alias fun)()
+			{
+				bool chk() { fun(); return true; } 
+				assert(chk); 
+				static assert(chk); 
+			} 
+			
+			unittest
+			{
+				debug(test01)
+				UT!((){
+					int a=4; 
+					assert(a==6, "hat"); 
+					assert(a==5); 
+				}); 
+			} 
+			
+			unittest {
+				debug(test02)
+				UT!((){
+					int a=6; 
+					assert(a==6, "hat"); 
+				}); 
+			} 
+		+/
+	+/
 	
 	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	

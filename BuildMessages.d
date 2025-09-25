@@ -7,6 +7,8 @@ import het, het.parser;
 	The second select_BTN should search for "st.fgbkColors" after the search for "st.fgbkColors()" had failed.
 +/
 
+/+Todo: /+Error: no property /+Code: errorlone+/ for type /+Code: FontSpec!(FontId)+/, did you mean /+Code: vulkanwin.FontSpec!(FontId).FontSpec.errorline+/? /+Hidden: /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(1129,69)+/+/+/+/
+
 static struct DMDMessageFilter
 {
 	static immutable string[] rejectedPatterns = ["token string requires valid D tokens, not*"]; 
