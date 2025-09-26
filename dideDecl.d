@@ -862,10 +862,10 @@ version(/+$DIDE_REGION+/all) {
 					static if(UI)
 					{
 						if(
-							!header.empty//optional header title
+							!header.empty || headerWasNonEmpty//optional header title
 						)
 						{
-							put(header); 
+							put(header); headerWasNonEmpty = true; 
 							if(hasInternalNewLine) putNL; else put(' '); 
 						}
 						put(block); 
@@ -950,8 +950,7 @@ version(/+$DIDE_REGION+/all) {
 							)
 							{
 								if(keyword!="" && !header.empty) put(' '); 
-								put("", header, ending.text); 
-								headerWasNonEmpty = true; 
+								put("", header, ending.text); headerWasNonEmpty = true; 
 							}
 							else
 							{ put(ending); }

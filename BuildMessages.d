@@ -7,8 +7,6 @@ import het, het.parser;
 	The second select_BTN should search for "st.fgbkColors" after the search for "st.fgbkColors()" had failed.
 +/
 
-/+Todo: /+Error: no property /+Code: errorlone+/ for type /+Code: FontSpec!(FontId)+/, did you mean /+Code: vulkanwin.FontSpec!(FontId).FontSpec.errorline+/? /+Hidden: /+$DIDE_LOC c:\D\libs\het\examples\helloVulkan.d(1129,69)+/+/+/+/
-
 static struct DMDMessageFilter
 {
 	static immutable string[] rejectedPatterns = ["token string requires valid D tokens, not*"]; 
@@ -70,6 +68,16 @@ wordAt(wild[2], 0)))".text;
 (wild[0])) for `$(wild[1])`$(BTN_select
 (wild[1]))
 of type `$(wild[2])`".text; 
+				} 
+			},
+			{
+				/+Todo: /+Error: no property /+Code: errorlone+/ for type /+Code: FontSpec!(FontId)+/, did you mean /+Code: vulkanwin.FontSpec!(FontId).FontSpec.errorline+/?+/+/
+				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
+				{
+					return i"no property `$(wild[0])`$(BTN_select
+(wild[0])) for type `$(wild[1])`,
+did you mean `$(wild[2])`? $(BTN_replace(wordAt(wild[0], 0),
+wild[2].split('.').backOr(wild[2])))".text; 
 				} 
 			},
 			{
