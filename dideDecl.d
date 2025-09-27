@@ -804,7 +804,7 @@ version(/+$DIDE_REGION+/all) {
 				
 				void emitBlock()
 				{
-					if(isSimpleBlock)
+					if(isSimpleBlock && !headerWasNonEmpty)
 					{
 						/+
 							Todo: the transition from simpleBlock to non-simple block is not clear.
@@ -843,9 +843,12 @@ version(/+$DIDE_REGION+/all) {
 						
 						if(canHaveHeader)
 						{
+							//Note: In front of {} blocks the attibutes are stored as the header.
 							if(needSpace.chkClear) put(' '); 
 							put("", header, ""); 
 							needSpace |= true; 
+							
+							if(!header.empty) headerWasNonEmpty = true; 
 						}
 						
 						if(hasInternalNewLine)

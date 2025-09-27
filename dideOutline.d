@@ -222,7 +222,7 @@ static struct Outline
 							
 							
 							if(
-								Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ NOTIMPL; }
@@ -322,7 +322,7 @@ static struct Outline
 											img.bkColor = bkColor; 
 										}
 									}, 
-									((n.identityStr).genericArg!q{id}), selected(focusedNode==n)
+									((n.identityStr).名!q{id}), selected(focusedNode==n)
 								)
 							)
 							{
@@ -343,7 +343,7 @@ static struct Outline
 									{
 										if(const bnd = calcBounds(matchingModules(prefix)))
 										{
-											addInspectorParticle(bnd, clWhite, bounds2(bnd.center, ((1).genericArg!q{radius})), .125f); 
+											addInspectorParticle(bnd, clWhite, bounds2(bnd.center, ((1).名!q{radius})), .125f); 
 											
 											with(view)
 											{

@@ -687,7 +687,7 @@ class DDB
 							
 							
 							if(
-								Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
@@ -769,7 +769,7 @@ class DDB
 					{
 						with(im)
 						{
-							if(Btn({ node.UI; }, ((node.identityStr).genericArg!q{id})))
+							if(Btn({ node.UI; }, ((node.identityStr).名!q{id})))
 							{ onClick(node); }
 						}
 					} 

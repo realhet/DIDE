@@ -1237,7 +1237,7 @@ class Workspace : Container, IWorkspace
 							//Todo: must be inserted as an expression!!!
 						}],
 						[q{"Shift+Alt+;"},q{insertGenericArg},q{
-							editor.insertNode("((\0).genericArg!q{})", 0); 
+							editor.insertNode("((\0).名!q{})", 0); 
 							//Todo: must be inserted as an expression!!!
 						}],
 					]))

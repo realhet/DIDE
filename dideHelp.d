@@ -104,7 +104,7 @@ struct HelpManager
 										style.fontColor = blackOrWhiteFor(bkColor); 
 										Text(b.text); 
 									},
-									(("Breadcrumb:"~i.text).genericArg!q{id})
+									(("Breadcrumb:"~i.text).名!q{id})
 								)
 							)
 							{ navig.jumpTo(b.node); }

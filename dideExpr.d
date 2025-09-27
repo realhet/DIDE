@@ -1680,7 +1680,7 @@ version(/+$DIDE_REGION+/all) {
 						
 						auto commonParams()
 						=> tuple(
-							enable(enabled_), ((this.identityStr).genericArg!q{id}),
+							enable(enabled_), ((this.identityStr).名!q{id}),
 							{
 								flags.targetSurface = targetSurface_; 
 								outerPos = this.worldInnerPos + placeholder.outerPos; 
@@ -1892,7 +1892,7 @@ version(/+$DIDE_REGION+/all) {
 						foreach(o; operands) put(o); 
 					}
 				}],
-				[q{genericArg},q{((value).genericArg!q{name})},q{/+Code: ((expr)opq{code})+/},q{".名!"},q{bright},q{Identifier1},q{NiceExpression},q{
+				[q{genericArg},q{((value).名!q{name})},q{/+Code: ((expr)opq{code})+/},q{".名!"},q{bright},q{Identifier1},q{NiceExpression},q{
 					@text: 	op(0); put(operator); put("q{", operands[1], "}"); //250920: Any expression can go here from now on.
 					@node: 	operands[1].fillColor(darkColor, bkColor); 
 						put(operands[1]); put(':'); put(operands[0]); 
@@ -1957,8 +1957,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x102493617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x102CD3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x1023B3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x102BF3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -1970,8 +1970,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x1051C3617740F)))(互!((bool),(1),(0x105403617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x105643617740F)))
-					(互!((float/+w=6+/),(1.000),(0x105B03617740F)))
+					(互!((bool),(0),(0x1050E3617740F)))(互!((bool),(1),(0x105323617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x105563617740F)))
+					(互!((float/+w=6+/),(1.000),(0x105A23617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1981,9 +1981,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x107A73617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x107E63617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x108583617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x108D73617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x107993617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x107D83617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1084A3617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x108C93617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2083,13 +2083,13 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x1191B3617740F).檢(expr)) ((0x119393617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x119893617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x1190D3617740F).檢(expr)) ((0x1192B3617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x1197B3617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x11A2D3617740F))) (互!((bool),(1),(0x11A523617740F))) (互!((float/+w=6+/),(1.000),(0x11A773617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11AB63617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AF63617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B623617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BE53617740F}))
+								(互!((bool),(0),(0x11A1F3617740F))) (互!((bool),(1),(0x11A443617740F))) (互!((float/+w=6+/),(1.000),(0x11A693617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11AA83617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11AE83617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B543617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11BD73617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{

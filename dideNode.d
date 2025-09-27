@@ -1453,7 +1453,7 @@ version(/+$DIDE_REGION+/all) {
 						{
 							if(
 								Btn(
-									cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).genericArg!q{id}),
+									cmd.names.get(0), (("CodeComment_BTN"~this.identityStr).名!q{id}),
 									{
 										flags.targetSurface = targetSurface_; 
 										margin = "0"; padding = "1.5 8.5"; //the exact size of a CodeComment parring

@@ -153,7 +153,7 @@ static struct SearchBox
 							
 							
 							if(
-								Edit(searchText, ((justActivated).genericArg!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{
@@ -257,7 +257,7 @@ static struct SearchBox
 						Column(
 							{
 								sw; 
-								Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").genericArg!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").genericArg!q{id})); }); 
+								Grp!Row("Boundary conditions", { sw; Text("start: "); BtnRow(searchOptions.boundaryTypeStart, (("st").名!q{id})); Text(" end: "); BtnRow(searchOptions.boundaryTypeEnd, (("en").名!q{id})); }); 
 								Grp!Row(
 									"Syntaxes: ", {
 										sw; foreach(const a; searchStats.syntaxes.byKeyValue.array.sort!"a.value>b.value")
@@ -267,7 +267,7 @@ static struct SearchBox
 													style.fontColor = syntaxFontColor(a.key); 
 													style.bkColor = syntaxBkColor(a.key); 
 													Text(a.key.text); 
-												}, ((a.key).genericArg!q{id})
+												}, ((a.key).名!q{id})
 											); 
 										}
 									}
@@ -275,7 +275,7 @@ static struct SearchBox
 								Grp!Row(
 									"Words: ", {
 										sw; foreach(const a; searchStats.wholeWords.byKeyValue.array.sort!"a.value>b.value".take(30))
-										{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).genericArg!q{id})); }
+										{ Btn(i"$(a.value)× $(a.key)".text, ((a.key).名!q{id})); }
 									}
 								); 
 							}

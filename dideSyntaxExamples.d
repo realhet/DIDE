@@ -485,9 +485,7 @@ l2
 				and code:/+Code: 1+1+/
 			+/ ~ "45"
 			void main()
-			{
-				writeln("Hello World");
-			}
+			{ writeln("Hello World"); } 
 		+/
 		
 		auto _testDirectives()
@@ -601,7 +599,7 @@ l2
 		{
 			//Note: this is deprecated. There is a new Table based showcase.
 			
-			(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).genericArg!q{n}) (RGBr, g, b)
+			(magnitude(a)) (normalize(a)) ((a).dot(b)) ((a).cross(b)) ((v).名!q{n}) (RGBr, g, b)
 			((a)*(b)) ((a)/(b)) ((a)^^(n)) ((a).root(n)) (sqrt(a))  (RGBAr, g, b, a)
 			((c)?(t):(f)) ((c) ?(t):(f)) ((c)?(t) :(f)) ((c) ?(t) :(f)); 
 			
@@ -631,8 +629,8 @@ l2
 			
 			
 			//Note: named parameters
-			Text(((clRed).genericArg!q{fontColor}), (((RGB0xFF0040)).genericArg!q{bkColor}), "text"); //Todo: multiline style
-			//Text(((clRed).genericArg!q{fontColor}), (((RGB(0xFF0040))).genericArg!q{bkColor}), "text"); 
+			Text(((clRed).名!q{fontColor}), (((RGB0xFF0040)).名!q{bkColor}), "text"); //Todo: multiline style
+			//Text(((clRed).名!q{fontColor}), (((RGB(0xFF0040))).名!q{bkColor}), "text"); 
 			
 			//Note: tenary operator
 			((condition)?(exprIfFalse):(exprIfTrue)); 	//tenary: ((condition)?(exprIfTrue):(exprIfFalse))
@@ -670,11 +668,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x3D0C8EDA62B7).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x3D638EDA62B7).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x3DBA8EDA62B7).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x3E118EDA62B7).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x3E688EDA62B7).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x3CE55951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x3D3C5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x3D935951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x3DEA5951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x3E415951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)

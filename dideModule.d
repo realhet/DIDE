@@ -142,7 +142,7 @@ version(/+$DIDE_REGION InspectorFX+/all)
 				life *= .91f; 
 				const sqLife = ((life)^^(2)); 
 				
-				auto b = bounds2(((dst).genericArg!q{center}), ((size * (1 + sqLife*scale)).genericArg!q{size})); 
+				auto b = bounds2(((dst).名!q{center}), ((size * (1 + sqLife*scale)).名!q{size})); 
 				
 				dr.lineWidth = -1-sqLife*10; 
 				dr.alpha = 1 - sqLife; 

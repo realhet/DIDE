@@ -365,7 +365,7 @@ class BuildMessageManager
 								
 								btnWorldBounds = view.invTrans(actContainerBounds); 
 							},
-							((type).genericArg!q{id})
+							((type).名!q{id})
 						)
 					)
 					visible.toggle; 

@@ -885,7 +885,7 @@ class Builder : IBuildServices
 							{
 								theme = "tool"; 
 								auto B(string capt, bool vis, void delegate() fun)
-								{ if(vis && Btn(capt, ((capt).genericArg!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
+								{ if(vis && Btn(capt, ((capt).名!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
 								
 								B("LDC", canKillCompilers, &killCompilers); 
 								B("PID", canKillRunningProcess, &killRunningProcess); 
