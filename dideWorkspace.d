@@ -16,6 +16,9 @@ import dideai : AiManager;
 import didesearch : SearchBox; 
 import dideoutline : Outline; 
 
+import het.algorithm : restrictPos_normal, restrictPos_editor; 
+import het.inputs : callVerb, callVerbs, desktopMousePos; 
+
 class Workspace : Container, IWorkspace
 {
 	version(/+$DIDE_REGION Workspace things+/all)

@@ -7,6 +7,8 @@ import didemodule : Breadcrumb, toBreadcrumbs;
 import didetextselectionmanager : TextSelectionManager; 
 import didebuildmessagemanager : BuildMessageManager; 
 
+import het.win: waitWindow, getWindowInfo; 
+
 enum HelpProvider {bing, msdn, dpldocs, dpldocs_searchPage, deepseek, combined, combined_noContext} 
 
 struct HelpManager

@@ -2,7 +2,7 @@
 //@compile --d-version=stringId
 
 //@debug
-//@release
+///@release
 import core.thread, std.concurrency; 
 
 import didebase, dideSyntaxExamples; 
@@ -12,6 +12,10 @@ import didedecl : Declaration;
 import dideexpr : ToolPalette; 
 import didebuilder : Builder; 
 import dideworkspace : Workspace; 
+
+import het.inputs : callVerbs; 
+import het.opengl : gl, GL_COLOR_BUFFER_BIT; 
+import het.win : _createMainWindow; 
 
 version(/+$DIDE_REGION+/all)
 {

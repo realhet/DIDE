@@ -4,6 +4,8 @@ import didebase;
 import didenode : CodeComment, specialCommentMarker; 
 import didemodulemanager : ModuleManager; 
 
+import het.draw2d : RectClamperF; 
+
 class BuildMessageManager
 {
 	mixin SmartChild!(
@@ -363,7 +365,7 @@ class BuildMessageManager
 									}
 								); 
 								
-								btnWorldBounds = view.invTrans(actContainerBounds); 
+								btnWorldBounds = view.screenToWorld(actContainerBounds); 
 							},
 							((type).名!q{id})
 						)
