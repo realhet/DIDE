@@ -17,7 +17,7 @@ import didesearch : SearchBox;
 import dideoutline : Outline; 
 
 import het.algorithm : restrictPos_normal, restrictPos_editor; 
-import het.inputs : callVerb, callVerbs, desktopMousePos; 
+import het.inputs : callVerb, callVerbs, desktopMousePos, mouseLock, mouseUnlock; 
 
 class Workspace : Container, IWorkspace
 {
