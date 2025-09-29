@@ -4,8 +4,6 @@ import didebase;
 import didenode : CodeComment, specialCommentMarker; 
 import didemodulemanager : ModuleManager; 
 
-import het.draw2d : RectClamperF; 
-
 class BuildMessageManager
 {
 	mixin SmartChild!(

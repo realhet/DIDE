@@ -7,7 +7,6 @@ import didemodulemanager : ModuleManager;
 
 import het.algorithm : restrictPos_normal, restrictPos_editor; 
 import het.inputs: ClickDetector; 
-import het.draw2d: RectClamperF; 
 
 class TextSelectionManager
 {
