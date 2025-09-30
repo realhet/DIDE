@@ -267,7 +267,7 @@ class BuildMessageManager
 									arrowStyle = ArrowStyle.arrow; 
 									
 									const p = clamper.clampArrow(b.center); 
-									line(p); 
+									line(p[0], p[1]); 
 									updateNearestSearchResult(distance(mousePos, p[1]), sr); 
 								}
 							}

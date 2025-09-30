@@ -1309,7 +1309,7 @@ class Workspace : Container, IWorkspace
 				foreach(i; -10..10)
 				{
 					const t = (i + QPS.value(0.5 * second).fract) / 3; 
-					dr.point((t+t^^5)*100, 0); 
+					dr.point(vec2((t+t^^5)*100, 0)); 
 				}
 			} 
 		} 

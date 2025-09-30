@@ -294,7 +294,7 @@ version(/+$DIDE_REGION+/all)
 		
 		void drawOverlay(Drawing dr)
 		{
-			if(0) dr.mmGrid(view); 
+			version(/+$DIDE_REGION+/none) { if(0) dr.mmGrid(view); }
 			
 			workspace.customDraw(dr); 
 			

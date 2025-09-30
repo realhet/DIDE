@@ -820,14 +820,13 @@ class Builder : IBuildServices
 										{
 											flags.clickable = false; 
 											innerSize = vec2(w, fh); 
+											bkColor = mix(bkColor, clGray, .175f); 
 											
 											static drawProgress(
-												vec2 size, int compiled, int inFlight, int total,
+												Drawing dr, vec2 size, int compiled, int inFlight, int total,
 												RGB clBackground, RGB clQueued, RGB clCompiled
 											)
 											{
-												auto dr = new Drawing; 
-												
 												auto r = bounds2(vec2(0), size); 
 												if(!r.empty)
 												{
@@ -853,15 +852,14 @@ class Builder : IBuildServices
 												
 												//Todo: a szinezes lehetne error/warning alapjan is.  A rectangle belseje lehetne olyan szinu.
 												//Todo: a legutolso forditas eredmenye maradjon kint. Ha projectet valt, akkor tunjon el.
-												
-												return dr; 
 											} 
-											bkColor = mix(bkColor, clGray, .175f); 
-											addOverlayDrawing(
-												drawProgress(
-													innerSize, compiledModules, inFlight, totalModules, 
-													bkColor, mix(bkColor, clGray, .25f), clAccent
-												)
+											addDrawCallback(
+												((Drawing dr, .Container cntr) {
+													drawProgress(
+														dr, cntr.innerSize, compiledModules, inFlight, totalModules, 
+														cntr.bkColor, mix(cntr.bkColor, clGray, .25f), clAccent
+													); 
+												})
 											); 
 										}
 									); 

@@ -410,7 +410,7 @@ struct CaretPos
 				dr.vLine(pos.x, pos.y+shrink, pos.y+height-shrink); 
 			}
 			else
-			{ dr.vLine(pos, pos.y+height); }
+			{ dr.vLine(pos.x, pos.y, pos.y+height); }
 		}
 	} 
 			

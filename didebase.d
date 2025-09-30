@@ -360,14 +360,17 @@ struct bloodScreenEffect
 		
 		void glDraw()
 		{
+			NOTIMPL; 
 			if(intensity)
 			{
-				with((cast(GLWindow)(mainWindow)))
-				with(scoped!Drawing)
-				{
-					color = clRed; alpha = 1-(1-intensity)^^2; 
-					fillRect(clientBounds); 
-					glDraw(viewGUI); 
+				version(/+$DIDE_REGION+/none) {
+					with((cast(GLWindow)(mainWindow)))
+					with(scoped!Drawing)
+					{
+						color = clRed; alpha = 1-(1-intensity)^^2; 
+						fillRect(clientBounds); 
+						glDraw(viewGUI); 
+					}
 				}
 			}
 		} 

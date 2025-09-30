@@ -115,7 +115,7 @@ version(/+$DIDE_REGION ChangeIndicator+/all)
 			}
 					
 			//if(clamper.overlaps(ci.bounds)){
-				dr.vLine(ci.pos, ci.pos.y + ci.height); 
+				dr.vLine(ci.pos.x, ci.pos.y, ci.pos.y + ci.height); 
 			//}else{
 			//dr.vLine(clamper.clamp(ci.center), lod.pixelSize);  //opt: result of claming should be cached...
 			//}
