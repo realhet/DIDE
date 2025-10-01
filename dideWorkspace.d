@@ -100,7 +100,7 @@ class Workspace : Container, IWorkspace
 			help.initialize; 
 			help.textSelections = textSelections; 
 			
-			flags.targetSurface = 0; 
+			flags.targetSurface = TargetSurface.world; 
 			flags.noBackground = true; 
 			
 			structureMap = new StructureMap; 

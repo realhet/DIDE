@@ -1439,7 +1439,7 @@ version(/+$DIDE_REGION+/all) {
 				if(cached_isButtonCommand) if(auto m = moduleOf(this)) m.visibleButtonComments ~= this; 
 			} 
 			
-			void generateUI(bool en, int targetSurface_=0)
+			void generateUI(bool en, TargetSurface targetSurface_=TargetSurface.world)
 			{
 				if(isSpecialComment)
 				{

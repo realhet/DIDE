@@ -226,7 +226,7 @@ class BuildMessageManager
 						far = lod.level>1,
 						extra = lod.pixelSize* (2.5f*blink+.5f + extraThickness),
 						
-						clamper = RectClamperF(im.getView, arrowThickness*2); 
+						clamper = RectClamperF(im.view_world, arrowThickness*2); 
 					
 					bool isVisible(in bounds2 b)
 					{ return clamper.overlaps(b); } 

@@ -1429,7 +1429,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			CodeNode[] visibleConstantNodes; 
 			
-			void UI_constantNodes(bool en, int targetSurface_=0)
+			void UI_constantNodes(bool en, TargetSurface targetSurface_=TargetSurface.world)
 			{
 				foreach(node; visibleConstantNodes.map!((a)=>(cast(NiceExpression)(a))).filter!"a")
 				{ node.generateUI(en, targetSurface_); }
@@ -1440,7 +1440,7 @@ version(/+$DIDE_REGION+/all)
 		{
 			CodeComment[] visibleButtonComments; 
 			
-			void UI_buttonComments(bool en, int targetSurface_=0)
+			void UI_buttonComments(bool en, TargetSurface targetSurface_=TargetSurface.world)
 			{
 				foreach(cmt; visibleButtonComments)
 				cmt.generateUI(en, targetSurface_); 

@@ -2,7 +2,7 @@
 //@compile --d-version=stringId
 
 //@debug
-//@release
+///@release
 import core.thread, std.concurrency; 
 
 import didebase, dideSyntaxExamples; 
@@ -151,7 +151,7 @@ version(/+$DIDE_REGION+/all)
 	//MainOverlay //////////////////////////////////////////////////////////
 	class MainOverlayContainer : het.ui.Container {
 		this()
-		{ flags.targetSurface = 0; } 
+		{ flags.targetSurface = TargetSurface.world; } 
 		override void onDraw(Drawing dr)
 		{ frmMain.drawOverlay(dr); } 
 	} 
@@ -721,17 +721,17 @@ FPS=$(FPS
 					(
 						{
 							version(/+$DIDE_REGION Temporarily switch to 'view' surface. Slider needs the correct mousePos.+/all)
-							{ selectTargetSurface(0); scope(exit) selectTargetSurface(1); }
+							{ selectTargetSurface(TargetSurface.world); scope(exit) selectTargetSurface(TargetSurface.gui); }
 							auto enabledModule = workspace.modules.primaryModule; 
 							const oldStyle = style; scope(exit) style = oldStyle; 
 							
 							mixin(求each(q{m},q{workspace.modules.modules},q{
 								const moduleIsEnabled = m is enabledModule && !m.isReadOnly; 
-								m.UI_constantNodes(moduleIsEnabled, 0); 
+								m.UI_constantNodes(moduleIsEnabled, TargetSurface.world); 
 							})); 
 							
 							const oldTheme = theme; scope(exit) style = oldStyle; 
-							theme = "tool"; mixin(求each(q{m},q{workspace.modules.modules},q{m.UI_buttonComments(!m.isReadOnly, 0); })); 
+							theme = "tool"; mixin(求each(q{m},q{workspace.modules.modules},q{m.UI_buttonComments(!m.isReadOnly, TargetSurface.world); })); 
 						}
 					); 
 					

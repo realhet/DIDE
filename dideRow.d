@@ -995,7 +995,7 @@ version(/+$DIDE_REGION+/all) {
 				
 				if(
 					lod.calcVisibleSize(outerHeight)<6 
-					&& im.actTargetSurface==0 /+Note: LOD is only enabled on the world view, not on the UI+/
+					&& im.targetSurfaceBeingDrawn==TargetSurface.world /+Note: LOD is only enabled on the world view, not on the UI+/
 				)
 				{ drawLowDetail; }
 				else
