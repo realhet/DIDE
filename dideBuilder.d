@@ -259,7 +259,7 @@ class Builder : IBuildServices
 	
 	
 	protected void clearDebugImageBlobs()
-	{ mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures.invalidate(f); })); } 
+	{ mixin(求each(q{f},q{debugImageBlobs.byKey},q{bitmaps.remove(f); textures_invalidate(f); })); } 
 	
 	protected void resetBuildState()
 	{

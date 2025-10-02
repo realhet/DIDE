@@ -972,16 +972,16 @@ version(/+$DIDE_REGION+/all) {
 								bnd.left += w; bnd.right -= w; 
 							}
 							
-							static int[ligatures.length] stIdx; 
+							static TexHandle[ligatures.length] stIdx; 
 							if(stIdx[0]==0)
 							{
 								auto ts = tsNormal; 
 								foreach(i, ch; ligatures.map!"a.dst".array)
-								stIdx[i] = ch.fontTexture(ts); 
+								stIdx[i] = fontTexture(ch, ts); 
 							}
 							
 							dr.color = rSrc[0].fontColor; 
-							dr.drawFontGlyph(stIdx[ligatureIdx], bnd, rSrc[0].bkColor, rSrc[0].fontFlags); 
+							dr.drawFontGlyph((cast(int)(stIdx[ligatureIdx])), bnd, rSrc[0].bkColor, rSrc[0].fontFlags); 
 							
 							/+
 								Todo: Ez nem teljesen jo, mert a != es a == nem ugyanolyan szeles, ha 2 karakterbol van.
