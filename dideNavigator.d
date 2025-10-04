@@ -22,7 +22,7 @@ class Navigator : INavigator
 	
 	protected bool MMBReleasedWithoutScrolling()
 	{
-		return inputs.MMB.released && (cast(GLWindow)(mainWindow)).mouse.hoverMax.screen.manhattanLength<=2; 
+		return inputs.MMB.released && mainWindow.mouse.hoverMax.screen.manhattanLength<=2; 
 		//Todo: Ctrl+left click should be better. I think it will not conflict with the textSelection, only with module selection.
 	} 
 	

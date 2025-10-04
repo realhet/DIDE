@@ -363,6 +363,7 @@ struct bloodScreenEffect
 			NOTIMPL; 
 			if(intensity)
 			{
+				//Todo: repaor this on Vulkan
 				version(/+$DIDE_REGION+/none) {
 					with((cast(GLWindow)(mainWindow)))
 					with(scoped!Drawing)

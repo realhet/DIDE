@@ -1,8 +1,10 @@
 //@exe
-//@compile --d-version=stringId
-
 //@debug
 //@release
+
+//@compile --d-version=stringId
+///@compile --d-version=VulkanUI
+
 import core.thread, std.concurrency; 
 
 import didebase, dideSyntaxExamples; 
@@ -14,8 +16,15 @@ import didebuilder : Builder;
 import dideworkspace : Workspace; 
 
 import het.inputs : callVerbs; 
-import het.opengl : gl, GL_COLOR_BUFFER_BIT; 
-import het.win : _createMainWindow; 
+
+/+
+	Todo: /+H1: VulkanUI transition+/
+	[ ] afterPaint, bloodScreenEffect.glDraw
+	[ ] a legvegen a version(VulkanUI) dolgokat eltavolitani.
++/
+
+//import het.opengl : gl, GL_COLOR_BUFFER_BIT; 
+//import het.win : _createMainWindow; 
 
 version(/+$DIDE_REGION+/all)
 {
@@ -195,7 +204,7 @@ version(/+$DIDE_REGION+/all)
 	{ return a.cellInfo.text; } 
 	
 	
-	class FrmMain : GLWindow
+	class FrmMain : UIWindow
 	{
 		mixin autoCreate; 
 		
@@ -286,7 +295,10 @@ version(/+$DIDE_REGION+/all)
 		override void onPaint()
 		{
 			//onPaint ///////////////////////////////////////
-			gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); 
+			version(VulkanUI)
+			{ NOTIMPL("Set screen background color in vulkan"); }
+			else
+			{ gl.clearColor(clBlack); gl.clear(GL_COLOR_BUFFER_BIT); }
 			
 			toolPalette.visibleConstantNodes.clear; 
 			toolPalette.visibleButtonComments.clear; 
@@ -337,8 +349,16 @@ version(/+$DIDE_REGION+/all)
 			*/
 		} 
 		
-		override void afterPaint()
-		{ bloodScreenEffect.glDraw; } 
+		version(VulkanUI)
+		{/+Todo: repair this override +/}
+		else
+		{
+			override void afterPaint()
+			{ bloodScreenEffect.glDraw; } 
+		}
+		
+		
+		
 		
 		override void onUpdate()
 		{

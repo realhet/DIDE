@@ -598,7 +598,7 @@ struct ContainerSelectionManager(T : Container)
 			if(auto tbl = (cast(ScrumTable)(hoveredModule)))
 			{
 				popupModule = tbl; 
-				popupGuiPos = (cast(GLWindow)(mainWindow)).viewGUI.mousePos.vec2; 
+				popupGuiPos = (cast(UIWindow)(mainWindow)).viewGUI.mousePos.vec2; 
 				popupWorldPos = mainViewMousePos; 
 				justPopped = true; 
 			}
