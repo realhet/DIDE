@@ -3,7 +3,7 @@
 //@release
 
 //@compile --d-version=stringId
-///@compile --d-version=VulkanUI
+//@compile --d-version=VulkanUI
 
 import core.thread, std.concurrency; 
 
