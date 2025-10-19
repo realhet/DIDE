@@ -90,9 +90,9 @@ version(/+$DIDE_REGION ChangeIndicator+/all)
 			{
 				enum ofs = vec2(-4, 0); 
 				if(cast(CodeRow)cntr)
-				addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs), outerHeight, 4, mask); 
+				addGlobalChangeIndicator(dr.inputTransform(outerPos+ofs).inputTransformFix, outerHeight, 4, mask); 
 				else if(cast(CodeColumn)cntr)
-				addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs), innerHeight, 1, mask); 
+				addGlobalChangeIndicator(dr.inputTransform(innerPos+ofs).inputTransformFix, innerHeight, 1, mask); 
 			}
 		}
 	} 

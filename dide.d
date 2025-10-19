@@ -350,7 +350,11 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		version(VulkanUI)
-		{/+Todo: repair this override +/}
+		{
+			/+Todo: repair this override +/
+			override void afterImDraw()
+			{ NOTIMPL("bloodScreenEffect.glDraw"); } 
+		}
 		else
 		{
 			override void afterPaint()

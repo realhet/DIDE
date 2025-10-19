@@ -99,7 +99,7 @@ version(/+$DIDE_REGION+/all) {
 			assert(collector is this); 
 			
 			if(node.caption != "")
-			visibleNamedNodes ~= Rec(node, dr.inputTransform(node.outerBounds)); 
+			visibleNamedNodes ~= Rec(node, dr.inputTransform(node.outerBounds).inputTransformFix); 
 		} 
 		
 		void endCollect(Drawing dr)

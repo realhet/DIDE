@@ -1330,7 +1330,7 @@ class Workspace : Container, IWorkspace
 			structureMap.beginCollect; 
 			super.draw(dr); 
 			structureMap.endCollect(dr); 
-			//customDraw(dr); 
+			
 		} 
 	}
 } 
