@@ -71,7 +71,13 @@ of type `$(wild[2])`".text;
 				} 
 			},
 			{
-				/+Todo: /+Error: no property /+Code: errorlone+/ for type /+Code: FontSpec!(FontId)+/, did you mean /+Code: vulkanwin.FontSpec!(FontId).FontSpec.errorline+/?+/+/
+				/+
+					Todo: /+Error: no property /+Code: errorlone+/ for type /+Code: FontSpec!(FontId)+/, did you mean /+Code: vulkanwin.FontSpec!(FontId).FontSpec.errorline+/?+/
+					/+
+						Error: no property /+Code: LINES+/ for type /+Code: VK_POLYGON_MODE_+/. Did you mean /+Code: VK_POLYGON_MODE_.LINE+/ ? /+Hidden: /+$DIDE_LOC c:\D\libs\het\VulkanWin.d-mixin-5084(5087,2)+/+/
+						enum /+Code: VK_POLYGON_MODE_+/ defined here /+$DIDE_LOC c:\D\libs\het\Vulkan.d(1473,3)+/
+					+/
+				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
 					return i"no property `$(wild[0])`$(BTN_select
