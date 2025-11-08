@@ -206,7 +206,7 @@ version(/+$DIDE_REGION+/all)
 	
 	class FrmMain : UIWindow
 	{
-		mixin autoCreate; 
+		mixin autoCreate; mixin SetupMegaShader!""; 
 		
 		
 		@STORED {
