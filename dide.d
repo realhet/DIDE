@@ -3,7 +3,7 @@
 //@release
 
 //@compile --d-version=stringId
-//@compile --d-version=VulkanUI
+///@compile --d-version=VulkanUI
 
 import core.thread, std.concurrency; 
 
@@ -206,7 +206,7 @@ version(/+$DIDE_REGION+/all)
 	
 	class FrmMain : UIWindow
 	{
-		mixin autoCreate; mixin SetupMegaShader!""; 
+		mixin autoCreate; version(VulkanUI) mixin SetupMegaShader!""; 
 		
 		
 		@STORED {

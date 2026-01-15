@@ -474,6 +474,7 @@ class DDB
 				Path(`c:\d\ldc2\import`),
 				Path(`c:\d\libs`),
 				File(appPath, `$stdlib_cache.dat`)
+				/+Todo: These paths must come from a central place+/
 			); 
 			treeView = new typeof(treeView); 
 			resultTreeView = new typeof(resultTreeView); 

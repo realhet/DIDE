@@ -1274,7 +1274,7 @@ class Workspace : Container, IWorkspace
 			
 			if(lod.moduleLevel || buildServices.building) modules.drawModuleBuildStates(dr); 
 			
-			modules.drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua  ); 
+			modules.drawModuleLoadingHighlights!"fileLoaded"(dr, clAqua); 
 			modules.drawModuleLoadingHighlights!"fileSaved" (dr, clYellow); 
 			
 			modules.drawMainModuleOutlines(dr); 

@@ -680,9 +680,9 @@ struct ContainerSelectionManager(T : Container)
 		const t0 = now; 
 		foreach(m; modules)
 		{
-			const dt = (t0-mixin("m."~field)).value(2.5f*second); 
+			const dt = (t0-mixin("m."~field)).value(1*second); 
 			if(dt<1)
-			drawHighlight(dr, m, c, sqr(1-dt)); 
+			drawHighlight(dr, m, c, sqr(1-dt)/2); 
 		}
 	} 
 	

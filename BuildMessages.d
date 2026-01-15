@@ -77,6 +77,11 @@ of type `$(wild[2])`".text;
 						Error: no property /+Code: LINES+/ for type /+Code: VK_POLYGON_MODE_+/. Did you mean /+Code: VK_POLYGON_MODE_.LINE+/ ? /+Hidden: /+$DIDE_LOC c:\D\libs\het\VulkanWin.d-mixin-5084(5087,2)+/+/
 						enum /+Code: VK_POLYGON_MODE_+/ defined here /+$DIDE_LOC c:\D\libs\het\Vulkan.d(1473,3)+/
 					+/
+					/+
+						Error: no property /+Code: op+/ for type /+Code: ScanOp+/. Did you mean /+Code: ScanOp.pop+/ ? /+Hidden: /+$DIDE_LOC c:\D\unsorted\amdb25_test.d(504,26)+/+/
+						enum /+Code: ScanOp+/ defined here /+$DIDE_LOC c:\D\libs\het\Parser.d(3907,3)+/
+					+/
+					/+Error: module /+Code: het.db+/ import /+Code: SortedArrocArray+/ not found, did you mean struct /+Code: het.db.SortedAssocArray(K, V)+/? /+Hidden: /+$DIDE_LOC c:\D\unsorted\amdb25_test.d(6,8)+/+/+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
