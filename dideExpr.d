@@ -2017,7 +2017,8 @@ version(/+$DIDE_REGION+/all) {
 					q{
 						(表([
 							[q{"expression blocks"},q{
-								lbl: 	st; 	{blk}	(ex)	[idx] 
+								lbl: 	st; 	{blk}
+								(ex)	[idx] 
 								"s"	`s`	q{s}	r"s"	'c'
 								i"s"	i`s`	iq{s}	$(a)	x"00"
 								i"s".text	i`s`.text	iq{s}.text	impor(a)
@@ -2026,10 +2027,10 @@ version(/+$DIDE_REGION+/all) {
 								pragma(a)	pragma(msg,i"a".text.注)
 								typeof(a)	typeid(a)
 								__traits(a)	__rvalue(a)
-								__ctfeWrite(a)
-								
+								__ctfeWrite(a)	
 							}],
 							[q{"spec. statements"},q{
+								pragma(msg,i"$()".text.注); 
 								return; 	return x; 
 								break; 	break lb; 
 								continue; 	continue lb; 
@@ -2054,11 +2055,6 @@ trunc"},q{
 dot, cross"},q{((a)*(b)) ((a)*(b)*(c)) ((a).dot(b)) ((a).cross(b))}],
 							[q{"divide, sqrt, root, 
 power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b}))}],
-							[q{"tenary relation"},q{
-								mixin(等(q{a},q{b},q{c}))
-								mixin(界0(q{a},q{b},q{c})) mixin(界1(q{a},q{b},q{c}))
-								mixin(界2(q{a},q{b},q{c})) mixin(界3(q{a},q{b},q{c}))
-							}],
 							[q{"color literals"},q{(RGB()) (RGBA())}],
 						]))
 					}
@@ -2068,6 +2064,11 @@ power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b
 					"Expressions", "(1)", 
 					q{
 						(表([
+							[q{"tenary relation"},q{
+								mixin(等(q{a},q{b},q{c}))
+								mixin(界0(q{a},q{b},q{c})) mixin(界1(q{a},q{b},q{c}))
+								mixin(界2(q{a},q{b},q{c})) mixin(界3(q{a},q{b},q{c}))
+							}],
 							[q{"tenary operator"},q{
 								((a)?(b):(c))	((a)?(b) :(c)) 
 								((a) ?(b):(c)) ((a)?(b) : (c)) ((a) ?(b) :(c))
@@ -2083,13 +2084,13 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x119393617740F).檢(expr)) ((0x119573617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x119A73617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x119603617740F).檢(expr)) ((0x1197E3617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x119CE3617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x11A4B3617740F))) (互!((bool),(1),(0x11A703617740F))) (互!((float/+w=6+/),(1.000),(0x11A953617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11AD43617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11B143617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11B803617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11C033617740F}))
+								(互!((bool),(0),(0x11A723617740F))) (互!((bool),(1),(0x11A973617740F))) (互!((float/+w=6+/),(1.000),(0x11ABC3617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11AFB3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11B3B3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11BA73617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11C2A3617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{
