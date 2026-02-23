@@ -1203,6 +1203,8 @@ version(/+$DIDE_REGION+/all) {
 			with(CodeComment.Type)
 			if(cmt.type.among(cComment, dComment)) return true; 
 			
+			if((cast(CodeString)(parent))) return true; 
+			
 			return false; 
 		} 
 		

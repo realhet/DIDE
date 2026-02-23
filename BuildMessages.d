@@ -82,6 +82,7 @@ of type `$(wild[2])`".text;
 						enum /+Code: ScanOp+/ defined here /+$DIDE_LOC c:\D\libs\het\Parser.d(3907,3)+/
 					+/
 					/+Error: module /+Code: het.db+/ import /+Code: SortedArrocArray+/ not found, did you mean struct /+Code: het.db.SortedAssocArray(K, V)+/? /+Hidden: /+$DIDE_LOC c:\D\unsorted\amdb25_test.d(6,8)+/+/+/
+					/+Error: module /+Code: core.time+/ import /+Code: Monotime+/ not found, did you mean alias /+Code: core.time.MonoTime+/? /+Hidden: /+$DIDE_LOC c:\D\libs\het\arsd\core.d(5,8)+/+/+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
