@@ -83,6 +83,20 @@ of type `$(wild[2])`".text;
 					+/
 					/+Error: module /+Code: het.db+/ import /+Code: SortedArrocArray+/ not found, did you mean struct /+Code: het.db.SortedAssocArray(K, V)+/? /+Hidden: /+$DIDE_LOC c:\D\unsorted\amdb25_test.d(6,8)+/+/+/
 					/+Error: module /+Code: core.time+/ import /+Code: Monotime+/ not found, did you mean alias /+Code: core.time.MonoTime+/? /+Hidden: /+$DIDE_LOC c:\D\libs\het\arsd\core.d(5,8)+/+/+/
+					/+
+						Error: no property /+Code: safeUtf8+//+$DIDE_BTN "👆" op=select str="safeUtf8"+/ for /+Code: toStr((cast(const(char)*)status)[0..256])+//+$DIDE_BTN "👆" op=select str="toStr((cast(const(char)*)status)[0..256])"+/
+						of type /+Code: string+/ /+Hidden: /+$DIDE_LOC c:\D\unsorted\firebird.d(287,55)+/+/
+						did you mean function /+Code: safeUTF8+/? /+$DIDE_LOC c:\D\libs\het\Package.d(7146,10)+/
+					+/
+					/+
+						Error: no property /+Code: sqldid+//+$DIDE_BTN "👆" op=select str="sqldid"+/ for /+Code: sqlda+//+$DIDE_BTN "👆" op=select str="sqlda"+/
+						of type /+Code: firebird.XSQLDA*+/ /+Hidden: /+$DIDE_LOC c:\D\unsorted\firebird.d(443,9)+/+/
+						did you mean variable /+Code: sqldaid+/? /+$DIDE_LOC c:\D\unsorted\firebird.d(50,10)+/
+					+/
+					/+
+						Error: no property /+Code: read_commited+/ for type /+Code: isc_tpb_+/. Did you mean /+Code: isc_tpb_.read_committed+/ ? /+Hidden: /+$DIDE_LOC c:\D\unsorted\firebird.d(404,42)+/+/
+						enum /+Code: isc_tpb_+/ defined here /+$DIDE_LOC c:\D\unsorted\firebird.d(103,1)+/
+					+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
