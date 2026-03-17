@@ -26,122 +26,127 @@ import het.inputs : callVerbs;
 //import het.opengl : gl, GL_COLOR_BUFFER_BIT; 
 //import het.win : _createMainWindow; 
 
+//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
+//Todo: Ability to change the whitespace after a	preposition: space, tab, newline
+//Todo: toggle space/tab/newline after prepositions.
+//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.  ldc2 -ftime-trace,  timetrace2txt, -> web perfetto.ui
+//Todo: automatic spaces around operators and ligatures.
+
+//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
+
+//Todo: wholeWords search (eleje/vege kulon)
+//Todo: filter search results per file and per syntax (comment, string, code, etc)
+
+//Todo: het.math.cmp integration with std
+
+//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
+
+/+
+	Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen 
+	lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
++/
+//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
+
+//Todo: save/restore buildsystem cache on start/exit
+
+//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
+//Todo: kinetic scroll
+
+//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
+
+//Todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
+
+//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
+//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
+
+//Todo: markdown a commentekben.
+
+//Todo: handle newline before and after else.
+//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
+//Todo: tab removal from the left side of multiline comments
+
+//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
+
+/+
+	Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
+	Verify it still works in between adjacent preposition.
++/
+
+//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
+/+
+	Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
+		const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
++/
+
+//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
+
+//Todo: Vízszintes elválasztó vonal (0x000C szabad): FormFeed. (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
+/+
+	Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. 
+	Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
++/
+
+//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
+
+//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
+//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
+//Bug: multiselect.copy -> items are in RANDOM order
+
+//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
+
+//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
+/+Todo: Nem megy az Alt+. emoji beszuras, mert elveszti a fokiszt es akkor eltunteti a selections.+/
+/+
+	Todo: ha kijelolok tobb szoveget, akkor a masolas utan beillesztve random sorrendben fogja azokat beszurni. 
+	Kibaszottul idegesítô! 
++/
+/+Todo: Implement predSwitch as a 2 column grid!+/
+/+
+	Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
+	After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
++/
+
+/+
+	Todo: Better debug/unittesting/code coverage
+	-d-debug=...
+	-unittest
+	-cov
+	-release
+	/+
+		Code: auto UT(alias fun)()
+		{
+			bool chk() { fun(); return true; } 
+			assert(chk); 
+			static assert(chk); 
+		} 
+		
+		unittest
+		{
+			debug(test01)
+			UT!((){
+				int a=4; 
+				assert(a==6, "hat"); 
+				assert(a==5); 
+			}); 
+		} 
+		
+		unittest {
+			debug(test02)
+			UT!((){
+				int a=6; 
+				assert(a==6, "hat"); 
+			}); 
+		} 
+	+/
++/
+
+/+Todo: Shift+Alt+Ins, Ctrl+Shift+V: paste and select+/
+/+Todo: Ctrl+F4 / Alt+C calculator. (expr evaluator)+/
+
+
+
 version(/+$DIDE_REGION+/all)
 {
-	//Todo: Ability to change comment type // /+ /*	and also todo: note: bug:
-	//Todo: Ability to change the whitespace after a	preposition: space, tab, newline
-	//Todo: toggle space/tab/newline after prepositions.
-	//Todo: Easily Reduce Build Times by Profiling	the D Compiler   profiling the LDC2 compiler.  ldc2 -ftime-trace,  timetrace2txt, -> web perfetto.ui
-	//Todo: automatic spaces around operators and ligatures.
-	
-	//Todo: dide builder to ignore unknown modules, like: derelict.util.loader    Because sometimes (version()) they will not be compiled at all.
-	
-	//Todo: wholeWords search (eleje/vege kulon)
-	//Todo: filter search results per file and per syntax (comment, string, code, etc)
-	
-	//Todo: het.math.cmp integration with std
-	
-	//Todo: accept repeared keystrokes even when the FPS is low. (Ctrl+X Shift+Del Del Backspace are really slow now.)
-	
-	/+
-		Todo: cs Kod szerkesztonek feltetlen csinald meg, hogy kijelolt szovegreszt kulon ablakban tudj editalni tobb ilyen 
-		lehessen esetleg ha egy fuggveny felso soran vagy akkor automatikusan rakja ki a fuggveny torzset
-	+/
-	//Todo: cs lehessen splittelni: pl egyik tab full kod full scren, a masik tabon meg splittelve ket fuggveny
-	
-	//Todo: save/restore buildsystem cache on start/exit
-	
-	//Todo: Find: display a list of distinct words around the searched text. AKA Autocomplete for search.
-	//Todo: kinetic scroll
-	
-	//Todo: module hierarchy detector should run ARFTER save when pressing F9 (Not before when the contents is different in the file and in the editor)
-	
-	//Todo: frame time independent lerp for view.zoomAroundMouse() https://youtu.be/YJB1QnEmlTs?t=482
-	
-	//Todo: Search: x=12  match -> x =12,	x =  12 too. Automatic whitespaces.
-	//Todo: Structure error visibility: In	Highighted view, mark the onclosed brackets too. Not just the wrong brackets. c:\dl\broken_structure.d
-	
-	//Todo: markdown a commentekben.
-	
-	//Todo: handle newline before and after else.
-	//Todo: switch(c){ static foreach(a; b) case a[0]: return a[1]; default: return 0; }    <- It case label must suck statement into it. Not just sop at the :
-	//Todo: tab removal from the left side of multiline comments
-	
-	//Todo: inline struct.  Use it to model persistent and calculated fields of a struct/class  -> DConf Online '22 - Model all the Things!
-	
-	/+
-		Todo: Properly handle Noman's land between preposition and the statement next to. It could be space, tab, newline with optional comments.
-		Verify it still works in between adjacent preposition.
-	+/
-	
-	//Todo: Implement q"a ... a" identifier-qstring handling in new DIDE DLang Scanner.
-	/+
-		Todo: CharSetBits is an example to a divergent export import operation. Every save it prepends more tabs in front of it. Delimited string bug.
-			const str = q"/ NEWLINE TAB blabla NEWLINE TAB/"; 
-	+/
-	
-	//Todo: Szerenyebb legyen az atomvillanas effekt! (module highlight, bele a settingsbe!)
-	
-	//Todo: Vízszintes elválasztó vonal (0x000C szabad): FormFeed. (Függôleges elválasztó vonal már van: Vertical Tab, azaz a hasábra tördelés)
-	/+
-		Todo: Specialis karakter: Innentôl jobbra igazítás. Kellene ilyen tipusu Elastic Tab is a számokhoz. 
-		Elastic tabs, ami a balra levo szamot jobbra huzza. Ezt ki kell találni, nem kerek.
-	+/
-	
-	//Todo: Location Slots: These should actively updated when selected.  Not just saved/loaded.  Should be always saved.
-	
-	//Todo: UndoRedo: mindig jelolje ki a szovegreszeket, ahol a valtozasok voltak! MultiSelectionnal az osszeset!
-	//Todo: UndoRedo: hash ellenorzes a teljes dokumentumra.
-	//Bug: multiselect.copy -> items are in RANDOM order
-	
-	//Todo: Doodling layer. (rajzolgatas, bekarikazas, nyilazas, satirozas)
-	
-	//Todo: find: There must be a button to repeat find operation. The [Find] caption itself...
-	/+Todo: Nem megy az Alt+. emoji beszuras, mert elveszti a fokiszt es akkor eltunteti a selections.+/
-	/+
-		Todo: ha kijelolok tobb szoveget, akkor a masolas utan beillesztve random sorrendben fogja azokat beszurni. 
-		Kibaszottul idegesítô! 
-	+/
-	/+Todo: Implement predSwitch as a 2 column grid!+/
-	/+
-		Todo: single clicking on a module which is not has a cursor, should only deselect the existing cursors and select the whole module. 
-		After this on a successful doubleclict, it could place a new cursor there, (only when modifiers = none)
-	+/
-	
-	/+
-		Todo: Better debug/unittesting/code coverage
-		-d-debug=...
-		-unittest
-		-cov
-		-release
-		/+
-			Code: auto UT(alias fun)()
-			{
-				bool chk() { fun(); return true; } 
-				assert(chk); 
-				static assert(chk); 
-			} 
-			
-			unittest
-			{
-				debug(test01)
-				UT!((){
-					int a=4; 
-					assert(a==6, "hat"); 
-					assert(a==5); 
-				}); 
-			} 
-			
-			unittest {
-				debug(test02)
-				UT!((){
-					int a=6; 
-					assert(a==6, "hat"); 
-				}); 
-			} 
-		+/
-	+/
-	
 	enum visualizeMarginsAndPaddingUnderMouse = (常!(bool)(0)); //Todo: make this a debug option in a menu
 	
 	auto frmMain()
