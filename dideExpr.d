@@ -1159,7 +1159,8 @@ version(/+$DIDE_REGION+/all) {
 			{
 				if(opArgs && opArgs.rowCount>0)
 				{
-					const keyword = opArgs.rows[0].chars.until!(
+					const keyword = 
+					opArgs.rows[0].chars.until!(
 						not!((a)=>(
 							a.isDLangIdentifierCont
 							|| a=='-'
@@ -1167,7 +1168,9 @@ version(/+$DIDE_REGION+/all) {
 					).text; 
 					if(keyword!="" && keyword.front.isDLangIdentifierStart)
 					foreach(lang; EnumMembers!Language)
-					if(sameText(languageKeyword[lang], keyword)) { language = lang; break; }
+					if(sameText(languageKeyword[lang], keyword))
+					{ language = lang; break; }
+					
 				}
 			}
 			
@@ -1177,9 +1180,35 @@ version(/+$DIDE_REGION+/all) {
 		auto opArgs() => operands[1]; 
 		auto opSrc() => operands[2]; 
 		
-		this(Container parent, int templateIdx_, CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null)
-		{ super(__traits(parameters)); detectLanguageAndLayout; } 
+		bool opArgsWasNonEmpty; 
 		
+		this(
+			Container parent, int templateIdx_, 
+			CodeColumn col0=null, CodeColumn col1 = null, CodeColumn col2 = null
+		)
+		{
+			super(__traits(parameters)); detectLanguageAndLayout; 
+			
+			/+
+				Todo: Itt tartok. Ennek bele kell mennie a ()-be is!
+				Es ott valami flaggal jelolnie kellene, hogy ez SQL szintaxis.
+				A resyntaxer pedig azt nézhetné.
+			+/
+			opSrc.resyntax; 
+		} 
+		
+		override void doBuildSourceText(ref SourceTextBuilder builder)
+		{
+			with(builder)
+			{
+				put(regeneratedOperator); put('('); 
+					put("(位!())"); 	put(','); 
+					put("iq{", opArgs, "}"); 	put(','); 
+					put("iq{", opSrc, "}"); 
+				put(')'); 
+			}
+		} 
+		
 		override void doRearrange(ref CodeNodeBuilder builder)
 		{
 			with(builder)
@@ -1215,23 +1244,28 @@ version(/+$DIDE_REGION+/all) {
 				}
 				
 				if(!language) put("external code "); 
-				put(opArgs); if(opArgs.empty) opArgs.bkColor = mix(bkColor, syntaxBkColor(skIdentifier1), .25f); 
-				if(isMultiRow) putNL; 
+				
+				bool showArgs = false; 
+				if(!opArgs.empty || opArgsWasNonEmpty)
+				{ showArgs = opArgsWasNonEmpty = true; }
+				if(language!=Language.SQL) showArgs = true; 
+				
+				if(showArgs)
+				{
+					if(opArgs.empty)
+					opArgs.bkColor = mix(bkColor, syntaxBkColor(skIdentifier1), .25f); 
+					
+					put(opArgs); put(' '); 
+				}
+				
+				if(isMultiRow) { putNL; put(' '); }
 				
 				const hasBrackets = language!=Language.SQL; 
-				put(((hasBrackets)?(" {"):(" "))); put(opSrc); put(((hasBrackets)?("} "):(" "))); 
+				put(((hasBrackets)?("{"):(""))); 
+					put(opSrc); 
+				put(((hasBrackets)?("} "):(" "))); 
 				
 				/+Link: https://www.shadertoy.com/view/3ftGR4+/
-			}
-		}  override void doBuildSourceText(ref SourceTextBuilder builder)
-		{
-			with(builder)
-			{
-				put(regeneratedOperator); put('('); 
-					put("(位!())"); 	put(','); 
-					put("iq{", opArgs, "}"); 	put(','); 
-					put("iq{", opSrc, "}"); 
-				put(')'); 
 			}
 		} 
 	} 
@@ -1964,8 +1998,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x104F43617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x105783617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x107263617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x107AA3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -1977,8 +2011,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x107C73617740F)))(互!((bool),(1),(0x107EB3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x1080F3617740F)))
-					(互!((float/+w=6+/),(1.000),(0x1085B3617740F)))
+					(互!((bool),(0),(0x109F93617740F)))(互!((bool),(1),(0x10A1D3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10A413617740F)))
+					(互!((float/+w=6+/),(1.000),(0x10A8D3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -1988,9 +2022,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10A523617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10A913617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10B033617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x10B823617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10C843617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10CC33617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10D353617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x10DB43617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2094,13 +2128,13 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x11D923617740F).檢(expr)) ((0x11DB03617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x11E003617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x11FC43617740F).檢(expr)) ((0x11FE23617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x120323617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x11EA43617740F))) (互!((bool),(1),(0x11EC93617740F))) (互!((float/+w=6+/),(1.000),(0x11EEE3617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x11F2D3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x11F6D3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11FD93617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1205C3617740F}))
+								(互!((bool),(0),(0x120D63617740F))) (互!((bool),(1),(0x120FB3617740F))) (互!((float/+w=6+/),(1.000),(0x121203617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1215F3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x1219F3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1220B3617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1228E3617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{

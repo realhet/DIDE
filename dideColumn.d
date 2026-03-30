@@ -221,6 +221,10 @@ version(/+$DIDE_REGION+/all) {
 						
 						default: 	if(s[0].isAlpha || s[0]=='_')
 						{
+							//Todo: SQL
+							if(s.among("SELECT", "FROM", "ORDER", "BY"))
+							print(i"##@##: $(typeid(col.getParent).toString): $(s.quoted)"); 
+							
 							if(auto kw = kwLookup(s))
 							{
 								with(KeywordCat)

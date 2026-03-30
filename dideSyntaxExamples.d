@@ -820,6 +820,13 @@ l2
 			}}())
 			/+saved:9204  loaded:9220+/
 		}; 
+	}version(none)
+	{
+		void a()
+		{
+			(查 ((位!()),iq{},iq{SELECT * (FROM) table})); 
+			(查((位!()),iq{},iq{Abcde})); 
+		} 
 	}
 }
 debug debug = hehehe; else version = hahaha; 
