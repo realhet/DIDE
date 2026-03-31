@@ -1189,12 +1189,43 @@ version(/+$DIDE_REGION+/all) {
 		{
 			super(__traits(parameters)); detectLanguageAndLayout; 
 			
-			/+
-				Todo: Itt tartok. Ennek bele kell mennie a ()-be is!
-				Es ott valami flaggal jelolnie kellene, hogy ez SQL szintaxis.
-				A resyntaxer pedig azt nézhetné.
-			+/
-			opSrc.resyntax; 
+			if(language==mixin(舉!((Language),q{SQL})))
+			{
+				/+
+					This is needed to initialize Node.subCells
+					/+
+						Opt: This is unoptimal, 
+						Need to handle languages earlier, in the highlighted pass.
+					+/
+				+/
+				with(opSrc) { needMeasure; measure; }
+				
+				fillLanguageId(opSrc, 1); 
+			}
+		} 
+		
+		void fillLanguageId(CodeColumn col, uint languageId)
+		{
+			if(col.flags.languageId!=languageId)
+			{
+				col.flags.languageId = languageId; 
+				foreach(node; col.byNode)
+				{
+					if(
+						(cast(Declaration)(node))
+						|| (cast(CodeBlock)(node)) && (
+							(cast(CodeBlock)(node)).type!=
+							CodeBlock.Type.interpolation
+						) 
+						|| (cast(NiceExpression)(node)) && !(cast(ShaderNode)(node))
+					)
+					{
+						foreach(subCol; node.subColumns)
+						{ fillLanguageId(subCol, languageId)/+recursion!+/; }
+					}
+				}
+				col.resyntax; 
+			}
 		} 
 		
 		override void doBuildSourceText(ref SourceTextBuilder builder)
@@ -1998,8 +2029,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x107263617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x107AA3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x109EF3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x10A733617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2011,8 +2042,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x109F93617740F)))(互!((bool),(1),(0x10A1D3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10A413617740F)))
-					(互!((float/+w=6+/),(1.000),(0x10A8D3617740F)))
+					(互!((bool),(0),(0x10CC23617740F)))(互!((bool),(1),(0x10CE63617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10D0A3617740F)))
+					(互!((float/+w=6+/),(1.000),(0x10D563617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2022,9 +2053,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10C843617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10CC33617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10D353617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x10DB43617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10F4D3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10F8C3617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10FFE3617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1107D3617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2128,13 +2159,13 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x11FC43617740F).檢(expr)) ((0x11FE23617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x120323617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x1228D3617740F).檢(expr)) ((0x122AB3617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x122FB3617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x120D63617740F))) (互!((bool),(1),(0x120FB3617740F))) (互!((float/+w=6+/),(1.000),(0x121203617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x1215F3617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x1219F3617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1220B3617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1228E3617740F}))
+								(互!((bool),(0),(0x1239F3617740F))) (互!((bool),(1),(0x123C43617740F))) (互!((float/+w=6+/),(1.000),(0x123E93617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x124283617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x124683617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x124D43617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x125573617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{

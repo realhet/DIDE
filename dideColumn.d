@@ -221,25 +221,27 @@ version(/+$DIDE_REGION+/all) {
 						
 						default: 	if(s[0].isAlpha || s[0]=='_')
 						{
-							//Todo: SQL
-							if(s.among("SELECT", "FROM", "ORDER", "BY"))
-							print(i"##@##: $(typeid(col.getParent).toString): $(s.quoted)"); 
-							
-							if(auto kw = kwLookup(s))
+							//It's an identifier. Check to see if it is a keyword
+							if(col.flags.languageId==0)
 							{
-								with(KeywordCat)
-								switch(kwCatOf(kw))
+								if(auto kw = kwLookup(s))
 								{
-									case Attribute: 	syntax = skAttribute; 	break; 
-									case Value: 	syntax = skBasicType; 	break; 
-									case BasicType: 	syntax = skBasicType; 	break; 
-									case UserDefiniedType: 	syntax = skKeyword; 	break; 
-									case SpecialFunct: 	syntax = skAttribute; 	break; 
-									case SpecialKeyword: 	syntax = skKeyword; 	break; 
-									default: 	syntax = skKeyword; 	break; 
+									with(KeywordCat)
+									switch(kwCatOf(kw))
+									{
+										case Attribute: 	syntax = skAttribute; 	break; 
+										case Value: 	syntax = skBasicType; 	break; 
+										case BasicType: 	syntax = skBasicType; 	break; 
+										case UserDefiniedType: 	syntax = skKeyword; 	break; 
+										case SpecialFunct: 	syntax = skAttribute; 	break; 
+										case SpecialKeyword: 	syntax = skKeyword; 	break; 
+										default: 	syntax = skKeyword; 	break; 
+									}
 								}
+								else syntax = skIdentifier1; 
 							}
-							else syntax = skIdentifier1; 
+							else
+							{ syntax = sqlSyntaxOf(s); }
 						}
 						else if(s[0].isSymbol || s[0].isPunctuation)
 						syntax = skSymbol; 

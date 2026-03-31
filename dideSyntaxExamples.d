@@ -824,8 +824,88 @@ l2
 	{
 		void a()
 		{
-			(查 ((位!()),iq{},iq{SELECT * (FROM) table})); 
-			(查((位!()),iq{},iq{Abcde})); 
+			(查 ((位!()),iq{},iq{
+				// First, create a new database (change the path to where you want it)
+				SET SQL DIALECT 3; 
+				CREATE 	DATABASE 	`C:\D\unsorted\example.fdb` 
+					USER 	`SYSDBA` 
+					PASSWORD 	`masterkey`; 
+				
+				// Now create the table in the connected database
+				CREATE TABLE employees
+					(
+					emp_id 	INTEGER PRIMARY KEY,
+					first_name 	VARCHAR(50),
+					last_name 	VARCHAR(50),
+					department 	VARCHAR(50),
+					hire_date 	DATE,
+					salary 	DECIMAL(10,2)
+				); 
+				
+				// Insert sample data
+				INSERT INTO employees (emp_id, first_name, last_name, department, hire_date, salary) 
+				VALUES (1, `John`, `Smith`, `IT`, `2023-01-15`, 65000.00); 
+				INSERT INTO employees (emp_id, first_name, last_name, department, hire_date, salary) 
+				VALUES (2, `Maria`, `Garcia`, `HR`, `2023-03-20`, 55000.00); 
+				INSERT INTO employees (emp_id, first_name, last_name, department, hire_date, salary) 
+				VALUES (3, `David`, `Johnson`, `IT`, `2023-02-10`, 72000.00); 
+				INSERT INTO employees (emp_id, first_name, last_name, department, hire_date, salary) 
+				VALUES (4, `Sarah`, `Williams`, `Finance`, `2023-04-05`, 58000.00); 
+				INSERT INTO employees (emp_id, first_name, last_name, department, hire_date, salary) 
+				VALUES (5, `Michael`, `Brown`, `IT`, `2023-01-30`, 69000.00); 
+				
+				// Display the table
+				SELECT 	emp_id,
+					first_name,
+					last_name,
+					department,
+					hire_date,
+					salary
+				FROM employees
+				ORDER BY emp_id; 
+				
+				// Show summary statistics
+				SELECT 
+					department,
+					COUNT(*) 	as employee_count,
+					AVG(salary) 	as avg_salary,
+					MIN(salary) 	as min_salary,
+					MAX(salary) 	as max_salary
+				FROM employees
+				GROUP BY department
+				ORDER BY department DESCENDING; 
+				
+				COMMIT; 
+				
+				SELECT
+					e.emp_id,
+					e.first_name || ` ` || e.last_name AS full_name,
+					d.name AS dept_name,
+					CASE
+						WHEN e.salary >= 70000 THEN `HIGH`
+						WHEN e.salary >= 50000 THEN `MID`
+						ELSE `LOW`
+					END AS salary_band,
+					EXTRACT(YEAR FROM e.hire_date) AS hire_year,
+					CAST(e.salary AS NUMERIC(10,2)) AS salary_num,
+					COALESCE(e.null_int, 0) + 1000 AS bonus,
+					(
+					SELECT COUNT(*) 
+					FROM employees e2 
+					WHERE e2.department = e.department
+				) AS dept_count
+				FROM employees e
+				LEFT JOIN departments d ON d.dept_id = e.dept_id
+				WHERE e.hire_date >= DATE `2020-01-01`
+					AND e.department IN (`IT`,`HR`,`Finance`)
+					AND e.salary BETWEEN 40000 AND 100000
+					AND e.last_name SIMILAR TO `[A-Z]%`
+				ORDER BY e.department, e.last_name, e.first_name
+				ROWS 10 TO 30; 
+				
+				// Optional: Exit ISQL
+				// EXIT;
+			})); 
 		} 
 	}
 }
@@ -835,7 +915,7 @@ static if(
 	0/*skipped comment*///after a newline too
 )
 static foreach(ch; ['a', 'b']) : //this must be the last test
-		mixin(format!"enum testEnum", ch, "='", ch, "';"); 
+		mixin(format!"enum testEnum", ch, "=`", ch, "';"); 
 		pragma(msg, mixin("testEnum", ch)); 
 //c
 //d

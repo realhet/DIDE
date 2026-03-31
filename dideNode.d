@@ -183,15 +183,15 @@ version(/+$DIDE_REGION+/all) {
 		+/
 		
 		auto subColumns()
-		{ return subCells.map!(a => cast(CodeColumn)a).filter!"a"; } 
+		{ return subCells.map!((a)=>((cast(CodeColumn)(a)))).filter!"a"; } 
 		auto subColumns_backwards()
-		{ return subCells.retro.map!(a => cast(CodeColumn)a).filter!"a"; } 
+		{ return subCells.retro.map!((a)=>((cast(CodeColumn)(a)))).filter!"a"; } 
 		
 		auto columnAfter(CodeColumn act)
 		{
 			const idx = subCells.countUntil(act); 
 			if(idx>=0 && idx+1<subCells.length)
-			return subCells[idx+1..$].map!(a => cast(CodeColumn)a).filter!"a".frontOrNull; 
+			return subCells[idx+1..$].map!((a)=>((cast(CodeColumn)(a)))).filter!"a".frontOrNull; 
 			return null; 
 		} 
 		
@@ -199,7 +199,7 @@ version(/+$DIDE_REGION+/all) {
 		{
 			const idx = subCells.countUntil(act); 
 			if(idx>0)
-			return subCells[0..idx].retro.map!(a => cast(CodeColumn)a).filter!"a".frontOrNull; 
+			return subCells[0..idx].retro.map!((a)=>((cast(CodeColumn)(a)))).filter!"a".frontOrNull; 
 			return null; 
 		} 
 		
