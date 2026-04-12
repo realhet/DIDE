@@ -10,7 +10,7 @@ public {
 	{
 		const tempJson = File(tempPath, `DIDE_` ~ [QPS].xxh32.to!string(36) ~ ".json"); 
 		scope(exit) tempJson.forcedRemove; 
-		auto res = execute(
+		auto res = executeProcess(
 			["ldc2", "-o-", "-X", `--Xf`, tempJson.fullName] ~
 			extraArgs ~
 			moduleFile.fullName

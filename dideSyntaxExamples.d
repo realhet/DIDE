@@ -1,6 +1,7 @@
 module dideSyntaxExamples; 
 
 version(none) : 
+
 struct TestCodeStruct
 {
 	unittest { hello; } public mixin template TestMixinTemplate() { int a; int b; } 
@@ -487,6 +488,11 @@ l2
 			void main()
 			{ writeln("Hello World"); } 
 		+/
+		
+		/+Code/amdb: Thing is an Entity+/
+		/+Code/amdb: 	...has name  String+/
+		/+Code/SQL: SELECT * FROM Customers+/
+		
 		
 		auto _testDirectives()
 		{
@@ -668,11 +674,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x3CE55951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x3D3C5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x3D935951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x3DEA5951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x3E415951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x3D645951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x3DBB5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x3E125951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x3E695951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x3EC05951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)

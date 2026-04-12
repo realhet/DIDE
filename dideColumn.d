@@ -7,6 +7,8 @@ import didedecl : Declaration, processHighLevelPatterns, isWhitespaceOrComment, 
 import didemodule : addGlobalChangeIndicator, preprocessMultilineMacros; 
 import dideexpr : NiceExpression, mixinTableSplitFun, isMixinTableCell, MixinTableContainerClass; 
 
+__gshared bool enableSpaceToTabConversion; /+260408: It was so annoying in AMDB sentences. It must be only enabled for importing old codes.+/
+
 version(/+$DIDE_REGION+/all) {
 	static struct CodeColumnBuilder(bool rebuild)
 	{
@@ -671,6 +673,9 @@ version(/+$DIDE_REGION+/all) {
 				
 				void flood(int x, int y, bool canGoUp, bool canGoDown, lazy size_t leadingSpaceCount)
 				{
+					canGoUp 	&= enableSpaceToTabConversion,
+					canGoDown 	&= enableSpaceToTabConversion; 
+					
 					if(!canGoDown && !canGoUp) return; 
 					
 					//assume: x, y is a valid tab position

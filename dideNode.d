@@ -6,6 +6,7 @@ import diderow : SourceTextBuilder;
 import didecolumn : CodeColumnBuilder; 
 import didedecl : Declaration; 
 import didemodule : addGlobalChangeIndicator, findMultilineMacroBlock; 
+import dideexpr : fillLanguageId; 
 
 version(/+$DIDE_REGION+/all) {
 	enum NodeStyle : ubyte 
@@ -724,6 +725,7 @@ version(/+$DIDE_REGION+/all) {
 		+/
 		string customPrefix; 
 		SyntaxKind customSyntax; //it is detected only when rebuilding.
+		string customLanguage; /+/+code/d: a+b;+/+/
 		
 		bool isDDoc; 
 		
@@ -735,7 +737,7 @@ version(/+$DIDE_REGION+/all) {
 			"include", "define", "ifdef", "ifndef", "if", "endif", "undef", "elif", "else" 	//Link: Arduino directives
 		],
 			customCommentSyntaxes	= [
-			skTodo,    skOpt,   skBug,   skNote,   skLink,   skCode, skCode, skCode,  skError,   skException,    skWarning,   skDeprecation,   skConsole,   skComment, 
+			skTodo,    skOpt,   skBug,   skNote,   skLink,   skComment, skComment, skComment, skComment, skComment, skComment, skError,   skException,    skWarning,   skDeprecation,   skConsole,   skComment, 
 			/+AI+/ skInteract, skInteract, skInteract, skInteract,
 			
 			/+text format+//+skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit, skInherit+/
@@ -743,7 +745,7 @@ version(/+$DIDE_REGION+/all) {
 			/+text format+/skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract, skInteract
 		],
 			customCommentPrefixes 	= [
-			"Todo:", "Opt:", "Bug:", "Note:", "Link:", "Highlighted:", "Structured:", "Code:", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:", 
+			"Todo:", "Opt:", "Bug:", "Note:", "Link:", "Highlighted:", "Structured:", "Code:", "Highlighted/", "Structured/", "Code/", "Error:", "Exception:", "Warning:", "Deprecation:", "Console:", "Hidden:", 
 			"AI:", "System:", "User:", "Assistant:",
 			"Bold:", "Italic:", "Bullet:", "Para:", "H1:", "H2:", "H3:", "H4:", "H5:", "H6:"
 		]
@@ -778,19 +780,7 @@ version(/+$DIDE_REGION+/all) {
 		static private int detectCustomDirectiveIdx(R)(R r)
 		{
 			//Opt: This whole function is slow
-			
-			//const t0 = now; 
-			
-			//const idx = (cast(int)(customDirectivePrefixes.countUntil!((prefix)=>(r.startsWith(prefix))))); /+6.85e-5+/
-			//const idx = r.startsWith(aliasSeqOf!(customDirectivePrefixes)).to!int - 1; /+0.000646+/
-			const idx = r.startsWithKeyword!customDirectivePrefixes-1; /+
-				char: 2.98e-05  
-				dchar: 5.77e-05
-				+wholeWords: 0.0001232
-			+/
-			
-			//static tSum = 0*second; tSum += now-t0; static tCnt = 0; print(tCnt, tSum); 
-			
+			const idx = r.startsWithKeyword!customDirectivePrefixes-1; 
 			return idx; 
 		} 
 		
@@ -851,11 +841,11 @@ version(/+$DIDE_REGION+/all) {
 			{ return customPrefix == "Link:"; } 
 			
 			bool isHighlighted()
-			=> customPrefix == "Highlighted:"; 
+			=> customPrefix.startsWith("Highlighted"); 
 			bool isStructured()
-			=> customPrefix == "Structured:"; 
+			=> customPrefix.startsWith("Structured"); 
 			bool isCode() const
-			=> customPrefix == "Code:"; 
+			=> customPrefix.startsWith("Code"); 
 			
 			bool isCodeRelated() const
 			=> isCode || isStructured || isHighlighted; 
@@ -992,7 +982,8 @@ version(/+$DIDE_REGION+/all) {
 						}
 						else
 						{
-							const idx = detectCustomCommentIdx(s); 
+							auto idx = detectCustomCommentIdx(s); 
+							
 							if(idx >= 0)
 							{
 								customPrefix = customCommentPrefixes[idx]; 
@@ -1002,6 +993,18 @@ version(/+$DIDE_REGION+/all) {
 								{
 									customSyntax = 	this.allParents!CodeContainer
 										.map!((a)=>(a.syntax)).filter!((s)=>(s!=skInherit)).frontOr(skComment); 
+								}
+								
+								if(customPrefix.endsWith('/'))
+								{
+									const i = s.byChar.countUntil(':'); 
+									if(i>=0)
+									{
+										customLanguage = s[customPrefix.length..i]; 
+										customPrefix = s[0..i+1]; 
+									}
+									else
+									{ idx = -1 /+bad comment format+/; }
 								}
 							}
 						}
@@ -1050,6 +1053,8 @@ version(/+$DIDE_REGION+/all) {
 				try { content = new CodeColumn(this, content.sourceText, TextFormat.managed_optionalBlock, content.rows[0].lineIdx); }
 				catch(Exception e) {}
 			}
+			
+			if(customLanguage.sameText("sql")) fillLanguageId(content, 1); 
 		} 
 		
 		bool isSpecialComment()
@@ -1229,10 +1234,9 @@ version(/+$DIDE_REGION+/all) {
 			{
 				if(isCustom)
 				{
-					with(nodeBuilder(syntax, ((isDirective)?(NodeStyle.bright) :(NodeStyle.dim))))
+					with(nodeBuilder(syntax, ((isDirective)?(NodeStyle.bright) :(((customLanguage!="")?(NodeStyle.normal) :(NodeStyle.dim))))))
 					{
 						content.bkColor = darkColor; 
-						
 						if(isHidden)
 						{
 							margin.set(.5); border.width /= 3; padding.set(1); 
@@ -1245,7 +1249,13 @@ version(/+$DIDE_REGION+/all) {
 							//Remove underlined style
 							const origUnderline = style.underline; style.underline = false; 
 							
-							if(!isCodeRelated && !isNote && !isFormatRelated)
+							if(customLanguage!="")
+							{
+								const oldItalic = style.italic; 
+								style.italic = false; put("📜"); style.italic = oldItalic; 
+								put(customLanguage~" "); 
+							}
+							else if(!isCodeRelated && !isNote && !isFormatRelated)
 							put((isDirective ? '#' : ' ') ~ customPrefix ~ ' '); 
 							
 							style.underline = origUnderline; 

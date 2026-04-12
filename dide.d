@@ -9,6 +9,7 @@ import core.thread, std.concurrency;
 
 import didebase, dideSyntaxExamples; 
 
+import didecolumn : enableSpaceToTabConversion; 
 import didenode : CodeComment, CodeContainer, CodeString, CodeBlock; 
 import didedecl : Declaration; 
 import dideexpr : ToolPalette; 
@@ -142,6 +143,7 @@ import het.inputs : callVerbs;
 
 /+Todo: Shift+Alt+Ins, Ctrl+Shift+V: paste and select+/
 /+Todo: Ctrl+F4 / Alt+C calculator. (expr evaluator)+/
+/+Todo: DIDE: stringekben is menjen a vertical tab!+/
 
 
 
@@ -459,6 +461,12 @@ version(/+$DIDE_REGION+/all)
 										{
 											case MenuPage.Tools: 	{
 												UI_refactor; 
+												
+												Grp!Column
+												(
+													"Text loading",
+													{ ChkBox(enableSpaceToTabConversion, "Auto convert spaces to tabs"); }
+												); 
 												
 												Grp!Column
 												(

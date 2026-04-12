@@ -62,6 +62,30 @@ version(/+$DIDE_REGION+/all) {
 		}
 	} 
 	
+	void fillLanguageId(CodeColumn col, uint languageId)
+	{
+		if(col.flags.languageId!=languageId)
+		{
+			col.flags.languageId = languageId; 
+			foreach(node; col.byNode)
+			{
+				if(
+					(cast(Declaration)(node))
+					|| (cast(CodeBlock)(node)) && (
+						(cast(CodeBlock)(node)).type!=
+						CodeBlock.Type.interpolation
+					) 
+					|| (cast(NiceExpression)(node)) && !(cast(ShaderNode)(node))
+				)
+				{
+					foreach(subCol; node.subColumns)
+					{ fillLanguageId(subCol, languageId)/+recursion!+/; }
+				}
+			}
+			col.resyntax; 
+		}
+	} 
+	
 	
 	void processNiceExpressionSingleRow(CodeRow row, NEB bt, CodeRow newParent, void delegate(NiceExpression) onSuccess)
 	{
@@ -1204,29 +1228,6 @@ version(/+$DIDE_REGION+/all) {
 			}
 		} 
 		
-		void fillLanguageId(CodeColumn col, uint languageId)
-		{
-			if(col.flags.languageId!=languageId)
-			{
-				col.flags.languageId = languageId; 
-				foreach(node; col.byNode)
-				{
-					if(
-						(cast(Declaration)(node))
-						|| (cast(CodeBlock)(node)) && (
-							(cast(CodeBlock)(node)).type!=
-							CodeBlock.Type.interpolation
-						) 
-						|| (cast(NiceExpression)(node)) && !(cast(ShaderNode)(node))
-					)
-					{
-						foreach(subCol; node.subColumns)
-						{ fillLanguageId(subCol, languageId)/+recursion!+/; }
-					}
-				}
-				col.resyntax; 
-			}
-		} 
 		
 		override void doBuildSourceText(ref SourceTextBuilder builder)
 		{
@@ -2029,8 +2030,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x109EF3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x10A733617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x109DB3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x10A5F3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2042,8 +2043,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x10CC23617740F)))(互!((bool),(1),(0x10CE63617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10D0A3617740F)))
-					(互!((float/+w=6+/),(1.000),(0x10D563617740F)))
+					(互!((bool),(0),(0x10CAE3617740F)))(互!((bool),(1),(0x10CD23617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10CF63617740F)))
+					(互!((float/+w=6+/),(1.000),(0x10D423617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2053,9 +2054,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10F4D3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10F8C3617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10FFE3617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1107D3617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10F393617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x10F783617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x10FEA3617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x110693617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2159,13 +2160,13 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x1228D3617740F).檢(expr)) ((0x122AB3617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x122FB3617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x122793617740F).檢(expr)) ((0x122973617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x122E73617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{
 								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x1239F3617740F))) (互!((bool),(1),(0x123C43617740F))) (互!((float/+w=6+/),(1.000),(0x123E93617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x124283617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x124683617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x124D43617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x125573617740F}))
+								(互!((bool),(0),(0x1238B3617740F))) (互!((bool),(1),(0x123B03617740F))) (互!((float/+w=6+/),(1.000),(0x123D53617740F)))
+								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x124143617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x124543617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x124C03617740F}))
+								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x125433617740F}))
 								/+Opt: Big perf. impact!!!+/
 							}],
 							[q{"external code"},q{
@@ -2208,6 +2209,7 @@ blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 								/+cmt+/ 
 								/*cmt*/ //cmt
 								/+Note: note+/ /+Code: code+/ /+Hidden:+/
+								/+Code/SQL:+//+Code/amdb:+/
 								/+Link: cmt+/ /+$DIDE_IMG+/
 								/+Todo: cmt+/ 
 								/+Opt: cmt+/ /+Bug: cmt+/
