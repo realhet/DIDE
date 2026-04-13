@@ -2209,7 +2209,7 @@ blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 								/+cmt+/ 
 								/*cmt*/ //cmt
 								/+Note: note+/ /+Code: code+/ /+Hidden:+/
-								/+Code/SQL:+//+Code/amdb:+/
+								/+Structured/SQL:+//+Structured/amdb:+/
 								/+Link: cmt+/ /+$DIDE_IMG+/
 								/+Todo: cmt+/ 
 								/+Opt: cmt+/ /+Bug: cmt+/
