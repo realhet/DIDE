@@ -358,20 +358,14 @@ struct bloodScreenEffect
 		void update()
 		{ intensity.follow(0, calcAnimationT(application.deltaTime.value(second), .9, .2), .05f); } 
 		
-		void glDraw()
+		void draw(IDrawing dr)
 		{
-			NOTIMPL; 
-			if(intensity)
+			with(dr)
 			{
-				//Todo: repaor this on Vulkan
-				version(/+$DIDE_REGION+/none) {
-					with((cast(GLWindow)(mainWindow)))
-					with(scoped!Drawing)
-					{
-						color = clRed; alpha = 1-(1-intensity)^^2; 
-						fillRect(clientBounds); 
-						glDraw(viewGUI); 
-					}
+				if(intensity)
+				{
+					color = clRed; alpha = 1-(1-intensity)^^2; 
+					fillRect(mainWindow.clientBounds.bounds2); alpha = 1; 
 				}
 			}
 		} 

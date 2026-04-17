@@ -3,7 +3,7 @@
 //@release
 
 //@compile --d-version=stringId
-///@compile --d-version=VulkanUI
+//@compile --d-version=VulkanUI
 
 import core.thread, std.concurrency; 
 
@@ -20,7 +20,14 @@ import het.inputs : callVerbs;
 
 /+
 	Todo: /+H1: VulkanUI transition+/
-	[ ] afterPaint, bloodScreenEffect.glDraw
+	[x] afterPaint, bloodScreenEffect.glDraw
+	[ ] bold text
+	[ ] vertically stretched brackets
+	[ ] arrows (F3)
+	[ ] line stipple
+	[ ] slider mouse interaction bugs
+	[ ] Tool palette / Interactive controls
+	[ ] no AA
 	[ ] a legvegen a version(VulkanUI) dolgokat eltavolitani.
 +/
 
@@ -357,16 +364,8 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		version(VulkanUI)
-		{
-			/+Todo: repair this override +/
-			override void afterImDraw()
-			{ NOTIMPL("bloodScreenEffect.glDraw"); } 
-		}
-		else
-		{
-			override void afterPaint()
-			{ bloodScreenEffect.glDraw; } 
-		}
+		override void afterImDraw(IDrawing dr)
+		{ bloodScreenEffect.draw(dr); } 
 		
 		
 		
