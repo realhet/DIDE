@@ -2114,7 +2114,7 @@ version(/+$DIDE_REGION+/all) {
 								goto lb; 	static assert(); 
 								assert(a); 	enforce(a); 
 							}],
-							[q{"math letters"},q{α β δ Δ ℯ ε γ λ µ ω ϕ π σ ϑ ℂ}],
+							[q{"math letters"},q{α β δ Δ ℯ ε γ λ µ ω θ ϕ π σ ϑ ℂ}],
 							[q{"symbols"},q{"° ℃ ± ∞ ↔ → ∈ ∉"}],
 							[q{"float, double, real"},q{(float(x)) (double(x)) (real(x))}],
 							[q{"floor, 
@@ -2160,15 +2160,12 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x122793617740F).檢(expr)) ((0x122973617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x122E73617740F).檢((update間(_間)))); }],
-							[q{"interactive literals"},q{
-								(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
-								(互!((bool),(0),(0x1238B3617740F))) (互!((bool),(1),(0x123B03617740F))) (互!((float/+w=6+/),(1.000),(0x123D53617740F)))
-								mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x124143617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x124543617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x124C03617740F}))
-								mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x125433617740F}))
-								/+Opt: Big perf. impact!!!+/
-							}],
+							[q{"debug inspector"},q{((0x1227C3617740F).檢(expr)) ((0x1229A3617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x122EA3617740F).檢((update間(_間)))); }],
+							[q{"interactive literals"},q{/+
+								Todo: repair interactive 
+								controls on Vulkan!
+							+/}],
 							[q{"external code"},q{
 								(碼! ((位!()),iq{glslc},iq{}))(碼! ((位!()),iq{arduino-cli},iq{}))
 								(查 ((位!()),iq{},iq{}))(查((位!()),iq{},iq{}))
@@ -2415,7 +2412,15 @@ with condition"},q{
 						]))
 					}
 				}
-			]; 
+			]
+			/+
+				/+Todo: Repair interactive controls!!!+/
+				(常!(bool)(0)) (常!(bool)(1)) (常!(float/+w=6+/)(0.300))
+				(互!((bool),(0),(0x1238E3617740F))) (互!((bool),(1),(0x123B33617740F))) (互!((float/+w=6+/),(1.000),(0x123D83617740F)))
+				mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x124173617740F})) mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x124573617740F})) mixin(同!(q{float/+w=2.5 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x124C33617740F}))
+				mixin(同!(q{float/+w=6 h=1 min=0 max=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x125463617740F}))
+				/+Opt: Big perf. impact!!!+/
+			+/; 
 			version(/+$DIDE_REGION+/all) {
 				struct Page
 				{
@@ -2427,24 +2432,28 @@ with condition"},q{
 					
 					void initialize(Container parent)
 					{
-						_module = new Module(null, source, StructureLevel.managed); 
-						if(_module)
-						{
-							if(auto mCol = _module.content)
-							if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
-							if(auto tCol = table.operands[0])
-							foreach(tRow; tCol.rows)
-							if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
+						try {
+							_module = new Module(null, source, StructureLevel.managed); 
+							if(_module)
 							{
-								string comment; 
-								if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
-								comment = cntr0.content.sourceText; 
-								//Todo: implement ?. null coalescing NiceExpression from C#
-								entries ~= Entry(cntr1, comment); 
-								cntr1.setParent(parent); //from here worldPos() calculations work
-								cntr1.measure; 
+								if(auto mCol = _module.content)
+								if(auto table = (cast(NiceExpression)(mCol.singleCellOrNull)))
+								if(auto tCol = table.operands[0])
+								foreach(tRow; tCol.rows)
+								if(auto cntr1 = (cast(CodeContainer)(tRow.subCells.get(1))))
+								{
+									string comment; 
+									if(auto cntr0 = (cast(CodeContainer)(tRow.subCells.get(0))))
+									comment = cntr0.content.sourceText; 
+									//Todo: implement ?. null coalescing NiceExpression from C#
+									entries ~= Entry(cntr1, comment); 
+									cntr1.setParent(parent); //from here worldPos() calculations work
+									cntr1.measure; 
+								}
 							}
 						}
+						catch(Exception e)
+						{ ERR(i"ToolPalette page $(caption.quoted): $(e.simpleMsg)"); }
 					} 
 				} 
 				

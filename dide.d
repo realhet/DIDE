@@ -364,8 +364,8 @@ version(/+$DIDE_REGION+/all)
 		} 
 		
 		version(VulkanUI)
-		override void afterImDraw(IDrawing dr)
-		{ bloodScreenEffect.draw(dr); } 
+		override void afterImDraw(IDrawing drWorld, IDrawing drGUI)
+		{ bloodScreenEffect.draw(drGUI); } 
 		
 		
 		
