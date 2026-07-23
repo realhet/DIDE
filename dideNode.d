@@ -1239,7 +1239,7 @@ version(/+$DIDE_REGION+/all) {
 						content.bkColor = darkColor; 
 						if(isHidden)
 						{
-							margin.set(.5); border.width /= 3; padding.set(1); 
+							margin.set(.5); border.width = border.width/3; padding.set(1); 
 							style.fontHeight = DefaultFontHeight/4; 
 							style.italic = false; 
 							put(typePrefix[type].back); 

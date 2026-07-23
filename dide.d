@@ -5,6 +5,7 @@
 //@compile --d-version=stringId
 //@compile --d-version=VulkanUI
 
+
 import core.thread, std.concurrency; 
 
 import didebase, dideSyntaxExamples; 

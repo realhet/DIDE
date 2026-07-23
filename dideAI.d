@@ -575,4 +575,258 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 			im.flashInfo("Ai: ", "finished ("~chat.identityStr[0..3]~")"); 
 		}
 	} 
-} 
+} 
+/+Todo: Make an AI agent that works in DIDE, like Codex.+/
+/+
+	AI: /+
+		User: Do you know how Codex works?
+		
+		Right now I'm accessing Deepseek API through my own chat interface.
+		But how can I make Deepseek to have an overview over my full codebase I'm working on?
+		Obviously seeding the full source code would exhaust the LLM memory capacity. But what clever search algorithms are used when an AI agent, like Codex is searching through codebase? I have the full code identifier tree from the compiler, maybe that can help too, but still the whole tree is 100MB, I can't feed it once. Should I use 'functions' to do that in Deepseek API?
+	+/
+	/+
+		Assistant: /+
+			Para: You're asking about a fundamental challenge in AI-assisted coding! Let me explain how Codex
+			and similar systems handle codebase navigation, and how you can implement similar strategies
+			with Deepseek.
+		+/
+		
+		/+H2: How Codex Works (Simplified)+/
+		
+		Codex uses a /+Bold: retrieval-augmented generation (RAG)+/ approach with several key strategies:
+		
+		/+H3: 1. /+Bold: Semantic Chunking+/+/
+		Instead of feeding entire files, Codex breaks code into meaningful chunks:
+			/+Bullet: Function bodies+/
+			/+Bullet: Class definitions+/
+			/+Bullet: Method implementations+/
+			/+Bullet: Documentation blocks+/
+			/+Bullet: Import/export statements+/
+		
+		Each chunk maintains its context (file path, surrounding declarations).
+		
+		/+H3: 2. /+Bold: Multi-Stage Retrieval+/+/
+		
+		/+
+			Structured: // Pseudo-code for retrieval pipeline
+			struct CodeChunk {
+				    string path; 
+				    string content; 
+				    string[] symbols; 
+				    size_t startLine, endLine; 
+			} 
+			
+			CodeChunk[] retrieveRelevantCode(string query) {
+				    // Stage 1: Embedding-based search
+				    auto queryEmbedding = embed(query); 
+				    auto candidates = vectorDB.similaritySearch(queryEmbedding, 50); 
+				    
+				    // Stage 2: Symbol-aware filtering
+				    candidates = filterBySymbols(candidates, extractSymbols(query)); 
+				    
+				    // Stage 3: Dependency graph traversal
+				    candidates = expandImports(candidates, dependencyGraph); 
+				    
+				    // Stage 4: Context window optimization
+				    return selectOptimalChunks(candidates, MAX_TOKENS); 
+			} 
+		+/
+		
+		/+H3: 3. /+Bold: Symbol Table Utilization+/+/
+		
+		Your compiler's identifier tree is gold! Here's how to use it:
+		
+		/+
+			Structured: struct SymbolIndex {
+				    string name; 
+				    SymbolKind kind;  // function, class, variable, etc.
+				    string filePath; 
+				    size_t line; 
+				    string[] references;  // files that reference this symbol
+				    string[] dependencies;  // symbols this depends on
+			} 
+			
+			// Build a lightweight index (NOT the full tree)
+			SymbolIndex[] buildLightweightIndex(IdentifierTree fullTree) {
+				    return fullTree.symbols
+				        .filter!(s => s.isPublic || s.isUsed)
+				        .map!(
+					s => SymbolIndex(
+						            s.name,
+						            s.kind,
+						            s.filePath,
+						            s.line,
+						            s.references,
+						            s.dependencies
+					)
+				)
+				        .array; 
+			} 
+		+/
+		
+		/+H2: Practical Implementation with Deepseek API+/
+		
+		/+H3: Strategy 1: /+Bold: Hierarchical Context Injection+/+/
+		
+		/+
+			Structured: // Use Deepseek's function calling for codebase queries
+			class CodebaseAgent {
+				    SymbolIndex[] index; 
+				    string[][] chunkCache; // Pre-computed chunks by module
+				    
+				    // Function 1: Search by symbol
+				    @Function("Find code definitions and usages")
+				    string searchSymbol(string symbolName) {
+					        auto matches = index.filter!(s => s.name.contains(symbolName)); 
+					        return matches.map!(s => format("%s:%d - %s", s.filePath, s.line, s.name))
+					            .join("\n"); 
+				} 
+				    
+				    // Function 2: Get file context
+				    @Function("Get specific file content with line range")
+				    string getFileContext(string filePath, int startLine, int endLine) {
+					        auto lines = readFileLines(filePath); 
+					        return lines[startLine..endLine].join("\n"); 
+				} 
+				    
+				    // Function 3: Get dependency chain
+				    @Function("Get dependency chain for a symbol")
+				    string getDependencyChain(string symbolName) {
+					        // Traverse imports/dependencies
+					        return buildChain(symbolName, index); 
+				} 
+			} 
+		+/
+		
+		/+H3: Strategy 2: /+Bold: Smart Chunk Selection Algorithm+/+/
+		
+		/+
+			Structured: CodeChunk[] selectChunksForQuery(string query, SymbolIndex[] index) {
+				    // 1. Extract key symbols from query
+				    auto querySymbols = extractSymbols(query); 
+				    
+				    // 2. Find relevant files
+				    auto relevantFiles = index
+				        .filter!(s => querySymbols.canFind(s.name))
+				        .map!(s => s.filePath)
+				        .unique; 
+				    
+				    // 3. For each file, select optimal chunks
+				    CodeChunk[] result; 
+				    foreach(file; relevantFiles) {
+					        auto fileChunks = getFileChunks(file); 
+					        
+					        // Prioritize chunks containing query symbols
+					        fileChunks.sort!(
+						(a, b) => 
+							            countMatches(a, querySymbols) > countMatches(b, querySymbols)
+					); 
+					        
+					        // Take top chunks until token limit
+					        result ~= fileChunks[0..min(3, fileChunks.length)]; 
+				}
+				    
+				    return result; 
+			} 
+		+/
+		
+		/+H3: Strategy 3: /+Bold: Progressive Context Loading+/+/
+		
+		/+
+			Structured: class ProgressiveCodebase {
+				    // Start with minimal context
+				    string initialPrompt = "I have a D codebase. Ask me for specific parts."; 
+				    
+				    // On each query, load more context
+				    string handleQuery(string query)
+				{
+					        // 1. Check if we have relevant context
+					        auto neededSymbols = extractSymbols(query); 
+					        auto missingContext = neededSymbols.filter!(s => !inCache(s)); 
+					        
+					        // 2. Load missing context asynchronously
+					        foreach(symbol; missingContext)
+					{            loadContext(symbol); }
+					        
+					        // 3. Send query with current context window
+					        return sendToDeepseek(query, currentContext); 
+				} 
+			} 
+		+/
+		
+		/+H2: Recommended Architecture+/
+		
+		/+
+			Structured: // Main codebase interface for Deepseek
+			class DeepseekCodebaseAgent {
+				    // 1. Pre-compute lightweight index (100MB -> ~5MB)
+				    SymbolIndex[] index; 
+				    
+				    // 2. Pre-compute file chunks (cached, not loaded)
+				    ChunkMap chunks; 
+				    
+				    // 3. Define functions for Deepseek
+				    Function[] functions = [
+					        Function("search_symbol", "Find symbol definitions and usages"),
+					        Function("get_file_structure", "Get file/function structure"),
+					        Function("get_code_context", "Get code around specific lines"),
+					        Function("get_import_chain", "Get import/dependency chain")
+				]; 
+				    
+				    // 4. Use function calling to narrow context
+				    string processQuery(string userQuery)
+				{
+					        // Deepseek decides which functions to call
+					        auto response = deepseek.chat(
+						[
+							            Message("system", "You have access to codebase functions..."),
+							            Message("user", userQuery)
+						], functions
+					); 
+					        
+					        // If Deepseek calls functions, execute them
+					        if(response.functionCall)
+					{
+						            auto context = executeFunction(response.functionCall); 
+						            // Send back with context
+						            return deepseek.chat(
+							[
+								                Message("system", "Here's the code context:"),
+								                Message("system", context),
+								                Message("user", userQuery)
+							]
+						); 
+					}
+				} 
+			} 
+		+/
+		
+		/+H2: Key Insights+/
+		
+		/+
+			Para: 1. /+Bold: Don't feed the full tree+/ - Use it to build a lightweight index (symbol names, file locations,
+			dependencies)
+		+/
+		
+		2. /+Bold: Use function calling+/ - Let Deepseek decide what to look up, like Codex does
+		
+		3. /+Bold: Cache aggressively+/ - Pre-compute chunks, don't regenerate on each query
+		
+		4. /+Bold: Progressive loading+/ - Start minimal, expand context based on queries
+		
+		5. /+Bold: Symbol-aware chunking+/ - Chunk by function/class boundaries, not arbitrary line counts
+		
+		/+
+			Para: The 100MB identifier tree can be compressed to ~2-5MB of useful index data. The actual code
+			chunks should be loaded on-demand based on what Deepseek needs for the current task.
+		+/
+		
+		/+
+			Para: Would you like me to elaborate on any specific part of this architecture or help implement the
+			chunking algorithm for your D codebase?
+		+/
+		
+		/+Note: Usage(prompt_hit: 0, prompt_miss: 255, completion: 1602, HUF: 0.25, price: 100%)+/
+	+/
++/
