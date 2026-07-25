@@ -67,7 +67,7 @@ version(/+$DIDE_REGION+/all) {
 		Pattern pattern; 
 		SyntaxKind syntax; 
 		
-		NodeStyle invertMode; 
+		NodeStyle nodeStyle; 
 		string example, operator; 
 		string textCode, rearrangeCode, drawCode, initCode, uiCode; 
 		CustomClass customClass; 
@@ -107,7 +107,7 @@ version(/+$DIDE_REGION+/all) {
 			(
 				ts(name), ts(example), 
 				cmtCode(combinedPattern), 
-				str(operator), ts(invertMode.text), ts(syntax.text), ts(customClass.text), 
+				str(operator), ts(nodeStyle.text), ts(syntax.text), ts(customClass.text), 
 				ts(
 					src("init", initCode)	~ src("text", textCode)	~
 					src("node", rearrangeCode)	~ src("draw", drawCode)	~
@@ -126,7 +126,7 @@ version(/+$DIDE_REGION+/all) {
 				example 	= a[1],
 				combinedPattern 	= a[2].unpackDComment!"Code",
 				operator 	= a[3].withoutStartingEnding('"','"'),
-				invertMode 	= a[4].to!NodeStyle,
+				nodeStyle 	= a[4].to!NodeStyle,
 				syntax 	= a[5].to!SyntaxKind,
 				customClass 	= a[6].to!NEC; 
 				

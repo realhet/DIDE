@@ -205,7 +205,7 @@ static struct AiManager
 			(
 				//"https://api.deepseek.com/v1/chat/completions",
 				"https://api.deepseek.com/chat/completions", 
-				"deepseek-chat", 
+				/+"deepseek-chat"+/ /+260725 there are 2 new models: flash and pro+/ "deepseek-v4-flash", 
 				`You are a helpful assistant.
 When working on my code, use strict whitespace preservation!
 When generating code, use tab character for indentation!

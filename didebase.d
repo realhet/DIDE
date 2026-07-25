@@ -203,16 +203,6 @@ void setRoundBorder(Container cntr, float borderWidth)
 	}
 } 
 
-void RoundBorder(float borderWidth)
-{
-	with(im) {
-		border.width = borderWidth; 
-		border.color = bkColor; 
-		border.inset = true; 
-		border.borderFirst = true; 
-	}
-} 
-
 auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string kc, A args)
 { with(im) return Btn!(srcModule, srcLine)({ Text(kc, " ", args); }, KeyCombo(kc)); } 
 
@@ -226,7 +216,7 @@ static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 			style.bkColor = bkColor = color; 
 			style.fontColor = blackOrWhiteFor(color); 
 			flags.yAlign = YAlign.top; 
-			RoundBorder(8); 
+			im.actContainer.setRoundBorder(8); 
 			if(contents) contents(); 
 		}  
 	); 
@@ -242,7 +232,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 			style.bkColor = bkColor = color; 
 			style.fontColor = fontColor; 
 			flags.yAlign = YAlign.top; 
-			RoundBorder(8); 
+			im.actContainer.setRoundBorder(8); 
 			if(contents) contents(); 
 		}  
 	); 

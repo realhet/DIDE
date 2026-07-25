@@ -216,6 +216,10 @@ version(/+$DIDE_REGION+/all) {
 			id = this.identityStr; 
 			
 			initializeBorder; 
+			/+
+				initializeBorder; <- 260724: Moved into nobebuilder()
+					bug: table cells become rounded
+			+/
 			
 			needMeasure; //enables on-demand measure
 			flags.wordWrap	= false,
@@ -315,6 +319,8 @@ version(/+$DIDE_REGION+/all) {
 		auto nodeBuilder(SyntaxKind syntax, NodeStyle nodeStyle_, Nullable!RGB customColor = Nullable!RGB.init)
 		{
 			nodeStyle = nodeStyle_; 
+			
+			//initializeBorder;  bug: it it is here, table cells become rounded
 			
 			CodeNodeBuilder res; 
 			with(res) {
