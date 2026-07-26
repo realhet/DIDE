@@ -19,11 +19,11 @@ version(/+$DIDE_REGION+/all) {
 			enum resyntax = !rebuild; 
 			
 			CodeColumn col; 
-			
-			TextStyle tsWhitespace, ts; 
-			SyntaxKind _currentSk=skWhitespace, syntax=skWhitespace; 
-			
 			CodeRow actRow; 
+			
+			TextStyle ts; 
+			
+			SyntaxKind _currentSyntax, syntax; 
 			bool skipNextN; //after \r, skip the next \n
 			
 			static if(rebuild)
@@ -32,7 +32,7 @@ version(/+$DIDE_REGION+/all) {
 				
 				void NL_internal()
 				{
-					col.appendCell(actRow = new CodeRow(col, "", null)); 
+					col.appendCell(actRow = new CodeRow(col)); 
 					actRow.lineIdx = staticLineCounter; 
 				} 
 				
@@ -54,8 +54,8 @@ version(/+$DIDE_REGION+/all) {
 						break; 
 						default: 
 							//update cached textStyle
-							if(_currentSk.chkSet(syntax))
-						applySyntax(ts, syntax); 
+							if(_currentSyntax.chkSet(syntax))
+						ts.applySyntax(syntax); 
 							
 							actRow.appendSyntaxCharWithLineIdx(ch, ts, syntax, staticLineCounter); 
 					}
@@ -123,8 +123,8 @@ version(/+$DIDE_REGION+/all) {
 						+/
 							
 							//update cached textStyle
-							if(_currentSk.chkSet(syntax))
-						applySyntax(ts, syntax); 
+							if(_currentSyntax.chkSet(syntax))
+						ts.applySyntax(syntax); 
 							
 							auto g = cast(Glyph)(actRow.subCells.get(actPos.x)); 
 							//Opt: cache this array per each row
@@ -178,10 +178,7 @@ version(/+$DIDE_REGION+/all) {
 			this(CodeColumn col)
 			{
 				this. col = col; 
-				
-				tsWhitespace 	= tsNormal	; applySyntax(tsWhitespace	, skWhitespace	); 
-				ts 	= tsWhitespace	; applySyntax(ts	, _currentSk	); 
-				
+				ts = tsSyntax(_currentSyntax); 
 				initialize; 
 			} 
 			
@@ -514,7 +511,8 @@ version(/+$DIDE_REGION+/all) {
 			if(auto d = cast(Declaration) parent)
 			{
 				if(d.isStatement) {
-					if(d.keyword=="import") return StructureLevel.highlighted; 
+					if(d.keyword=="import")
+					return StructureLevel.highlighted; 
 					//Todo: make more rules like this
 				}
 				return StructureLevel.managed; 
@@ -547,7 +545,8 @@ version(/+$DIDE_REGION+/all) {
 		
 		SyntaxKind getSyntax(dchar ch)
 		{
-			if(getStructureLevel==StructureLevel.plain) {
+			if(getStructureLevel==StructureLevel.plain)
+			{
 				if(auto ccntr = cast(CodeContainer) parent)
 				return ccntr.syntax; 
 				if(auto niceExpr = cast(NiceExpression) parent)
@@ -567,7 +566,10 @@ version(/+$DIDE_REGION+/all) {
 			if(ch.isDLangSymbol) return skSymbol; 
 			return skWhitespace; 
 			
-			//Todo: advanced version that checks the surroundings at the insert position.
+			/+
+				Todo: advanced version that checks the 
+				surroundings at the insert position.
+			+/
 		} 
 		
 		@property isPartOfBuildMessages()

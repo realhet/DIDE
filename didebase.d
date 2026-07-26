@@ -3,7 +3,8 @@ import het.ui;
 
 public import het.ui; 
 
-public import het.parser : CodeLocation, SyntaxKind, syntaxBkColor, syntaxFontColor; 
+public import het.parser : CodeLocation; 
+public import het.parser: SyntaxKind, syntaxBkColor, syntaxFontColor; 
 
 public import dideselection; 
 public import dideselection : wordAt; public import het : wordAt; 

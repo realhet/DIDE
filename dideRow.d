@@ -398,28 +398,34 @@ version(/+$DIDE_REGION+/all) {
 			//bkColor = parent.bkColor;
 		} 
 		
-		this(CodeColumn parent_, string line, ubyte[] syntax)
-		{
-			assert(line.length==syntax.length); 
-			this(parent_); 
-			set(line, syntax); 
-		} 
-		
-		void set(string line, ubyte[] syntax)
-		{
-			//set is called from CodeColumnBuilder.
-			internal_setSubCells([]); 
+		/+
+			This deprecated code replaced by CodeColumnBuilder.
 			
-			static TextStyle style; //it is needed by appendCode/applySyntax
-			this.appendCode(
-				line, syntax, (ubyte s){ applySyntax(style, s); }  ,
-				style/+, must paste tabs!!! DefaultIndentSize+/
-			); 
+			this(CodeColumn parent_, string line, in SyntaxKind[] syntax)
+			{
+				assert(line.length==syntax.length); 
+				this(parent_); 
+				setLine(line, syntax); 
+			}
 			
-			//Note: tabIdx is already refreshed by appendCode
-			//spreadElasticNeedMeasure;
-		} 
+			void setLine(string line, in SyntaxKind[] syntax)
+			{
+				//set is called from CodeColumnBuilder.
+				internal_setSubCells([]); 
+				
+				static TextStyle style; //it is needed by appendCode/applySyntax
+				this.appendCode(
+					line, syntax, ((SyntaxKind sk){ style.applySyntax(sk); }),
+					style/+, must paste tabs!!! DefaultIndentSize+/
+				); 
+				
+				//Note: tabIdx is already refreshed by appendCode
+				//spreadElasticNeedMeasure;
+			} 
+		+/
 		
+		
+		
 		this(CodeColumn parent_, string line)
 		{
 			this(parent_); 
