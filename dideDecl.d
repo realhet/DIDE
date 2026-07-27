@@ -134,11 +134,25 @@ version(/+$DIDE_REGION+/all) {
 	}
 	class Declaration : CodeNode
 	{
+		mixin((
+			(表([
+				[q{/+Note: Kind+/},q{/+Note: Opening+/},q{/+Note: Ending+/}],
+				[q{statement},q{' '},q{';'}],
+				[q{block},q{'{'},q{'}'}],
+				[q{preposition},q{'('},q{')'}],
+				[q{section},q{' '},q{':'}],
+			]))
+		).調!(GEN_enumTable)); 
+		
 		CodeColumn attributes; 
 		string keyword; 
 		CodeColumn header, block; 
-		char ending; 
-		bool blockHasExtraSemicolonEnding; 
+		
+		const Kind kind; 
+			@property opening() => kindOpening[kind]; 
+			@property ending() => kindEnding[kind]; 
+		
+		bool blockHasExtraSemicolonEnding; /+for C-like languages. Example: `struct{};`. It can be set from the outside.+/
 		
 		int internalNewLineCount, internalTabCount; //Todo: this counter only needed to count up to 2.
 		
@@ -154,15 +168,9 @@ version(/+$DIDE_REGION+/all) {
 		bool headerWasNonEmpty; 
 		//if removing return's parameter, the input column will not be lost with the cursor.
 		
-		@property isBlock() const
-		=> ending=='}'; @property isStatement() const
-		=> ending==';'; 
-		@property isSection() const
-		=> ending==':'; @property isPreposition() const
-		=> ending==')'; 
+		static foreach(e; EnumMemberNames!Kind)
+		mixin(iq{@property is$(e.capitalize)() const => kind==Kind.$(e); }.text); 
 		
-		@property string blockEnding()
-		=> ((blockHasExtraSemicolonEnding)?("};"/+for C-like languages.+/):("}")); 
 		
 		bool isRegion; //detected automatically
 		bool regionDisabled; 
@@ -292,65 +300,34 @@ version(/+$DIDE_REGION+/all) {
 		bool isAttributeBlock()
 		{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
 		
-		void verify()
-		{
-			if(isBlock)	{
-				enforce(block, "Invalid null block."); 
-				enforce(
-					keyword=="" || keyword.isBlockKeyword, 
-					"Invalid declaration block keyword: "~keyword.quoted
-				); 
-			}
-			else if(isStatement)
-			enforce(
-				keyword=="" || keyword.isStatementKeyword || keyword=="mixin", 
-				"Invalid declaration statement keyword: "~keyword.quoted
-			); 
-			else if(isSection)
-			enforce(
-				keyword.among(""), 
-				"Invalid declaration section keyword: "~keyword.quoted
-			); 
-			else if(isPreposition)
-			enforce(
-				keyword.isPrepositionKeyword, 
-				"Invalid declaration preposition keyword: "~keyword.quoted
-			); 
-			else
-			enforce(
-				0, 
-				"Invalid declaration ending: "~ending.text.quoted
-			); 
-			
-		} 
-		
 		this(CodeBlock b)
 		{
 			//promote the block.
-			assert(b); 
-			assert(b.parent); 
-			assert(b.content); 
+			assert(b); assert(b.parent); assert(b.content); 
 			assert(b.type == CodeBlock.Type.block); 
-			
-			super(b.parent); 
-			
-			attributes = new CodeColumn(this, []); 
-			header = new CodeColumn(this, []); 
-			block = b.content; block.setParent(this); 
-			ending = '}'; 
-			
-			verify; 
-			
-			refreshLineIdx; 
+			this(b.parent, [], "", [], b.content, '}'); 
 		} 
+		
+		
 		
-		this(Container parent, Cell[][] attrCells, string keyword, Cell[][] headerCells, CodeColumn block, char ending)
+		this(Container parent, Cell[][] attrCells, in string keyword_, Cell[][] headerCells, CodeColumn block_, char ending_)
 		{
 			assert(parent); 
 			super(parent); 
 			
-			void processShortenedFunction()
+			keyword = keyword_; 
+			
 			{
+				const kIdx = kindEnding.countUntil(ending_); 
+				if(kIdx<0) enforce(0, "Invalid declaration ending: "~ending_.text.quoted); 
+				kind = (cast(Kind)(kIdx)); 
+			}
+			
+			block = block_; if(block) block.setParent(this); 
+			
+			void processShortenedFunctions()
+			{
+				//this modifies headerCells, block and sets isShortenedFuction
 				if(ending==';' && keyword=="" && !block && attrCells.empty && !headerCells.empty)
 				{
 					bool foundListBlock; 
@@ -383,18 +360,16 @@ version(/+$DIDE_REGION+/all) {
 								g.ch.inRange('#', ')') || g.ch.inRange('+', '-') || g.ch.inRange(':', '?') || 
 								g.ch.among('/', '^', '|', '~') /+These chars aren't allowed.+/
 								/+* is allowed, for pointers+/
-							) return; 
+							)
+							return; 
 						}
 						else if(auto b = (cast(CodeBlock)(node)))
 						{ if(b.type==CodeBlock.Type.list) foundListBlock = true; }
 					}
+					/+Bug: processShortenedFunction fails with multiline header: Fucked up, growing indtents on saving.+/
 				}
-				
-				/+Bug: processShortenedFunction fails with multiline header: Fucked up, growing indtents on saving.+/
 			} 
-			
-			processShortenedFunction; 
-			
+			processShortenedFunctions; 
 			
 			auto detectInternalNewLine(Cell[][] a)
 			{
@@ -413,16 +388,72 @@ version(/+$DIDE_REGION+/all) {
 				return a; 
 			} 
 			
-			this.keyword = keyword; 
-			this.ending = ending; 
-			this.block = block; if(block) block.setParent(this); 
 			this.attributes = new CodeColumn(this, attrCells.withoutStartingSpace.withoutEndingSpace); 
 			this.header = new CodeColumn(this, detectInternalNewLine(headerCells.withoutStartingSpace.withoutEndingSpace)); 
 			//Note: ⚠ detectInternalNewLine() is not a pure function. The order of the operations above is important!!!
 			
-			decodeSpecial; 
+			void processRegions()
+			{
+				//This only works on member fields.
+				if(isPreposition && keyword=="version" && header.rowCount==1)
+				if(auto cmt = header.firstCell!CodeComment)
+				if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
+				if(cmt.isSpecialComment("REGION"))
+				{
+					//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
+					
+					/+
+						Todo: There should be a { } region too with it's own scope.  Using first "//Title: comment".
+						The {//title: } region comment makes difficulties inside preposition blocks.
+					+/
+					
+					isRegion = true; 
+					regionDisabled = optionIdx==2; 
+					keyword = "__region"; 
+					
+					header = cmt.content; 
+					header.setParent(this); 
+					
+					//remove the marker
+					with(header.rows[0])
+					{
+						subCells = subCells[specialCommentMarker.length + "REGION".length .. $]; 
+						if(!subCells.empty && chars[0]==' ') subCells.popFront; 
+						needMeasure; 
+					}
+				}
+			} 
+			processRegions; 
 			
-			verify; 
+			version(/+$DIDE_REGION Verify+/all)
+			{
+				if(isBlock)	{
+					enforce(block, "Invalid null block."); 
+					enforce(
+						keyword=="" || keyword.isBlockKeyword, 
+						"Invalid declaration block keyword: "~keyword.quoted
+					); 
+				}
+				else if(isStatement)	{
+					enforce(
+						keyword=="" || keyword.isStatementKeyword || keyword=="mixin", 
+						"Invalid declaration statement keyword: "~keyword.quoted
+					); 
+				}
+				else if(isSection)	{
+					enforce(
+						keyword.among(""), 
+						"Invalid declaration section keyword: "~keyword.quoted
+					); 
+				}
+				else if(isPreposition)	{
+					enforce(
+						keyword.isPrepositionKeyword, 
+						"Invalid declaration preposition keyword: "~keyword.quoted
+					); 
+				}
+			}
+			
 			
 			bool promoteStatement()
 			{
@@ -553,25 +584,22 @@ version(/+$DIDE_REGION+/all) {
 			//Todo: In case: labels it must process expressions!
 			
 			refreshLineIdx; 
+			
+			static bool[string] KW; 
+			if(keyword !in KW) {
+				KW[keyword]=true; 
+				((0x4A2120B7F3DF).檢(KW.keys.sort)); 
+			}
+			
 		} 
 		
-		string type()
+		string structuredKeyword()
 		{
 			if(keyword.length) return keyword; 
 			if(isBlock || isShortenedFunction) return "function"; 
 			if(isStatement	) return "statement"; 
 			if(isPreposition) return "preposition"; 
-			if(isSection) return "section"; 
-			return ""; 
-		} 
-		
-		char opening() const
-		{
-			return ending.predSwitch(
-				'}', '{', 
-				')', '(', 
-				' '
-			); 
+			if(isSection) return "section"; return ""; 
 		} 
 		
 		bool isLabel() const
@@ -593,7 +621,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			if(isAttributeKeyword(id)) return false; 
 			
-			if(!src.all!"a==' '") return false; //something els at the end
+			if(!src.all!"a==' '") return false; //something else at the end
 			
 			return true; ; 
 		} 
@@ -643,40 +671,6 @@ version(/+$DIDE_REGION+/all) {
 			return identifier; 
 		} 
 		
-		private void decodeSpecial()
-		{
-			//Note: only callable from within this(), as it does not reset flags.
-			
-			if(isPreposition && keyword=="version" && header.rowCount==1)
-			if(auto cmt = header.firstCell!CodeComment)
-			if(auto optionIdx = header.shallowText.withoutStarting(compoundObjectChar).among("all", "none"))
-			if(cmt.isSpecialComment("REGION"))
-			{
-				//Todo: Similar to regions: if(0) and if(1) should be handled to. Including their else blocks as well. +static
-				
-				/+
-					Todo: There should be a { } region too with it's own scope.  Using first "//Title: comment".
-					The {//title: } region comment makes difficulties inside preposition blocks.
-				+/
-				
-				isRegion = true; 
-				regionDisabled = optionIdx==2; 
-				keyword = "__region"; 
-				
-				header = cmt.content; 
-				header.setParent(this); 
-				
-				//remove the marker
-				with(header.rows[0])
-				{
-					subCells = subCells[specialCommentMarker.length + "REGION".length .. $]; 
-					if(!subCells.empty && chars[0]==' ') subCells.popFront; 
-					needMeasure; 
-				}
-				
-				return; 
-			}
-		} 
 		
 		bool isSpecial()
 		{ return isRegion; } 
@@ -804,14 +798,16 @@ version(/+$DIDE_REGION+/all) {
 				
 				void emitBlock()
 				{
+					void putBlock()
+					{ put("{", block, ((blockHasExtraSemicolonEnding)?("};"):("}"))); } 
+					
 					if(isSimpleBlock && !headerWasNonEmpty)
 					{
 						/+
 							Todo: the transition from simpleBlock to non-simple block is not clear.
 							A boolean flag is needed to let the user write into the header.
 						+/
-						put("{", block, blockEnding); 
-						
+						putBlock; 
 						
 						static if(false && CODE)
 						{
@@ -855,7 +851,7 @@ version(/+$DIDE_REGION+/all) {
 						putNLIndent; 
 						else if(needSpace.chkClear) put(' '); 
 						
-						put("{", block, blockEnding); 
+						putBlock; 
 						if(autoSpaceAfterDeclarations) put(' '); else putUI(' '); 
 					}
 				} 
@@ -884,9 +880,9 @@ version(/+$DIDE_REGION+/all) {
 						); 
 						
 						put(
-							"version(/+" ~ specialCommentMarker ~ "REGION" ~ (header.empty ? "" : " "),
+							"version(/+"~specialCommentMarker~"REGION"~((header.empty)?(""):(" ")),
 							header,
-							"+/"~(regionDisabled ? "none":"all")~")"
+							"+/"~((regionDisabled)?("none"):("all"))~")"
 						); 
 						if(hasInternalNewLine) putNL; else put(' '); 
 						put("{", block, "}"); 
@@ -995,7 +991,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			auto builder = nodeBuilder(
 				skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), 
-				structuredColor(type).nullable
+				structuredColor(structuredKeyword).nullable
 			); 
 			with(builder)
 			{

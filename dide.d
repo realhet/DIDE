@@ -197,7 +197,7 @@ version(/+$DIDE_REGION+/all)
 			
 			return cell.castSwitch!(
 				(Module a) 	=> "module", //m.file.name,
-				(Declaration a) 	=> adjustStr(a.type ~ (a.opening.text~a.ending).strip),
+				(Declaration a) 	=> adjustStr(a.structuredKeyword ~ (a.opening.text~a.ending).strip),
 				(CodeComment a) 	=> containerStr(a, "comment"),
 				(CodeString a) 	=> containerStr(a, "string"),
 				(CodeBlock a) 	=> containerStr(a, "block"),
