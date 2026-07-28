@@ -291,14 +291,17 @@ version(/+$DIDE_REGION+/all) {
 		+/
 		
 		bool isSimpleBlock() const
-		{ return isBlock && keyword=="" && header.empty && attributes.empty; } 
+		{ return isBlock && !isRegion && keyword=="" && header.empty; } 
 		
 		bool isFunction()
 		{ return isBlock && !isRegion && keyword=="" && identifier!=""; } 
 		
 		
 		bool isAttributeBlock()
-		{ return isBlock && !isRegion && keyword=="" && identifier=="" && !attributes.empty; } 
+		{
+			return isBlock && !isRegion && keyword=="" && identifier=="" && !header.empty
+			/+Note: header contains the attributes because there is no keyword!+/; 
+		} 
 		
 		this(CodeBlock b)
 		{
@@ -588,11 +591,17 @@ version(/+$DIDE_REGION+/all) {
 		
 		string structuredKeyword()
 		{
+			//Opt: this is not so fast...
+			
 			if(keyword.length) return keyword; 
+			if(isAttributeBlock) return "__attr"; 
 			if(isBlock || isShortenedFunction) return "function"; 
 			if(isStatement	) return "statement"; 
 			if(isPreposition) return "preposition"; 
-			if(isSection) return "section"; return ""; 
+			if(isSection)
+			return "section"/*Todo: detect if it is inside declarations and return "__attr"*/; 
+			
+			return ""; 
 		} 
 		
 		bool isLabel() const
@@ -980,12 +989,45 @@ version(/+$DIDE_REGION+/all) {
 		{
 			//_identifierValid = false;
 			
+			{
+				void flatten()
+				{
+					border.style = BorderStyle.normal; 
+					flags.noBackground = false; 
+					
+					if(block)
+					with(block) {
+						border.style = BorderStyle.normal; 
+						flags.noBackground = false; 
+					}
+				} 
+				
+				initializeBorder; //Opt: This is slow and redundant.  Must adjust border only if needed.
+				
+				if(isRegion) flatten; 
+				else {
+					const thickBorder = 	isBlock && keyword.among(
+						"class", "struct", "interface", "union", 
+						"enum", "template", "mixin template"
+					)
+						|| isFunction || isSimpleBlock || isShortenedFunction ||
+						isPreposition && keyword.among(
+						"if", "while", "do", "for", 
+						"foreach", "foreach_reverse", "with", 
+						"switch", "final switch", "scope", "try"
+					); 
+					
+					if(thickBorder)
+					{ padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; }
+				}
+			}
 			const isSimpleStatement = isStatement && keyword=="" && !isShortenedFunction; 
 			
 			auto builder = nodeBuilder(
 				skWhitespace, ((isSimpleStatement)?(NodeStyle.dim) :(NodeStyle.bright)), 
 				structuredColor(structuredKeyword).nullable
 			); 
+			
 			with(builder)
 			{
 				//set subColumn bkColors

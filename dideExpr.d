@@ -501,6 +501,8 @@ version(/+$DIDE_REGION+/all) {
 				
 				doRearrange(builder); 
 				
+				if(nodeStyle==NodeStyle.dim) flatten; 
+				
 				version(/+$DIDE_REGION finalize+/all)
 				{
 					if(!rearrangeNodeWasCalled)
@@ -626,6 +628,19 @@ version(/+$DIDE_REGION+/all) {
 		
 		final void generateUI(bool enabled_, TargetSurface targetSurface_=TargetSurface.world)
 		{ with(im) { mixin(("uiCode").調!(GEN_switch)); }} 
+		
+		void flatten()
+		{
+			border.style = BorderStyle.normal; 
+			flags.noBackground = false; 
+			
+			foreach(o; operands[])
+			if(o)
+			with(o) {
+				border.style = BorderStyle.normal; 
+				flags.noBackground = false; 
+			}
+		} 
 		
 	} 
 	
@@ -1222,6 +1237,11 @@ version(/+$DIDE_REGION+/all) {
 		{
 			super(__traits(parameters)); detectLanguageAndLayout; 
 			
+			if(1) {
+				/+thick border+/
+				padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; 
+			}
+			
 			if(language==mixin(舉!((Language),q{SQL})))
 			{
 				/+
@@ -1586,6 +1606,8 @@ version(/+$DIDE_REGION+/all) {
 						}
 					}
 				}
+				
+				flatten; 
 			} 
 			
 			override void draw(Drawing dr)
@@ -2039,8 +2061,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x10A8C3617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x10B103617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x10C473617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x10CCB3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2052,8 +2074,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x10D5F3617740F)))(互!((bool),(1),(0x10D833617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10DA73617740F)))
-					(互!((float/+w=6+/),(1.000),(0x10DF33617740F)))
+					(互!((bool),(0),(0x10F1A3617740F)))(互!((bool),(1),(0x10F3E3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10F623617740F)))
+					(互!((float/+w=6+/),(1.000),(0x10FAE3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2063,9 +2085,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x10FEA3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x110293617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x1109B3617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x1111A3617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x111A53617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x111E43617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x112563617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x112D53617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2169,8 +2191,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x1232D3617740F).檢(expr)) ((0x1234B3617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x1239B3617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x124E83617740F).檢(expr)) ((0x125063617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x125563617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!

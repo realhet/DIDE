@@ -1168,7 +1168,13 @@ version(/+$DIDE_REGION+/all) {
 		
 		void initializeBorder()
 		{
-			this.setRoundBorder(8); 
+			this.setRoundBorder(8, inward:true); 
+			
+			if(0 /+disable sinking borders+/) {
+				border.style = BorderStyle.normal; 
+				flags.noBackground = false; 
+			}
+			
 			margin = Margin(.5, .5, .5, .5); //Todo: need more clever constructors for Margion
 			padding = Padding(.5, 4, .5, 4); 
 		} 
@@ -1188,6 +1194,7 @@ version(/+$DIDE_REGION+/all) {
 		void applyNoBorder()
 		{
 			border = Border.init; 
+			flags.noBackground = false; 
 			padding.right = 2; 
 			padding.left = 2; 
 			//margin is ok

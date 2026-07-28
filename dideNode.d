@@ -296,7 +296,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		void initializeBorder()
 		{
-			this.setRoundBorder(8); 
+			this.setRoundBorder(8, inward:false); 
 			margin = Margin(.5, .5, .5, .5); 
 			padding = Padding(1, 1.5, 1, 1.5); 
 		} 
@@ -304,8 +304,6 @@ version(/+$DIDE_REGION+/all) {
 		auto nodeBuilder(SyntaxKind syntax, NodeStyle nodeStyle_, Nullable!RGB customColor = Nullable!RGB.init)
 		{
 			nodeStyle = nodeStyle_; 
-			
-			//initializeBorder;  bug: it it is here, table cells become rounded
 			
 			CodeNodeBuilder res; 
 			with(res) {
@@ -425,6 +423,7 @@ version(/+$DIDE_REGION+/all) {
 			}); 
 			bkColor = ts.bkColor; 
 		} 
+		
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
@@ -690,8 +689,21 @@ version(/+$DIDE_REGION+/all) {
 		{
 			noBorder = true; 
 			border = Border.init; 
+			flags.noBackground = false; 
 			content.applyNoBorder; 
 			needMeasure; 
+		} 
+		
+		void flatten()
+		{
+			border.style = BorderStyle.normal; 
+			flags.noBackground = false; 
+			
+			if(content)
+			with(content) {
+				border.style = BorderStyle.normal; 
+				flags.noBackground = false; 
+			}
 		} 
 	} 
 	class CodeComment : CodeContainer
@@ -1046,6 +1058,9 @@ version(/+$DIDE_REGION+/all) {
 			}
 			
 			if(customLanguage.sameText("sql")) fillLanguageId(content, 1); 
+			
+			/+remove 3D effect from comments+/
+			if(customLanguage=="") flatten; 
 		} 
 		
 		bool isSpecialComment()
@@ -1870,6 +1885,8 @@ version(/+$DIDE_REGION+/all) {
 			}
 			else
 			enforce(0, "Invalid block closing token"); 
+			
+			if(type<=Type.index) flatten; 
 			
 			needMeasure; 
 		} 

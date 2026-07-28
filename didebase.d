@@ -118,13 +118,15 @@ __gshared float blink;
 void updateBlink()
 { blink = float(sqr(sin(blinkf(134.0f/60)*PIf))); } 
 
-void setRoundBorder(Container cntr, float borderWidth)
+void setRoundBorder(Container cntr, float borderWidth, bool inward)
 {
 	with(cntr) {
 		border.width = borderWidth; 
 		border.color = bkColor; 
-		border.inset = true; 
+		border.inset = true /+border doesn't take up space+/; 
 		border.borderFirst = true; 
+		border.style = inward ? BorderStyle.halfFilletIn : BorderStyle.halfFilletOut; 
+		cntr.flags.noBackground = true /+because fillet border already draws that.+/; 
 	}
 } 
 
@@ -141,7 +143,7 @@ static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 			style.bkColor = bkColor = color; 
 			style.fontColor = blackOrWhiteFor(color); 
 			flags.yAlign = YAlign.top; 
-			im.actContainer.setRoundBorder(8); 
+			im.actContainer.setRoundBorder(8, inward:false); 
 			if(contents) contents(); 
 		}  
 	); 
@@ -157,7 +159,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 			style.bkColor = bkColor = color; 
 			style.fontColor = fontColor; 
 			flags.yAlign = YAlign.top; 
-			im.actContainer.setRoundBorder(8); 
+			im.actContainer.setRoundBorder(8, inward:true); 
 			if(contents) contents(); 
 		}  
 	); 
