@@ -1887,7 +1887,6 @@ version(/+$DIDE_REGION+/all) {
 			enforce(0, "Invalid block closing token"); 
 			
 			if(type.among(Type.list, Type.index)) flatten; 
-			
 			needMeasure; 
 		} 
 	} 

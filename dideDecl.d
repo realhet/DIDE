@@ -2247,6 +2247,8 @@ version(/+$DIDE_REGION+/all) {
 					"is"	, CodeBlock.Type.isExpr
 				); 
 				//Todo: align() RGB() RGBA()
+				
+				blk.initializeBorder; //set border to normal from flattened
 				blk.needMeasure; 
 				
 				return; 
