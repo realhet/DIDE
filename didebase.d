@@ -3,8 +3,7 @@ import het.ui;
 
 public import het.ui; 
 
-public import het.parser : CodeLocation; 
-public import het.parser: SyntaxKind, syntaxBkColor, syntaxFontColor; 
+public import het.parser : CodeLocation, SyntaxKind, syntaxBkColor, syntaxFontColor, structuredColor; 
 
 public import dideselection; 
 public import dideselection : wordAt; public import het : wordAt; 
@@ -113,57 +112,6 @@ interface IWorkspace
 	@property bool isReadOnly(); 
 	void handleButtonCommentClick(Object cmt, string params); 
 } 
-
-
-
-
-version(/+$DIDE_REGION+/all) {
-	RGB structuredColor(string name, RGB def = clGray)
-	{
-		switch(name)
-		{
-			mixin((
-				(表([
-					[q{"template" },q{(RGB(174,  74,  54))}],
-					[q{"enum" },q{(RGB(245, 156,   0))}],
-					[q{"alias" },q{(RGB(238, 114,   3))}],
-					[q{"if", "switch", "final switch", "else"},q{(RGB(255,  19,  79))}],
-					[q{"for", "do", "while", "foreach", "foreach_reverse"},q{(RGB(255,  79,  39))}],
-					[q{
-						"version", "debug", "static if", "static foreach", 
-						"static foreach_reverse", "static assert"
-					},q{(RGB(255,  10, 119))}],
-					[q{"module", "import"},q{(RGB(178,  28, 145))}],
-					[q{"unittest" },q{(RGB(115,  45, 164))}],
-					[q{"section" },q{(RGB( 22, 186, 231))}],
-					[q{"with" },q{(RGB(  0, 134, 192))}],
-					[q{"__unused1" },q{(RGB(  0,  79, 159))}],
-					[q{"class" },q{(RGB(134, 188,  37))}],
-					[q{"interface" },q{(RGB(101, 179,  46))}],
-					[q{"struct" },q{(RGB(  0, 120,  88))}],
-					[q{"union" },q{(RGB(  0, 169, 132))}],
-					[q{"mixin template" },q{(RGB(255, 227, 126))}],
-					[q{"mixin" },q{(RGB(255,  62,  47))}],
-					[q{"statement" },q{(RGB(128, 128, 128))}],
-					[q{"function", "invariant"},q{(RGB(192, 192, 192))}],
-					[q{"__region" },q{(RGB(128, 128, 128))}],
-					[q{"layout" },q{(RGB( 85, 135, 166))}],
-					[q{"try" },q{(RGB(200, 250, 189))}],
-					[q{"scope" },q{(RGB( 50, 250, 189))}],
-					[q{
-						"assert", "break", "continue", "goto", 
-						"goto case", "return", "enforce"
-					},q{(RGB(251, 128, 174))}],
-					[q{"auto" },q{(RGB(  0, 255, 255))}],
-				]))
-			).調!(GEN_ReturnCases)); 
-			default: 	return def; 
-		}
-	} 
-	
-	
-	
-}
 
 __gshared float blink; 
 
