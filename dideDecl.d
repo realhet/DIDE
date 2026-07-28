@@ -584,13 +584,6 @@ version(/+$DIDE_REGION+/all) {
 			//Todo: In case: labels it must process expressions!
 			
 			refreshLineIdx; 
-			
-			static bool[string] KW; 
-			if(keyword !in KW) {
-				KW[keyword]=true; 
-				((0x4A2120B7F3DF).檢(KW.keys.sort)); 
-			}
-			
 		} 
 		
 		string structuredKeyword()

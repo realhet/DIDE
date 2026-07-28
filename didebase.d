@@ -118,75 +118,51 @@ interface IWorkspace
 
 
 version(/+$DIDE_REGION+/all) {
-	/+Todo: this is redundant. It's also in didemodule+/
-	RGB brighter(RGB a, float f)
-	{ return (a.from_unorm*(1+f)).to_unorm; } 
-	
-	enum clPiko : RGB
-	{
-		G940 	= (RGB(139,  59,  43)).brighter(.25f),
-		G239 	= (RGB(245, 156,   0)),
-		G231 	= (RGB(238, 114,   3)),
-		G119 	= (RGB(221,  11,  47)).brighter(.35f),
-		G115 	= (RGB(222,   0, 126)),
-		G107 	= (RGB(158,  25, 129)).brighter(.125f),
-		G62 	= (RGB( 92,  36, 131)).brighter(.25f),
-		R1 	= (RGB( 22, 186, 231)),
-		R2 	= (RGB(  0, 134, 192)),
-		R3 	= (RGB(  0, 105, 180)),
-		R4 	= (RGB(  0,  79, 159)),
-		R9 	= (RGB(  0,  48,  93)),
-		W 	= (RGB(134, 188,  37)),
-		BW 	= (RGB(101, 179,  46)),
-		W3 	= (RGB(  0, 120,  88)),
-		WY 	= (RGB(  0, 169, 132)),
-		K15 	= (RGB(255, 227, 126)),
-		K30 	= (RGB(255, 237,   0)),
-		DKW 	= (RGB(255, 204,   0)),
-		GE31 	= (RGB(157, 157, 156)),
-	} 
-	
 	RGB structuredColor(string name, RGB def = clGray)
 	{
 		switch(name)
 		{
-			case "template": 	return clPiko.G940; 
-			case "enum": 	return clPiko.G239; 
-			case "alias": 	return clPiko.G231; 
-			case "if", "switch", "final switch", "else": 	return clPiko.G119.brighter(.25f); 
-			case 	"for", "do", "while", "foreach", 
-				"foreach_reverse": 	return mix(clOrange, (RGB(221, 11, 47)), .66f).brighter(.25f); 
-			case 	"version", "debug", "static if", 
-				"static foreach", "static foreach_reverse", 
-				"static assert": 	return mix(clPiko.G115, clPiko.G119, .5f).brighter(.25f); 
-			case "module", "import": 	return clPiko.G107; 
-			case "unittest": 	return clPiko.G62; 
-				
-			case "section": 	return clPiko.R1; 
-			case "with": 	return clPiko.R2; 
-			case "__unused1": 	return clPiko.R4; 
-				
-			case "class": 	return clPiko.W; 
-			case "interface": 	return clPiko.BW; 
-			case "struct": 	return clPiko.W3; 
-			case "union": 	return clPiko.WY; 
-			case "mixin template": 	return clPiko.K15; 
-			case "mixin": 	return mix(clPiko.DKW, clPiko.G119, .75f); 
-			case "statement": 	return clGray; 
-			case "function", "invariant": 	return clSilver; 
-			case "__region": 	return clGray; 
-			case "layout": 	return (RGB( 85, 135, 166)); 
-				
-			case "try": 	return (RGB(200, 250, 189)); 
-			case "scope": 	return (RGB( 50, 250, 189)); 
-			case 	"assert", "break", "continue", "goto", 
-				"goto case", "return"	, "enforce": 	return mix(RGB(0x5C00F6/+skKeyword+/), clWhite, .5); 
-			
-			case "auto": 	return clAqua; 
-			
+			mixin((
+				(表([
+					[q{"template" },q{(RGB(174,  74,  54))}],
+					[q{"enum" },q{(RGB(245, 156,   0))}],
+					[q{"alias" },q{(RGB(238, 114,   3))}],
+					[q{"if", "switch", "final switch", "else"},q{(RGB(255,  19,  79))}],
+					[q{"for", "do", "while", "foreach", "foreach_reverse"},q{(RGB(255,  79,  39))}],
+					[q{
+						"version", "debug", "static if", "static foreach", 
+						"static foreach_reverse", "static assert"
+					},q{(RGB(255,  10, 119))}],
+					[q{"module", "import"},q{(RGB(178,  28, 145))}],
+					[q{"unittest" },q{(RGB(115,  45, 164))}],
+					[q{"section" },q{(RGB( 22, 186, 231))}],
+					[q{"with" },q{(RGB(  0, 134, 192))}],
+					[q{"__unused1" },q{(RGB(  0,  79, 159))}],
+					[q{"class" },q{(RGB(134, 188,  37))}],
+					[q{"interface" },q{(RGB(101, 179,  46))}],
+					[q{"struct" },q{(RGB(  0, 120,  88))}],
+					[q{"union" },q{(RGB(  0, 169, 132))}],
+					[q{"mixin template" },q{(RGB(255, 227, 126))}],
+					[q{"mixin" },q{(RGB(255,  62,  47))}],
+					[q{"statement" },q{(RGB(128, 128, 128))}],
+					[q{"function", "invariant"},q{(RGB(192, 192, 192))}],
+					[q{"__region" },q{(RGB(128, 128, 128))}],
+					[q{"layout" },q{(RGB( 85, 135, 166))}],
+					[q{"try" },q{(RGB(200, 250, 189))}],
+					[q{"scope" },q{(RGB( 50, 250, 189))}],
+					[q{
+						"assert", "break", "continue", "goto", 
+						"goto case", "return", "enforce"
+					},q{(RGB(251, 128, 174))}],
+					[q{"auto" },q{(RGB(  0, 255, 255))}],
+				]))
+			).調!(GEN_ReturnCases)); 
 			default: 	return def; 
 		}
 	} 
+	
+	
+	
 }
 
 __gshared float blink; 

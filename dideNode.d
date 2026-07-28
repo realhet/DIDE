@@ -75,8 +75,6 @@ version(/+$DIDE_REGION+/all) {
 	
 	class StructureMap
 	{
-		//StructureMap //////////////////////////////////////////
-		
 		private static StructureMap collector; 
 		private static bool collecting()
 		{ return collector !is null; } 
@@ -114,49 +112,36 @@ version(/+$DIDE_REGION+/all) {
 				{ n.node.fullIdentifier.print; }
 			}
 			
-			if(1) {
+			if(lod.zoomFactor<0.5)
+			{
+				const 	fontColor 	= blackOrWhiteFor(clCodeBackground),
+					bkColor 	= blackOrWhiteFor(fontColor); 
 				
-				/*
-					dr.color = clFuchsia;
-					dr.lineWidth = -1;
-					dr.fontHeight = -18;
-					foreach(n; visibleNamedNodes){
-						//n.node.fullIdentifier.print;
-						dr.drawRect(n.bnd);
-						dr.textOut(n.bnd.topLeft, n.node.identifier);
-						
-					}
-				*/
-				
-				
-				if(lod.zoomFactor<0.5)
+				dr.lineWidth = -1.01f; 
+				foreach_reverse(n; visibleNamedNodes)
 				{
-					dr.lineWidth = -1; 
-					foreach_reverse(n; visibleNamedNodes)
-					{
-						dr.fontHeight = min(8512, n.bnd.height); 
-						
-						const caption = n.node.caption; 
-						
-						const width = dr.textWidth(caption); 
-						if(width > n.bnd.width) dr.fontHeight *= n.bnd.width/width; 
-						
-						auto visibleHeight = lod.calcVisibleSize(dr.fontHeight); 
-						if(!visibleHeight.inRange(4, 64)) continue; 
-						
-						dr.alpha = 0.5; 
-						dr.color = mix(n.node.bkColor, clBlack, 0.75); 
-						dr.fillRect(n.bnd); 
-						
-						dr.alpha = 1; 
-						dr.color = n.node.bkColor; 
-						dr.drawRect(n.bnd); 
-						
-						dr.alpha = 1; 
-						dr.color = mix(n.node.bkColor, clWhite, 0.75); 
-						dr.textOut(n.bnd.topLeft, caption); 
-						
-					}
+					dr.fontHeight = min(8512, n.bnd.height); 
+					
+					const caption = n.node.caption; 
+					
+					const width = dr.textWidth(caption); 
+					if(width > n.bnd.width) dr.fontHeight *= n.bnd.width/width; 
+					
+					auto visibleHeight = lod.calcVisibleSize(dr.fontHeight); 
+					if(!visibleHeight.inRange(4, 64)) continue; 
+					
+					dr.alpha = 0.5; 
+					dr.color = mix(n.node.bkColor, bkColor, 0.75); 
+					dr.fillRect(n.bnd); 
+					
+					dr.alpha = 1; 
+					dr.color = n.node.bkColor; 
+					dr.drawRect(n.bnd); 
+					
+					dr.alpha = 1; 
+					dr.color = mix(n.node.bkColor, fontColor, 0.75); 
+					dr.textOut(n.bnd.topLeft, caption); 
+					
 				}
 			}
 		} 
