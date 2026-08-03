@@ -829,4 +829,27 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 		
 		/+Note: Usage(prompt_hit: 0, prompt_miss: 255, completion: 1602, HUF: 0.25, price: 100%)+/
 	+/
++//+
+	Assistant: To build an efficient "code tree navigator" without burning through cash or copying and pasting, you can use a Three-Tier Tree Traversal architecture.Step 1: Map the Project Skeleton (The Directory Tree)Never feed the raw code to the LLM first. Generate an explicit, lightweight tree structure of your codebase using a script or command (tree /F on Windows or find . on Linux). Keep a strict, low-token summary next to each file path.textmy-project/
+	│   ├── src/
+	│   │   ├── auth.py          # Handles JWT tokens and session validation
+	│   │   └── database.py      # SQLite connection pool and migrations
+	
+	Use code with caution.The 
+	
+	Agent Loop: You show DeepSeek only this skeleton and ask: "I need to fix a login bug. Look at this map and output only the file paths I need to inspect."Step 2: Extract Class & Function Signatures (The Map)Instead of opening the full 3MB of code, use an abstract syntax tree (AST) parser or a quick script to strip out all the inner logic, leaving only the "skeleton" of the target files.python# DeepSeek only sees this lightweight signature map
+	
+	class AuthManager:
+	    def __init__(self, db_connection): ...
+	    def validate_session(self, token: str) -> bool: ...
+	    def login_user(self, credentials: dict) -> str: ...
+	
+	Use code with caution.The 
+	
+	Agent Loop: DeepSeek reviews the signatures and responds using a standard Function Call: inspect_file_lines(file="src/auth.py", start=10, end=45).Step 3: Targeted Line-Range Inspection (The Execution)Your local script catches DeepSeek’s function call, extracts only lines 10 to 45 of auth.py, and feeds just those 35 lines back to the model.[User Query] ──> 1. Show Project Skeleton ──> [DeepSeek: Picks Files]
+	                       │
+	                       └──> 2. Show Function Signatures ──> [DeepSeek: Request Lines 10-45]
+	                                                                 │
+	                                                                 └──> 3. Read 35 Lines of Code
+	W
 +/
