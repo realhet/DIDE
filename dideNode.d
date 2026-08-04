@@ -424,6 +424,8 @@ version(/+$DIDE_REGION+/all) {
 			bkColor = ts.bkColor; 
 		} 
 		
+		void setThickBorder()
+		{ padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; } 
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
@@ -694,7 +696,7 @@ version(/+$DIDE_REGION+/all) {
 			needMeasure; 
 		} 
 		
-		void flatten()
+		void setFlatBorder()
 		{
 			border.style = BorderStyle.normal; 
 			flags.noBackground = false; 
@@ -1060,7 +1062,7 @@ version(/+$DIDE_REGION+/all) {
 			if(customLanguage.sameText("sql")) fillLanguageId(content, 1); 
 			
 			/+remove 3D effect from comments+/
-			if(customLanguage=="") flatten; 
+			if(customLanguage=="") setFlatBorder; 
 		} 
 		
 		bool isSpecialComment()
@@ -1886,7 +1888,8 @@ version(/+$DIDE_REGION+/all) {
 			else
 			enforce(0, "Invalid block closing token"); 
 			
-			if(type.among(Type.list, Type.index)) flatten; 
+			if(type.among(Type.list, Type.index))	setFlatBorder; 
+			else if(type==Type.interpolation)	border.style = BorderStyle.halfFilletIn; 
 			needMeasure; 
 		} 
 	} 

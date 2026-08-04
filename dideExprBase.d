@@ -32,6 +32,7 @@ version(/+$DIDE_REGION+/all) {
 				[q{anonymMethod},q{2},q{/+Code: (expr)op{code}+/},q{/+Note: anonym method (without attrs)+/}],
 				[q{binaryInterpolatedTokenStringTextOp},q{2},q{/+Code: op(iq{}.text,iq{}.text)+/},q{/+Note: 碼! ExternalCode (not used currently)+/}],
 				[q{binaryInterpolatedTokenStringOp2},q{3},q{/+Code: op((),iq{},iq{})+/},q{/+Note: 碼! ExternalCode2 first param is _LOCATION_!()+/}],
+				[q{anonymMethodCall},q{3},q{/+Code: (expr)op{code}(expr)+/},q{/+Note: anonym method (without attrs) called+/}],
 				[],
 				[q{/+Note: special statement: any single row statement where the last char must is a unicode special char+/}],
 				[q{specialStatementOp},q{0},q{/+Code: specialStatement+/},q{/+Note: auto 間T=now間+/}],

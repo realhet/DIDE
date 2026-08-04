@@ -990,7 +990,7 @@ version(/+$DIDE_REGION+/all) {
 			//_identifierValid = false;
 			
 			{
-				void flatten()
+				void setFlatBorder()
 				{
 					border.style = BorderStyle.normal; 
 					flags.noBackground = false; 
@@ -1004,7 +1004,7 @@ version(/+$DIDE_REGION+/all) {
 				
 				initializeBorder; //Opt: This is slow and redundant.  Must adjust border only if needed.
 				
-				if(isRegion) flatten; 
+				if(isRegion) setFlatBorder; 
 				else {
 					const thickBorder = 	isBlock && keyword.among(
 						"class", "struct", "interface", "union", 
@@ -1017,8 +1017,7 @@ version(/+$DIDE_REGION+/all) {
 						"switch", "final switch", "scope", "try"
 					); 
 					
-					if(thickBorder)
-					{ padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; }
+					if(thickBorder) { setThickBorder; }
 				}
 			}
 			const isSimpleStatement = isStatement && keyword=="" && !isShortenedFunction; 

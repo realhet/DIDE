@@ -456,7 +456,31 @@ Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan G
 							version(/+$DIDE_REGION Easy access to last row+/all)
 							{
 								CodeRow row; void accessLastRow()
-								{ seekToEnd; row = cr.codeColumn.rows[cr.pos.y]; } accessLastRow; 
+								{
+									seekToEnd; row = cr.codeColumn.rows[cr.pos.y]; 
+									
+									/+
+										Todo: /+
+											Error: Exception: ACCESS_VIOLATION at 7FF763E598DC info: 0, 0
+											----------------
+											0x00007FF763E598DC in dideai.AiManager.update.__foreachbody_L245_C3.__lambda_L455_C8!dchar.__lambda_L455_C8.accessLastRow at c:\d\projects\dide\dideai.d(459)
+											0x00007FF763E5910F in dideai.AiManager.update.__foreachbody_L245_C3.__lambda_L455_C8(__T15)(ch) at c:\d\projects\dide\dideai.d(463)
+											0x00007FF763E42349 in het.ai.AiChat.update_markDown.emit at c:\d\libs\het\ai.d(494)
+											0x00007FF763E41A28 in het.ai.AiChat.update.processEvent at c:\d\libs\het\ai.d(372)
+											0x00007FF763E41850 in update at c:\d\libs\het\ai.d(397)
+											0x00007FF763E420F0 in update_markDown at c:\d\libs\het\ai.d(499)
+											0x00007FF763E57AAD in dideai.AiManager.update.__foreachbody_L245_C3 at c:\d\projects\dide\dideai.d(563)
+											0x00007FF763EBFE1C in aaApply2
+											0x00007FF763E578E9 in update at c:\d\projects\dide\dideai.d(571)
+											0x00007FF763DB031F in update at c:\d\projects\dide\dideworkspace.d(476)
+											0x00007FF763AB2D92 in onUpdate at c:\d\projects\dide\dide.d(750)
+											0x00007FF763C36F79 in updateWithActionManager at c:\d\libs\het\win.d(1048)
+											0x00007FF763C353B4 in internalUpdate at c:\d\libs\het\win.d(1182)
+											0x00007FF763C7F692 in doUpdate at c:\d\libs\het\vulkanwin.d(5619)
+											0x00007FF763C34A34 in WndProc at c:\d\libs\het\win.d(795)
+										+/
+									+/
+								} accessLastRow; 
 							}
 							
 							

@@ -747,7 +747,7 @@ FPS=$(FPS
 			im.UI_FlashMessages; 
 			
 			workspace.update(view, builder.buildResult); 
-			im.root ~= workspace; 
+			im.append(workspace); 
 			
 			
 			version(/+$DIDE_REGION Interactive controls on modules+/all)
@@ -772,7 +772,7 @@ FPS=$(FPS
 						}
 					); 
 					
-					root ~= removeLastContainer.subCells; //no need for the container, just the controls
+					im.append(removeLastContainer.subCells); //no need for the container, just the controls
 				}
 				
 				if(dbgsrv.isActive /+Remove 'hold' on modified values. (Only hold them for a short period)+/)
@@ -782,7 +782,7 @@ FPS=$(FPS
 				}
 			}
 			
-			im.root ~= overlay; 
+			im.append(overlay); 
 			
 			view.subScreenArea = im.clientArea / clientSize; 
 			

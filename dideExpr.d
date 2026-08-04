@@ -113,9 +113,9 @@ version(/+$DIDE_REGION+/all) {
 			{ return TRY(findNiceExpressionTemplateIdx(args[0], args[1], args[2]), args[3..$]); }
 		} 
 		
-		void processOpList(string op, CodeColumn content)
+		bool processOpList(string op, CodeColumn content)
 		{
-			if(TRY(bt, NEP.unaryOp /+Note: op(expr)+/, op, content)) return; 
+			if(TRY(bt, NEP.unaryOp /+Note: op(expr)+/, op, content)) return true; 
 			
 			bool doit(NEP ptn, alias exractor, int len)()
 			{
@@ -128,36 +128,38 @@ version(/+$DIDE_REGION+/all) {
 				return false; 
 			} 
 			
-			if(doit!(NEP.binaryTokenStringOp, extractTokenStringParams   , 2 /+Note: op(q{},q{})+/       )) return; 
-			if(doit!(NEP.tenaryTokenStringOp, extractTokenStringParams   , 3 /+Note: op(q{},q{},q{})+/    )) return; 
-			if(doit!(NEP.twoParamOp       , extractListParams          , 2 /+Note: op(expr,expr)+/    )) return; 
-			if(doit!(NEP.threeParamOp      , extractListParams          , 3 /+Note: op(expr,expr,expr)+/)) return; 
-			if(doit!(NEP.twoParamEQOp     , extractListTokenStringParams, 2 /+Note: op(expr,q{})+/     )) return; 
-			if(doit!(NEP.threeParamEQEOp   , extractListTokenStringParams, 3 /+Note: op(expr,q{},expr)+/ )) return; 
+			if(doit!(NEP.binaryTokenStringOp, extractTokenStringParams   , 2 /+Note: op(q{},q{})+/       )) return true; 
+			if(doit!(NEP.tenaryTokenStringOp, extractTokenStringParams   , 3 /+Note: op(q{},q{},q{})+/    )) return true; 
+			if(doit!(NEP.twoParamOp       , extractListParams          , 2 /+Note: op(expr,expr)+/    )) return true; 
+			if(doit!(NEP.threeParamOp      , extractListParams          , 3 /+Note: op(expr,expr,expr)+/)) return true; 
+			if(doit!(NEP.twoParamEQOp     , extractListTokenStringParams, 2 /+Note: op(expr,q{})+/     )) return true; 
+			if(doit!(NEP.threeParamEQEOp   , extractListTokenStringParams, 3 /+Note: op(expr,q{},expr)+/ )) return true; 
 			if(
 				doit!(
 					NEP.binaryInterpolatedTokenStringTextOp , 
 					extractInterpolatedTokenStringTextParams, 2 /+Note: op(tiq{},tiq{})+/ 
 				)
-			) return; 
+			) return true; 
 			if(
 				doit!(
 					NEP.binaryInterpolatedTokenStringOp2 , 
 					extractInterpolatedTokenStringParams2, 3 /+Note: op((),iq{},iq{})+/ 
 				)
-			) return; 
+			) return true; 
+			
+			return false; 
 		} 
 		
-		void processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
+		bool processListOpList(string op, CodeColumn leftContent, CodeColumn rightContent)
 		{
-			if(TRY(bt, NEP.binaryOp /+Note: (expr)op(expr)+/, op, leftContent, rightContent)) return; 
+			if(TRY(bt, NEP.binaryOp /+Note: (expr)op(expr)+/, op, leftContent, rightContent)) return true; 
 			if(const tIdx = findNiceExpressionTemplateIdx(bt, NEP.tenaryOp /+Note: (expr)op(expr)op(expr)+/, op))
 			{
 				const mIdx = op.countUntil('￼'); 
 				if(mIdx>=0)
 				{
 					if(auto middle = asListBlock(row.subCells.get(mIdx + 1/+0th is left operand+/)))
-					{ if(TRY(tIdx, leftContent, middle.content, rightContent)) return; }
+					{ if(TRY(tIdx, leftContent, middle.content, rightContent)) return true; }
 				}
 			}
 			if(row.length==3 && leftContent.empty && rightContent.empty)
@@ -178,18 +180,30 @@ version(/+$DIDE_REGION+/all) {
 							bt, NEP.mixinTableInjectorOp /+Note: (){with(op(expr)){expr}}()+/, 
 							innerOp, expr1.content, with_.block
 						)
-					) return; 
+					) return true; 
 				}
 			}
+			if(row.length>=3)
+			{
+				if(auto midContent = asStatementBlockContents(row.subCells[$-2]))
+				{
+					const op2 = row.chars[1..$-2].text; 
+					{ if(TRY(bt, NEP.anonymMethodCall /+Note: (expr)op{code}(expr)+/, op2, leftContent, midContent, rightContent)) return true; }
+				}
+			}
+			return false; 
 		} 
 		
 		if(auto right = asListBlock(row.subCells.back))
 		{
 			if(auto left = asListBlock(row.subCells.front))
 			{
-				const op = row.chars[1..$-1].text; 
 				if(left.content && right.content)
-				{ processListOpList(op, left.content, right.content); }
+				{
+					const op = row.chars[1..$-1].text; 
+					if(left.content && right.content)
+					{ if(processListOpList(op, left.content, right.content)) return; }
+				}
 			}
 			else
 			{
@@ -200,7 +214,7 @@ version(/+$DIDE_REGION+/all) {
 					{ { if(TRY(bt, NEP.castOp /+Note: op(expr)(expr)+/, op.withoutEnding('￼'), mid.content, right.content)) return; }}
 				}
 				else
-				{ processOpList(op, right.content); }
+				{ if(processOpList(op, right.content)) return; }
 			}
 		}
 		else if(auto right = asTokenStringBlock(row.subCells.back))
@@ -501,7 +515,7 @@ version(/+$DIDE_REGION+/all) {
 				
 				doRearrange(builder); 
 				
-				if(nodeStyle==NodeStyle.dim) flatten; 
+				if(nodeStyle==NodeStyle.dim) setFlatBorder; 
 				
 				version(/+$DIDE_REGION finalize+/all)
 				{
@@ -629,7 +643,7 @@ version(/+$DIDE_REGION+/all) {
 		final void generateUI(bool enabled_, TargetSurface targetSurface_=TargetSurface.world)
 		{ with(im) { mixin(("uiCode").調!(GEN_switch)); }} 
 		
-		void flatten()
+		void setFlatBorder()
 		{
 			border.style = BorderStyle.normal; 
 			flags.noBackground = false; 
@@ -1607,7 +1621,7 @@ version(/+$DIDE_REGION+/all) {
 					}
 				}
 				
-				flatten; 
+				setFlatBorder; 
 			} 
 			
 			override void draw(Drawing dr)
@@ -1957,15 +1971,21 @@ version(/+$DIDE_REGION+/all) {
 					/+Todo: This is a very repetitive pattern: .filter!((a)=>(a.file.extIs("d", "di")))  put the .filter into the third operand!+/
 				}],
 				[q{lambda_1},q{((a) =>(a+1))},q{/+Code: ((expr)op(expr))+/},q{" =>"},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put(" =>"); op(1); @node: op(0); putNL; put('⇒'); op(1); }],
-				[q{anonymMethod_0},q{((){}) ((a){ a; })},q{/+Code: ((expr)op{code})+/},q{""},q{bright},q{Symbol},q{NiceExpression},q{@text: op(0); put("{", operands[1], "}"); @node: op(0); put("{", operands[1], "}"); }],
-				[q{anonymMethod_1},q{
-					(() {}) ((x) {
-						a; 
-						b; 
-					})
-				},q{/+Code: ((expr)op{code})+/},q{" "},q{bright},q{Symbol},q{NiceExpression},q{
+				[q{anonymMethod_0},q{((a){ f; })},q{/+Code: ((expr)op{code})+/},q{""},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put("{", operands[1], "}"); 
+					@node: op(0); put("{", operands[1], "}"); setThickBorder; 
+				}],
+				[q{anonymMethod_1},q{((a) { f; })},q{/+Code: ((expr)op{code})+/},q{" "},q{bright},q{Symbol},q{NiceExpression},q{
 					@text: op(0); put(" "); put("{", operands[1], "}"); 
-					@node: op(0); putNL; put("{", operands[1], "}"); 
+					@node: op(0); putNL; put("{", operands[1], "}"); setThickBorder; 
+				}],
+				[q{anonymMethodCall_0},q{((a){ f; }(x))},q{/+Code: ((expr)op{code}(expr))+/},q{""},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put("{", operands[1], "}"); op(2); 
+					@node: op(0); put("{", operands[1], "}"); op(2); setThickBorder; 
+				}],
+				[q{anonymMethodCall_1},q{((a) { f; }(x))},q{/+Code: ((expr)op{code}(expr))+/},q{" "},q{bright},q{Symbol},q{NiceExpression},q{
+					@text: op(0); put(" "); put("{", operands[1], "}"); op(2); 
+					@node: op(0); putNL; put("{", operands[1], "}"); putNL; op(2); setThickBorder; 
 				}],
 				[q{tenary_eq_eq},q{mixin(等(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"等"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('=', '='); }],
 				[q{tenary_g_g},q{mixin(界0(q{a},q{b},q{c}))},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"界0"},q{bright},q{Symbol},q{NiceExpression},q{@text: buildTenaryRelation; @node: arrangeTenaryRelation('<', '<'); }],
@@ -2061,8 +2081,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x10C473617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x10CCB3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x110613617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x110E53617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2074,8 +2094,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x10F1A3617740F)))(互!((bool),(1),(0x10F3E3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x10F623617740F)))
-					(互!((float/+w=6+/),(1.000),(0x10FAE3617740F)))
+					(互!((bool),(0),(0x113343617740F)))(互!((bool),(1),(0x113583617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x1137C3617740F)))
+					(互!((float/+w=6+/),(1.000),(0x113C83617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2085,9 +2105,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x111A53617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x111E43617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x112563617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x112D53617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x115BF3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x115FE3617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x116703617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x116EF3617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2182,8 +2202,8 @@ power, index"},q{((a)/(b)) (sqrt(a)) ((a).root(b)) ((a)^^(b)) mixin(指(q{a},q{b
 							}],
 							[q{"lambda, 
 anonym method"},q{
-								((a)=>(a+1)) 	((a){ f; })
-								((a) =>(a+1))	((a) { f; })
+								((a)=>(a+1)) 	((a){ f; }) 	((a){ f; }(x))
+								((a) =>(a+1))	((a) { f; }) 	((a) { f; }(x))
 							}],
 							[q{"tuple operation"},q{mixin(配(q{x,y},q{=},q{y,x}))}],
 							[q{"named param, 
@@ -2191,8 +2211,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x124E83617740F).檢(expr)) ((0x125063617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x125563617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x129233617740F).檢(expr)) ((0x129413617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x129913617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!
