@@ -2018,9 +2018,8 @@ version(/+$DIDE_REGION+/all) {
 				}],
 				[q{genericArg},q{((value).名!q{name})},q{/+Code: ((expr)opq{code})+/},q{".名!"},q{bright},q{Identifier1},q{NiceExpression},q{
 					@text: 	op(0); put(operator); put("q{", operands[1], "}"); //250920: Any expression can go here from now on.
-					@node: 	operands[1].fillColor(darkColor, bkColor); 
+					@node: 	operands[1].fillColor(darkColor, bkColor); operands[1].setFlatBorder; 
 						put(operands[1]); put(':'); put(operands[0]); 
-						/+Todo: Use chinese symbol for genericArg!+/
 				}],
 				[],
 				[q{cast_0},q{(cast(Type)(expr))},q{/+Code: (op(expr)(expr))+/},q{"cast"},q{bright},q{Attribute},q{NiceExpression},q{@text: put("cast"); op(0); op(1); @node: op(1); put(0 ? ".cast" : "↦"); op(0); }],
@@ -2081,8 +2080,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x110613617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x110E53617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x110483617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x110CC3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2094,8 +2093,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x113343617740F)))(互!((bool),(1),(0x113583617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x1137C3617740F)))
-					(互!((float/+w=6+/),(1.000),(0x113C83617740F)))
+					(互!((bool),(0),(0x1131B3617740F)))(互!((bool),(1),(0x1133F3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x113633617740F)))
+					(互!((float/+w=6+/),(1.000),(0x113AF3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2105,9 +2104,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x115BF3617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x115FE3617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x116703617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x116EF3617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x115A63617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x115E53617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x116573617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x116D63617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2211,8 +2210,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x129233617740F).檢(expr)) ((0x129413617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x129913617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x1290A3617740F).檢(expr)) ((0x129283617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x129783617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!

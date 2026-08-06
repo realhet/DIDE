@@ -1201,6 +1201,13 @@ version(/+$DIDE_REGION+/all) {
 			needMeasure; 
 		} 
 		
+		void setFlatBorder()
+		{
+			border.style = BorderStyle.normal; 
+			flags.noBackground = false; 
+		} 
+		
+		
 		void adjustWidth(float Δw)
 		{
 			if(Δw)
