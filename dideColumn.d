@@ -979,9 +979,10 @@ version(/+$DIDE_REGION+/all) {
 			rows	.map!(r => r.glyphs).joiner.filter!"a"
 				.each!(
 				(g){
-					g.bkColor = ts.bkColor; 
 					g.fontColor = ts.fontColor; 
+					g.bkColor = ts.bkColor; 
 					g.fontFlags = ts.fontFlags; 
+					g.syntax = sk; 
 					//Todo: refactor this 3 assignments.
 				}  
 			); 

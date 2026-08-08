@@ -418,14 +418,20 @@ version(/+$DIDE_REGION+/all) {
 				!((g){
 				g.bkColor = ts.bkColor; 
 				g.fontColor = ts.fontColor; 
-				g.fontFlags = ts.fontFlags;  //Todo: refactor this 3 assignments.
-				g.syntax = cast(ubyte) sk; 
+				g.fontFlags = ts.fontFlags; 
+				g.syntax = sk; 
 			}); 
 			bkColor = ts.bkColor; 
 		} 
 		
 		void setThickBorder()
-		{ padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; } 
+		{
+			padding.all = 8; border.width = 16; border.style = BorderStyle.fullFilletOut; 
+			/+
+				Todo: nem ok a lekerekites. 
+					A jobb also saroknal mintha kevesebb lenne, mint 90 fok!
+			+/
+		} 
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
 		{
