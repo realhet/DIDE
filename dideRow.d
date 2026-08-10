@@ -436,9 +436,7 @@ version(/+$DIDE_REGION+/all) {
 		{
 			this(parent_); 
 			
-			//take ownership of the cells.
-			cells.each!(c => c.setParent(this)); 
-			subCells = cells; 
+			subCells = cells; adoptSubCells; //take ownership of the cells.
 			refreshTabIdx; 
 			needMeasure; 
 			/+

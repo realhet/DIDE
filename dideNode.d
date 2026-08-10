@@ -466,26 +466,26 @@ version(/+$DIDE_REGION+/all) {
 			
 			bool addBuildMessage(CodeNode msgNode)
 			{
-				auto col = accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
+				ref col = *accessBuildMessageColumn.enforce(typeid(this).name ~ " No storage for BuildMessages."); 
 				enforce(msgNode, "msgNode is null"); 
 				
-				if(!*col)
+				if(!col)
 				{
-					*col = new CodeColumn(this); 
-					(*col).containsBuildMessages = true; 
+					col = new CodeColumn(this); col.setFlatBorder; 
+					col.containsBuildMessages = true; 
 					
-					auto mod = moduleOf(*col).enforce("addBuildMessage: Can't find parent module."); 
-					mod.moduleBuildMessageColumns ~= *col; 
+					auto mod = moduleOf(col).enforce("addBuildMessage: Can't find parent module."); 
+					mod.moduleBuildMessageColumns ~= col; 
 				}
 				
 				const 	idx = (
-					(*col).rows	.map!((r)=>(r.firstNodeOrNull.buildMessageHash))
+					col.rows	.map!((r)=>(r.firstNodeOrNull.buildMessageHash))
 						.countUntil(msgNode.buildMessageHash)
 				),
 					isNewMessage = idx<0; 
 				//Opt: slow linear search
 				
-				with(*col)
+				with(col)
 				{
 					if(isNewMessage)
 					{
@@ -505,7 +505,7 @@ version(/+$DIDE_REGION+/all) {
 							rows.back.addVerticalTab; 
 						}
 						
-						appendCell(new CodeRow(*col, [msgNode])); 
+						appendCell(new CodeRow(col, [msgNode])); 
 						rows.back.measure /+must measure the row for the multi-column splitter.+/; 
 					}
 					else
