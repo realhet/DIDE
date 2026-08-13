@@ -739,8 +739,8 @@ class Builder : IBuildServices
 				
 				if(dbgsrv.isActive)
 				{
-					if(Btn("■", enable(dbgsrv.isExeWaiting)).pressed) dbgsrv.setAck(1); 
-					if(Btn("▶", enable(dbgsrv.isExeWaiting)).repeated) dbgsrv.setAck(-1); 
+					if(Btn("■", ((dbgsrv.isExeWaiting).名!q{enabled})).pressed) dbgsrv.setAck(1); 
+					if(Btn("▶", ((dbgsrv.isExeWaiting).名!q{enabled})).repeated) dbgsrv.setAck(-1); 
 				}
 				
 				static bool buildOpt_release, buildOpt_debug; 
@@ -751,6 +751,7 @@ class Builder : IBuildServices
 				{
 					return Btn!(srcModule, srcLine)
 					(
+						((en).名!q{enabled}),
 						{
 							Column(
 								{
@@ -759,8 +760,7 @@ class Builder : IBuildServices
 									Row(HAlign.center, { Text(icon); flags.clickable = false; }); 
 								}
 							); 
-						},
-						enable(en)
+						}
 					); 
 				} 
 				static CaptIconBtn2	(string srcModule=__MODULE__, size_t srcLine=__LINE__)
@@ -768,6 +768,7 @@ class Builder : IBuildServices
 				{
 					return Btn!(srcModule, srcLine)
 					(
+						((en).名!q{enabled}),
 						{
 							Row(
 								{
@@ -780,8 +781,7 @@ class Builder : IBuildServices
 									fun(); 
 								}
 							); 
-						},
-						enable(en)
+						}
 					); 
 				} 
 				
@@ -883,7 +883,7 @@ class Builder : IBuildServices
 							{
 								theme = "tool"; 
 								auto B(string capt, bool vis, void delegate() fun)
-								{ if(vis && Btn(capt, ((capt).名!q{id}), enable(true), { margin = Margin(0, .5, 0, .5); })) fun(); } 
+								{ if(vis && Btn(capt, ((capt).名!q{id}), ((true).名!q{enabled}), { margin = Margin(0, .5, 0, .5); })) fun(); } 
 								
 								B("LDC", canKillCompilers, &killCompilers); 
 								B("PID", canKillRunningProcess, &killRunningProcess); 

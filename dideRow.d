@@ -279,9 +279,6 @@ version(/+$DIDE_REGION+/all) {
 		int index()
 		{ return parent.subCellIndex(this); } 
 		
-		bool empty() const
-		{ return subCells.empty; } 
-		
 		size_t length() const
 		{ return subCells.length; } 
 		
@@ -784,7 +781,7 @@ version(/+$DIDE_REGION+/all) {
 					return sc; 
 				} 
 				
-				internal_setSubCells(
+				subCells = (
 					subCells[0..xStart+tabCount] ~
 					(xTab+1<subCells.length ? normalizeLeadingSpaces(subCells[xTab+1..$]) : [])
 				); 
@@ -802,7 +799,7 @@ version(/+$DIDE_REGION+/all) {
 				//LOG(leadingCodeSpaceCount, spaceCnt);
 				if(tabCnt>0) {
 					const removeCnt = tabCnt*spaceCnt-tabCnt; 
-					internal_setSubCells(subCells[removeCnt..$]); 
+					subCells = (subCells[removeCnt..$]); 
 					foreach(i; 0..tabCnt) spaceToTab(i); 
 					refreshTabIdx; //Todo: should only be done once at the end...
 				}

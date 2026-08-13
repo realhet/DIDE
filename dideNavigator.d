@@ -295,7 +295,7 @@ class Navigator : INavigator
 		{
 			//check something in the IMGUI that has a codeLocation id.
 			{
-				auto hs = hitTestManager.lastHitStack; 
+				auto hs = im.hitTestManager.lastHitStack; 
 				if(!hs.empty && hs.back.id.startsWith(CodeLocationPrefix))
 				{ jumpTo(hs.back.id); return; }
 			}

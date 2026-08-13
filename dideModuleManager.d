@@ -541,7 +541,7 @@ struct ContainerSelectionManager(T : Container)
 					{ CodeLocation(m.file.fullName).UI; },
 					{
 						if(sameText(m.file.fullName, mainModuleFile.fullName))
-						{ Btn("Main", enable(false)); }
+						{ Btn("Main", ((false).名!q{enabled})); }
 						else
 						{
 							if(m.isMain)
@@ -572,13 +572,13 @@ struct ContainerSelectionManager(T : Container)
 						selected(0),
 						{
 							fh = 12; theme="tool"; 
-							if(Btn(symbol("Cancel")))
+							if(Btn(symbolStr("Cancel")))
 							fileToClose = m.file; 
 						}
 					)
 				) {}
 			}
-			if(Btn(symbol("Add"))) openModule; 
+			if(Btn(symbolStr("Add"))) openModule; 
 			
 			if(Btn("Close All", KeyCombo("Ctrl+Shift+W"))) { closeAllModules; }
 			
@@ -614,7 +614,7 @@ struct ContainerSelectionManager(T : Container)
 							Row(
 								{
 									Text("ScrumTable Menu"); 
-									if(Btn(symbol("ChromeClose"))) popupModule = null; 
+									if(Btn(symbolStr("ChromeClose"))) popupModule = null; 
 								}
 							); 
 							Spacer; 

@@ -701,7 +701,7 @@ class DDB
 							); 
 							if(
 								Btn(
-									bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+									boldStr(symbolStr("ChevronRight")), { innerWidth = fh; }, 
 									kcInsightClose, hint("Close panel.")
 								)
 							)
@@ -755,9 +755,9 @@ class DDB
 						Grp!Row(
 							"Help", {
 								Text(
-									bold("LMB")	, " type | "	,
-									bold("Alt+LMB")	, " adv.type | "	,
-									bold("Ctrl+LMB")	, " navig."	
+									boldStr("LMB")	, " type | "	,
+									boldStr("Alt+LMB")	, " adv.type | "	,
+									boldStr("Ctrl+LMB")	, " navig."	
 								); width = 16*fh; 
 							}
 						); 

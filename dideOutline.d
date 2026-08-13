@@ -194,7 +194,7 @@ static struct Outline
 				_node.match!
 				(
 					((in File  f){ Img('.'~f.ext); if(fun) fun(); Text(f.name); }), 
-					((in Path p){ Img(((p.fullPath.isWild("?:")) ?(p.fullPath):(`folder`))~'\\'); if(fun) fun(); Text(bold(p.name)); })
+					((in Path p){ Img(((p.fullPath.isWild("?:")) ?(p.fullPath):(`folder`))~'\\'); if(fun) fun(); Text(boldStr(p.name)); })
 				); 
 			}
 		} 
@@ -236,7 +236,7 @@ static struct Outline
 							
 							if(
 								Btn(
-									bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+									boldStr(symbolStr("ChevronRight")), { innerWidth = fh; }, 
 									kcOutlineClose, hint("Close panel.")
 								)
 							)
@@ -270,7 +270,7 @@ static struct Outline
 								
 								const canRemove = 	focusedNode && focusedNode.isPath && 
 									indexOfRootPath(focusedNode.asPath)>=0; 
-								if(Btn("Remove", enable(canRemove)))
+								if(Btn("Remove", ((canRemove).名!q{enabled})))
 								{
 									removeRootPath(focusedNode.asPath); 
 									focusedNode = null; 

@@ -474,8 +474,8 @@ version(/+$DIDE_REGION+/all) {
 			override bool opEquals(Object o) { return o is this; } 
 		}
 		
-		bool empty() const
-		{ return !rows.length || rows.length==1 && rows[0].empty; } 
+		override bool empty() const
+		=> !rows.length || rows.length==1 && rows[0].empty; 
 		
 		auto byCell()
 		{ return rows.map!(r => r.subCells).joiner(only(null)); } 
@@ -1206,6 +1206,12 @@ version(/+$DIDE_REGION+/all) {
 		{
 			border.style = BorderStyle.normal; 
 			flags.noBackground = false; 
+		} 
+		
+		void restoreSunkenBorder()
+		{
+			border.style = BorderStyle.halfFilletIn; 
+			flags.noBackground = true; 
 		} 
 		
 		

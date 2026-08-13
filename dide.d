@@ -442,13 +442,13 @@ version(/+$DIDE_REGION+/all)
 					{
 						if(!mainMenuOpened) {
 							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
-							if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) mainMenuOpened = true; 
+							if(Btn(symbolStr("GlobalNavigationButton"), { innerWidth = fh; })) mainMenuOpened = true; 
 						}
 						else {
 							margin = "0"; padding = "0"; 
 							Row(
 								{
-									if(Btn(bold(symbol("ChevronLeft")), { innerWidth = fh; })) mainMenuOpened = false; 
+									if(Btn(boldStr(symbolStr("ChevronLeft")), { innerWidth = fh; })) mainMenuOpened = false; 
 									BtnRow(menuPage); 
 								}
 							); 
@@ -728,12 +728,12 @@ FPS=$(FPS
 												if(Btn("🔍", hint("Search"))) workspace.searchBoxActivate; 
 											}
 										); 
-										if(Btn(bold(symbol("ChevronRight")), { innerWidth = fh; })) rightMenuOpened = false; 
+										if(Btn(boldStr(symbolStr("ChevronRight")), { innerWidth = fh; })) rightMenuOpened = false; 
 									}
 								); 
 							}
 							else
-							{ if(Btn(symbol("GlobalNavigationButton"), { innerWidth = fh; })) rightMenuOpened = true; }
+							{ if(Btn(symbolStr("GlobalNavigationButton"), { innerWidth = fh; })) rightMenuOpened = true; }
 						}
 					}
 				); 

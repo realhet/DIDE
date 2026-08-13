@@ -510,7 +510,14 @@ version(/+$DIDE_REGION+/all) {
 					//style.bold = syntax!=skSymbol; 
 					//Todo: Create bold/darkening settings UI. It is now bold because all the text in the node surface is bold.
 					
-					foreach(o; operands[].filter!"a")	o.bkColor = darkColor; 
+					foreach(o; operands[].filter!"a")
+					{
+						o.bkColor = darkColor; 
+						
+						if(nodeStyle!=NodeStyle.dim) o.restoreSunkenBorder; 
+						//If the NiceExpression was just a bracket, it restores the sunken border.
+					}
+					
 				}
 				
 				doRearrange(builder); 
@@ -1798,7 +1805,7 @@ version(/+$DIDE_REGION+/all) {
 						
 						auto commonParams()
 						=> tuple(
-							enable(enabled_), ((this.identityStr).名!q{id}),
+							((enabled_).名!q{enabled}), ((this.identityStr).名!q{id}),
 							{
 								flags.targetSurface = targetSurface_; 
 								outerPos = this.worldInnerPos + placeholder.outerPos; 
@@ -1812,9 +1819,9 @@ version(/+$DIDE_REGION+/all) {
 							userModified = Slider
 								(
 								val, commonParams[], 
-								range(
+								ValueRange(
 									controlProps.min, controlProps.max, controlProps.step, 
-									cast(RangeType)controlProps.type
+									(cast(ValueRange.Type)(controlProps.type))
 								), 
 								{
 									outerSize = placeholder.innerSize; 
@@ -2080,8 +2087,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x110483617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x110CC3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x111163617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x1119A3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2093,8 +2100,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x1131B3617740F)))(互!((bool),(1),(0x1133F3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x113633617740F)))
-					(互!((float/+w=6+/),(1.000),(0x113AF3617740F)))
+					(互!((bool),(0),(0x113E93617740F)))(互!((bool),(1),(0x1140D3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x114313617740F)))
+					(互!((float/+w=6+/),(1.000),(0x1147D3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2104,9 +2111,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x115A63617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x115E53617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x116573617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x116D63617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x116743617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x116B33617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x117253617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x117A43617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2210,8 +2217,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x1290A3617740F).檢(expr)) ((0x129283617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x129783617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x129D83617740F).檢(expr)) ((0x129F63617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x12A463617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!
@@ -2580,7 +2587,7 @@ with condition"},q{
 				void detectMouseLocation()
 				{
 					hoveredRow=null; hoveredCell = null; innerCol =  null; 
-					auto hs = hitTestManager.lastHitStack; 
+					auto hs = im.hitTestManager.lastHitStack; 
 					
 					//Todo: Can't ssubstitute label in "goto label;"
 					

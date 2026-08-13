@@ -198,14 +198,14 @@ static struct SearchBox
 									if(
 										Btn(
 											"🔍", isFocused(editContainer) ? kcFindZoom : KeyCombo(""),
-											enable(matchCnt>0), hint("Zoom screen on search results.")
+											((matchCnt>0).名!q{enabled}), hint("Zoom screen on search results.")
 										)
 									)
 									{ buildMessages.findResultLayer.zoomAt(view); }
 									if(
 										Btn(
 											"Sel", isFocused(editContainer) ? kcFindToSelection : KeyCombo(""),
-											enable(matchCnt>0), hint("Select search results.")
+											((matchCnt>0).名!q{enabled}), hint("Select search results.")
 										)
 									)
 									{ textSelections.select(buildMessages.findResultLayer.searchResults); }
@@ -244,7 +244,7 @@ static struct SearchBox
 							
 							if(
 								Btn(
-									bold(symbol("ChevronRight")), { innerWidth = fh; }, 
+									boldStr(symbolStr("ChevronRight")), { innerWidth = fh; }, 
 									kcFindClose, hint("Close panel.")
 								)
 							)
