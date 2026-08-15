@@ -768,7 +768,7 @@ FPS=$(FPS
 							})); 
 							
 							const oldTheme = theme; scope(exit) style = oldStyle; 
-							theme = "tool"; mixin(求each(q{m},q{workspace.modules.modules},q{m.UI_buttonComments(!m.isReadOnly, TargetSurface.world); })); 
+							theme.isTool = true; mixin(求each(q{m},q{workspace.modules.modules},q{m.UI_buttonComments(!m.isReadOnly, TargetSurface.world); })); 
 						}
 					); 
 					

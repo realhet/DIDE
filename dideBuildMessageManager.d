@@ -350,7 +350,7 @@ class BuildMessageManager
 										flags.clickable = false; 
 										Text(DMDMessage.typeShortCaption[type]); NL; 
 										fh = ceil(fh*.66f); 
-										theme = "tool"; 
+										theme.isTool = true; 
 										
 										if(const cnt = searchResultCount)
 										{

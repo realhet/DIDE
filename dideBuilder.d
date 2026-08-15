@@ -881,7 +881,7 @@ class Builder : IBuildServices
 						CaptIconBtn2(
 							a.capt, a.icon, 4, a.en, 
 							{
-								theme = "tool"; 
+								theme.isTool = true; 
 								auto B(string capt, bool vis, void delegate() fun)
 								{ if(vis && Btn(capt, ((capt).名!q{id}), ((true).名!q{enabled}), { margin = Margin(0, .5, 0, .5); })) fun(); } 
 								

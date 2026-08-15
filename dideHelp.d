@@ -95,7 +95,7 @@ struct HelpManager
 				Row(
 					{ padding="0 8"; }, ((isCaret)?("Ꮖ"):("⌖")), " ",
 					{
-						theme = "tool"; 
+						theme.isTool = true; 
 						loc.UI; NL; 
 						foreach(i, b; breadcrumbs)
 						{

@@ -1027,6 +1027,13 @@ version(/+$DIDE_REGION+/all) {
 				structuredColor(structuredKeyword).nullable
 			); 
 			
+			/+
+				const codeFold = (isFunction || isShortenedFunction)&& block; 
+				if(codeFold) internalNewLineCount = 0; 
+				
+				/+Todo: Make this 'code folding' functionality working.+/
+			+/
+			
 			with(builder)
 			{
 				//set subColumn bkColors
@@ -1043,6 +1050,8 @@ version(/+$DIDE_REGION+/all) {
 				
 				emitDeclaration(builder); 
 			}
+			
+			/+if(codeFold) { block.measure; block.outerSize = 1; }+/
 			
 			super.rearrange; 
 			

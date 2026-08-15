@@ -571,7 +571,7 @@ struct ContainerSelectionManager(T : Container)
 						genericId(m.file.fullName),
 						selected(0),
 						{
-							fh = 12; theme="tool"; 
+							fh = 12; theme.isTool = true; 
 							if(Btn(symbolStr("Cancel")))
 							fileToClose = m.file; 
 						}
@@ -610,7 +610,7 @@ struct ContainerSelectionManager(T : Container)
 					Column(
 						{
 							outerPos = popupGuiPos; 
-							border = "1 normal black"; padding = "4"; theme = "tool"; 
+							border = "1 normal black"; padding = "4"; theme.isTool = true; 
 							Row(
 								{
 									Text("ScrumTable Menu"); 
