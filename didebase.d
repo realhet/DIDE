@@ -156,7 +156,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 		{
 			margin = "0"; 
 			padding = "0 4"; 
-			style.bkColor = bkColor = color; 
+			background = style.bkColor = color; 
 			style.fontColor = fontColor; 
 			flags.yAlign = YAlign.top; 
 			im.actContainer.setRoundBorder(8, inward:true); 

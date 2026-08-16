@@ -222,14 +222,14 @@ static struct Outline
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ NOTIMPL; }
 							
 							BtnRow(
 								{
-									if(Btn("⚙", hint("Setup"), selected(setupVisible)))
+									if(Btn("⚙", hint("Setup"), ((!!setupVisible).名!q{selected})))
 									setupVisible.toggle; 
 								}
 							); 
@@ -261,7 +261,7 @@ static struct Outline
 						Row(
 							{
 								sw; Text("Paths: "); 
-								if(Btn("Add", selected(treeIsEmpty ? blink>.5f : false)))
+								if(Btn("Add", ((treeIsEmpty ? blink>.5f : false).名!q{selected})))
 								{
 									static Path lastPath; 
 									auto p = browseForFolder(mainWindow.hwnd, "Add path to Outline.", lastPath); 
@@ -303,7 +303,7 @@ static struct Outline
 								(
 									{
 										border.width = 0; padding = "0 4 0 0"; margin = "0"; 
-										if(mod && mod.flags.selected) style.bkColor = bkColor = mix(bkColor, clAccent, .25f); 
+										if(mod && mod.flags.selected) background = style.bkColor = mix(background, clAccent, .25f); 
 										n.UI(
 											{
 												if(isFile)
@@ -319,10 +319,10 @@ static struct Outline
 										if(auto img = (cast(.Img)(actContainer.subCells.frontOrNull)))
 										{
 											img.flags.clickable = false; 
-											img.bkColor = bkColor; 
+											img.bkColor = background; 
 										}
 									}, 
-									((n.identityStr).名!q{id}), selected(focusedNode==n)
+									((n.identityStr).名!q{id}), ((focusedNode==n).名!q{selected})
 								)
 							)
 							{

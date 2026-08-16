@@ -569,7 +569,7 @@ struct ContainerSelectionManager(T : Container)
 						m.file.name,
 						hint(m.file.fullName),
 						genericId(m.file.fullName),
-						selected(0),
+						((false).名!q{selected}),
 						{
 							fh = 12; theme.isTool = true; 
 							if(Btn(symbolStr("Cancel")))

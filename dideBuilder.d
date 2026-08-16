@@ -820,7 +820,7 @@ class Builder : IBuildServices
 										{
 											flags.clickable = false; 
 											innerSize = vec2(w, fh); 
-											bkColor = mix(bkColor, clGray, .175f); 
+											background = mix(background, clGray, .175f); 
 											
 											static drawProgress(
 												Drawing dr, vec2 size, int compiled, int inFlight, int total,

@@ -318,8 +318,8 @@ class DDB
 			with(im)
 			{
 				style.bold = !!asModule; 
-				bkColor = style.bkColor = structuredColor; 
-				style.fontColor = blackOrWhiteFor(bkColor); 
+				background = style.bkColor = structuredColor; 
+				style.fontColor = blackOrWhiteFor(background); 
 				Text(name); 
 			}
 		} 
@@ -688,14 +688,14 @@ class DDB
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
 							
 							BtnRow(
 								{
-									if(Btn("⚙", hint("Setup"), selected(setupVisible)))
+									if(Btn("⚙", hint("Setup"), ((!!setupVisible).名!q{selected})))
 									setupVisible.toggle; 
 								}
 							); 

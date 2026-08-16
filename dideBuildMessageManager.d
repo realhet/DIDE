@@ -338,7 +338,7 @@ class BuildMessageManager
 								auto fade(RGB c) => c.mix(clSilver, ((visible)?(0):(.75f))); 
 								
 								const syntax = DMDMessage.typeSyntax[type]; 
-								style.bkColor = bkColor = fade(syntax.syntaxBkColor); 
+								background = style.bkColor = fade(syntax.syntaxBkColor); 
 								const highContrastFontColor = syntax.syntaxFontColor; 
 								style.fontColor = fade(highContrastFontColor); 
 								

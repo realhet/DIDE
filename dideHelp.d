@@ -102,8 +102,8 @@ struct HelpManager
 							if(
 								Btn(
 									{
-										style.bkColor = bkColor = b.node.bkColor; 
-										style.fontColor = blackOrWhiteFor(bkColor); 
+										background = style.bkColor = b.node.bkColor; 
+										style.fontColor = blackOrWhiteFor(background); 
 										Text(b.text); 
 									},
 									(("Breadcrumb:"~i.text).名!q{id})

@@ -153,7 +153,7 @@ static struct SearchBox
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{focusEnter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{
@@ -217,19 +217,19 @@ static struct SearchBox
 									if(
 										Btn(
 											"aA", hint("Case Sensitive"),
-											selected(searchOptions.caseSensitive)
+											((searchOptions.caseSensitive).名!q{selected})
 										)
 									) searchOptions.caseSensitive.toggle; 
 									if(
 										Btn(
 											"ww", hint("Whole Words"),
-											selected(searchOptions.wholeWords)
+											((searchOptions.wholeWords).名!q{selected})
 										)
 									) searchOptions.wholeWords_toggle; 
 									if(
 										Btn(
 											"all", hint("All modules"),
-											selected(lookInAllModules)
+											((!!lookInAllModules).名!q{selected})
 										)
 									) lookInAllModules.toggle; 
 								}
@@ -238,7 +238,7 @@ static struct SearchBox
 							if(
 								Btn(
 									"⚙", hint("Advanced search options"),
-									selected(advancedSearchOptionsVisible)
+									((!!advancedSearchOptionsVisible).名!q{selected})
 								)
 							) advancedSearchOptionsVisible.toggle; 
 							

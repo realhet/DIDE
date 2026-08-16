@@ -621,7 +621,7 @@ version(/+$DIDE_REGION+/all)
 			
 			
 			void VLine()
-			{ with(im) Container({ innerWidth = 1; innerHeight = fh; bkColor = clGray; }); } 
+			{ with(im) Container({ innerWidth = 1; innerHeight = fh; background = clGray; }); } 
 			
 			//StatusBar
 			with(im)

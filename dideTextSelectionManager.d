@@ -547,7 +547,7 @@ class TextSelectionManager
 										Text(capt); 
 									}, 
 									genericId(capt), 
-									selected(modules.desiredStructureLevel==lvl), 
+									((modules.desiredStructureLevel==lvl).名!q{selected}), 
 									{ width = fh/4; },
 									hint("Select desired StructureLevel.\n(Ctrl = reload and apply)")
 								)
