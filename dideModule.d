@@ -1047,7 +1047,7 @@ version(/+$DIDE_REGION+/all)
 					//structured
 					if(auto c = cast(CodeComment)(r.subCells.get(0)))
 					if(sameText(c.content.shallowText.stripRight, "@"~ext)) return true; 
-					//highlighted/plain
+					//Highlighted/ plain
 					if(sameText(r.shallowText.stripRight, "//@"~ext)) return true; 
 				}
 				
@@ -1367,28 +1367,6 @@ version(/+$DIDE_REGION+/all)
 			fileModified = file.modified; //Opt: slow
 			fileSaved = now; 
 		} 
-		
-		void UI_PopupMenu()
-		{
-			with(im)
-			{
-				Column(
-					{
-						Text(
-							"Experimental
-	popup menu"
-						); 
-						if(Btn("New Sticker")) beep; 
-					}  
-				); 
-				popupState.cell = removeLastContainer; 
-				popupState.parent = null; 
-				
-				popupState.cell.outerPos = mainWindow.screenToClient(inputs.mouseAct); 
-			}
-		} 
-		
-		
 		
 		version(/+$DIDE_REGION Inspector handling+/all)
 		{
