@@ -64,9 +64,9 @@ version(/+$DIDE_REGION+/all) {
 	
 	void fillLanguageId(CodeColumn col, uint languageId)
 	{
-		if(col.flags.languageId!=languageId)
+		if(col.colFlags.languageId!=languageId)
 		{
-			col.flags.languageId = languageId; 
+			col.colFlags.languageId = languageId; 
 			foreach(node; col.byNode)
 			{
 				if(
@@ -864,7 +864,7 @@ version(/+$DIDE_REGION+/all) {
 				}
 				else
 				{
-					if(isMultiLine) flags.hAlign = HAlign.right; 
+					if(isMultiLine) rowFlags.hAlign = HAlign.right; 
 					put(operands[0]); if(isMultiLine) putNL; 
 					put(label); put(operands[1]); 
 					
@@ -966,7 +966,7 @@ version(/+$DIDE_REGION+/all) {
 									}  
 								); 
 								row.clearTabIdx; //Freshly loaded MixinTable: It has no TABs
-								row.flags.yAlign = YAlign.top; 
+								row.rowFlags.yAlign = YAlign.top; 
 								
 								if(hasVerticalTab) {
 									auto ts = tsNormal; ts.applySyntax(skIdentifier1); 
@@ -978,8 +978,8 @@ version(/+$DIDE_REGION+/all) {
 							}  
 						).array; 
 						
-						tbl.flags.columnIsTable	= true,
-						tbl.flags.columnElasticTabs 	= false; 
+						tbl.colFlags.columnIsTable	= true,
+						tbl.colFlags.columnElasticTabs 	= false; 
 						tbl.applyNoBorder; 
 						
 						//Todo: Make tables compatible with multiple pages (vertical Tab)  (Storage too!!!)
@@ -1009,7 +1009,7 @@ version(/+$DIDE_REGION+/all) {
 				void putTable()
 				{
 					version(/+$DIDE_REGION+/all) {
-						if(!tbl.flags.columnIsTable)
+						if(!tbl.colFlags.columnIsTable)
 						{
 							put(tbl); 
 							return; //D compiler will fail on it, but it keeps the unknown content.
@@ -1197,7 +1197,7 @@ version(/+$DIDE_REGION+/all) {
 				{
 					//Table + script
 					put(operands[0]); putNL; 
-					put("↦"); put(operands[1]); flags.hAlign = HAlign.right; 
+					put("↦"); put(operands[1]); rowFlags.hAlign = HAlign.right; 
 					with(padding) left = right = top = 5; 
 				}
 				else
@@ -1422,7 +1422,7 @@ version(/+$DIDE_REGION+/all) {
 					})(); 
 					
 					style.bold = false; 
-					with(flags) { hAlign = HAlign.center; yAlign = YAlign.center; }
+					with(rowFlags) { hAlign = HAlign.center; yAlign = YAlign.center; }
 					style.fontHeight = DefaultSubScriptFontHeight; 
 					
 					enum symbolScale = 2; 
@@ -1468,7 +1468,7 @@ version(/+$DIDE_REGION+/all) {
 					}
 					assert(cSymbol); 
 					
-					CodeNode.rearrange; strictCellOrder = false/+Disable binary search among glyphs+/; 
+					CodeNode.rearrange; rowFlags.strictCellOrder = false/+Disable binary search among glyphs+/; 
 					
 					subCells = subCells.remove!cellIsNewLine; //remove all newlines.
 					
@@ -1925,20 +1925,8 @@ version(/+$DIDE_REGION+/all) {
 				[q{itrunc},q{(itrunc(a))},q{/+Code: (op(expr))+/},q{"itrunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); putTypeSubscript("int"); }],
 				[q{lfloor},q{(lfloor(a))},q{/+Code: (op(expr))+/},q{"lfloor"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎣'); op(0); put('⎦'); putTypeSubscript("long"); }],
 				[q{lceil},q{(lceil(a))},q{/+Code: (op(expr))+/},q{"lceil"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎤'); putTypeSubscript("long"); }],
-				[q{lround},q{(lround(a))},q{/+Code: (op(expr))+/},q{"lround"},q{dim},q{Symbol},q{NiceExpression},q{
-					@text: 	put(operator); op(0); 
-					@node: 	{
-						put('⁅'); op(0); put('⁆'); putTypeSubscript("long"); 
-						super.rearrange; stretchGlyphs(0, 2); 
-					}
-				}],
-				[q{ltrunc},q{(ltrunc(a))},q{/+Code: (op(expr))+/},q{"ltrunc"},q{dim},q{Symbol},q{NiceExpression},q{
-					@text: 	put(operator); op(0); 
-					@node: 	{
-						put('⎡'); op(0); put('⎦'); putTypeSubscript("long"); 
-						super.rearrange; stretchGlyphs(0, 2); 
-					}
-				}],
+				[q{lround},q{(lround(a))},q{/+Code: (op(expr))+/},q{"lround"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⁅'); op(0); put('⁆'); putTypeSubscript("long"); }],
+				[q{ltrunc},q{(ltrunc(a))},q{/+Code: (op(expr))+/},q{"ltrunc"},q{dim},q{Symbol},q{NiceExpression},q{@text: put(operator); op(0); @node: put('⎡'); op(0); put('⎦'); putTypeSubscript("long"); }],
 				[q{divide},q{((a)/(b))},q{/+Code: ((expr)op(expr))+/},q{"/"},q{dim},q{Symbol},q{NiceExpression},q{
 					@text: 	op(0); put(operator); op(1); 
 					@node: 	{
@@ -2057,7 +2045,7 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put("cast "); op(0); op(1); 
 					@node: 	{
 						op(1); 
-						putNL; flags.hAlign = HAlign.right; 
+						putNL; rowFlags.hAlign = HAlign.right; 
 						put(0 ? ".cast" : "↦"); op(0); 
 						super.rearrange; 
 						subCells[0].outerPos.x = 0; 
@@ -2110,8 +2098,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x114493617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x114CD3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x113C63617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x1144A3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2123,8 +2111,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x1171C3617740F)))(互!((bool),(1),(0x117403617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x117643617740F)))
-					(互!((float/+w=6+/),(1.000),(0x117B03617740F)))
+					(互!((bool),(0),(0x116993617740F)))(互!((bool),(1),(0x116BD3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x116E13617740F)))
+					(互!((float/+w=6+/),(1.000),(0x1172D3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2134,9 +2122,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x119A73617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x119E63617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x11A583617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11AD73617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x119243617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x119633617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x119D53617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11A543617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2240,8 +2228,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x12D0B3617740F).檢(expr)) ((0x12D293617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x12D793617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x12C883617740F).檢(expr)) ((0x12CA63617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x12CF63617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!

@@ -539,7 +539,7 @@ version(/+$DIDE_REGION+/all)
 			}
 			
 			with(flags) {
-				noHitTest = true; 
+				dontHitTest = true; 
 				dontSearch = true; 
 				dontLocate = true; 
 				noBackground = true; 

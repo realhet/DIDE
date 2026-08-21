@@ -329,7 +329,7 @@ class Editor
 				uniqueTime.actualize; 
 				scope(exit) col.lastResyntaxTime = uniqueTime; 
 				
-				const doItRightNow = (col.flags.columnIsTable && col.rowCount<1000); 
+				const doItRightNow = (col.colFlags.columnIsTable && col.rowCount<1000); 
 				if(doItRightNow)
 				{
 					/+

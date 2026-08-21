@@ -136,8 +136,9 @@ version(/+$DIDE_REGION+/all) {
 						else
 						{
 							enforce(g.ch == ch, "Resyntax: Glyph char changed "~actPos.text); 
-							if(g.syntax.chkSet(syntax))
+							if(g.syntax != syntax)
 							{
+								g.syntax = syntax; 
 								//syntaxChanged = true;
 								g.bkColor	= ts.bkColor; 
 								g.fontColor	= ts.fontColor; 
@@ -221,7 +222,7 @@ version(/+$DIDE_REGION+/all) {
 						default: 	if(s[0].isAlpha || s[0]=='_')
 						{
 							//It's an identifier. Check to see if it is a keyword
-							if(col.flags.languageId==0)
+							if(col.colFlags.languageId==0)
 							{
 								if(auto kw = kwLookup(s))
 								{
@@ -418,10 +419,9 @@ version(/+$DIDE_REGION+/all) {
 			initializeBorder; 
 			
 			needMeasure; //also sets measureOnlyOnce flag. This is an on-demand realigned Container.
-			flags.wordWrap = false; 
 			flags.clipSubCells = true; 
 			flags.cullSubCells = true; 
-			flags.columnElasticTabs = true; 
+			colFlags.columnElasticTabs = true; 
 			bkColor = mix(clCodeBackground, clGray, .25f); 
 		} 
 		
@@ -1263,12 +1263,12 @@ version(/+$DIDE_REGION+/all) {
 					y += r.innerHeight+totalGap.y; 
 				}
 				
-				if(flags.columnElasticTabs)
+				if(colFlags.columnElasticTabs)
 				{
 					processElasticTabs (cast(Cell[])(rows)); 
 					/+Opt: apply this to a subset that has been remeasured+/
 				}
-				if(flags.columnIsTable)
+				if(colFlags.columnIsTable)
 				{ processTableRows (cast(CodeRow[])(subCells)); }
 				
 				const maxInnerWidth = rows.map!"a.contentInnerWidth".maxElement; 
@@ -1282,7 +1282,7 @@ version(/+$DIDE_REGION+/all) {
 					adjustCodeContainerWidth extends
 				+/
 				
-				if(!flags.dontStretchSubCells)
+				if(!colFlags.dontStretchSubCells)
 				foreach(r; rows) r.innerWidth = maxInnerWidth; 
 				
 				enum enableColumnBreaks = true; 

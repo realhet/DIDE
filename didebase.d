@@ -158,7 +158,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 			padding = "0 4"; 
 			background = style.bkColor = color; 
 			style.fontColor = fontColor; 
-			flags.yAlign = YAlign.top; 
+			static if(is(T : .Row)) rowFlags.yAlign = YAlign.top; 
 			im.actContainer.setRoundBorder(8, inward:true); 
 			if(contents) contents(); 
 		}  

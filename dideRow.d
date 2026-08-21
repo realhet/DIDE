@@ -385,12 +385,12 @@ version(/+$DIDE_REGION+/all) {
 			needMeasure; 
 			//also sets measureOnlyOnce flag. This is an on-demand realigned Container.
 			
-			flags.wordWrap	= false; 
-			flags.clipSubCells	= true; 
-			flags.cullSubCells	= true; 
-			flags.rowElasticTabs	= false; 
-			flags.dontHideSpaces	= true; 
-			flags.noBackground	= true; 
+			flags.clipSubCells	= true,
+			flags.cullSubCells	= true,
+			flags.noBackground	= true,
+			rowFlags.wordWrap	= false,
+			rowFlags.rowElasticTabs	= false,
+			rowFlags.dontHideSpaces	= true; 
 			
 			//bkColor = parent.bkColor;
 		} 

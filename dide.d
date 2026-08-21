@@ -634,7 +634,7 @@ version(/+$DIDE_REGION+/all)
 							/*theme = "tool";*/ style.fontHeight = 18; 
 							
 							//Todo: faszomat ebbe a szarba:
-							flags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
+							rowFlags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
 							//flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
 							
 							builder.UI; 
@@ -643,7 +643,7 @@ version(/+$DIDE_REGION+/all)
 							
 							Row(
 								{
-									 flex = 1; margin = "0 3"; flags.yAlign = YAlign.center; flags.clipSubCells = true; 
+									 flex = 1; margin = "0 3"; rowFlags.yAlign = YAlign.center; flags.clipSubCells = true; 
 									//style.fontHeight = 18+6;
 									
 									if(lod.moduleLevel) workspace.modules.UI_selectedModulesHint; 
@@ -667,7 +667,7 @@ version(/+$DIDE_REGION+/all)
 							
 							Row(
 								{
-									margin = "0 3"; flags.vAlign = VAlign.center; 
+									margin = "0 3"; rowFlags.vAlign = VAlign.center; 
 									version(/+$DIDE_REGION+/none) {
 										if(Btn("ErrorList")) workspace.showErrorList.toggle; 
 										if(Btn("Calc size")) print(workspace.allocatedSize); 

@@ -733,7 +733,7 @@ class Builder : IBuildServices
 		with(im)
 		Row(
 			{
-				margin = "0 3"; flags.yAlign = YAlign.center; 
+				margin = "0 3"; rowFlags.yAlign = YAlign.center; 
 				//style.fontHeight = 18+6;
 				//buildSystemWorkerState.UI; 
 				

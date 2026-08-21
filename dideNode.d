@@ -46,7 +46,7 @@ version(/+$DIDE_REGION+/all) {
 		
 		// helper functions for NiceExpressions ----------------------------
 		void setSubscript()
-		{ style.fontHeight = DefaultSubScriptFontHeight; node.flags.yAlign = YAlign.bottom; } 
+		{ style.fontHeight = DefaultSubScriptFontHeight; node.rowFlags.yAlign = YAlign.bottom; } 
 		
 		void setFontColor(SyntaxKind sk)
 		{ style.fontColor = syntaxFontColor(sk); } 
@@ -207,11 +207,11 @@ version(/+$DIDE_REGION+/all) {
 			+/
 			
 			needMeasure; //enables on-demand measure
-			flags.wordWrap	= false,
 			flags.clipSubCells	= true,
 			flags.cullSubCells	= true,
-			flags.rowElasticTabs	= true,
-			flags.dontHideSpaces 	= true; 
+			rowFlags.wordWrap	= false,
+			rowFlags.rowElasticTabs	= true,
+			rowFlags.dontHideSpaces 	= true; 
 		} 
 		
 		~this()
@@ -327,7 +327,7 @@ version(/+$DIDE_REGION+/all) {
 			
 			//initialize node
 			subCells = []; //This rebuilds and realigns the whole Row subCells.
-			flags.yAlign = YAlign.center; 
+			rowFlags.yAlign = YAlign.center; 
 			
 			return res; 
 		} 
@@ -350,11 +350,11 @@ version(/+$DIDE_REGION+/all) {
 					//to the left
 					if(auto g = (cast(Glyph)(subCells.get(i-1))))
 					if(g.ch.among('{', '[', '(', '⎡', '⎣', '⁅', '|', '‖'))
-					g.stretch(col.outerTop, col.outerBottom); 
+					.stretchGlyph(subCells[i-1], col.outerTop, col.outerBottom); 
 					//to the right
 					if(auto g = (cast(Glyph)(subCells.get(i+1))))
 					if(g.ch.among('}', ']', ')', '⎤', '⎦', '⁆', '|', '‖'))
-					g.stretch(col.outerTop, col.outerBottom); 
+					.stretchGlyph(subCells[i+1], col.outerTop, col.outerBottom); 
 				}
 			}
 			
@@ -460,7 +460,7 @@ version(/+$DIDE_REGION+/all) {
 					
 					subCells ~= col; 	col.outerPos = vec2(0, oldSize.y); 
 					
-					strictCellOrder = false; //there are multiple lines, the order is not linear anymore
+					rowFlags.strictCellOrder = false; //there are multiple lines, the order is not linear anymore
 				}
 			} 
 			
@@ -1289,8 +1289,8 @@ version(/+$DIDE_REGION+/all) {
 								removeBorder(this); removeBorder(content); 
 							} 
 							
-							if(isFormatBold)	reformat!((g){ g.fontFlags |= 1; }); 
-							else if(isFormatItalic)	reformat!((g){ g.fontFlags |= 2; }); 
+							if(isFormatBold)	reformat!((g){ g.fontFlags = g.fontFlags | 1; }); 
+							else if(isFormatItalic)	reformat!((g){ g.fontFlags = g.fontFlags | 2; }); 
 							else if(
 								isFormatPara ||
 								isFormatBullet
@@ -1307,7 +1307,7 @@ version(/+$DIDE_REGION+/all) {
 								const newHeight = headingScale[level] * DefaultFontHeight; 
 								reformat!((g){
 									g.outerSize = vec2(((g.outerWidth)/(g.outerHeight))*newHeight, newHeight); 
-									g.fontFlags |= 1; 
+									g.fontFlags = g.fontFlags | 1; 
 								}); 
 							}
 							

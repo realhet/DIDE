@@ -344,7 +344,7 @@ class BuildMessageManager
 								
 								Row(
 									{
-										flags.hAlign = HAlign.center; 
+										rowFlags.hAlign = HAlign.center; 
 										//innerWidth = ceil(fh*2); 
 										innerHeight = ceil(fh*1.66f); 
 										flags.clickable = false; 
