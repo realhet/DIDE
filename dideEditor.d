@@ -919,6 +919,7 @@ class Editor
 			//reset all caches in Module
 			mod.resetBuildMessages; 
 			mod.resetSearchResults; 
+			mod.resetCompilationResult; 
 			buildMessages.firstErrorMessageArrived = true; 
 			
 			void feedNode(CodeNode oldNode)

@@ -19,13 +19,15 @@ File[] allProjectFilesFromModule(File file)
 	//Todo: not just for //@exe of //@dll
 	BuildSettings settings = {verbose : false}; 
 	BuildSystem buildSystem; 
-	return buildSystem.findDependencies(file, settings).map!(m => m.file).array; 
+	return buildSystem.findDependencies(file, settings).map!((m)=>(m.file)).array; 
 } 
 
 struct CompilationResult
 {
 	File file; 
+	immutable(string)[] cmdLine; 
 	int result = int.min; 
+	immutable(ubyte)[] objData; 
 	string output, xJson; 
 	DateTime t0, t1; @property duration() => t1-t0; 
 	
@@ -54,6 +56,7 @@ struct BuildSystem
 	
 		//cached data
 		SourceCache sourceCache; 
+		string[][string] cmdLineCache; 
 		ubyte[][string] objCache, exeCache, mapCache, pdbCache, resCache; 
 		string[string] outputCache, jsonCache; 
 	
@@ -648,18 +651,9 @@ struct BuildSystem
 			
 			if(onCompileProgress)
 			onCompileProgress(
-				/+
-					Bug: This is broken in LDC 1.41:
-					/+
-						Code: mixin(體!((CompilationResult),q{
-							srcFile, 0/+success+/, output, jsonCache[objHash],
-							DateTime.init, DateTime.init /+because cached+/
-						}))
-					+/
-				+/
-				CompilationResult
-				(
-					srcFile, 0/+success+/, output, jsonCache[objHash],
+				CompilationResult(
+					srcFile, (cast (immutable(string)[])(cmdLineCache[objHash])), 0/+success+/, 
+					(cast (immutable(ubyte)[])(objCache[objHash])), output, jsonCache[objHash],
 					DateTime.init, DateTime.init /+because cached+/
 				)
 			); 
@@ -695,24 +689,29 @@ struct BuildSystem
 				) ?(jsonFileOf(srcFiles[idx]).readText(false)):("")); 
 				
 				//storing obj into objCache
+				ubyte[] objData; 
+				
+				
 				if(isIncremental && result==0)
 				{
 					const 	srcFile	= srcFiles[idx],
 						objFile	= objFileOf(srcFile),
 						objHash 	= findModule(srcFile).objHash; 
-					objCache[objHash] = objFile.forcedRead; 
+					
+					objData = objFile.forcedRead; 
+					cmdLineCache[objHash] = cmdLines[idx]; 
+					objCache[objHash] = objData; 
 					outputCache[objHash] = output; 
 					jsonCache[objHash] = xJson; 
 				}
 				
 				if(onCompileProgress)
 				onCompileProgress(
-					/+
-						Bug: This is broken in LDC 1.41:
-						/+Structured: mixin(體!((CompilationResult),q{srcFiles[idx], result, output, xJson, t0, t1}))+/
-					+/
 					CompilationResult
-					(srcFiles[idx], result, output, xJson, t0, t1)
+					(
+						srcFiles[idx], (cast (immutable(string)[])(cmdLines[idx])), result, 
+						(cast (immutable(ubyte)[])(objData)), output, xJson, t0, t1
+					)
 				); 
 				
 				static if(0)
@@ -933,6 +932,7 @@ struct BuildSystem
 	{
 		sourceCache.reset; 
 		objCache.clear; 
+		cmdLineCache.clear; 
 		outputCache.clear; 
 		jsonCache.clear; 
 		exeCache.clear; 
@@ -1159,6 +1159,7 @@ struct BuildSystem
 				spawnProcess(["cmd", "/c", "start", batFile.fullName], env, Config.detached, targetFile.path.fullPath); 
 			}
 		}
+		
 	} 
 	
 	
@@ -1345,8 +1346,9 @@ struct BuildSystem
 				0.msecs,
 				((MsgBuildCommand cmd) {
 					if(cmd==MsgBuildCommand.shutDown)
-					{ cancelRequest = true; isDone = true; 	state.cancelling = true; }
-					else if(cmd==MsgBuildCommand.cancel) { cancelRequest = true; 	state.cancelling = true; }
+					{ cancelRequest = true; isDone = true; state.cancelling = true; }
+					else if(cmd==MsgBuildCommand.cancel)
+					{ cancelRequest = true; 	state.cancelling = true; }
 				}),
 				
 				((immutable MsgBuildRequest req) { WARN("Build request ignored: already building..."); })

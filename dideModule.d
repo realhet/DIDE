@@ -968,6 +968,9 @@ version(/+$DIDE_REGION+/all)
 			_updateSearchResults_state; 
 		
 		float compilationTime=0; 
+		immutable(string)[] compilationCmdLine; 
+		immutable(ubyte)[] compilationObjData; 
+		
 		Module[] importedModules; 
 		
 		override SyntaxKind syntax() const
@@ -1130,6 +1133,15 @@ version(/+$DIDE_REGION+/all)
 			{
 				findSearchResults = []; 
 				searchResultsByCodeLocation.clear; 
+			} 
+			
+			void resetCompilationResult()
+			{
+				//better to retain this: compilationTime = 0; 
+				
+				//But these should be cleared before every compilation/feed.
+				compilationCmdLine = null; 
+				compilationObjData = null; 
 			} 
 			
 			auto addModuleMessage(bool isNew, DMDMessage msg, CodeNode node, SearchResult[] searchResults)

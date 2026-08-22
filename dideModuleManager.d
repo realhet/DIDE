@@ -526,9 +526,10 @@ struct ContainerSelectionManager(T : Container)
 			void stats()
 			{
 				Row(
-					format!"(%d LOC, %sB)"(
-						sm.map!(m => m.linesOfCode).sum,
-						shortSizeText!(1024, " ")(sm.map!(m => m.sizeBytes).sum)
+					format!"(%d LOC, srcBytes: %sB, objBytes: %sB)"(
+						sm.map!((m)=>(m.linesOfCode)).sum,
+						shortSizeText!(1024, " ")(sm.map!((m)=>(m.sizeBytes)).sum),
+						shortSizeText!(1024, " ")(sm.map!((m)=>(m.compilationObjData.length)).sum),
 					)
 				); 
 			} 

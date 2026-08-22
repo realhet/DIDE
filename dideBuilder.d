@@ -265,8 +265,11 @@ class Builder : IBuildServices
 	{
 		clearDebugImageBlobs; 
 		buildMessages.firstErrorMessageArrived = false; 
-		modules.modules.each!((m){ m.resetBuildMessages; }); 
-		modules.modules.each!((m){ m.resetInspectors; }); 
+		modules.modules.each!((m){
+			m.resetBuildMessages; 
+			m.resetInspectors; 
+			m.resetCompilationResult; 
+		}); 
 		dbgsrv.resetBeforeRun; 
 	} 
 	
@@ -446,11 +449,20 @@ class Builder : IBuildServices
 				onProcessIncomingProjectJson(cr.xJson); 
 				/+Opt: Cache these jsons, only generate if changed.+/
 				
-				if((常!(bool)(0))) print("Incoming CR:", cr.file, cr.xJson.length, cr.t0, cr.t1, cr.t1-cr.t0); 
+				if((常!(bool)(0))) {
+					print(
+						"Incoming CR:", cr.file, cr.cmdLine, "res:", cr.result, "obj:", 
+						cr.objData.take(20).text, "xJson:", cr.xJson.take(20).text, cr.t0, cr.t1, cr.t1-cr.t0
+					); 
+				}
 				
 				if(auto Δt = cr.t1 - cr.t0)
 				if(auto m = modules.findModule(cr.file))
-				m.compilationTime = Δt.value(second); 
+				{
+					m.compilationTime = Δt.value(second); 
+					m.compilationObjData = cr.objData; 
+					m.compilationCmdLine = cr.cmdLine; 
+				}
 			}
 		}
 		
