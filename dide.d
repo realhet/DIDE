@@ -255,7 +255,8 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onCreate()
 		{
-			//onCreate //////////////////////////////////
+			_FORCED_APPLICATION_EXIT_IN_MAIN = true /+Todo: DIDE is stuck on exit.+/; 
+			
 			baseCaption = appFile.nameWithoutExt.uc; 
 			isSpecialVersion = baseCaption != "DIDE2"; 
 			

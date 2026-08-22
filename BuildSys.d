@@ -46,7 +46,7 @@ struct BuildSystem
 	
 		//derived data
 		bool isExe, isDll, hasCoreModule, isWindowedApp; 
-		File targetFile, mapFile, defFile, resFile; 
+		File targetFile, mapFile, pdbFile, defFile, resFile; 
 		File[string] resFiles; 
 		string[] runLines, defLines; 
 		ModuleInfo[] modules; 
@@ -54,7 +54,7 @@ struct BuildSystem
 	
 		//cached data
 		SourceCache sourceCache; 
-		ubyte[][string] objCache, exeCache, mapCache, resCache; 
+		ubyte[][string] objCache, exeCache, mapCache, pdbCache, resCache; 
 		string[string] outputCache, jsonCache; 
 	
 		//flags for special operation (daemon mode)
@@ -120,20 +120,17 @@ struct BuildSystem
 		void prepareMapPdbResDef()
 	{
 		//mapFile
-		File mf = targetFile.otherExt(".map"); 
-		mf.remove; 
-		if(settings.generateMap)
-		{ mapFile = mf; }
+		mapFile = targetFile.otherExt(".map"); mapFile.remove; 
 		
 		//pdb file
-		targetFile.otherExt(".pdb").remove; //just remove it.
+		pdbFile = targetFile.otherExt(".pdb"); pdbFile.remove; 
 		
 		//defFile
-		File df = targetFile.otherExt(".def"); //Todo: redundant
-		df.remove; 
-		if(!defLines.empty)
+		File defFile = targetFile.otherExt(".def"); defFile.remove; 
+		if(defLines.empty)
+		defFile = File.init; 
+		else
 		{
-			defFile = df; 
 			string defContent = defLines.join("\r\n"); 
 			defFile.write(defContent); 
 			foreach(idx, line; defLines)
@@ -143,8 +140,7 @@ struct BuildSystem
 		//resFile
 		if(resFiles.length>0)
 		resFile = targetFile.otherExt(".res"); 
-		else resFile = File(""); 
-		
+		else resFile = File.init; 
 	} 
 	
 		void initData(File mainFile_)
@@ -555,12 +551,9 @@ struct BuildSystem
 			//single
 			auto c = commonCompilerArgs; 
 			c ~= `-of=`~targetFile.fullName; 
-			foreach(fn; srcFiles)
-			c ~= fn.fullName.lc; //lowercase because LDC2 drops all kinds of errors.
-			if(defFile.fullName!="")
-			c ~= defFile.fullName; 
-			if(resFile.fullName!="")
-			c ~= resFile.fullName; 
+			foreach(fn; srcFiles) c ~= fn.fullName.lc; //lowercase because LDC2 drops all kinds of errors.
+			if(defFile) c ~= defFile.fullName; 
+			if(resFile) c ~= resFile.fullName; 
 			
 			string[] libFiles; 
 			foreach(fn; settings.linkArgs)
@@ -583,7 +576,7 @@ struct BuildSystem
 		
 		enum printCommands = false; 
 		
-		void compile(File[] srcFiles, File[] cachedFiles) //Compile ////////////////////////
+		void compile(File[] srcFiles, File[] cachedFiles)
 	{
 		
 		
@@ -944,6 +937,7 @@ struct BuildSystem
 		jsonCache.clear; 
 		exeCache.clear; 
 		mapCache.clear; 
+		pdbCache.clear; 
 		resCache.clear; 
 	} 
 		//Errors returned in exceptions
@@ -1064,14 +1058,12 @@ struct BuildSystem
 			{
 				if(!settings.leaveObjs)
 				{
-					 //including res file
 					resFile.remove; 
 					foreach(fn; chain(filesToCompile, filesInCache))
 					{
 						objFileOf(fn).remove; 
 						if(settings.xJson) jsonFileOf(fn).remove; 
 					}
-					
 				}
 				if(!settings.generateMap)
 				mapFile.remove; //linker makes it for dlls even not wanted
@@ -1089,10 +1081,20 @@ struct BuildSystem
 				auto data = exeCache[exeHash]; 
 				logln(bold("WRITING CACHE -> EXE: "), targetFile); 
 				targetFile.write(data); //overwrite if needed
-				if(exeHash in mapCache)
-				mapFile.write(mapCache[exeHash]); 
-			}else
-			{
+				
+				if(mapFile)
+				{
+					if(exeHash in mapCache)
+					mapFile.write(mapCache[exeHash]); 
+					else mapFile.remove; 
+				}
+				if(pdbFile)
+				{
+					if(exeHash in pdbCache)
+					pdbFile.write(pdbCache[exeHash]); 
+					else pdbFile.remove; 
+				}
+			}else {
 				prepareMapPdbResDef; 
 				resCompile(resFile, resHash); 
 				
@@ -1104,6 +1106,8 @@ struct BuildSystem
 				exeCache[exeHash] = targetFile.read; 
 				if(mapFile.exists)
 				mapCache[exeHash] = mapFile.read; 
+				if(pdbFile.exists)
+				pdbCache[exeHash] = pdbFile.read; 
 			}
 			
 		}//end of compile

@@ -354,7 +354,7 @@ class Builder : IBuildServices
 			compileOnly	: command=="rebuild",
 			workPath	: this.workPath.fullPath,
 			collectTodos	: false,
-			generateMap 	: true,
+			generateMap 	: false /+rather use pdb!+/,
 			compileArgs	: [
 				"-wi", 
 				"-J", externalCompiler.rootPath.fullPath,

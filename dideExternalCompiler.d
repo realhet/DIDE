@@ -598,6 +598,16 @@ auto compileGlslShader(string args /+Example: glslc -O0+/, string src, string ha
 		finalBinary = (cast(immutable(ubyte)[])(((finalStatus==0)?(zip.build) :("ERROR:"~finalStatus.text)))); 
 		
 		log(i"External code generated: Source length: $(src.length), binary length: $(finalBinary.length) bytes."); 
+		
+		try {
+			//verify zip package
+			auto aa = finalBinary.unzipAA; 
+			log(i"ZIP data verified. FilesList: [$(aa.keys.sort.map!((k)=>(i"$(k)($(aa[k].length))".text)).join(", "))]"); 
+		}
+		catch(Exception e) {
+			log("ZIP verification failed, "~e.simpleMsg); 
+			finalStatus = 67; finalBinary = (cast(immutable(ubyte)[])("ERROR:"~finalStatus.text)); 
+		}
 	}
 	catch(Exception e)
 	{
