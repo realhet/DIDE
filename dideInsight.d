@@ -235,7 +235,7 @@ class DDB
 		{ _node = p; } 
 		
 		auto copySearchResult()
-		{ PathNode res; res._node = _node; res.opened = true; return res; } 
+		{ PathNode res; res._node = _node; res.opened = false/+260823+/; return res; } 
 		
 		@property string name() const
 		=> _node.match!(
@@ -288,21 +288,27 @@ class DDB
 		); 
 		
 		void open()
+		{ if(canOpen && opened.chkSet) subNodes = collectSubNodes; } 	
+		
+		void close()
 		{
-			if(canOpen && opened.chkSet)
-			subNodes = collectSubNodes; 
-		} 	 void close()
-		{
-			opened = false; 
-			/+
-				remember
-				opened items
-			+/
-		} 	 void toggle()
-		{
-			if(opened)	close; 
-			else	open; 
+			bool tryFullyOpen()
+			{
+				/+
+					In case of search result, there can be more items to open.
+					This only closes the node if all the items have been opened.
+				+/
+				const initialLength = subNodes.length; 
+				subNodes = collectSubNodes; 
+				return subNodes.length>initialLength; 
+			} 
+			
+			if(opened) if(!tryFullyOpen) opened = false; 
+			/+remember opened items+/
 		} 
+		
+		void toggle()
+		{ if(opened)	close; else	open; } 
 		
 		@property structuredColor() 
 		=> .structuredColor(
@@ -326,26 +332,31 @@ class DDB
 	} 
 	
 	
+	protected bool appendNodes(PathNode* actNode, PathNode[] nodes)
+	{
+		bool anyAdded; 
+		foreach(i, src; nodes[1..$]/+nodes[0] is root+/)
+		{
+			const isLast = i==nodes.length-1; 
+			auto idx = actNode.subNodes.countUntil!((a)=>(a.name==src.name)); 
+			if(idx<0) {
+				idx = actNode.subNodes.length; 
+				actNode.subNodes ~= src.copySearchResult; 
+				anyAdded = true; 
+			}
+			if(!isLast) { actNode.opened = true; }/+260823+/
+			
+			actNode = &actNode.subNodes[idx]; /+advance+/
+		}
+		return anyAdded; 
+	} 
+	
+	
 	auto search(string searchText)
 	{
 		auto res = PathNode(root); 
-		void appendRes(PathNode[] nodes)
-		{
-			//LOG(nodes.map!"a.name".join(".")); 
-			
-			auto actDst = &res; 
-			foreach(src; nodes[1..$]/+nodes[0] is root+/)
-			{
-				auto idx = actDst.subNodes.countUntil!((a)=>(a.name==src.name)); 
-				if(idx<0) {
-					idx = actDst.subNodes.length; 
-					actDst.subNodes ~= src.copySearchResult; 
-				}
-				actDst.opened = true; 
-				
-				/+advance+/actDst = &actDst.subNodes[idx]; 
-			}
-		} 
+		bool appendRes(PathNode[] nodes)
+		{ return appendNodes(&res, nodes); } 
 		
 		void visit(PathNode[] nodes, string[] filters)
 		{
@@ -381,22 +392,7 @@ class DDB
 		{ static ulong baseSP; asm { mov baseSP, RSP; } }
 		
 		bool appendRes(PathNode[] nodes)
-		{
-			auto actDst = &res._root, anyChanged = false; 
-			foreach(src; nodes[1..$]/+nodes[0] is root+/)
-			{
-				auto idx = actDst.subNodes.countUntil!((a)=>(a.name==src.name)); 
-				if(idx<0) {
-					idx = actDst.subNodes.length; 
-					actDst.subNodes ~= src.copySearchResult; 
-					anyChanged = true; 
-				}
-				actDst.opened = true; 
-				
-				/+advance+/actDst = &actDst.subNodes[idx]; 
-			}
-			return anyChanged; 
-		} 
+		{ return appendNodes(&res._root, nodes); } 
 		
 		void visit(PathNode[] nodes, string[] filters)
 		{

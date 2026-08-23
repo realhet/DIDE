@@ -1043,7 +1043,14 @@ version(/+$DIDE_REGION+/all) {
 				const canBeEmpty = !isPreposition; 
 				foreach(a; only(attributes, header))
 				if(a)
-				{ a.bkColor = ((canBeEmpty && a.empty) ?(mix(darkColor, brightColor, ((isSimpleStatement)?(0.25f):(0.75f)))) :(darkColor)); }
+				{
+					if(canBeEmpty && a.empty)
+					{
+						a.bkColor = mix(darkColor, brightColor, ((isSimpleStatement)?(0.25f):(0.75f))); 
+						a.setFlatBorder; 
+					}
+					else a.bkColor = darkColor; 
+				}
 				
 				if(isPreposition && isRegion)
 				header.bkColor = syntaxBkColor(skComment); 
