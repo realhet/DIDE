@@ -43,6 +43,7 @@ class Workspace : Container, IWorkspace
 		@STORED SearchBox search; 
 		@STORED Outline outline; 
 		@STORED Insight insight; 
+		@STORED DisassemblerView disasm; 
 		
 		
 		//Restrict convertBuildResultToSearchResults calls.
@@ -1154,13 +1155,17 @@ class Workspace : Container, IWorkspace
 							help.enableDebug.toggle; 
 							im.flashInfo("HelpManager.debug = ", ((help.enableDebug)?("ON"):("OFF"))); 
 						}],
+						[],
 						[q{"Alt+A"},q{initiateAi},q{aiManager.initiate; }],
 						[q{"Ctrl+Enter"},q{launchAi},q{aiManager.launch(refreshCache: false); }],
 						[q{"Ctrl+Shift+Enter"},q{launchAi_refresh},q{aiManager.launch(refreshCache: true); }],
 						[],
+						[q{"Alt+D"},q{disassembleModule},q{disasm.launchModule(modules.expectOneSelectedModule); }],
+						[q{"Ctrl+Alt+D"},q{disassembleProject},q{disasm.launchProject(modules.expectMainModule); }],
+						[],
 						[q{//Experimental
 						}],
-						[q{"F1"},q{function1},q{/+it's the help+/ }],
+						[q{"F1"},q{function1},q{/+Don't use! It's the help.+/ }],
 						[q{"F2"},q{function2},q{}],
 						[q{"F3"},q{function3},q{makeModuleDependencyGraph; }],
 						[q{"F4"},q{function4},q{}],
@@ -1331,6 +1336,15 @@ class Workspace : Container, IWorkspace
 			super.draw(dr); 
 			structureMap.endCollect(dr); 
 			
+		} 
+	}version(/+$DIDE_REGION+/all) {
+		static struct DisassemblerView
+		{
+			void launchModule(Module m)
+			{ NOTIMPL; }; 
+			
+			void launchProject(Module m)
+			{ NOTIMPL; }; 
 		} 
 	}
 } 

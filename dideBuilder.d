@@ -349,7 +349,7 @@ class Builder : IBuildServices
 		{ beep; return; }
 		
 		if(!workPath.exists) workPath.make; 
-		
+		/+Todo: make a UI for this!+/
 		BuildSettings bs = {
 			killExe	: false/+It's deprecated. DIDE Kills it.+/,
 			rebuild	: command=="rebuild",
@@ -357,7 +357,7 @@ class Builder : IBuildServices
 			compileOnly	: command=="rebuild",
 			workPath	: this.workPath.fullPath,
 			collectTodos	: false,
-			generateMap 	: false /+rather use pdb!+/,
+			generateMap 	: true /+should use only pdb! But this is really fast.+/,
 			compileArgs	: [
 				"-wi", 
 				"-J", externalCompiler.rootPath.fullPath,

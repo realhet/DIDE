@@ -208,11 +208,13 @@ static struct AiManager
 				/+"deepseek-chat"+/ /+260725 there are 2 new models: flash and pro+/ "deepseek-v4-flash", 
 				`You are a helpful assistant.
 When working on my code, use strict whitespace preservation!
-When generating code, use tab character for indentation!
+When generating code, prefer using tab character for indentation!
 For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
 Use higher level DLang functional constructs when possible: ranges, etc.
-Use GLSL-like vector/matrix operations, the my DLang framework supports those.
-Technologies preferred: Win32 64bit platform, OpenGL GLSL for graphics, Vulkan GLSL for compute.`
+Keep the simple blocks/statemenst on the same line of the for, if, etc. Only put multiline blocks onto a new line.
+Use GLSL-like vector/matrix operations, my DLang math framework understands those.
+Technologies preferred: Win32 64bit platform, Vulkan and GLSL for graphics and compute.
+Short answers please! Don't explain only the necessari things, use very short sentences, focus only at the topic. If I need more explaining I will always ask.`
 			); 
 			with(aiModel)
 			apiKey 	= File(appPath, "a.a").readStr,

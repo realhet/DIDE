@@ -369,15 +369,24 @@ struct ContainerSelectionManager(T : Container)
 	Module singleSelectedModule()
 	{ return oneSelectedModule.ifz(primaryModule); } 
 	
+	private T expectSomething(T)(T m, string message)
+	{ if(!m) im.flashWarning(message); return m; } 
+	
 	Module expectOneSelectedModule()
-	{
-		auto m = oneSelectedModule; 
-		if(!m)
-		im.flashWarning("This operation requires a single selected module."); 
-		//Todo: put the operation's name in the message.
-		
-		return m; 
-	} 
+	=> 
+	expectSomething(
+		oneSelectedModule, 
+		"This operation requires a single selected module."
+	); 
+	
+	Module expectMainModule()
+	=> 
+	expectSomething(
+		mainModule, 
+		"This operation requires a main project module."
+	); 
+	
+	
 	
 	void select(Module s)
 	{ foreach(m; modules) m.flags.selected = m is s; } 
