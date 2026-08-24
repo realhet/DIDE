@@ -153,7 +153,7 @@ static struct SearchBox
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = thisContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{

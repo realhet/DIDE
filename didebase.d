@@ -159,7 +159,7 @@ static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate
 			background = style.bkColor = color; 
 			style.fontColor = fontColor; 
 			static if(is(T : .Row)) rowFlags.yAlign = YAlign.top; 
-			im.actContainer.setRoundBorder(8, inward:true); 
+			im.thisContainer.setRoundBorder(8, inward:true); 
 			if(contents) contents(); 
 		}  
 	); 
@@ -174,7 +174,7 @@ void UI(in CodeLocation cl)
 	UI_InnerBlockFrame(
 		clSilver, clBlack, {
 			auto s = cl.text; 
-			actContainer.id = "CodeLocation:"~s; 
+			thisContainer.id = "CodeLocation:"~s; 
 			FileIcon_small(file.ext); 
 			Text(s); 
 		}  

@@ -684,7 +684,7 @@ class DDB
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = thisContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ insightFiber = new InsightFiber(ddb, decodeEasyWildcard(searchText), resultTreeView); }
@@ -759,7 +759,7 @@ class DDB
 						); 
 					}
 					
-					actContainer.measure; 
+					thisContainer.measure; 
 					const treeHeight = mainWindow.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
 					
 					void UI_node(DDB.PathNode* node)

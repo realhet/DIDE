@@ -167,7 +167,7 @@ struct HelpManager
 			}
 			
 			if(mouseOverHintCntr)
-			actContainer.append(mouseOverHintCntr); 
+			thisContainer.append(mouseOverHintCntr); 
 		}
 	} 
 	

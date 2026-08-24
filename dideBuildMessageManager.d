@@ -363,7 +363,7 @@ class BuildMessageManager
 									}
 								); 
 								
-								btnWorldBounds = view.screenToWorld(actContainerBounds); 
+								btnWorldBounds = view.screenToWorld(thisOuterBounds); 
 							},
 							((type).名!q{id})
 						)

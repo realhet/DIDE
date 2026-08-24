@@ -374,9 +374,8 @@ version(/+$DIDE_REGION+/all)
 		
 		override void onUpdate()
 		{
+			im.dialogKeysEnabled = false /+all keyboard events will go into the main editor.+/; 
 			workspace.mainIsForeground 	= this.isForeground; 
-			//showFPS = true;
-			//im.focus
 			
 			version(/+$DIDE_REGION update a virtual file from clipboard+/all) {
 				static uint id; 
@@ -602,7 +601,7 @@ version(/+$DIDE_REGION+/all)
 						Container(
 							{
 								flags.hScrollState = ScrollState.auto_; 
-								actContainer.appendCell(m.undoManager.createUI); 
+								thisContainer.appendCell(m.undoManager.createUI); 
 							}
 						); 
 					}
@@ -690,8 +689,10 @@ FPS=$(FPS
 							}
 							
 							//this applies YAlign.stretch
-							with(actContainer) {
+							with(thisContainer) {
 								measure; 
+								
+								/+Todo: Why I measure subCells again?+/
 								foreach(c; cast(.Container[])subCells) c.measure; 
 							}
 							

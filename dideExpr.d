@@ -1848,7 +1848,7 @@ version(/+$DIDE_REGION+/all) {
 								), 
 								{
 									outerSize = placeholder.innerSize; 
-									with((cast(.Slider)(actContainer)))
+									with((cast(.Slider)(thisContainer)))
 									{
 										rulerSides 	= (cast(ubyte)(controlProps.rulerSides)),
 										rulerDiv0 	= controlProps.rulerDiv0,
@@ -2098,8 +2098,8 @@ version(/+$DIDE_REGION+/all) {
 					@text: 	put(operator); put("(_間)"); 
 					@node: 	style.bold = false; put("⏱"); 
 				}],
-				[q{inspect1},q{((0x113C63617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
-				[q{inspect2},q{((0x1144A3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect1},q{((0x113C73617740F).檢(expr))},q{/+Code: ((expr)op(expr))+/},q{".檢"},q{dim},q{Identifier1},q{Inspector},q{}],
+				[q{inspect2},q{((0x1144B3617740F).檢 (expr))},q{/+Code: ((expr)op(expr))+/},q{".檢 "},q{dim},q{Identifier1},q{Inspector},q{}],
 				[q{constValue},q{
 					(常!(bool)(0))(常!(bool)(1))
 					(常!(float/+w=6+/)(0.359))
@@ -2111,8 +2111,8 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(false, enabled_, targetSurface_); 
 				}],
 				[q{interactiveValue},q{
-					(互!((bool),(0),(0x116993617740F)))(互!((bool),(1),(0x116BD3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x116E13617740F)))
-					(互!((float/+w=6+/),(1.000),(0x1172D3617740F)))
+					(互!((bool),(0),(0x1169A3617740F)))(互!((bool),(1),(0x116BE3617740F)))(互!((bool/+btnEvent=1 h=1 btnCaption=Btn+/),(0),(0x116E23617740F)))
+					(互!((float/+w=6+/),(1.000),(0x1172E3617740F)))
 				},q{/+Code: (op((expr),(expr),(expr)))+/},q{"互!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	const 	ctwc 	= controlTypeWithComment,
 						cvt	= controlValueText,
@@ -2122,9 +2122,9 @@ version(/+$DIDE_REGION+/all) {
 					@ui: 	interactiveUI(!!dbgsrv.exe_pid, enabled_, targetSurface_); 
 				}],
 				[q{synchedValue},q{
-					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x119243617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x119633617740F}))
-					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x119D53617740F}))
-					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11A543617740F}))
+					mixin(同!(q{bool/+hideExpr=1+/},q{select},q{0x119253617740F}))mixin(同!(q{int/+w=2 h=1 min=0 max=2 hideExpr=1 rulerSides=1 rulerDiv0=3+/},q{select},q{0x119643617740F}))
+					mixin(同!(q{float/+w=3 h=2.5 min=0 max=1 newLine=1 sameBk=1 rulerSides=1 rulerDiv0=11+/},q{level},q{0x119D63617740F}))
+					mixin(同!(q{float/+w=1.5 h=6.6 min=0 max=1 newLine=1 sameBk=1 rulerSides=3 rulerDiv0=11+/},q{level},q{0x11A553617740F}))
 				},q{/+Code: mixin(op(q{},q{},q{}))+/},q{"同!"},q{dim},q{Interact},q{InteractiveValue},q{
 					@text: 	static ts(string s) => "q{"~s~'}'; 
 						const 	ctwc	= ts(controlTypeWithComment),
@@ -2228,8 +2228,8 @@ struct initializer"},q{((value).名!q{name}) mixin(體!((Type),q{name: val, ...}
 							[q{"enum member 
 blocks"},q{mixin(舉!((Enum),q{member})) mixin(幟!((Enum),q{member | ...}))}],
 							[q{"cast operator"},q{(cast(Type)(expr)) (cast (Type)(expr))}],
-							[q{"debug inspector"},q{((0x12C883617740F).檢(expr)) ((0x12CA63617740F).檢 (expr))}],
-							[q{"stop watch"},q{auto _間=init間; ((0x12CF63617740F).檢((update間(_間)))); }],
+							[q{"debug inspector"},q{((0x12C893617740F).檢(expr)) ((0x12CA73617740F).檢 (expr))}],
+							[q{"stop watch"},q{auto _間=init間; ((0x12CF73617740F).檢((update間(_間)))); }],
 							[q{"interactive literals"},q{/+
 								Todo: repair interactive 
 								controls on Vulkan!
@@ -2576,8 +2576,8 @@ with condition"},q{
 					
 					im.Container(
 						{
-							im.actContainer.id = "$ToolPaletteContainer$"; 
-							if(actPage) im.actContainer.appendCell(this); 
+							im.thisContainer.id = "$ToolPaletteContainer$"; 
+							if(actPage) im.thisContainer.appendCell(this); 
 							this.UI_constantNodes(false, TargetSurface.gui); 
 							this.UI_buttonComments(false, TargetSurface.gui); 
 						}

@@ -222,7 +222,7 @@ static struct Outline
 							
 							
 							if(
-								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = actContainer; })
+								Edit(searchText, ((justActivated).名!q{enter}), { flex = 1; editContainer = thisContainer; })
 								|| justActivated || searchHashChanged
 							)
 							{ NOTIMPL; }
@@ -280,7 +280,7 @@ static struct Outline
 					}
 					
 					
-					actContainer.measure; 
+					thisContainer.measure; 
 					const treeHeight = mainWindow.clientHeight - outerHeight - 50; /+Todo: fucking lame. Fix aligning engine.+/
 					
 					treeView.UI
@@ -312,11 +312,11 @@ static struct Outline
 													if(mod)	{ Led(true, ((mod.changed)?(clYellow):(clLime))); spc -= .7; }
 													
 													/+Todo: not works -> Spacer(spc); +/
-													Text(' '); actContainer.subCells.back.outerWidth = fh*spc; 
+													Text(' '); thisContainer.subCells.back.outerWidth = fh*spc; 
 												}
 											}
 										); 
-										if(auto img = (cast(.Img)(actContainer.subCells.frontOrNull)))
+										if(auto img = (cast(.Img)(thisContainer.subCells.frontOrNull)))
 										{
 											img.flags.clickable = false; 
 											img.bkColor = background; 
