@@ -438,7 +438,7 @@ version(/+$DIDE_REGION+/all)
 			with(im)
 			{
 				Panel(
-					PanelPosition.topLeft, 
+					DockAlignment.topLeft, 
 					{
 						if(!mainMenuOpened) {
 							margin = "0"; padding = "0"; /+border = "1 normal gray";+/
@@ -508,7 +508,7 @@ version(/+$DIDE_REGION+/all)
 			if(!modules.selectedStickers.empty)
 			with(im)
 			Panel(
-				PanelPosition.topCenter, 
+				DockAlignment.topCenter, 
 				{
 					Row(
 						{
@@ -546,7 +546,7 @@ version(/+$DIDE_REGION+/all)
 			if(showModuleButtons)
 			with(im)
 			Panel(
-				PanelPosition.topClient,
+				DockAlignment.topClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
 					Row(
@@ -575,7 +575,7 @@ version(/+$DIDE_REGION+/all)
 			if(showHitTest)
 			with(im)
 			Panel(
-				PanelPosition.bottomClient,
+				DockAlignment.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
 					Row(
@@ -593,7 +593,7 @@ version(/+$DIDE_REGION+/all)
 			if(showUndoStack)
 			with(im)
 			Panel(
-				PanelPosition.bottomClient,
+				DockAlignment.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
 					if(auto m = workspace.modules.primaryModule)
@@ -612,7 +612,7 @@ version(/+$DIDE_REGION+/all)
 			if(showResyntaxQueue)
 			with(im)
 			Panel(
-				PanelPosition.bottomClient,
+				DockAlignment.bottomClient,
 				{
 					margin = "0"; padding = "0"; //border = "1 normal gray";
 					Column({ workspace.editor.UI_ResyntaxQueue; }); 
@@ -626,7 +626,7 @@ version(/+$DIDE_REGION+/all)
 			//StatusBar
 			with(im)
 			Panel(
-				PanelPosition.bottomClient,
+				DockAlignment.bottomClient,
 				{
 					margin = "0"; padding = "0"; 
 					Row(
@@ -707,7 +707,7 @@ FPS=$(FPS
 			{
 				bool anyVisible; 
 				Panel(
-					workspace.outline.visible || workspace.insight.visible ? PanelPosition.rightClient : PanelPosition.topRight,
+					workspace.outline.visible || workspace.insight.visible ? DockAlignment.rightClient : DockAlignment.topRight,
 					{
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
@@ -786,7 +786,7 @@ FPS=$(FPS
 			
 			im.imAppend(overlay); 
 			
-			view.subScreenArea = im.clientArea / clientSize; 
+			view.subScreenArea = im.rootContainer.clientArea / clientSize /+Todo: This should go inside `im`!+/; 
 			
 			workspace.modules.UI_PopupScrumMenu(view.mousePos.vec2); 
 			
@@ -794,7 +794,7 @@ FPS=$(FPS
 			with(im)
 			Panel
 				(
-				PanelPosition.bottomRight,
+				DockAlignment.bottomRight,
 				{
 					margin = "0 24 24 0"; 
 					border = Border.init; 
