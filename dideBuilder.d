@@ -155,7 +155,7 @@ class Builder : IBuildServices
 		BuildMessageManager 	buildMessages
 	}; 
 	
-	Path workPath = Path(`z:\temp2`); 
+	Path workPath = Path(`z:\dide_tmp`); 
 	
 	Tid buildSystemWorkerTid; 
 	BuildResult buildResult; //collects buildMessages and output

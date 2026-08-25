@@ -236,36 +236,53 @@ class Workspace : Container, IWorkspace
 				{
 					this.callVerbs; 
 					
-					if(textSelections.empty)
-					{ mainWindow.inputChars = []; }
-					else
-					{
-						//Todo: single window only
-						string unprocessed; 
-						foreach(ch; mainWindow.inputChars.unTag.byDchar)
+					if(!textSelections.empty)
+					mainWindow.processInputChars
+					((ch){
+						if(ch>=32)
 						{
-							if(ch==9 && ch==10)
-							{
-								//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+							try {
+								editor.pasteText(ch.to!string); 
+								return true; 
 							}
-							else if(ch>=32)
+							catch(Exception) {}
+						}
+						return false; 
+					}); 
+					
+					version(/+$DIDE_REGION+/none) {
+						//old stuff before 260825
+						if(textSelections.empty)
+						{ mainWindow.inputChars = [] /+Just empty the incoming buffer+/; }
+						else
+						{
+							//Todo: single window only
+							string unprocessed; 
+							foreach(ch; mainWindow.inputChars.unTag.byDchar)
 							{
-								//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
-								try
+								if(ch==9 && ch==10)
 								{
-									/+
-										if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
-										from keyboard or clipboard! Maybe it's a bug.
-									+/
-									editor.pasteText(ch.to!string); 
+									//if(flags.acceptEditorKeys) cmdQueue ~= EditCmd(cInsert, [ch].to!string);
 								}
-								catch(Exception)
+								else if(ch>=32)
+								{
+									//cmdQueue ~= EditCmd(cInsert, [ch].to!string);
+									try
+									{
+										/+
+											if(ch=='`') ch = '\U0001F4A9'; //todo: unable to input emojis
+											from keyboard or clipboard! Maybe it's a bug.
+										+/
+										editor.pasteText(ch.to!string); 
+									}
+									catch(Exception)
+									{ unprocessed ~= ch; }
+								}
+								else
 								{ unprocessed ~= ch; }
 							}
-							else
-							{ unprocessed ~= ch; }
+							mainWindow.inputChars = unprocessed; 
 						}
-						mainWindow.inputChars = unprocessed; 
 					}
 				}
 				else

@@ -73,9 +73,9 @@ class ExternalCompiler
 		console
 		(
 			{
-				const rootPath = Path(`z:\temp2\ExtComp_test`); 	auto _間=init間; 
-				rootPath.wipe(false); 	((0x8CB35AA4136).檢((update間(_間)))); 
-				auto ec = new ExternalCompiler(rootPath, Path(`z:\temp2`)); 	((0x93835AA4136).檢((update間(_間)))); 
+				const rootPath = Path(`z:\dide_tmp\ExtComp_test`); 	auto _間=init間; 
+				rootPath.wipe(false); 	((0x8CE35AA4136).檢((update間(_間)))); 
+				auto ec = new ExternalCompiler(rootPath, Path(`z:\dide_tmp`)); 	((0x93E35AA4136).檢((update間(_間)))); 
 				const 	args 	= "glslc -S", 
 					src 	= q{
 					@comp: 
@@ -83,12 +83,12 @@ class ExternalCompiler
 					void main() {} 
 				},
 					hash	= ExternalCompiler.calcHash(args, src); 	
-				ec.addInput(args, src, hash, "testShader.comp", 1); 	((0xA4235AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump; 	((0xA9635AA4136).檢((update間(_間)))); 
-				File(rootPath, hash).read.hexDump/+cached+/; 	((0xAF435AA4136).檢((update間(_間)))); 
+				ec.addInput(args, src, hash, "testShader.comp", 1); 	((0xA4835AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump; 	((0xA9C35AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+cached+/; 	((0xAFA35AA4136).檢((update間(_間)))); 
 				ec.reset; 	
-				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xB6935AA4136).檢((update間(_間)))); 
-				ec.free; 	((0xBA335AA4136).檢((update間(_間)))); 
+				File(rootPath, hash).read.hexDump/+can't access+/; 	((0xB6F35AA4136).檢((update間(_間)))); 
+				ec.free; 	((0xBA935AA4136).檢((update間(_間)))); 
 			}
 		); 
 	} 
@@ -156,7 +156,7 @@ class ExternalCompiler
 					"glslc", 
 					{
 						auto r = compileGlslShader(
-							args, input.src, input.hash, Path(`z:\temp2`), 
+							args, input.src, input.hash, Path(`z:\dide_tmp`), 
 							input.file, input.line, input.lineIdxMap
 						); 
 						with(res) { status = r.status, output = r.output,  binary = r.binary; }

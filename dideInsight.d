@@ -466,7 +466,7 @@ class DDB
 	{
 		if(!ddb) {
 			ddb = new DDB(
-				Path(`z:\temp2`),
+				Path(`z:\dide_tmp`),
 				Path(`c:\d\ldc2\import`),
 				Path(`c:\d\libs`),
 				File(appPath, `$stdlib_cache.dat`)
