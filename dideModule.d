@@ -577,7 +577,12 @@ version(/+$DIDE_REGION+/all)
 	//FolderLabel //////////////////////////////////
 	
 	auto cachedFolderLabel(string folderPath)
-	{ return ImStorage!Label.access(srcId(genericId(folderPath)), new Label(LabelType.folder, vec2(0), Path(folderPath).name)); } 
+	{
+		return ImStorage!Label(
+			srcId(((folderPath).名!q{id})), 
+			new Label(LabelType.folder, vec2(0), Path(folderPath).name)
+		); 
+	} 
 	
 	void dumpDDoc(string src)
 	{
