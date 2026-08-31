@@ -579,7 +579,7 @@ version(/+$DIDE_REGION+/all)
 	auto cachedFolderLabel(string folderPath)
 	{
 		return ImStorage!Label(
-			srcId(((folderPath).名!q{id})), 
+			srcIdFromArgs(((folderPath).名!q{id})), 
 			new Label(LabelType.folder, vec2(0), Path(folderPath).name)
 		); 
 	} 

@@ -1855,7 +1855,6 @@ version(/+$DIDE_REGION+/all) {
 				{
 					if(receiver)
 					{
-						
 						if(
 							!receiver.explicitPrepositionBlock && receiver.block.empty 
 							&& decl.isSimpleBlock && receiver.isPreposition
@@ -1942,7 +1941,7 @@ version(/+$DIDE_REGION+/all) {
 							}
 							
 							return res; 
-						} 
+						} 
 						
 						backTrackCount = 1; //first is the dstPreposition, it's always dropped
 						//precedingComments = [];
