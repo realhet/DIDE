@@ -267,7 +267,7 @@ version(/+$DIDE_REGION+/all)
 					It's bad.
 				+/
 			); 
-			workspace = new Workspace(view, (cast(IBuildServices)(builder))); 
+			workspace = new Workspace(viewWorld, (cast(IBuildServices)(builder))); 
 			
 			builder.modules = workspace.modules; 
 			builder.buildMessages = workspace.buildMessages; 
@@ -330,7 +330,7 @@ version(/+$DIDE_REGION+/all)
 			dr.alpha = .5f; 
 			dr.lineWidth = -1; 
 			if(visualizeMarginsAndPaddingUnderMouse)
-			foreach(cl; workspace.locate(view.mousePos.vec2))
+			foreach(cl; workspace.locate(viewWorld.mousePos.vec2))
 			{
 				auto rOuter 	= cl.globalOuterBounds; 
 				auto rMargin 	= rOuter; 	cl.cell.margin.apply(rMargin); 
@@ -385,7 +385,7 @@ version(/+$DIDE_REGION+/all)
 				//Todo: don't load too big files. And most importantly don't crash.
 			}
 			
-			if(frmMain.isForeground && view.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
+			if(frmMain.isForeground && viewWorld.isMouseInside && (inputs.LMB.pressed || inputs.RMB.pressed))
 			{ im.focusNothing; }
 			
 			updateBlink; 
@@ -427,9 +427,9 @@ version(/+$DIDE_REGION+/all)
 				view.navigate(false/+disable keyboard navigation+/ && !im.wantKeys && !inputs.Ctrl.down 
 				&& !inputs.Alt.down && isForeground, false/+worksheet.update handles it+/!im.wantMouse && isForeground);
 			+/
-			view.updateSmartScroll; 
-			view.animSpeed = mix(view.animSpeed, 0.3f, .01f); //slowly goes to it.
-			setLod(view.scale_anim); 
+			viewWorld.updateSmartScroll; 
+			viewWorld.animSpeed = mix(viewWorld.animSpeed, 0.3f, .01f); //slowly goes to it.
+			setLod(viewWorld.scale_anim); 
 			
 			if(canProcessUserInput) callVerbs(this); 
 			
@@ -584,7 +584,7 @@ version(/+$DIDE_REGION+/all)
 							NL; 
 							if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
 							
-							Text("\n", workspace.navig.locate_snapToRow(view.mousePos.vec2).text); 
+							Text("\n", workspace.navig.locate_snapToRow(viewWorld.mousePos.vec2).text); 
 						}
 					); 
 				}
@@ -647,11 +647,11 @@ version(/+$DIDE_REGION+/all)
 									//style.fontHeight = 18+6;
 									
 									if(lod.moduleLevel) workspace.modules.UI_selectedModulesHint; 
-									if(!lod.moduleLevel) workspace.help.UI_mouseLocationHint(workspace.navig, view); 
+									if(!lod.moduleLevel) workspace.help.UI_mouseLocationHint(workspace.navig, viewWorld); 
 									
 									
 									enum showMousePosCellInfoHint = false; 
-									if(showMousePosCellInfoHint) Text("\n", workspace.locate(view.mousePos.vec2).map!cellInfoText.join(' ')); 
+									if(showMousePosCellInfoHint) Text("\n", workspace.locate(viewWorld.mousePos.vec2).map!cellInfoText.join(' ')); 
 								}
 							); 
 							
@@ -660,7 +660,7 @@ version(/+$DIDE_REGION+/all)
 							BtnRow(
 								{
 									margin = "0 3"; 
-									workspace.buildMessages.UI_LayerBtns(view); 
+									workspace.buildMessages.UI_LayerBtns(viewWorld); 
 								}
 							); 
 							VLine; //---------------------------
@@ -676,7 +676,7 @@ version(/+$DIDE_REGION+/all)
 										i"$(now)
 FPS=$(FPS
 .format!"%.0f")  Z=$(log2(lod.pixelSize)
-.format!"%.2f")  A=$(view.animSpeed
+.format!"%.2f")  A=$(viewWorld.animSpeed
 .format!"%.2f")".text
 									); 
 								}
@@ -711,9 +711,9 @@ FPS=$(FPS
 					{
 						margin = "0"; padding = "0"; 
 						bool[] vis = [
-							workspace.search.UI(workspace.modules, workspace.textSelections, workspace.buildMessages, workspace.navig, view),
-							workspace.insight.UI(workspace.modules, workspace.textSelections, workspace.editor, workspace.navig, view),
-							workspace.outline.UI(workspace.modules, workspace.textSelections, view)
+							workspace.search.UI(workspace.modules, workspace.textSelections, workspace.buildMessages, workspace.navig, viewWorld),
+							workspace.insight.UI(workspace.modules, workspace.textSelections, workspace.editor, workspace.navig, viewWorld),
+							workspace.outline.UI(workspace.modules, workspace.textSelections, viewWorld)
 						]; /+Todo: refactor this terrible menu+/
 						anyVisible = vis.any; 
 						
@@ -748,7 +748,7 @@ FPS=$(FPS
 			
 			im.UI_FlashMessages; 
 			
-			workspace.update(view, builder.buildResult); 
+			workspace.update(viewWorld, builder.buildResult); 
 			im.imAppend(workspace); 
 			
 			
@@ -786,9 +786,9 @@ FPS=$(FPS
 			
 			im.imAppend(overlay); 
 			
-			view.subScreenArea = im.rootContainer.clientArea / clientSize /+Todo: This should go inside `im`!+/; 
+			viewWorld.subScreenArea = (cast(.DockSite)(im.rootContainer)).clientArea / clientSize /+Todo: This should go inside `im`!+/; 
 			
-			workspace.modules.UI_PopupScrumMenu(view.mousePos.vec2); 
+			workspace.modules.UI_PopupScrumMenu(viewWorld.mousePos.vec2); 
 			
 			//bottomRight hint
 			with(im)
