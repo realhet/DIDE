@@ -136,7 +136,8 @@ auto KeyBtn(string srcModule = __FILE__, size_t srcLine = __LINE__, A...)(string
 static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 {
 	with(im)
-	Container!T(
+	CustomContainer!T
+	(
 		{
 			margin = "0.5"; 
 			padding = "1.5"; 
@@ -152,7 +153,8 @@ static void UI_OuterBlockFrame(T = .Row)(RGB color, void delegate() contents)
 static void UI_InnerBlockFrame(T = .Row)(RGB color, RGB fontColor, void delegate() contents)
 {
 	with(im)
-	Container!T(
+	CustomContainer!T
+	(
 		{
 			margin = "0"; 
 			padding = "0 4"; 
@@ -171,7 +173,8 @@ void UI(in CodeLocation cl)
 {
 	with(cl)
 	with(im)
-	UI_InnerBlockFrame(
+	UI_InnerBlockFrame
+	(
 		clSilver, clBlack, {
 			auto s = cl.text; 
 			thisContainer.id = "CodeLocation:"~s; 
