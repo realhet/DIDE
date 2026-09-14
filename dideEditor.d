@@ -927,7 +927,7 @@ class Editor
 				oldNode.enforce("Unable to reach node."); 
 				auto mod = (cast(Module)(oldNode)); 
 				if(!mod) mod = moduleOf(oldNode); 
-				mod.enforce("Unable to reach module."); 
+				mod.enforce("Unable to reach module."); /+Todo: Investigate what happens here. Fucking annoying!+/
 				enforce(!mod.isReadOnly, "Module is readonly"); 
 				enforce(mod.isManaged, "Module Structure Level must be Managed."); 
 				
