@@ -277,7 +277,7 @@ version(/+$DIDE_REGION+/all) {
 		=> !(
 			keyword.among(
 				"mixin", "return", "break", "continue", "goto case", "goto",
-				"assert", "static assert", "enforce"
+				"throw", "assert", "static assert", "enforce"
 			)
 		); 
 		
@@ -532,6 +532,7 @@ version(/+$DIDE_REGION+/all) {
 				kw_space_expr("break") 	|| kw_only("break")	||	
 				kw_space_expr("goto case") 	|| kw_only("goto case")	||
 				kw_space_expr("goto") 	|| kw_only("goto")	||
+				kw_space_expr("throw")	||
 				kw_bracket_expr("static assert")	|| kw_bracket_expr("assert")|| kw_bracket_expr("enforce"); 
 			} 
 			
