@@ -927,7 +927,17 @@ class Editor
 				oldNode.enforce("Unable to reach node."); 
 				auto mod = (cast(Module)(oldNode)); 
 				if(!mod) mod = moduleOf(oldNode); 
-				mod.enforce("Unable to reach module."); /+Todo: Investigate what happens here. Fucking annoying!+/
+				
+				if(!mod)
+				{
+					WARN("Unable to reach module."); return; 
+					/+
+						Todo: 260920: It was an exception but it was fucking annoying so it's only a warning now.
+						Investigate what happens here! I think that the cursor is lost because 
+						a new block was created after a succesful feednode.
+					+/
+				}
+				
 				enforce(!mod.isReadOnly, "Module is readonly"); 
 				enforce(mod.isManaged, "Module Structure Level must be Managed."); 
 				

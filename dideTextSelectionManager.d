@@ -343,7 +343,8 @@ class TextSelectionManager
 							{
 								selectionAtMouse = TextSelection(cursorAtMouse, false); 
 								wordSelecting = false; 
-							}else {
+							}
+							else {
 								//single click goes to module selection
 							}
 						}
@@ -478,6 +479,10 @@ class TextSelectionManager
 							Can't put 3 cursors after the numbers, only 2.
 						+/
 						ts = ts.remove!"a.isAtLineEnd"; 
+						/+
+							Todo: Alt+click must not scroll the new cursot in! Only after release.
+							It the mouse is held, every autozoom should stop!
+						+/
 					}
 					
 					ts = applyWordSelectArr(ts); 

@@ -1119,7 +1119,7 @@ class Workspace : Container, IWorkspace
 							); 
 						}],
 						[],
-						[q{""},q{feed},q{
+						[q{""},q{feed /+It is autocalled right before save+/},q{
 							enforce(buildServices.ready, "BuildSystem is working."); 
 							textSelections.preserve({ editor.feedChangedModule(primaryModule); }); 
 						}],
