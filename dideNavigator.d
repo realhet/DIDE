@@ -295,9 +295,9 @@ class Navigator : INavigator
 		{
 			//check something in the IMGUI that has a codeLocation id.
 			{
-				auto hs = im.hitTestManager.lastHitStack; 
-				if(!hs.empty && hs.back.id.startsWith(CodeLocationPrefix))
-				{ jumpTo(hs.back.id); return; }
+				auto hitStack = im.hitTestManager.getLastHitStack; 
+				if(!hitStack.empty && hitStack.back.id.startsWith(CodeLocationPrefix))
+				{ jumpTo(hitStack.back.id); return; }
 			}
 			
 			//check a codeLocation CodeComment under mouse

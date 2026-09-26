@@ -580,9 +580,11 @@ version(/+$DIDE_REGION+/all)
 					margin = "0"; padding = "0"; //border = "1 normal gray";
 					Row(
 						{
-							Text(hitTestManager.lastHitStack.map!(a => "["~a.id.text~"]").join(` `)); 
+							auto hitStack = hitTestManager.getLastHitStack; 
+							
+							Text(hitStack.map!(a => "["~a.id.text~"]").join(` `)); 
 							NL; 
-							if(hitTestManager.lastHitStack.length) Text(hitTestManager.lastHitStack.back.text); 
+							if(hitStack.length) Text(hitStack.back.text); 
 							
 							Text("\n", workspace.navig.locate_snapToRow(viewWorld.mousePos.vec2).text); 
 						}

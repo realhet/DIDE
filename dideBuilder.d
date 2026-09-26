@@ -536,8 +536,12 @@ class Builder : IBuildServices
 					const 	id 	= wild[0].to!ulong(16),
 						blobAddress 	= wild[1].to!ulong(16),
 						moduleHash 	= (cast(uint)(id)),
-						location 	= (cast(uint)(id>>32)),
-						value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
+						location 	= (cast(uint)(id>>32)); 
+					
+					/+260926 ELBASZVA!!! const value 	= dbgsrv.getBlob(blobAddress).dupSafeUTF8orLatin1_warn; +/
+					//const value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
+					
+					const value = dbgsrv.getBlob(blobAddress).safeUTF8orLatin1_warn; 
 					
 					if(auto m = moduleHash in modules.moduleByHash)
 					{

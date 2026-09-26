@@ -2598,36 +2598,36 @@ with condition"},q{
 				void detectMouseLocation()
 				{
 					hoveredRow=null; hoveredCell = null; innerCol =  null; 
-					auto hs = im.hitTestManager.lastHitStack; 
+					auto hitStack = im.hitTestManager.getLastHitStack; 
 					
 					//Todo: Can't ssubstitute label in "goto label;"
 					
-					//print(hs.enumerate.map!(a=>(a.index.text~":"~a.value.id)).join("|")); 
+					//print(hitStack.enumerate.map!(a=>(a.index.text~":"~a.value.id)).join("|")); 
 					
-					if(hs.length && hs.back.id.isWild("$ToolPaletteContainer$.*[NiceExpression(*)]"))
+					if(hitStack.length && hitStack.back.id.isWild("$ToolPaletteContainer$.*[NiceExpression(*)]"))
 					{
 						//interactive constantNode
 						hoveredCell = (cast(NiceExpression)((cast(void*)(wild[1].to!ulong(16))))); 
 					}
 					else
 					{
-						const toolPaletteIdx = hs.map!"a.id".countUntil(this.id); 
+						const toolPaletteIdx = hitStack.map!"a.id".countUntil(this.id); 
 						if(toolPaletteIdx>=0)
 						{
-							hs = hs[toolPaletteIdx..$]; 
+							hitStack = hitStack[toolPaletteIdx..$]; 
 							T idTo(T)(string id)
 							{
 								if(id.isWild(T.stringof~"(*)"))	return (cast(T)((cast(void*)(wild[0].to!ulong(16))))); 
 								else	return null; 
 							} 
 							
-							if(auto node = idTo!CodeNode(hs.get(4).id))
+							if(auto node = idTo!CodeNode(hitStack.get(4).id))
 							{
 								hoveredCell = node; 
-								innerCol = idTo!CodeColumn(hs.get(5).id); 
+								innerCol = idTo!CodeColumn(hitStack.get(5).id); 
 							}
-							else if(auto row = idTo!CodeRow(hs.get(3).id))
-							if(auto glyph = (cast(Glyph)(row.subCellAtX(hs[3].localPos.x, Yes.snapToNearest))))
+							else if(auto row = idTo!CodeRow(hitStack.get(3).id))
+							if(auto glyph = (cast(Glyph)(row.subCellAtX(hitStack[3].localPos.x, Yes.snapToNearest))))
 							if(!glyph.isWhite)
 							{
 								hoveredCell = glyph; 
