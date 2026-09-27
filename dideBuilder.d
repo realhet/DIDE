@@ -541,7 +541,17 @@ class Builder : IBuildServices
 					/+260926 ELBASZVA!!! const value 	= dbgsrv.getBlob(blobAddress).dupSafeUTF8orLatin1_warn; +/
 					//const value 	= (cast(string)(dbgsrv.getBlob(blobAddress))); 
 					
-					const value = dbgsrv.getBlob(blobAddress).safeUTF8orLatin1_warn; 
+					
+					//260927: Let's be supersafe here!
+					string duplicatedStr; 
+					{
+						auto tmp = dbgsrv.getBlob_access(blobAddress); 
+						scope(exit) dbgsrv.getBlob_ack(blobAddress); 
+						
+						duplicatedStr = (cast(string)(tmp)).dup; 
+					}
+					
+					const value = duplicatedStr.safeUTF8orLatin1_warn; 
 					
 					if(auto m = moduleHash in modules.moduleByHash)
 					{
@@ -562,7 +572,6 @@ class Builder : IBuildServices
 						blobAddress 	= wild[1].to!ulong(16),
 						moduleHash 	= (cast(uint)(id)),
 						location 	= (cast(uint)(id>>32)),
-						value 	= dbgsrv.getBlob(blobAddress),
 						elementType	= wild[2],
 						width	= wild[3].to!int(16),
 						height	= wild[4].to!int(16); 
@@ -572,7 +581,10 @@ class Builder : IBuildServices
 					{
 						enforce(width>0 && height>0, i"Invalid image dimensions ($(width)x$(height))".text); 
 						enforce(blobAddress, "Image Blob is null."); 
-						auto buf = dbgsrv.getBlob(blobAddress); 
+						
+						auto buf = dbgsrv.getBlob_access(blobAddress); 
+						scope(exit) dbgsrv.getBlob_ack(blobAddress); 
+						
 						enforce(buf.length, "Image Blob is empty."); 
 						
 						sw: 
@@ -591,6 +603,12 @@ class Builder : IBuildServices
 											It points to Windows SharedMemory.
 											
 											This means, it is noisy, but good enough for debugging.
+											
+											/+
+												260927: 	This is nasty, but with a stable reallocated buffer it can work.
+													Not it has an ACK mechanism at least.
+													In the future, these shared memory allocations should be preallocated!!!
+											+/
 										+/
 									); 
 									break sw; 
