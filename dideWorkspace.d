@@ -1252,6 +1252,7 @@ class Workspace : Container, IWorkspace
 						[q{"Alt+`"},q{insertDString},q{editor.insertNode("`\0`", 0); }],
 						[q{"Alt+'"},q{insertCChar},q{editor.insertNode("'\0'"); }],
 						[q{"Shift+Alt+'"},q{insertCString},q{editor.insertNode("\"\0\"", 0); }],
+						[q{"Shift+Alt+Q"},q{insertTokenString},q{editor.insertNode("q{\0}", 0); }],
 						[q{/+"Shift+Alt+I+'"q{insertInterpolatedCString}q{editor.insertNode("i\"\0\"", 0); }+/}],
 						[q{/+"Alt+I+`"q{insertInterpolatedDString}q{editor.insertNode("i`\0`", 0); }+/}],
 						[q{"Shift+Alt+4"},q{insertStringExpression},q{editor.insertNode("$(\0)", 0); }],

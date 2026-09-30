@@ -97,6 +97,11 @@ of type `$(wild[2])`".text;
 						Error: no property /+Code: read_commited+/ for type /+Code: isc_tpb_+/. Did you mean /+Code: isc_tpb_.read_committed+/ ? /+Hidden: /+$DIDE_LOC c:\D\unsorted\firebird.d(404,42)+/+/
 						enum /+Code: isc_tpb_+/ defined here /+$DIDE_LOC c:\D\unsorted\firebird.d(103,1)+/
 					+/
+					/+
+						Error: no property /+Code: cornerPoint+//+$DIDE_BTN "👆" op=select str="cornerPoint"+/ for /+Code: this.background+//+$DIDE_BTN "👆" op=select str="this.background"+/
+						of type /+Code: jigsawpuzzle.BackgroundImage*+/ /+Hidden: /+$DIDE_LOC c:\D\unsorted\JigsawPuzzle.d(715,14)+/+/
+						did you mean variable /+Code: cornerPoints+/? /+$DIDE_LOC c:\D\unsorted\JigsawPuzzle.d(637,11)+/
+					+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{

@@ -53,6 +53,41 @@ import dideexpr : NiceExpression, processNiceTemplateMixinStatement, processNice
 //Todo: Experimental color scheme: all function headers could be inverse. That would make a nice contrast.
 /+Todo: /+Code: /+//comment+/+/ if there is no comment, just a // it throws on save...+/
 
+/+
+	Todo: MACRO expansion example (2 dimensional matrix):
+	/+
+		Code: iq{
+			public $(
+				void reset
+				bool any
+			)$(
+				Nearest
+				Adjusted
+			)()
+			{
+				$(
+					_apply
+					_any
+				)!(
+					q{
+						$(
+							a.reset; 
+							a.valid
+						)
+					}, $(
+						nearest
+						adjusted
+					)Handles
+				); 
+			} 
+		}
+	+/
+	
+	Will be easy to implement this in the new AMDB source storage format.
+	In classic source code it would require various comment blocks. Would be too complicated. 
+	But in AMDB it would be totally easy to store a new type of node interleaved into the classic source code..
++/
+
 const clModuleBorder = clGray; 
 const clModuleText = clBlack; 
 
