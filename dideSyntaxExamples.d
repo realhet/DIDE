@@ -373,6 +373,13 @@ else
 		{/+c+/}
 		
 	} 
+	
+	void a() {
+		/+Bug: This is bogus!!! label is separated from its statement.+/
+		final switch(e)
+		static foreach(a; EnumMembers!E)
+		case a: return a.unaryFun!fun; 
+	} 
 }version(none) {
 	void multilineStringText()
 	{
@@ -674,11 +681,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x3D645951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x3DBB5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x3E125951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x3E695951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x3EC05951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x3E175951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x3E6E5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x3EC55951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x3F1C5951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x3F735951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)

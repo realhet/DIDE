@@ -2028,6 +2028,40 @@ version(/+$DIDE_REGION+/all) {
 						}
 						break; //dstPreposition can present in only one rule
 					}
+					
+					/+
+						Bug: 291001: Labeled Statement bug. This is badly parsed:
+						/+
+							Code: auto functionSwitch(alias fun, E)(E e)
+							{
+								final switch(e)
+								static foreach(a; EnumMembers!E)
+								case a: return a.unaryFun!fun; 
+							} 
+						+/
+						This is bad either:
+						/+
+							Code: auto functionSwitch(alias fun, E)(E e)
+							{
+								final switch(e) {
+									static foreach(a; EnumMembers!E)
+									case a: return a.unaryFun!fun; 
+								}
+							} 
+						+/
+						
+						Only this works:
+						/+
+							Code: auto functionSwitch(alias fun, E)(E e)
+							{
+								final switch(e)
+								static foreach(a; EnumMembers!E)
+								{ case a: return a.unaryFun!fun; }
+							} 
+						+/
+						
+						The label is detected up put the statement is NOT!!!
+					+/
 				} 
 			}version(/+$DIDE_REGION+/all)
 			{

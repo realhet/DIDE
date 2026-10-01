@@ -1006,8 +1006,12 @@ class Workspace : Container, IWorkspace
 						[q{"Backspace"},q{deleteToLeft},q{
 							TextSelection[] s1 = textSelections[].zeroLengthSelectionsToOneLeft , s2; 
 							editor.cut_impl2(s1, s2); textSelections.items = s2; 
-							//Todo: delete all leading tabs when the cursor is right after them
 							/+Todo: Ctrl+Backspace = deletes words+/
+							/+
+								Todo: delete all leading tabs when the cursor is right after them 
+									-> 	nah it should be done with ctrl+backspace!
+									 That slould delete consequtive whitespace too.
+							+/
 						}],
 						[q{"Del"},q{deleteFromRight},q{
 							TextSelection[] s1 = textSelections[].zeroLengthSelectionsToOneRight, s2; 
