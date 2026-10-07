@@ -255,6 +255,47 @@ else debug
 			if(1) { if(2) a; }else b; //bad: else goes inside the explicit {} block
 			//if(1) if(2) a; else b; //good + Warning  dangling else
 			if(1) { if(2) a; else b; }//good
+			
+			version(/+$DIDE_REGION RGN+/all)
+			{
+				void not_so_good()
+				{
+					vec2 randomVec2()
+					{
+						seedStream.popFront; 
+						return vec2(
+							(float(seed.BITS[0..16])), 
+							(float(seed.BITS[16..32]))
+						) * 0x1.0p-16f; 
+					} 
+					
+					; /+this fixes it temporarily+/
+					
+					do {
+						seedStream.popFront; 
+						p = randomVec2; 
+						w = dot(p, p); 
+					}while(w>1); 
+				} 
+				
+				void bad()
+				{
+					vec2 randomVec2()
+					{
+						seedStream.popFront; 
+						return vec2(
+							(float(seed.BITS[0..16])), 
+							(float(seed.BITS[16..32]))
+						) * 0x1.0p-16f; 
+					} 
+					
+					do {
+						seedStream.popFront; 
+						p = randomVec2; 
+						w = dot(p, p); 
+					} while(w>1) ; 
+				} 
+			}
 		}
 	} 
 	
@@ -681,11 +722,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x3E175951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x3E6E5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x3EC55951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x3F1C5951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x3F735951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x411F5951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x41765951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x41CD5951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x42245951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x427B5951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)
