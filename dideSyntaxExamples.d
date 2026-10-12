@@ -601,34 +601,34 @@ l2
 			
 			/*
 			*
-				   This is a brief documentation comment.
+			This is a brief documentation comment.
 		*/
 			
 			/*
 			*
-				 * The leading * on this line is not part of the documentation comment.
+			* The leading * on this line is not part of the documentation comment.
 		*/
 			
 			/*
 			********************************
-						 The extra *'s immediately following the /** are not
-						 part of the documentation comment.
+			The extra *'s immediately following the /** are not
+			part of the documentation comment.
 		*/
 			
 			/+
 			+
-				   This is a brief documentation comment.
+			This is a brief documentation comment.
 		+/
 			
 			/+
 			+
-				 + The leading + on this line is not part of the documentation comment.
+			+ The leading + on this line is not part of the documentation comment.
 		+/
 			
 			/+
 			++++++++++++++++++++++++++++++++
-						 The extra +'s immediately following the / ++ are not
-						 part of the documentation comment.
+			The extra +'s immediately following the / ++ are not
+			part of the documentation comment.
 		+/
 			
 			/**************** Closing *'s are not part *****************/
@@ -722,11 +722,11 @@ l2
 		{
 			string[5] x; auto a(bool b) => ((b)?('✅'):('❌')); 
 			mixin(求each(q{i=0},q{4},q{
-				((0x411F5951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
-				((0x41765951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
-				((0x41CD5951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
-				((0x42245951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
-				((0x427B5951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
+				((0x41035951ECFD).檢(mixin(指(q{x},q{0})) ~= a(mixin(界0(q{1},q{i},q{4 }))))),
+				((0x415A5951ECFD).檢(mixin(指(q{x},q{1})) ~= a(mixin(界1(q{1},q{i},q{4 }))))),
+				((0x41B15951ECFD).檢(mixin(指(q{x},q{2})) ~= a(mixin(界2(q{1},q{i},q{4 }))))),
+				((0x42085951ECFD).檢(mixin(指(q{x},q{3})) ~= a(mixin(界3(q{1},q{i},q{4 }))))),
+				((0x425F5951ECFD).檢(mixin(指(q{x},q{4})) ~= a(mixin(等(q{2},q{i},q{4-i})))))
 			})); 
 		} 
 	}version(none)

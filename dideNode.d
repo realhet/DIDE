@@ -892,15 +892,16 @@ version(/+$DIDE_REGION+/all) {
 			bool isFormatRelated() const
 			=> isFormatBold || isFormatItalic || isFormatBullet || isFormatPara || isFormatHeading; 
 			
-			
-			/+Todo: refactor this with an enum+/
-			
-			string commentPrefix()
-			{ return typePrefix[type]; } 
+			string basePrefix()
+			{
+				auto s = typePrefix[type]; 
+				if(isDDoc) s ~= s.back; 
+				return s; 
+			} 
 			
 			override string prefix()
 			{
-				auto s = commentPrefix; 
+				auto s = basePrefix; 
 				if(customPrefix != "")
 				s ~= customPrefix ~ ' '/+Mandatory space after a custom prefix+/; 
 				
@@ -919,7 +920,7 @@ version(/+$DIDE_REGION+/all) {
 		override void buildSourceText(ref SourceTextBuilder builder)
 		{
 			enforce(verify, "Invalid comment format"); 
-			builder.put(commentPrefix, customPrefix, content, postfix); 
+			builder.put(basePrefix, customPrefix, content, postfix); 
 		} 
 		
 		version(/+$DIDE_REGION BuildMessage handling+/all)
@@ -937,12 +938,13 @@ version(/+$DIDE_REGION+/all) {
 			
 			customPrefix = ""; 
 			customSyntax = skWhitespace; 
+			bool customDetectionComplete; 
 			
 			isDDoc = !scanner.empty && scanner.front.op==ScanOp.content && scanner.front.src.startsWith(prefix.back); 
+			bool isDDocPrefixConsumed; 
 			
 			//build content
 			auto rebuilder = CodeColumnBuilder!true(content); 
-			bool customDetectionComplete; 
 			
 			while(!scanner.empty)
 			{
@@ -970,80 +972,88 @@ version(/+$DIDE_REGION+/all) {
 					const isContent = scanner.front.op==ScanOp.content; 
 					auto s = scanner.front.src; 
 					
-					//right at the beginning, detect the custom keyword
-					if(customDetectionComplete.chkSet && isContent)
+					if(isDDoc)
 					{
-						if(type == Type.directive)
+						//consume the DDoc extra prefix
+						if(isDDocPrefixConsumed.chkSet && isContent) s = s.withoutStarting(prefix.back); 
+					}
+					else
+					{
+						//right at the beginning, detect the custom keyword
+						if(customDetectionComplete.chkSet && isContent)
 						{
-							/+
-								Note: this is unused because #directive detection is not in 
-								the implemented in the scanner, it's a later pass that creates 
-								the dirctive comment manually, and calls promoteCustomDirective()
-							+/
-							enforce(0, "This should be implemented by the scanner. No other ways to call this."); 
-							version(/+$DIDE_REGION+/none)
+							if(type == Type.directive)
 							{
-								const idx = detectCustomDirectiveIdx(s); 
+								/+
+									Note: this is unused because #directive detection is not in 
+									the implemented in the scanner, it's a later pass that creates 
+									the dirctive comment manually, and calls promoteCustomDirective()
+								+/
+								enforce(0, "This should be implemented by the scanner. No other ways to call this."); 
+								version(/+$DIDE_REGION+/none)
+								{
+									const idx = detectCustomDirectiveIdx(s); 
+									if(idx >= 0)
+									{
+										customPrefix = customDirectivePrefixes[idx]; 
+										customSyntax = skDirective; 
+									}
+								}
+							}
+							else
+							{
+								auto idx = detectCustomCommentIdx(s); 
+								
 								if(idx >= 0)
 								{
-									customPrefix = customDirectivePrefixes[idx]; 
-									customSyntax = skDirective; 
-								}
-							}
-						}
-						else
-						{
-							auto idx = detectCustomCommentIdx(s); 
-							
-							if(idx >= 0)
-							{
-								customPrefix = customCommentPrefixes[idx]; 
-								customSyntax = customCommentSyntaxes[idx]; 
-								
-								if(customSyntax==skInherit)
-								{
-									customSyntax = 	this.allParents!CodeContainer
-										.map!((a)=>(a.syntax)).filter!((s)=>(s!=skInherit)).frontOr(skComment); 
-								}
-								
-								if(customPrefix.endsWith('/'))
-								{
-									const i = s.byChar.countUntil(':'); 
-									if(i>=0)
+									customPrefix = customCommentPrefixes[idx]; 
+									customSyntax = customCommentSyntaxes[idx]; 
+									
+									if(customSyntax==skInherit)
 									{
-										customLanguage = s[customPrefix.length..i]; 
-										customPrefix = s[0..i+1]; 
+										customSyntax = 	this.allParents!CodeContainer
+											.map!((a)=>(a.syntax)).filter!((s)=>(s!=skInherit)).frontOr(skComment); 
 									}
-									else
-									{ idx = -1 /+bad comment format+/; }
+									
+									if(customPrefix.endsWith('/'))
+									{
+										const i = s.byChar.countUntil(':'); 
+										if(i>=0)
+										{
+											customLanguage = s[customPrefix.length..i]; 
+											customPrefix = s[0..i+1]; 
+										}
+										else
+										{ idx = -1 /+bad comment format+/; }
+									}
 								}
 							}
-						}
-						
-						//remove customPrefix from content
-						if(customPrefix != "")
-						{
-							static string fetchNewLineAndTabs(ref string s)
+							
+							//remove customPrefix from content
+							if(customPrefix != "")
 							{
-								const sFull = s; 
-								const fullLength = sFull.length; 
-								s = skipNewLineAndTabs(s); 
-								const whiteLength = fullLength - s.length; 
-								const sWhite = sFull[0 .. whiteLength]; 
-								return sWhite; 
-							} 
+								static string fetchNewLineAndTabs(ref string s)
+								{
+									const sFull = s; 
+									const fullLength = sFull.length; 
+									s = skipNewLineAndTabs(s); 
+									const whiteLength = fullLength - s.length; 
+									const sWhite = sFull[0 .. whiteLength]; 
+									return sWhite; 
+								} 
+								
+								const sWhite = fetchNewLineAndTabs(s); 
+								
+								assert(s.startsWith!"a.toLower==b.toLower"(customPrefix), "Custom prefix must be exact."); 
+								s = sWhite ~ s[customPrefix.length..$].withoutStarting(' '); 
+							}
 							
-							const sWhite = fetchNewLineAndTabs(s); 
-							
-							assert(s.startsWith!"a.toLower==b.toLower"(customPrefix), "Custom prefix must be exact."); 
-							s = sWhite ~ s[customPrefix.length..$].withoutStarting(' '); 
+							rebuilder.syntax = skComment; 
+							/+
+								Note: Rebuilder syntax is set to skComment because that can be outdented later.
+													After the rebuild, in the realign pass, the proper syntax highlight will be applied.
+							+/
 						}
-						
-						rebuilder.syntax = skComment; 
-						/+
-							Note: Rebuilder syntax is set to skComment because that can be outdented later.
-												After the rebuild, in the realign pass, the proper syntax highlight will be applied.
-						+/
 					}
 					
 					if(!isContent) rebuilder.syntax = skError; 
