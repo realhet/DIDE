@@ -943,7 +943,7 @@ version(/+$DIDE_REGION+/all) {
 			isDDoc = !scanner.empty && scanner.front.op==ScanOp.content && scanner.front.src.startsWith(prefix.back); 
 			bool isDDocPrefixConsumed; 
 			
-			//build content
+			//build content 
 			auto rebuilder = CodeColumnBuilder!true(content); 
 			
 			while(!scanner.empty)

@@ -622,8 +622,6 @@ version(/+$DIDE_REGION+/all)
 			); 
 			
 			
-			void VLine()
-			{ with(im) Container({ innerWidth = 1; innerHeight = fh; background = clGray; }); } 
 			
 			//StatusBar
 			with(im)
@@ -633,11 +631,9 @@ version(/+$DIDE_REGION+/all)
 					margin = "0"; padding = "0"; 
 					Row(
 						{
-							/*theme = "tool";*/ style.fontHeight = 18; 
+							style.fontHeight = 18; 
 							
-							//Todo: faszomat ebbe a szarba:
-							rowFlags.vAlign = VAlign.center;  //ha ez van, akkot a text kozepre megy, de a VLine nem latszik.
-							//flags.yAlign = YAlign.stretch; //ha ez, akkor meg a VLine ki van huzva.
+							rowFlags.vAlign = VAlign.center; 
 							
 							builder.UI; 
 							
@@ -645,7 +641,7 @@ version(/+$DIDE_REGION+/all)
 							
 							Row(
 								{
-									 flex = 1; margin = "0 3"; rowFlags.yAlign = YAlign.center; flags.clipSubCells = true; 
+									flex = 1; margin = "0 3"; rowFlags.yAlign = YAlign.center; flags.clipSubCells = true; 
 									//style.fontHeight = 18+6;
 									
 									if(lod.moduleLevel) workspace.modules.UI_selectedModulesHint; 
@@ -690,12 +686,12 @@ FPS=$(FPS
 								workspace.textSelections.UI_structureLevel; 
 							}
 							
-							//this applies YAlign.stretch
-							with(thisContainer) {
-								measure; 
-								
-								/+Todo: Why I measure subCells again?+/
-								foreach(c; cast(.Container[])subCells) c.measure; 
+							//This stretches the VLines vertically. And the other ui elements are just aligned to VCenter.
+							with(thisContainer)
+							{
+								measure; const h = innerHeight; 
+								foreach(shp; subCells.map!((c)=>((cast(.Shape)(c)))))
+								if(shp) { shp.outerHeight = h; shp.outerPos.y = 0; }
 							}
 							
 							
