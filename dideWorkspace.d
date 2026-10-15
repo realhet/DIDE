@@ -463,17 +463,29 @@ class Workspace : Container, IWorkspace
 				}
 				
 				//update buildresults if needed (compilation progress or layer mask change)
+				/+
+					before 261015:
+					/+
+						Code: size_t calcBuildStateHash()
+						{
+							return modules.modules	.map!"tuple(a.file, a.outerPos)"
+								.array
+								.hashOf(
+								buildResult.lastUpdateTime.hashOf(
+									buildMessages.layerVisibilityMask
+									/+to filter compile.err+/
+								)
+							); 
+						} 
+					+/
+				+/
 				size_t calcBuildStateHash()
-				{
-					return modules.modules	.map!"tuple(a.file, a.outerPos)"
-						.array
-						.hashOf(
-						buildResult.lastUpdateTime.hashOf(
-							buildMessages.layerVisibilityMask
-							/+to filter compile.err+/
-						)
-					); 
-				} 
+				=> hash64(
+					modules.modules.map!q{tuple(a.file, a.outerPos)}.array,
+					buildResult.lastUpdateTime,
+					buildMessages.layerVisibilityMask
+				); 
+				
 				/+
 					Opt: outerPos is tracked to detect if a module was moved. It is wastefull to rebuild 
 					all the layers with all the info, only move the affected layer items.

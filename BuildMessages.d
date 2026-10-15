@@ -102,6 +102,15 @@ of type `$(wild[2])`".text;
 						of type /+Code: jigsawpuzzle.BackgroundImage*+/ /+Hidden: /+$DIDE_LOC c:\D\unsorted\JigsawPuzzle.d(715,14)+/+/
 						did you mean variable /+Code: cornerPoints+/? /+$DIDE_LOC c:\D\unsorted\JigsawPuzzle.d(637,11)+/
 					+/
+					/+
+						Error: no property /+Code: ProjectRott+/ for type /+Code: Type+/. Did you mean /+Code: Type.ProjectRoot+/ ? /+Hidden: /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d-mixin-1730(1730,2)+/+/
+						enum /+Code: Type+/ defined here /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1674,2)+/
+					+/
+					/+
+						Error: no property /+Code: idx+//+$DIDE_BTN "👆" op=select str="idx"+/ for /+Code: item+//+$DIDE_BTN "👆" op=select str="item"+/
+						of type /+Code: const(ganttmodul.WorkorderNode*)+/ /+Hidden: /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1998,47)+/+/
+						did you mean variable /+Code: id+/? /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1680,7)+/
+					+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
@@ -203,15 +212,22 @@ class DMDMessage
 	auto dup()
 	{ return new DMDMessage(this); } 
 	
+	/+
+		before 261015:
+		/+
+			Code: void recalculateHash()
+			{
+				ulong h = location.hashOf	(type.hashOf(content.hashOf)); 
+				
+				//make every console message different
+				if(type==Type.console) h += (cast(ulong)((cast(void*)(this)))); 
+				
+				hash_ = (cast(uint)(h)) + (cast(uint)(h>>32)); 
+			} 
+		+/
+	+/
 	void recalculateHash()
-	{
-		ulong h = location.hashOf	(type.hashOf(content.hashOf)); 
-		
-		//make every console message different
-		if(type==Type.console) h += (cast(ulong)((cast(void*)(this)))); 
-		
-		hash_ = (cast(uint)(h)) + (cast(uint)(h>>32)); 
-	} 
+	{ hash_ = hash32(location, content, ((type==Type.console)?((cast(size_t)((cast(void*)(this))))):(0))); } 
 	
 	@property col() const
 	{ return location.columnIdx; } @property line() const
