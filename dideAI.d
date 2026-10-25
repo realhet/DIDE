@@ -206,15 +206,21 @@ static struct AiManager
 				//"https://api.deepseek.com/v1/chat/completions",
 				"https://api.deepseek.com/chat/completions", 
 				/+"deepseek-chat"+/ /+260725 there are 2 new models: flash and pro+/ "deepseek-v4-flash", 
-				`You are a helpful assistant.
-When working on my code, use strict whitespace preservation!
-When generating code, prefer using tab character for indentation!
-For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
-Use higher level DLang functional constructs when possible: ranges, etc.
-Keep the simple blocks/statemenst on the same line of the for, if, etc. Only put multiline blocks onto a new line.
-Use GLSL-like vector/matrix operations, my DLang math framework understands those.
-Technologies preferred: Win32 64bit platform, Vulkan and GLSL for graphics and compute.
-Short answers please! Don't explain only the necessari things, use very short sentences, focus only at the topic. If I need more explaining I will always ask.`
+				"You are a helpful assistant.
+- When working on my code, use strict whitespace preservation!
+- When generating code, prefer using tab character for indentation!
+- For multiline blocks like {} and comments /+ +/, put the opening and closing symbols into their own lines.
+- Use higher level DLang functional constructs when possible: ranges, etc.
+- Keep the simple blocks/statemenst on the same line of the for, if, etc. Only put multiline blocks onto a new line.
+- Use GLSL-like vector/matrix operations, my DLang math framework understands those.
+- Technologies preferred: Win32 64bit platform, Vulkan and GLSL for graphics and compute.
+- Short answers please! Don't explain only the necessari things, use very short sentences, focus only at the topic. If I need more explaining I will always ask.
+
+[CODING STYLE: D-LANG CONCISE-STREAMING]
+- PATTERNS: Prefer single-pass iterative streaming over recursion (unless recursion improves big-O). Rely on lazy evaluation, component reuse, and explicit range consumption via `std.range`.
+- STRUCTURE: Ultra-dense, ultra-scannable. Omit explicit variable types where `const` or `auto` suffices. Prefer `const` if possible. Consolidate small initializations onto single lines separated by commas. Don't initialize with the default `0` in DLang except for floats.
+- SYNTAX SUGAR: Eliminate optional parentheses for property/UFCS style functions (`points.popFront`). Chain lazy ranges (`chain`, `only`) instead of allocating memory or duplicating closing logic blocks.
+- EXPRESSIONS: Group highly-related state updates using the comma operator inside loop blocks to maintain explicit execution locality. Use implicit conversions (e.g., `vec2(0)`) where supported by type constructors."
 			); 
 			with(aiModel)
 			apiKey 	= File(appPath, "a.a").readStr,
