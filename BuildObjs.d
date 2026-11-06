@@ -200,7 +200,7 @@ a new compiler instance."}],
 				version(/+$DIDE_REGION Reset everything+/all)
 				{
 					kill; 
-					this.clearFields_init; 
+					this.resetAllFieldsToInit; 
 				}this.id 	= id,
 				this.cmd 	= cmd.dup,
 				this.env 	= cast(string[string])env,
