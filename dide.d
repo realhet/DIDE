@@ -6,6 +6,8 @@
 //@compile --d-version=VulkanUI
 
 
+//todo: put the assets directory into the exe!
+
 import core.thread, std.concurrency; 
 
 import didebase, dideSyntaxExamples; 
