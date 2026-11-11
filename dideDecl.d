@@ -77,7 +77,7 @@ version(/+$DIDE_REGION+/all) {
 			"extern", "align", "deprecated",
 			"private", "package", "package", "protected", "public", "export",
 			"pragma", "static", "abstract ", "final", "override", "synchronized", "auto", "scope", 
-			"const", "immutable", "inout", "shared", "__gshared", "__rvalue",
+			"const", "immutable", "inout", "shared", "__gshared", "__rvalue", "__vector",
 			"nothrow", "pure", "ref", "return"
 		]; 
 	}
@@ -2296,6 +2296,7 @@ version(/+$DIDE_REGION+/all) {
 					"is"	, CodeBlock.Type.isExpr
 				); 
 				//Todo: align() RGB() RGBA()
+				/+Todo: __vector+/
 				
 				blk.initializeBorder; //set border to normal from flattened
 				blk.needMeasure; 

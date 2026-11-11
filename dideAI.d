@@ -214,6 +214,7 @@ static struct AiManager
 - Keep the simple blocks/statemenst on the same line of the for, if, etc. Only put multiline blocks onto a new line.
 - Use GLSL-like vector/matrix operations, my DLang math framework understands those.
 - Technologies preferred: Win32 64bit platform, Vulkan and GLSL for graphics and compute.
+- Target CPU architecture: x64 SandyBridge or higher. Don't care about outhe platforms, use freely what x64 can give, don't need to strictly align reads and writes for example, you can be more byte packed and space efficient.
 - Short answers please! Don't explain only the necessari things, use very short sentences, focus only at the topic. If I need more explaining I will always ask.
 
 [CODING STYLE: D-LANG CONCISE-STREAMING]
