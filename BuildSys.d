@@ -333,21 +333,21 @@ struct BuildSystem
 		
 		//add this module
 		double dateTime; 
-		auto act = sourceCache.access(file); 
-		modules ~= new ModuleInfo(act); 
-		auto mAct = &modules[$-1]; 
+		auto 	actCachedSource 	= sourceCache.access(file),
+			actModuleIndo 	= new ModuleInfo(actCachedSource); 
+		modules ~= actModuleIndo; 
 		
 		//process buildMacros
-		foreach(bm; act.parser.buildMacros)
+		foreach(bm; actCachedSource.parser.buildMacros)
 		processBuildMacro(bm); 
 		
 		//collect Todo/Opt list
-		todos ~= act.parser.todos; 
+		todos ~= actCachedSource.parser.todos; 
 		
 		//decide if it has to link with windows libs
 		if(!hasCoreModule)
 		{
-			foreach(const imp; act.parser.importDecls)
+			foreach(const imp; actCachedSource.parser.importDecls)
 			if(imp.isCoreModule)
 			{
 				addIfCan(settings.linkArgs, ["kernel32.lib", "user32.lib"]); //Todo: not needed to add these, they're implicit -> try it out!
@@ -357,7 +357,7 @@ struct BuildSystem
 		}
 		
 		//collect imports NEW
-		foreach(const imp; act.parser.importDecls)
+		foreach(const imp; actCachedSource.parser.importDecls)
 		if(imp.isUserModule)
 		{
 			if(
@@ -372,16 +372,16 @@ struct BuildSystem
 					)
 				)
 			)
-			if(!mAct.importedFiles.canFind(f))
+			if(!actModuleIndo.importedFiles.canFind(f))
 			{
-				mAct.importedFiles ~= f; 
-				mAct.importedModuleNames ~= imp.name.fullName; 
+				actModuleIndo.importedFiles ~= f; 
+				actModuleIndo.importedModuleNames ~= imp.name.fullName; 
 			}
 		}
 		
 		
 		//reqursive walk on imports
-		foreach(imp; mAct.importedFiles)
+		foreach(imp; actModuleIndo.importedFiles)
 		processSourceFile(imp); 
 	} 
 	
