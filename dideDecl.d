@@ -1550,7 +1550,7 @@ version(/+$DIDE_REGION+/all) {
 				while(!tokens.empty && tokens.front.pos<srcIdx)
 				tokens.popFront; 
 			} 
-			
+			
 			void transferWhitespaceAndCommentsAndInterpolationBlocksAndDirectives()
 			{
 				//Directives are specialized CodeComments.
@@ -1574,52 +1574,6 @@ version(/+$DIDE_REGION+/all) {
 						+/
 						fetchUntil(srcIdx+remainingCellsOnLine); 
 						if(!resultCells.empty) directiveCells ~= resultCells[0]; 
-					}
-					
-					version(/+$DIDE_REGION+/none) {
-						/+Note: 250218 This is deprecated because handleMultilineCMacros does this.+/
-						version(/+$DIDE_REGION Collect all lines of the directive+/all)
-						{
-							while(1) {
-								//Note: '\\' backslash is not supported by DLang
-								
-								fetchUntil(srcIdx+remainingCellsOnLine); 
-								if(resultCells.empty) break; 
-								
-								bool isExtendedLine()
-								{
-									if(resultCells[0].length)
-									if(auto g = cast(Glyph) resultCells[0].back)
-									if(g.ch == '\\') return true; 
-									return false; 
-								} 
-								
-								if(isExtendedLine)
-								{
-									/+
-										Todo: Deprecate this! This fails with structured code.
-										This multiline thing is deprecated.
-										The handleMultilineMacros will do this earlier.
-									+/
-									directiveCells ~= resultCells[0][0..$-1]; 
-									
-									if(srcIdx<srcDStr.length)
-									{
-										skipUntil(srcIdx+1); //skip newLine
-										continue; 
-									}
-									else
-									{
-										break; //it's EOF
-									}
-								}
-								else
-								{
-									directiveCells ~= resultCells[0]; 
-									break; 
-								}
-							}
-						}
 					}
 					
 					Cell[] endingWhite; 

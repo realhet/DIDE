@@ -4,7 +4,7 @@ import didebase, het.parser;
 import diderow : SourceTextBuilder; 
 import didenode : CodeContainer, CodeBlock, CodeComment, CodeString; 
 import didedecl : Declaration, processHighLevelPatterns, isWhitespaceOrComment, isBreakRow; 
-import didemodule : addGlobalChangeIndicator, preprocessMultilineMacros; 
+import didemodule : addGlobalChangeIndicator; 
 import dideexpr : NiceExpression, mixinTableSplitFun, isMixinTableCell, MixinTableContainerClass; 
 
 __gshared bool enableSpaceToTabConversion; /+260408: It was so annoying in AMDB sentences. It must be only enabled for importing old codes.+/
@@ -194,14 +194,6 @@ version(/+$DIDE_REGION+/all) {
 			
 			private void appendHighlighted_internal(string src)
 			{
-				
-				/+250218: # is not a part of identifier syntax highlighting. It is processed by handleMultilineCMacros.+/
-				/+
-					Todo: apply skDirective to valid CodeComment.customDirectivePrefixes
-					It is a # followed by 'define', etc.
-					It needs a more complicated parser.
-				+/
-				
 				static char categorize(dchar ch)
 				{
 					if(isDLangIdentifierCont(ch) || ch.among('_', '@'/+, '#'+/)) return 'a'; 
@@ -451,8 +443,8 @@ version(/+$DIDE_REGION+/all) {
 			{
 				case TextFormat.managed_first: ..case TextFormat.managed_last: 
 				{
-					static if(handleMultilineCMacros)
-					source = preprocessMultilineMacros(StructureLevel.structured, source); 
+					source = preprocessMultilineCMacros(StructureLevel.structured, source); 
+					//Opt: should be only called only for C sources.
 					
 					with(rebuilder)
 					{

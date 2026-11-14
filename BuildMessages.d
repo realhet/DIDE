@@ -111,6 +111,7 @@ of type `$(wild[2])`".text;
 						of type /+Code: const(ganttmodul.WorkorderNode*)+/ /+Hidden: /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1998,47)+/+/
 						did you mean variable /+Code: id+/? /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1680,7)+/
 					+/
+					/+Error: module /+Code: didemodule+/ import /+Code: preprocessMultilineMacros+/ not found, did you mean function /+Code: didemodule.preprocessMultilineCMacros+/? /+Hidden: /+$DIDE_LOC c:\D\projects\DIDE\dideColumn.d(7,8)+/+/+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{

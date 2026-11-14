@@ -5,7 +5,7 @@ import didebase, het.parser;
 import diderow : SourceTextBuilder; 
 import didecolumn : CodeColumnBuilder; 
 import didedecl : Declaration; 
-import didemodule : addGlobalChangeIndicator, findMultilineMacroBlock; 
+import didemodule : addGlobalChangeIndicator; 
 import dideexpr : fillLanguageId; 
 
 version(/+$DIDE_REGION+/all) {
@@ -795,6 +795,15 @@ version(/+$DIDE_REGION+/all) {
 			return idx; 
 		} 
 		
+		///This ectracts the block from `#define{content}`
+		static private CodeBlock extractMultilineCMacroBlock(CodeRow row)
+		{
+			if(row.subCells.length==1)
+			if(auto blk = (cast(CodeBlock)(row.subCells.front)))
+			if(blk.type==CodeBlock.Type.block)
+			{ return blk; }return null; 
+		} 
+		
 		/+protected+/
 		void promoteCustomDirective()
 		{
@@ -816,7 +825,7 @@ version(/+$DIDE_REGION+/all) {
 				//remove prefix
 				row.subCells = row.subCells[customPrefix.walkLength..$]; 
 				
-				if(auto multilineMacroBlock = findMultilineMacroBlock(row))
+				if(auto multilineMacroBlock = extractMultilineCMacroBlock(row))
 				{
 					//acquire the contents of the enclosed multilineMacro
 					content = multilineMacroBlock.content; 

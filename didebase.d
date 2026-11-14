@@ -3,7 +3,7 @@ import het.ui;
 
 public import het.ui; 
 
-public import het.parser : CodeLocation, SyntaxKind, syntaxBkColor, syntaxFontColor, structuredColor; 
+public import het.parser : CodeLocation, SyntaxKind, syntaxBkColor, syntaxFontColor, structuredColor, preprocessMultilineCMacros; 
 
 public import dideselection; 
 public import dideselection : wordAt; public import het : wordAt; 
@@ -34,8 +34,7 @@ enum AnimatedCursors 	= (常!(bool)(1)),
 MaxAnimatedCursors 	= 100; 
 
 enum autoSpaceAfterDeclarations 	= (常!(bool)(1)) /+automatic space handling right after "statements; " and "labels:" and "blocks{}"+/,
-joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/,
-handleMultilineCMacros	= (常!(bool)(1)) /+Multiline C Macro support.+/; 
+joinSemicolonsAfterBlocks 	= (常!(bool)(1)) /+fixes C style source codes: /+Code: struct { int x; } ;+/  The ';' will be added to the end of the {}+/; 
 
 enum rearrangeLOG 	= false,
 rearrangeFlash 	= false;  
@@ -290,6 +289,27 @@ struct bloodScreenEffect
 			}
 		} 
 	} 
+} 
+
+string preprocessMultilineCMacros(
+	StructureLevel structureLevel, string sourceText, 
+	File file = File.init /+for debug and warnings+/
+)
+{
+	if(structureLevel < StructureLevel.structured) return sourceText; 
+	
+	static if((常!(bool)(0)))
+	{
+		const t0 = now; 
+		scope(exit)
+		{
+			const t1 = now; __gshared t = 0*second; synchronized t += t1-t0; 
+			LOG("Total time checking C Macros:", t); 
+		}
+	}
+	/+processing time is minimal: 6 millisec for hetlib + karc + some unsorted test projects+/
+	
+	return preprocessMultilineCMacros(sourceText, file); 
 } 
 
 version(/+$DIDE_REGION+/all) {}
