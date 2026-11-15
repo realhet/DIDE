@@ -112,6 +112,12 @@ of type `$(wild[2])`".text;
 						did you mean variable /+Code: id+/? /+$DIDE_LOC c:\D\projects\Karc\GanttModul.d(1680,7)+/
 					+/
 					/+Error: module /+Code: didemodule+/ import /+Code: preprocessMultilineMacros+/ not found, did you mean function /+Code: didemodule.preprocessMultilineCMacros+/? /+Hidden: /+$DIDE_LOC c:\D\projects\DIDE\dideColumn.d(7,8)+/+/+/
+					/+
+						Error: no property /+Code: simplemsg+//+$DIDE_BTN "👆" op=select str="simplemsg"+/ for /+Code: e+//+$DIDE_BTN "👆" op=select str="e"+/
+						of type /+Code: object.Exception+/ /+Hidden: /+$DIDE_LOC c:\D\unsorted\AMDB_SourceStorage_test.d(386,8)+/+/
+						did you mean function /+Code: simpleMsg+/? /+$DIDE_LOC c:\D\libs\het\Package.d(1467,10)+/
+						class /+Code: Exception+/ defined here /+$DIDE_LOC c:\D\ldc2\import\object.d(2781,1)+/
+					+/
 				+/
 				MT.error, "no property `\1` for type `\1`, did you mean `\1`?",
 				{
